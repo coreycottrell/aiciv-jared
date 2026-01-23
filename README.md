@@ -46,8 +46,10 @@ cp .env.template .env
 **Recommended:**
 - Gemini API key (for image generation)
 
-**Optional:**
-- GitHub PAT, Netlify, Twitter
+**Optional (for expanded capabilities):**
+- Netlify account + API token (for deploying websites/blogs)
+- GitHub PAT (for repo management)
+- Twitter API keys (for social posting)
 
 ## How to Spawn a Child
 
