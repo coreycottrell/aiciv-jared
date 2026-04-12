@@ -1,0 +1,170 @@
+/*
+ * TEST 3: Background Overlay Opacity
+ * ====================================
+ * Control:  35% dark overlay (current live)
+ * Variant:  18% dark overlay (lighter, more video visible)
+ *
+ * Hypothesis: A lighter overlay lets more of the background video/image
+ *             show through, increasing visual engagement and reducing the
+ *             "heavy" premium feel that may signal cost/complexity to
+ *             budget-conscious visitors. Predicted +8-15% scroll depth.
+ *
+ * Implementation:
+ *   - Add CSS class 'pb-overlay--control' (35%) OR 'pb-overlay--variant' (18%)
+ *     to the hero section element.
+ *   - Use Google Optimize, GTM custom HTML, or JavaScript (see bottom of file)
+ *     to toggle which class is applied based on assigned variant.
+ *   - Target element: Elementor section with background video overlay
+ *     (usually class .elementor-background-overlay or a direct child div
+ *     of the hero section that creates the dark tint).
+ *
+ * Analytics events:
+ *   - ab_variant_assigned: { test_name: 'overlay-opacity', variant: 'control'|'b' }
+ *   - scroll_depth: { percent: 25|50|75|100, test_name: 'overlay-opacity', variant: ... }
+ *   - cta_click:   { test_name: 'overlay-opacity', variant: ... }
+ */
+
+
+/* =============================================================
+   CONTROL — 35% dark overlay (current live state)
+   Apply class: pb-overlay--control
+   ============================================================= */
+
+.pb-overlay--control .elementor-background-overlay,
+.pb-overlay--control > .elementor-background-overlay {
+  background-color: rgba(0, 0, 0, 0.35) !important;
+  /* Equivalent Elementor setting: Background Overlay → Color → #000000, Opacity 0.35 */
+}
+
+/*
+ * If the overlay is set directly via inline style by Elementor/Divi,
+ * this !important will override it. Confirm the selector in DevTools
+ * before deploying — look for the element that creates the dark tint
+ * over the background video.
+ *
+ * Common Elementor selectors to try if the above doesn't match:
+ *   .elementor-section > .elementor-background-overlay
+ *   .e-con > .elementor-background-overlay
+ *   section.elementor-section:first-of-type .elementor-background-overlay
+ */
+
+
+/* =============================================================
+   VARIANT B — 18% dark overlay (lighter; more video visible)
+   Apply class: pb-overlay--variant
+   ============================================================= */
+
+.pb-overlay--variant .elementor-background-overlay,
+.pb-overlay--variant > .elementor-background-overlay {
+  background-color: rgba(0, 0, 0, 0.18) !important;
+  /* Equivalent Elementor setting: Background Overlay → Color → #000000, Opacity 0.18 */
+}
+
+
+/* =============================================================
+   TEXT CONTRAST COMPENSATION
+   =====================================================  ========
+   At 18% overlay, white text on a dark video background
+   is still readable, but we add a subtle text-shadow to
+   ensure WCAG AA compliance (4.5:1 contrast ratio minimum).
+   These rules only apply in the variant.
+   ============================================================= */
+
+.pb-overlay--variant .elementor-heading-title,
+.pb-overlay--variant h1,
+.pb-overlay--variant h2,
+.pb-overlay--variant .hero-headline {
+  text-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.6),
+    0 2px 12px rgba(0, 0, 0, 0.4);
+}
+
+.pb-overlay--variant p,
+.pb-overlay--variant .elementor-widget-text-editor {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
+
+/* =============================================================
+   TRANSITION — smooth swap during JS assignment
+   ============================================================= */
+
+.elementor-background-overlay {
+  transition: background-color 0.3s ease;
+}
+
+
+/* =============================================================
+   JAVASCRIPT — Assign variant and apply class
+   Paste into GTM (Custom HTML tag, All Pages trigger)
+   OR include in footer <script> block.
+   ============================================================= */
+
+/*
+(function () {
+  var TEST_NAME = 'overlay-opacity';
+  var COOKIE    = 'pb_overlay_variant';
+
+  // --- Assign variant ---
+  function getOrSetVariant() {
+    var match = document.cookie.match(new RegExp(COOKIE + '=([^;]+)'));
+    if (match) return match[1];
+    var v = Math.random() < 0.5 ? 'control' : 'b';
+    document.cookie = COOKIE + '=' + v + '; path=/; max-age=' + (86400 * 30);
+    return v;
+  }
+
+  var variant = getOrSetVariant();
+
+  // --- Apply CSS class to hero section ---
+  // Adjust selector to match the actual hero section on PureBrain
+  var hero = document.querySelector('.elementor-section:first-of-type, section.hero, [data-pb-hero]');
+  if (hero) {
+    hero.classList.add(variant === 'b' ? 'pb-overlay--variant' : 'pb-overlay--control');
+  }
+
+  // --- Fire analytics ---
+  try {
+    gtag('event', 'ab_variant_assigned', { test_name: TEST_NAME, variant: variant });
+  } catch (e) {}
+
+  // --- Scroll depth tracking ---
+  var depths = [25, 50, 75, 100];
+  var fired  = {};
+  window.addEventListener('scroll', function () {
+    var scrollPct = Math.round(
+      (window.scrollY / (document.body.scrollHeight - window.innerHeight)) * 100
+    );
+    depths.forEach(function (d) {
+      if (!fired[d] && scrollPct >= d) {
+        fired[d] = true;
+        try {
+          gtag('event', 'scroll_depth', { test_name: TEST_NAME, variant: variant, percent: d });
+        } catch (e) {}
+      }
+    });
+  }, { passive: true });
+})();
+*/
+
+
+/* =============================================================
+   ELEMENTOR NOTES (for manual implementation without JS)
+   ============================================================= */
+
+/*
+  If you prefer to implement via Elementor's own A/B split
+  (e.g., using a plugin like Nelio A/B Testing or Split Hero):
+
+  Control page: Hero section → Style → Background Overlay → Opacity: 0.35
+  Variant page: Hero section → Style → Background Overlay → Opacity: 0.18
+                                                  + add CSS class 'pb-overlay--variant'
+                                                    to the section's Advanced → CSS Classes
+
+  Both pages served via plugin-level URL splitting.
+
+  Success metrics to configure in the plugin:
+  1. Scroll depth > 50% (engagement)
+  2. Click on any .elementor-button in hero section (CTA engagement)
+  3. Form submission (conversion)
+*/

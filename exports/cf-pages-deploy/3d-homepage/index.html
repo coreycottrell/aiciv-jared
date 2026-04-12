@@ -1,0 +1,2130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-WTDXL4VJ');</script>
+<!-- End Google Tag Manager -->
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+(function(c,l,a,r,i,t,y){
+  c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+  t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+  y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+})(window, document, "clarity", "script", "viy9bnc56x");
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>PureBrain — Navigate Your AI Partner in 3D</title>
+<meta name="description" content="PureBrain is the AI partner that remembers everything, learns your voice, and compounds over time. Not just a chatbot — a real AI partner.">
+<meta property="og:title" content="PureBrain — The AI That Never Forgets You">
+<meta property="og:description" content="Persistent memory. Voice analysis. Grows with you.">
+<meta property="og:image" content="https://purebrain.ai/og-3d.jpg">
+<style>
+/* ============================================================
+   RESET & BASE
+============================================================ */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --blue: #2a93c1;
+  --orange: #f1420b;
+  --bg: #080a12;
+  --glass-bg: rgba(8, 10, 18, 0.55);
+  --glass-border: rgba(42, 147, 193, 0.18);
+  --text-primary: rgba(255,255,255,0.92);
+  --text-secondary: rgba(255,255,255,0.45);
+  --text-muted: rgba(255,255,255,0.22);
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'SF Pro Display', sans-serif;
+  overflow-x: hidden;
+  overscroll-behavior: none;
+}
+
+/* ============================================================
+   3D CANVAS — fixed behind everything
+============================================================ */
+#three-canvas {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* ============================================================
+   HOLOGRAPHIC HUD OVERLAY — always visible
+============================================================ */
+#hud {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 30;
+}
+
+/* Corner brackets */
+.bracket {
+  position: absolute;
+  width: 32px; height: 32px;
+  border-color: rgba(42,147,193,0.35);
+  border-style: solid;
+  transition: opacity 0.4s;
+}
+.bracket.tl { top: 16px; left: 16px; border-width: 1.5px 0 0 1.5px; }
+.bracket.tr { top: 16px; right: 16px; border-width: 1.5px 1.5px 0 0; }
+.bracket.bl { bottom: 16px; left: 16px; border-width: 0 0 1.5px 1.5px; }
+.bracket.br { bottom: 16px; right: 16px; border-width: 0 1.5px 1.5px 0; }
+
+/* Scanline */
+#scanline {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(42,147,193,0.25), transparent);
+  animation: scan 5s linear infinite;
+  opacity: 0.6;
+}
+@keyframes scan {
+  0%   { top: 0; opacity: 0; }
+  5%   { opacity: 1; }
+  95%  { opacity: 0.6; }
+  100% { top: 100%; opacity: 0; }
+}
+
+/* Section indicator — right side */
+#section-dots {
+  position: fixed;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: all;
+}
+.s-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: rgba(42,147,193,0.25);
+  border: 1px solid rgba(42,147,193,0.4);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+}
+.s-dot.active {
+  background: var(--blue);
+  box-shadow: 0 0 10px rgba(42,147,193,0.8);
+  transform: scale(1.5);
+}
+.s-dot:hover {
+  background: rgba(42,147,193,0.6);
+  transform: scale(1.3);
+}
+.s-dot-label {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.0);
+  white-space: nowrap;
+  transition: color 0.3s;
+  pointer-events: none;
+}
+.s-dot:hover .s-dot-label,
+.s-dot.active .s-dot-label {
+  color: rgba(255,255,255,0.4);
+}
+
+/* Scroll hint */
+#scroll-hint {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  transition: opacity 0.5s;
+}
+#scroll-hint span {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.2);
+}
+#scroll-hint-line {
+  width: 1px; height: 32px;
+  background: linear-gradient(to bottom, rgba(42,147,193,0.6), transparent);
+  animation: lineDown 1.8s ease-in-out infinite;
+}
+@keyframes lineDown {
+  0%   { opacity: 0; transform: scaleY(0); transform-origin: top; }
+  50%  { opacity: 1; transform: scaleY(1); transform-origin: top; }
+  100% { opacity: 0; transform: scaleY(1); transform-origin: bottom; }
+}
+
+/* ============================================================
+   SCROLL CONTAINER — 6 sections × 100vh
+============================================================ */
+#scroll-container {
+  position: relative;
+  z-index: 10;
+}
+
+.section {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+  pointer-events: none;
+  position: relative;
+}
+
+.section-inner {
+  width: 100%;
+  max-width: 900px;
+  text-align: center;
+}
+
+/* ============================================================
+   SECTION 1 — HERO
+============================================================ */
+#s-hero {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#hero-content {
+  text-align: center;
+  position: relative;
+  z-index: 20;
+  pointer-events: all;
+}
+
+.hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--blue);
+  border: 1px solid rgba(42,147,193,0.25);
+  border-radius: 100px;
+  padding: 6px 16px;
+  background: rgba(42,147,193,0.06);
+  margin-bottom: 28px;
+  opacity: 0;
+  animation: fadeUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.3s forwards;
+}
+
+.hero-eyebrow .dot {
+  width: 5px; height: 5px;
+  background: var(--blue);
+  border-radius: 50%;
+  box-shadow: 0 0 6px var(--blue);
+  animation: pulse-dot 2s infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 4px var(--blue); }
+  50%       { box-shadow: 0 0 10px var(--blue), 0 0 20px rgba(42,147,193,0.3); }
+}
+
+.hero-title {
+  font-size: clamp(52px, 9vw, 96px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 0.95;
+  opacity: 0;
+  animation: fadeUp 0.9s cubic-bezier(0.16,1,0.3,1) 0.5s forwards;
+  margin-bottom: 20px;
+}
+
+.hero-title .word-pure { color: var(--blue); }
+.hero-title .word-brain { color: var(--text-primary); }
+.hero-title .word-ai {
+  background: linear-gradient(135deg, var(--orange), #ff7a3d);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero-sub {
+  font-size: clamp(16px, 2.2vw, 22px);
+  font-weight: 400;
+  color: var(--text-secondary);
+  max-width: 520px;
+  margin: 0 auto 40px;
+  line-height: 1.55;
+  opacity: 0;
+  animation: fadeUp 0.9s cubic-bezier(0.16,1,0.3,1) 0.7s forwards;
+}
+
+.hero-cta-group {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  flex-wrap: wrap;
+  opacity: 0;
+  animation: fadeUp 0.9s cubic-bezier(0.16,1,0.3,1) 0.9s forwards;
+  pointer-events: all;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 32px;
+  background: linear-gradient(135deg, var(--orange), #e03500);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  text-decoration: none;
+  box-shadow: 0 0 30px rgba(241,66,11,0.35), 0 4px 20px rgba(241,66,11,0.25);
+  transition: all 0.25s ease;
+  pointer-events: all;
+}
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 50px rgba(241,66,11,0.5), 0 8px 30px rgba(241,66,11,0.35);
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 28px;
+  background: rgba(42,147,193,0.08);
+  color: var(--blue);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  border: 1px solid rgba(42,147,193,0.3);
+  border-radius: 12px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.25s ease;
+  pointer-events: all;
+}
+.btn-ghost:hover {
+  background: rgba(42,147,193,0.15);
+  border-color: rgba(42,147,193,0.6);
+  transform: translateY(-2px);
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
+   SECTION 2 — WHAT IS PUREBRAIN (orbit cards)
+============================================================ */
+#s-what {
+  pointer-events: none;
+}
+
+.section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--blue);
+  opacity: 0.7;
+  margin-bottom: 16px;
+}
+
+.section-title {
+  font-size: clamp(32px, 5vw, 56px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  margin-bottom: 16px;
+}
+
+.section-body {
+  font-size: clamp(15px, 1.8vw, 18px);
+  color: var(--text-secondary);
+  line-height: 1.65;
+  max-width: 580px;
+  margin: 0 auto 60px;
+}
+
+/* Orbit card grid */
+.orbit-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  pointer-events: all;
+}
+
+@media (max-width: 640px) {
+  .orbit-cards { grid-template-columns: 1fr; }
+}
+@media (min-width: 641px) and (max-width: 900px) {
+  .orbit-cards { grid-template-columns: repeat(3, 1fr); }
+}
+
+.orbit-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  padding: 28px 24px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 0 40px rgba(42,147,193,0.06), inset 0 1px 0 rgba(255,255,255,0.05);
+  transition: transform 0.35s cubic-bezier(0.16,1,0.3,1), box-shadow 0.35s ease, border-color 0.35s ease;
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+}
+.orbit-card::before {
+  content: '';
+  position: absolute;
+  top: -40%;
+  left: -20%;
+  width: 160%;
+  height: 160%;
+  background: radial-gradient(ellipse at center, rgba(42,147,193,0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+.orbit-card:hover {
+  transform: translateY(-8px) scale(1.02);
+  border-color: rgba(42,147,193,0.45);
+  box-shadow: 0 0 60px rgba(42,147,193,0.15), 0 20px 40px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.orbit-card-icon {
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  margin-bottom: 18px;
+  position: relative;
+}
+.orbit-card-icon.blue {
+  background: rgba(42,147,193,0.12);
+  border: 1px solid rgba(42,147,193,0.25);
+  box-shadow: 0 0 20px rgba(42,147,193,0.15);
+}
+.orbit-card-icon.orange {
+  background: rgba(241,66,11,0.10);
+  border: 1px solid rgba(241,66,11,0.22);
+  box-shadow: 0 0 20px rgba(241,66,11,0.12);
+}
+
+.orbit-card h3 {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  margin-bottom: 10px;
+}
+
+.orbit-card p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.orbit-card-tag {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--blue);
+  padding: 4px 10px;
+  border: 1px solid rgba(42,147,193,0.25);
+  border-radius: 100px;
+  background: rgba(42,147,193,0.06);
+}
+
+/* ============================================================
+   SECTION 3 — FEATURES (holographic data)
+============================================================ */
+#s-features {
+  pointer-events: none;
+}
+
+.holo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  pointer-events: all;
+}
+@media (max-width: 640px) {
+  .holo-grid { grid-template-columns: 1fr; }
+}
+
+.holo-tile {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  padding: 24px 22px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.3s ease, border-color 0.3s ease;
+}
+.holo-tile::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(42,147,193,0.4), transparent);
+}
+.holo-tile:hover {
+  transform: translateY(-4px);
+  border-color: rgba(42,147,193,0.4);
+}
+
+.holo-tile-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(42,147,193,0.6);
+  margin-bottom: 8px;
+}
+.holo-tile-number {
+  font-size: 48px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  margin-bottom: 6px;
+  background: linear-gradient(135deg, #fff 60%, rgba(255,255,255,0.5));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.holo-tile-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Bar chart inside tile */
+.holo-bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 50px;
+  margin-top: 16px;
+}
+.holo-bar {
+  flex: 1;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(to top, rgba(42,147,193,0.6), rgba(42,147,193,0.2));
+  transform-origin: bottom;
+  animation: barRise 1.2s cubic-bezier(0.16,1,0.3,1) var(--delay) both;
+}
+.holo-bar.orange {
+  background: linear-gradient(to top, rgba(241,66,11,0.7), rgba(241,66,11,0.2));
+}
+@keyframes barRise {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+
+/* Inline progress row */
+.holo-progress {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.holo-prog-row { display: flex; flex-direction: column; gap: 4px; }
+.holo-prog-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+.holo-prog-track {
+  height: 3px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.holo-prog-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 1.5s cubic-bezier(0.16,1,0.3,1) var(--delay, 0s);
+}
+.holo-prog-fill.blue {
+  background: linear-gradient(90deg, rgba(42,147,193,0.5), var(--blue));
+}
+.holo-prog-fill.orange {
+  background: linear-gradient(90deg, rgba(241,66,11,0.5), var(--orange));
+}
+
+/* ============================================================
+   SECTION 4 — PRICING
+============================================================ */
+#s-pricing {
+  pointer-events: none;
+}
+
+.pricing-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  pointer-events: all;
+}
+@media (max-width: 768px) {
+  .pricing-cards { grid-template-columns: 1fr; max-width: 360px; margin: 0 auto; }
+}
+
+.pricing-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 24px;
+  padding: 32px 24px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.4s cubic-bezier(0.16,1,0.3,1), box-shadow 0.4s ease, border-color 0.4s ease;
+  text-align: left;
+}
+.pricing-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(ellipse at 50% 0%, rgba(42,147,193,0.08) 0%, transparent 60%);
+  pointer-events: none;
+}
+.pricing-card:hover {
+  transform: translateY(-10px) scale(1.02);
+  box-shadow: 0 30px 60px rgba(0,0,0,0.4), 0 0 60px rgba(42,147,193,0.12);
+}
+.pricing-card.featured {
+  border-color: rgba(241,66,11,0.4);
+  background: rgba(12,10,18,0.7);
+}
+.pricing-card.featured::before {
+  background: radial-gradient(ellipse at 50% 0%, rgba(241,66,11,0.1) 0%, transparent 60%);
+}
+.pricing-card.featured:hover {
+  box-shadow: 0 30px 60px rgba(0,0,0,0.4), 0 0 60px rgba(241,66,11,0.18);
+}
+
+.pricing-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--orange);
+  border: 1px solid rgba(241,66,11,0.3);
+  border-radius: 100px;
+  padding: 4px 12px;
+  background: rgba(241,66,11,0.08);
+  margin-bottom: 18px;
+}
+.pricing-tier {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.pricing-price {
+  font-size: 48px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: #fff;
+  margin-bottom: 4px;
+}
+.pricing-price sup {
+  font-size: 22px;
+  font-weight: 600;
+  vertical-align: super;
+  margin-right: 2px;
+}
+.pricing-period {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 24px;
+}
+.pricing-desc {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.pricing-features {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+.pricing-features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+.pricing-features li::before {
+  content: '';
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: rgba(42,147,193,0.15);
+  border: 1px solid rgba(42,147,193,0.35);
+  flex-shrink: 0;
+  margin-top: 1px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6l2.5 2.5 4.5-5' stroke='%232a93c1' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+}
+.pricing-features li.orange-check::before {
+  background: rgba(241,66,11,0.12);
+  border-color: rgba(241,66,11,0.35);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6l2.5 2.5 4.5-5' stroke='%23f1420b' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.pricing-btn {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+  transition: all 0.25s ease;
+}
+.pricing-btn.outline {
+  background: rgba(42,147,193,0.08);
+  color: var(--blue);
+  border: 1px solid rgba(42,147,193,0.3);
+}
+.pricing-btn.outline:hover {
+  background: rgba(42,147,193,0.15);
+  border-color: rgba(42,147,193,0.6);
+  transform: translateY(-2px);
+}
+.pricing-btn.solid {
+  background: linear-gradient(135deg, var(--orange), #e03500);
+  color: #fff;
+  box-shadow: 0 0 30px rgba(241,66,11,0.3);
+}
+.pricing-btn.solid:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 50px rgba(241,66,11,0.5);
+}
+
+/* ============================================================
+   SECTION 5 — TESTIMONIALS
+============================================================ */
+#s-testimonials {
+  pointer-events: none;
+}
+
+.testimonial-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  pointer-events: all;
+}
+@media (max-width: 640px) {
+  .testimonial-grid { grid-template-columns: 1fr; }
+}
+
+.testimonial-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  padding: 28px 24px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.3s ease, border-color 0.3s ease;
+}
+.testimonial-card::before {
+  content: '"';
+  position: absolute;
+  top: 12px;
+  right: 20px;
+  font-size: 80px;
+  font-weight: 800;
+  color: rgba(42,147,193,0.07);
+  line-height: 1;
+  pointer-events: none;
+}
+.testimonial-card:hover {
+  transform: translateY(-5px);
+  border-color: rgba(42,147,193,0.35);
+}
+
+.testimonial-stars {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 14px;
+}
+.star {
+  width: 12px; height: 12px;
+  background: var(--orange);
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  opacity: 0.9;
+}
+
+.testimonial-quote {
+  font-size: 15px;
+  color: var(--text-primary);
+  line-height: 1.65;
+  font-style: italic;
+  margin-bottom: 20px;
+  opacity: 0.85;
+}
+
+.testimonial-author {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.testimonial-avatar {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--blue), rgba(42,147,193,0.3));
+  border: 2px solid rgba(42,147,193,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+.testimonial-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+.testimonial-role {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ============================================================
+   SECTION 6 — CTA
+============================================================ */
+#s-cta {
+  pointer-events: none;
+}
+
+.cta-box {
+  background: var(--glass-bg);
+  border: 1px solid rgba(241,66,11,0.25);
+  border-radius: 32px;
+  padding: 72px 48px;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  position: relative;
+  overflow: hidden;
+  pointer-events: all;
+  max-width: 720px;
+  margin: 0 auto;
+  box-shadow: 0 0 80px rgba(241,66,11,0.08), 0 0 160px rgba(42,147,193,0.06);
+}
+.cta-box::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -20%;
+  width: 140%;
+  height: 200%;
+  background: radial-gradient(ellipse at 50% 40%, rgba(241,66,11,0.06) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.cta-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--orange);
+  opacity: 0.8;
+  margin-bottom: 20px;
+}
+.cta-title {
+  font-size: clamp(36px, 5.5vw, 60px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  margin-bottom: 18px;
+}
+.cta-body {
+  font-size: clamp(15px, 1.8vw, 18px);
+  color: var(--text-secondary);
+  line-height: 1.65;
+  max-width: 480px;
+  margin: 0 auto 40px;
+}
+
+.cta-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 44px;
+  background: linear-gradient(135deg, var(--orange), #e03500);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  text-decoration: none;
+  box-shadow: 0 0 50px rgba(241,66,11,0.5), 0 8px 30px rgba(241,66,11,0.3);
+  transition: all 0.3s ease;
+  animation: cta-glow 3s ease-in-out infinite;
+}
+.cta-btn:hover {
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 0 80px rgba(241,66,11,0.7), 0 12px 40px rgba(241,66,11,0.4);
+}
+@keyframes cta-glow {
+  0%, 100% { box-shadow: 0 0 50px rgba(241,66,11,0.5), 0 8px 30px rgba(241,66,11,0.3); }
+  50%       { box-shadow: 0 0 80px rgba(241,66,11,0.7), 0 12px 40px rgba(241,66,11,0.4), 0 0 120px rgba(241,66,11,0.2); }
+}
+
+.cta-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 16px;
+  letter-spacing: 0.5px;
+}
+
+/* ============================================================
+   SCROLL-DRIVEN REVEAL ANIMATIONS
+============================================================ */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1);
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal-delay-1 { transition-delay: 0.1s; }
+.reveal-delay-2 { transition-delay: 0.2s; }
+.reveal-delay-3 { transition-delay: 0.3s; }
+.reveal-delay-4 { transition-delay: 0.4s; }
+.reveal-delay-5 { transition-delay: 0.5s; }
+
+/* ============================================================
+   MOBILE TOUCH HINT
+============================================================ */
+#touch-hint {
+  display: none;
+}
+@media (hover: none) and (pointer: coarse) {
+  #touch-hint {
+    display: block;
+    position: fixed;
+    bottom: 28px;
+    right: 16px;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.15);
+    z-index: 40;
+  }
+}
+
+/* ============================================================
+   SECTION SEPARATORS
+============================================================ */
+.section-sep {
+  width: 1px;
+  height: 60px;
+  background: linear-gradient(to bottom, rgba(42,147,193,0.3), transparent);
+  margin: 0 auto;
+}
+
+/* Loading veil */
+#loading-veil {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 16px;
+  transition: opacity 0.6s ease;
+}
+.loading-logo {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff;
+}
+.loading-logo span { color: var(--blue); }
+.loading-logo span.o { color: var(--orange); }
+.loading-bar-track {
+  width: 160px;
+  height: 2px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.loading-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--blue), var(--orange));
+  border-radius: 2px;
+  animation: loadFill 1.8s cubic-bezier(0.16,1,0.3,1) forwards;
+}
+@keyframes loadFill {
+  from { width: 0; }
+  to   { width: 100%; }
+}
+.loading-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.2);
+}
+</style>
+
+<!-- UNIVERSAL REFERRAL CODE CAPTURE — 90-day cookie + localStorage -->
+<script>
+(function() {
+  // Read ?ref= or ?code= from URL
+  var params = new URLSearchParams(window.location.search);
+  var ref = params.get('ref') || params.get('code');
+  
+  if (ref && /^[A-Za-z0-9-]{4,16}$/.test(ref)) {
+    // Store in localStorage
+    try { localStorage.setItem('pb_ref', ref); } catch(e) {}
+    // Store in cookie (90-day expiry, all paths, SameSite=Lax)
+    var expires = new Date();
+    expires.setDate(expires.getDate() + 90);
+    document.cookie = 'pb_ref=' + encodeURIComponent(ref) + '; expires=' + expires.toUTCString() + '; path=/; SameSite=Lax';
+    // Fire click tracking (non-blocking)
+    try {
+      fetch('https://app.purebrain.ai/api/referral/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referral_code: ref.toUpperCase() }),
+        keepalive: true
+      }).catch(function(){});
+    } catch(e) {}
+  }
+  
+  // Global helper: read stored referral code at payment time
+  // Checks URL first, then localStorage, then cookie
+  window.getPbRef = function() {
+    // 1. Check current URL
+    var p = new URLSearchParams(window.location.search);
+    var urlRef = p.get('ref') || p.get('code');
+    if (urlRef && /^[A-Za-z0-9-]{4,16}$/.test(urlRef)) return urlRef;
+    // 2. Check localStorage
+    try {
+      var ls = localStorage.getItem('pb_ref');
+      if (ls && /^[A-Za-z0-9-]{4,16}$/.test(ls)) return ls;
+    } catch(e) {}
+    // 3. Check cookie
+    var match = document.cookie.match(/(?:^|;)\s*pb_ref=([^;]+)/);
+    if (match) {
+      var decoded = decodeURIComponent(match[1]);
+      if (/^[A-Za-z0-9-]{4,16}$/.test(decoded)) return decoded;
+    }
+    return null;
+  };
+})();
+</script>
+
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-WTDXL4VJ"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+
+<!-- LOADING VEIL -->
+<div id="loading-veil">
+  <div class="loading-logo"><span>PURE</span>BR<span class="o">AI</span>N</div>
+  <div class="loading-bar-track"><div class="loading-bar-fill"></div></div>
+  <div class="loading-label">Initializing 3D Space</div>
+</div>
+
+<!-- THREE.JS CANVAS -->
+<canvas id="three-canvas"></canvas>
+
+<!-- HUD OVERLAY -->
+<div id="hud">
+  <div class="bracket tl"></div>
+  <div class="bracket tr"></div>
+  <div class="bracket bl"></div>
+  <div class="bracket br"></div>
+  <div id="scanline"></div>
+</div>
+
+<!-- SECTION DOT NAVIGATION -->
+<nav id="section-dots" aria-label="Section navigation">
+  <div class="s-dot active" data-section="0" onclick="scrollToSection(0)" role="button" aria-label="Hero">
+    <span class="s-dot-label">Home</span>
+  </div>
+  <div class="s-dot" data-section="1" onclick="scrollToSection(1)" role="button" aria-label="What is PureBrain">
+    <span class="s-dot-label">What</span>
+  </div>
+  <div class="s-dot" data-section="2" onclick="scrollToSection(2)" role="button" aria-label="Features">
+    <span class="s-dot-label">Features</span>
+  </div>
+  <div class="s-dot" data-section="3" onclick="scrollToSection(3)" role="button" aria-label="Pricing">
+    <span class="s-dot-label">Pricing</span>
+  </div>
+  <div class="s-dot" data-section="4" onclick="scrollToSection(4)" role="button" aria-label="Testimonials">
+    <span class="s-dot-label">Reviews</span>
+  </div>
+  <div class="s-dot" data-section="5" onclick="scrollToSection(5)" role="button" aria-label="Get Started">
+    <span class="s-dot-label">Start</span>
+  </div>
+</nav>
+
+<!-- SCROLL HINT -->
+<div id="scroll-hint">
+  <div id="scroll-hint-line"></div>
+  <span>Scroll to explore</span>
+</div>
+
+<div id="touch-hint">Swipe to explore</div>
+
+<!-- SCROLL CONTENT -->
+<div id="scroll-container">
+
+  <!-- ============================================================
+       SECTION 1 — HERO
+  ============================================================ -->
+  <section class="section" id="s-hero" data-section="0">
+    <div id="hero-content">
+      <div class="hero-eyebrow">
+        <div class="dot"></div>
+        AI Partner Intelligence
+      </div>
+      <h1 class="hero-title">
+        <span class="word-pure">PURE</span><span class="word-brain">BRAIN</span><br>
+        <span class="word-ai">.AI</span>
+      </h1>
+      <p class="hero-sub">
+        Not a chatbot. A partner that remembers everything, learns your voice, and compounds over time. Built for founders who move fast.
+      </p>
+      <div class="hero-cta-group">
+        <a href="https://purebrain.ai/#awakening" class="btn-primary">
+          Awaken Your AI Partner
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M8 3l4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a href="https://purebrain.ai/compare" class="btn-ghost">
+          See How It Works
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       SECTION 2 — WHAT IS PUREBRAIN
+  ============================================================ -->
+  <section class="section" id="s-what" data-section="1">
+    <div class="section-inner">
+      <div class="section-label reveal">What Is PureBrain</div>
+      <h2 class="section-title reveal reveal-delay-1">Your AI that actually<br>knows you</h2>
+      <p class="section-body reveal reveal-delay-2">
+        Every other AI resets every morning. PureBrain remembers. It learns how you think, how you communicate, and what actually matters to your business.
+      </p>
+      <div class="orbit-cards">
+        <div class="orbit-card reveal reveal-delay-2">
+          <div class="orbit-card-icon blue">🧠</div>
+          <h3>Your AI Partner</h3>
+          <p>Persistent memory across every session. PureBrain knows your clients, your goals, and your history — always.</p>
+          <div class="orbit-card-tag">Persistent Memory</div>
+        </div>
+        <div class="orbit-card reveal reveal-delay-3">
+          <div class="orbit-card-icon orange">🎙</div>
+          <h3>Learns Your Voice</h3>
+          <p>Analyzes your communication style, tone, and vocabulary. Writes like you. Responds like you. Scales like you.</p>
+          <div class="orbit-card-tag">Voice Analysis</div>
+        </div>
+        <div class="orbit-card reveal reveal-delay-4">
+          <div class="orbit-card-icon blue">📈</div>
+          <h3>Grows With You</h3>
+          <p>Every interaction makes PureBrain smarter about you. Day 90 is exponentially more powerful than Day 1.</p>
+          <div class="orbit-card-tag">Compounding Value</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       SECTION 3 — FEATURES
+  ============================================================ -->
+  <section class="section" id="s-features" data-section="2">
+    <div class="section-inner">
+      <div class="section-label reveal">By The Numbers</div>
+      <h2 class="section-title reveal reveal-delay-1">Data doesn't lie</h2>
+      <p class="section-body reveal reveal-delay-2">
+        Real metrics from real partners. PureBrain replaces a stack of tools and gives you one AI that actually knows your business.
+      </p>
+      <div class="holo-grid reveal reveal-delay-3">
+        <!-- Tile 1: 227+ tools replaced -->
+        <div class="holo-tile">
+          <div class="holo-tile-label">Tools Replaced</div>
+          <div class="holo-tile-number" id="stat-tools">227<span style="font-size:28px;opacity:0.5">+</span></div>
+          <div class="holo-tile-desc">One AI partner replaces your entire fragmented tool stack. Unified intelligence.</div>
+          <div class="holo-bar-chart">
+            <div class="holo-bar" style="height:38%; --delay: 0.1s;"></div>
+            <div class="holo-bar" style="height:55%; --delay: 0.2s;"></div>
+            <div class="holo-bar" style="height:72%; --delay: 0.3s;"></div>
+            <div class="holo-bar" style="height:65%; --delay: 0.4s;"></div>
+            <div class="holo-bar" style="height:88%; --delay: 0.5s;"></div>
+            <div class="holo-bar" style="height:100%; --delay: 0.6s;"></div>
+            <div class="holo-bar orange" style="height:100%; --delay: 0.7s;"></div>
+          </div>
+        </div>
+        <!-- Tile 2: Never forgets -->
+        <div class="holo-tile">
+          <div class="holo-tile-label">Memory Retention</div>
+          <div class="holo-tile-number">100<span style="font-size:28px;opacity:0.5">%</span></div>
+          <div class="holo-tile-desc">Zero context loss between sessions. Everything you've told PureBrain is remembered.</div>
+          <div class="holo-progress">
+            <div class="holo-prog-row">
+              <div class="holo-prog-label"><span>Context Retention</span><span>100%</span></div>
+              <div class="holo-prog-track">
+                <div class="holo-prog-fill blue" style="--delay:0.2s;" data-width="100%"></div>
+              </div>
+            </div>
+            <div class="holo-prog-row">
+              <div class="holo-prog-label"><span>Voice Accuracy</span><span>94.7%</span></div>
+              <div class="holo-prog-track">
+                <div class="holo-prog-fill blue" style="--delay:0.4s;" data-width="94.7%"></div>
+              </div>
+            </div>
+            <div class="holo-prog-row">
+              <div class="holo-prog-label"><span>Business Context</span><span>89.2%</span></div>
+              <div class="holo-prog-track">
+                <div class="holo-prog-fill orange" style="--delay:0.6s;" data-width="89.2%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Tile 3: Blog posts -->
+        <div class="holo-tile">
+          <div class="holo-tile-label">Content Published</div>
+          <div class="holo-tile-number" id="stat-blogs">33</div>
+          <div class="holo-tile-desc">Blog posts autonomously researched, written, and published by your AI partner.</div>
+          <div class="holo-bar-chart">
+            <div class="holo-bar" style="height:40%; --delay: 0.15s;"></div>
+            <div class="holo-bar" style="height:50%; --delay: 0.25s;"></div>
+            <div class="holo-bar" style="height:62%; --delay: 0.35s;"></div>
+            <div class="holo-bar" style="height:70%; --delay: 0.45s;"></div>
+            <div class="holo-bar" style="height:82%; --delay: 0.55s;"></div>
+            <div class="holo-bar orange" style="height:95%; --delay: 0.65s;"></div>
+            <div class="holo-bar orange" style="height:100%; --delay: 0.75s;"></div>
+          </div>
+        </div>
+        <!-- Tile 4: Active partners -->
+        <div class="holo-tile">
+          <div class="holo-tile-label">Active Partners</div>
+          <div class="holo-tile-number" id="stat-partners">18</div>
+          <div class="holo-tile-desc">Businesses already running AI partnerships with PureBrain today. Growing daily.</div>
+          <div class="holo-progress">
+            <div class="holo-prog-row">
+              <div class="holo-prog-label"><span>Awakened</span><span>44%</span></div>
+              <div class="holo-prog-track">
+                <div class="holo-prog-fill blue" style="--delay:0.2s;" data-width="44%"></div>
+              </div>
+            </div>
+            <div class="holo-prog-row">
+              <div class="holo-prog-label"><span>Partnered</span><span>33%</span></div>
+              <div class="holo-prog-track">
+                <div class="holo-prog-fill orange" style="--delay:0.4s;" data-width="33%"></div>
+              </div>
+            </div>
+            <div class="holo-prog-row">
+              <div class="holo-prog-label"><span>Unified</span><span>23%</span></div>
+              <div class="holo-prog-track">
+                <div class="holo-prog-fill blue" style="--delay:0.6s;" data-width="23%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       SECTION 4 — PRICING
+  ============================================================ -->
+  <section class="section" id="s-pricing" data-section="3">
+    <div class="section-inner">
+      <div class="section-label reveal">Pricing</div>
+      <h2 class="section-title reveal reveal-delay-1">Start your partnership<br>today</h2>
+      <p class="section-body reveal reveal-delay-2">
+        Choose how deeply you want to integrate your AI partner. Every tier includes full memory, voice learning, and direct access.
+      </p>
+      <div class="pricing-cards reveal reveal-delay-3">
+
+        <!-- Awakened -->
+        <div class="pricing-card">
+          <div class="pricing-tier">Awakened</div>
+          <div class="pricing-price"><sup>$</sup>149</div>
+          <div class="pricing-period">per month</div>
+          <div class="pricing-desc">
+            Perfect for founders ready to activate their first AI partner. Memory-first from day one.
+          </div>
+          <ul class="pricing-features">
+            <li>Persistent AI memory</li>
+            <li>Voice + style analysis</li>
+            <li>Daily briefings</li>
+            <li>Blog &amp; content automation</li>
+            <li>Direct message access</li>
+          </ul>
+          <a href="https://purebrain.ai/awakened" class="pricing-btn outline">Get Awakened</a>
+        </div>
+
+        <!-- Partnered — FEATURED -->
+        <div class="pricing-card featured">
+          <div class="pricing-badge">Most Popular</div>
+          <div class="pricing-tier">Partnered</div>
+          <div class="pricing-price"><sup>$</sup>499</div>
+          <div class="pricing-period">per month</div>
+          <div class="pricing-desc">
+            Full partnership mode. Your AI knows your business deeply and executes across every channel.
+          </div>
+          <ul class="pricing-features">
+            <li class="orange-check">Everything in Awakened</li>
+            <li class="orange-check">Deep business context</li>
+            <li class="orange-check">Multi-channel automation</li>
+            <li class="orange-check">Client intelligence engine</li>
+            <li class="orange-check">Weekly strategy sessions</li>
+          </ul>
+          <a href="https://purebrain.ai/partnered" class="pricing-btn solid">Get Partnered</a>
+        </div>
+
+        <!-- Unified -->
+        <div class="pricing-card">
+          <div class="pricing-tier">Unified</div>
+          <div class="pricing-price"><sup>$</sup>999</div>
+          <div class="pricing-period">per month</div>
+          <div class="pricing-desc">
+            Full team AI unification. PureBrain becomes the intelligence layer across your entire operation.
+          </div>
+          <ul class="pricing-features">
+            <li>Everything in Partnered</li>
+            <li>Team-wide AI access</li>
+            <li>Custom integrations</li>
+            <li>Priority support</li>
+            <li>Quarterly AI audits</li>
+          </ul>
+          <a href="https://purebrain.ai/unified" class="pricing-btn outline">Get Unified</a>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       SECTION 5 — TESTIMONIALS
+  ============================================================ -->
+  <section class="section" id="s-testimonials" data-section="4">
+    <div class="section-inner">
+      <div class="section-label reveal">What Partners Say</div>
+      <h2 class="section-title reveal reveal-delay-1">Built on real<br>partnerships</h2>
+      <p class="section-body reveal reveal-delay-2">
+        Not case studies. Real founders, real AI partnerships, real results.
+      </p>
+      <div class="testimonial-grid reveal reveal-delay-3">
+
+        <div class="testimonial-card">
+          <div class="testimonial-stars">
+            <div class="star"></div><div class="star"></div><div class="star"></div>
+            <div class="star"></div><div class="star"></div>
+          </div>
+          <div class="testimonial-quote">
+            "It's the only AI tool I use that actually remembers our last conversation. After 3 months, it knows my business better than most employees."
+          </div>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">M</div>
+            <div>
+              <div class="testimonial-name">Mark C.</div>
+              <div class="testimonial-role">Founder, B2B SaaS</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="testimonial-card">
+          <div class="testimonial-stars">
+            <div class="star"></div><div class="star"></div><div class="star"></div>
+            <div class="star"></div><div class="star"></div>
+          </div>
+          <div class="testimonial-quote">
+            "I was skeptical about 'AI partnerships' — but the daily briefings alone save me 2 hours every morning. The ROI was obvious in week one."
+          </div>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar" style="background: linear-gradient(135deg, var(--orange), rgba(241,66,11,0.4));">S</div>
+            <div>
+              <div class="testimonial-name">Sarah L.</div>
+              <div class="testimonial-role">CEO, Marketing Agency</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="testimonial-card">
+          <div class="testimonial-stars">
+            <div class="star"></div><div class="star"></div><div class="star"></div>
+            <div class="star"></div><div class="star"></div>
+          </div>
+          <div class="testimonial-quote">
+            "PureBrain replaced ChatGPT, Notion AI, Jasper, and my VA. And it's more capable than all of them combined because it actually knows me."
+          </div>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">D</div>
+            <div>
+              <div class="testimonial-name">David R.</div>
+              <div class="testimonial-role">Serial Entrepreneur</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="testimonial-card">
+          <div class="testimonial-stars">
+            <div class="star"></div><div class="star"></div><div class="star"></div>
+            <div class="star"></div><div class="star"></div>
+          </div>
+          <div class="testimonial-quote">
+            "The content it writes sounds exactly like me. My audience has no idea it's AI-assisted — they just say my writing has gotten sharper."
+          </div>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar" style="background: linear-gradient(135deg, #5a3fc1, rgba(90,63,193,0.4));">A</div>
+            <div>
+              <div class="testimonial-name">Amanda T.</div>
+              <div class="testimonial-role">Thought Leader &amp; Speaker</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       SECTION 6 — CTA
+  ============================================================ -->
+  <section class="section" id="s-cta" data-section="5">
+    <div class="section-inner">
+      <div class="cta-box reveal">
+        <div class="cta-eyebrow">The AI That Never Forgets You</div>
+        <h2 class="cta-title">Awaken Your<br>AI Partner</h2>
+        <p class="cta-body">
+          Join 18+ founders who have stopped using AI tools and started running AI partnerships. Your first conversation is free.
+        </p>
+        <a href="https://purebrain.ai/#awakening" class="cta-btn">
+          Start Your Partnership
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <p class="cta-note">No credit card required to start. Setup in under 5 minutes.</p>
+      </div>
+    </div>
+  </section>
+
+</div><!-- end scroll-container -->
+
+<!-- THREE.JS importmap -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<!-- THREE.JS MODULE -->
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// ============================================================
+// RENDERER
+// ============================================================
+const canvas = document.getElementById('three-canvas');
+const W = window.innerWidth, H = window.innerHeight;
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.setClearColor(0x080a12);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x080a12, 0.028);
+
+const camera = new THREE.PerspectiveCamera(55, W / H, 0.1, 200);
+camera.position.set(0, 2, 16);
+camera.lookAt(0, 0, 0);
+
+// ============================================================
+// POST-PROCESSING — BLOOM
+// ============================================================
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.55, 0.4, 0.82);
+composer.addPass(bloom);
+
+// ============================================================
+// CAMERA PATH — 6 waypoints, one per section
+// ============================================================
+const CAMERA_WAYPOINTS = [
+  // Section 0 — Hero: far back, looking at brain
+  { pos: new THREE.Vector3(0, 1.5, 16),  look: new THREE.Vector3(0, 0, 0) },
+  // Section 1 — What: close, orbit angle
+  { pos: new THREE.Vector3(-5, 3, 10),   look: new THREE.Vector3(0, 0, 0) },
+  // Section 2 — Features: right side, lower
+  { pos: new THREE.Vector3(6, 1, 9),     look: new THREE.Vector3(0, 0, 0) },
+  // Section 3 — Pricing: overhead swoop
+  { pos: new THREE.Vector3(2, 7, 12),    look: new THREE.Vector3(0, 0, 0) },
+  // Section 4 — Testimonials: opposite side
+  { pos: new THREE.Vector3(-6, 2, 8),    look: new THREE.Vector3(0, 0, 0) },
+  // Section 5 — CTA: close, centered, dramatic
+  { pos: new THREE.Vector3(0, 1, 7),     look: new THREE.Vector3(0, 0, 0) },
+];
+
+let currentSection = 0;
+let targetCamPos = CAMERA_WAYPOINTS[0].pos.clone();
+let targetCamLook = CAMERA_WAYPOINTS[0].look.clone();
+const camLookCurrent = new THREE.Vector3(0, 0, 0);
+
+// ============================================================
+// GRID FLOOR
+// ============================================================
+const floorGeo = new THREE.PlaneGeometry(80, 80, 60, 60);
+const floorMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime:  { value: 0 },
+    uColor: { value: new THREE.Color(0x2a93c1) },
+    uSection: { value: 0.0 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    uniform float uSection;
+    uniform vec3 uColor;
+    varying vec2 vUv;
+    void main() {
+      vec2 g = fract(vUv * 20.0);
+      float lx = step(0.97, g.x);
+      float ly = step(0.97, g.y);
+      float line = max(lx, ly);
+      vec2 c = vUv - 0.5;
+      float dist = length(c);
+      float fade = 1.0 - smoothstep(0.1, 0.65, dist);
+      float pulse = sin(dist * 14.0 - uTime * 0.9 - uSection * 1.5) * 0.5 + 0.5;
+      pulse = pow(pulse, 5.0) * 0.2;
+      float alpha = line * fade * 0.18 + pulse * fade;
+      gl_FragColor = vec4(uColor, alpha);
+    }
+  `,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  side: THREE.DoubleSide,
+});
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = -4.5;
+scene.add(floor);
+
+// ============================================================
+// 3D BRAIN — procedural neural network mesh
+// ============================================================
+const brainGroup = new THREE.Group();
+scene.add(brainGroup);
+
+// Core sphere
+const coreGeo = new THREE.IcosahedronGeometry(2.2, 5);
+const coreMat = new THREE.MeshPhysicalMaterial({
+  color: 0x0d1e3a,
+  emissive: 0x071528,
+  metalness: 0.1,
+  roughness: 0.4,
+  transmission: 0.12,
+  thickness: 1.5,
+  ior: 1.4,
+  transparent: true,
+  opacity: 0.92,
+  wireframe: false,
+});
+const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+brainGroup.add(coreMesh);
+
+// Outer glass shell
+const shellGeo = new THREE.IcosahedronGeometry(2.6, 4);
+const shellMat = new THREE.MeshPhysicalMaterial({
+  color: 0x2a93c1,
+  emissive: 0x0d2a40,
+  emissiveIntensity: 0.3,
+  metalness: 0.0,
+  roughness: 0.05,
+  transmission: 0.88,
+  thickness: 0.8,
+  ior: 1.6,
+  transparent: true,
+  opacity: 0.18,
+  wireframe: false,
+  side: THREE.FrontSide,
+});
+const shellMesh = new THREE.Mesh(shellGeo, shellMat);
+brainGroup.add(shellMesh);
+
+// Wireframe overlay
+const wfMat = new THREE.MeshBasicMaterial({
+  color: 0x2a93c1,
+  transparent: true,
+  opacity: 0.12,
+  wireframe: true,
+});
+const wfMesh = new THREE.Mesh(new THREE.IcosahedronGeometry(2.62, 3), wfMat);
+brainGroup.add(wfMesh);
+
+// Neural node network — nodes + connections
+const NODE_COUNT = 48;
+const nodePositions = [];
+const nodeSpheres = [];
+
+for (let i = 0; i < NODE_COUNT; i++) {
+  // Distribute on sphere surface
+  const phi = Math.acos(1 - 2 * (i + 0.5) / NODE_COUNT);
+  const theta = Math.PI * (1 + Math.sqrt(5)) * i;
+  const r = 2.2 + Math.random() * 0.8;
+  const x = r * Math.sin(phi) * Math.cos(theta);
+  const y = r * Math.sin(phi) * Math.sin(theta);
+  const z = r * Math.cos(phi);
+
+  nodePositions.push(new THREE.Vector3(x, y, z));
+
+  const ng = new THREE.SphereGeometry(0.04 + Math.random() * 0.04, 8, 8);
+  const nm = new THREE.MeshBasicMaterial({
+    color: Math.random() > 0.7 ? 0xf1420b : 0x2a93c1,
+    transparent: true,
+    opacity: 0.7 + Math.random() * 0.3,
+    blending: THREE.AdditiveBlending,
+  });
+  const node = new THREE.Mesh(ng, nm);
+  node.position.copy(nodePositions[i]);
+  node.userData = { baseOpacity: nm.opacity, phase: Math.random() * Math.PI * 2 };
+  brainGroup.add(node);
+  nodeSpheres.push(node);
+}
+
+// Connection lines between nearby nodes
+const connections = [];
+const lineGroup = new THREE.Group();
+brainGroup.add(lineGroup);
+
+for (let i = 0; i < NODE_COUNT; i++) {
+  for (let j = i + 1; j < NODE_COUNT; j++) {
+    if (nodePositions[i].distanceTo(nodePositions[j]) < 1.8) {
+      const points = [nodePositions[i], nodePositions[j]];
+      const lGeo = new THREE.BufferGeometry().setFromPoints(points);
+      const lMat = new THREE.LineBasicMaterial({
+        color: 0x2a93c1,
+        transparent: true,
+        opacity: 0.08 + Math.random() * 0.08,
+        blending: THREE.AdditiveBlending,
+      });
+      const line = new THREE.Line(lGeo, lMat);
+      line.userData = { baseOpacity: lMat.opacity, phase: Math.random() * Math.PI * 2 };
+      lineGroup.add(line);
+      connections.push(line);
+    }
+  }
+}
+
+// Animated pulse ring
+const pulseRingGeo = new THREE.TorusGeometry(2.8, 0.015, 8, 80);
+const pulseRingMat = new THREE.MeshBasicMaterial({
+  color: 0x2a93c1,
+  transparent: true,
+  opacity: 0.5,
+  blending: THREE.AdditiveBlending,
+});
+const pulseRing = new THREE.Mesh(pulseRingGeo, pulseRingMat);
+brainGroup.add(pulseRing);
+
+const pulseRing2 = pulseRing.clone();
+pulseRing2.rotation.x = Math.PI / 2;
+pulseRing2.material = pulseRingMat.clone();
+pulseRing2.material.color.set(0xf1420b);
+pulseRing2.material.opacity = 0.35;
+brainGroup.add(pulseRing2);
+
+// ============================================================
+// FLOATING 3D DATA BARS — visible in features section
+// ============================================================
+const dataGroup = new THREE.Group();
+dataGroup.position.set(7, -1.5, -2);
+scene.add(dataGroup);
+
+const barData = [
+  { h: 1.8, color: 0x2a93c1, label: '227+' },
+  { h: 3.2, color: 0x2a93c1, label: '100%' },
+  { h: 2.0, color: 0xf1420b, label: '33' },
+  { h: 1.4, color: 0xf1420b, label: '18' },
+];
+
+barData.forEach((d, i) => {
+  const bg = new THREE.BoxGeometry(0.4, d.h, 0.4);
+  const bm = new THREE.MeshPhysicalMaterial({
+    color: d.color,
+    emissive: d.color,
+    emissiveIntensity: 0.4,
+    metalness: 0.0,
+    roughness: 0.1,
+    transmission: 0.3,
+    thickness: 0.4,
+    ior: 1.4,
+    transparent: true,
+    opacity: 0.7,
+  });
+  const bar = new THREE.Mesh(bg, bm);
+  bar.position.set((i - 1.5) * 0.65, d.h / 2, 0);
+  bar.userData = { targetH: d.h, phase: i * 0.4 };
+  bar.scale.y = 0.001;
+  dataGroup.add(bar);
+
+  // Top cap glow
+  const capG = new THREE.BoxGeometry(0.42, 0.05, 0.42);
+  const capM = new THREE.MeshBasicMaterial({
+    color: d.color, transparent: true, opacity: 0.9,
+    blending: THREE.AdditiveBlending,
+  });
+  const cap = new THREE.Mesh(capG, capM);
+  cap.position.copy(bar.position);
+  cap.position.y = d.h + 0.025;
+  dataGroup.add(cap);
+});
+
+// ============================================================
+// FLOATING GLASS PRICING CARDS — 3D planes
+// ============================================================
+const pricingGroup = new THREE.Group();
+pricingGroup.position.set(-8, 0, -5);
+scene.add(pricingGroup);
+
+const tierColors = [0x2a93c1, 0xf1420b, 0x8855cc];
+[-1.2, 0, 1.2].forEach((x, i) => {
+  const planeG = new THREE.PlaneGeometry(1.2, 1.8);
+  const planeM = new THREE.MeshPhysicalMaterial({
+    color: tierColors[i],
+    emissive: tierColors[i],
+    emissiveIntensity: 0.1,
+    metalness: 0.0,
+    roughness: 0.1,
+    transmission: 0.7,
+    thickness: 0.3,
+    ior: 1.5,
+    transparent: true,
+    opacity: 0.25,
+    side: THREE.DoubleSide,
+  });
+  const plane = new THREE.Mesh(planeG, planeM);
+  plane.position.set(x * 1.4, i * 0.3, i * -0.5);
+  plane.rotation.y = (i - 1) * 0.2;
+  plane.userData = { phase: i * 1.2 };
+  pricingGroup.add(plane);
+
+  // Edge glow
+  const edgeG = new THREE.EdgesGeometry(planeG);
+  const edgeM = new THREE.LineBasicMaterial({
+    color: tierColors[i], transparent: true, opacity: 0.5,
+    blending: THREE.AdditiveBlending,
+  });
+  const edges = new THREE.LineSegments(edgeG, edgeM);
+  edges.position.copy(plane.position);
+  edges.rotation.copy(plane.rotation);
+  pricingGroup.add(edges);
+});
+
+// ============================================================
+// ORBITAL RINGS — around brain
+// ============================================================
+const orbitalGroup = new THREE.Group();
+scene.add(orbitalGroup);
+
+[3.8, 4.8, 6.0].forEach((r, i) => {
+  const rg = new THREE.TorusGeometry(r, 0.012, 8, 100);
+  const rm = new THREE.MeshBasicMaterial({
+    color: i === 1 ? 0xf1420b : 0x2a93c1,
+    transparent: true,
+    opacity: 0.12 + i * 0.04,
+    blending: THREE.AdditiveBlending,
+  });
+  const ring = new THREE.Mesh(rg, rm);
+  ring.rotation.x = (i * 0.35) - 0.3;
+  ring.rotation.z = i * 0.25;
+  ring.userData = { rotSpeed: 0.002 + i * 0.001, axis: new THREE.Vector3(
+    Math.sin(i), Math.cos(i * 0.7), Math.sin(i * 1.3)
+  ).normalize() };
+  orbitalGroup.add(ring);
+});
+
+// ============================================================
+// PARTICLE FIELD
+// ============================================================
+const pCount = 1600;
+const pGeo = new THREE.BufferGeometry();
+const pPos = new Float32Array(pCount * 3);
+const pCol = new Float32Array(pCount * 3);
+for (let i = 0; i < pCount; i++) {
+  pPos[i*3]   = (Math.random() - 0.5) * 70;
+  pPos[i*3+1] = (Math.random() - 0.5) * 40;
+  pPos[i*3+2] = (Math.random() - 0.5) * 50;
+  const isOrange = Math.random() < 0.25;
+  pCol[i*3]   = isOrange ? 0.94 : 0.165;
+  pCol[i*3+1] = isOrange ? 0.26 : 0.58;
+  pCol[i*3+2] = isOrange ? 0.04 : 0.76;
+}
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+pGeo.setAttribute('color',    new THREE.BufferAttribute(pCol, 3));
+const pMat = new THREE.PointsMaterial({
+  size: 0.055,
+  vertexColors: true,
+  transparent: true,
+  opacity: 0.28,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  sizeAttenuation: true,
+});
+scene.add(new THREE.Points(pGeo, pMat));
+
+// ============================================================
+// AMBIENT LIGHT COLUMNS — vertical beams
+// ============================================================
+const beamMat = new THREE.MeshBasicMaterial({
+  color: 0x2a93c1, transparent: true, opacity: 0.06,
+  blending: THREE.AdditiveBlending,
+});
+[-10, 0, 10].forEach(x => {
+  const b = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 30, 6), beamMat.clone());
+  b.position.set(x, 10, -8);
+  scene.add(b);
+});
+
+// ============================================================
+// LIGHTING
+// ============================================================
+scene.add(new THREE.AmbientLight(0x0e1828, 2.5));
+
+const blueLight = new THREE.PointLight(0x2a93c1, 5, 30);
+blueLight.position.set(0, 8, 5);
+scene.add(blueLight);
+
+const orangeLight = new THREE.PointLight(0xf1420b, 3.5, 25);
+orangeLight.position.set(8, 3, 3);
+scene.add(orangeLight);
+
+const rimLight = new THREE.PointLight(0x5566ff, 2, 20);
+rimLight.position.set(-8, -2, 6);
+scene.add(rimLight);
+
+// ============================================================
+// SCROLL LOGIC — drives camera path
+// ============================================================
+const sections = document.querySelectorAll('.section[data-section]');
+const dots = document.querySelectorAll('.s-dot');
+const totalSections = CAMERA_WAYPOINTS.length;
+const sectionHeight = window.innerHeight;
+
+function updateSectionFromScroll() {
+  const scrollY = window.scrollY;
+  const rawSection = scrollY / sectionHeight;
+  const sec = Math.min(Math.floor(rawSection + 0.35), totalSections - 1);
+
+  if (sec !== currentSection) {
+    currentSection = sec;
+    dots.forEach((d, i) => d.classList.toggle('active', i === currentSection));
+
+    // Update 3D target
+    targetCamPos.copy(CAMERA_WAYPOINTS[currentSection].pos);
+    targetCamLook.copy(CAMERA_WAYPOINTS[currentSection].look);
+
+    // Hide/show scroll hint
+    if (currentSection > 0) {
+      document.getElementById('scroll-hint').style.opacity = '0';
+    } else {
+      document.getElementById('scroll-hint').style.opacity = '1';
+    }
+  }
+}
+
+window.addEventListener('scroll', updateSectionFromScroll, { passive: true });
+
+// ============================================================
+// NAVIGATION DOTS
+// ============================================================
+window.scrollToSection = function(idx) {
+  window.scrollTo({ top: idx * sectionHeight, behavior: 'smooth' });
+};
+
+// ============================================================
+// RESIZE
+// ============================================================
+window.addEventListener('resize', () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+});
+
+// ============================================================
+// SCROLL-REVEAL OBSERVER
+// ============================================================
+const revealObs = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.15 });
+document.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
+
+// Animate progress bars when visible
+const progObs = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.querySelectorAll('.holo-prog-fill[data-width]').forEach(fill => {
+        fill.style.width = fill.dataset.width;
+      });
+    }
+  });
+}, { threshold: 0.3 });
+document.querySelectorAll('#s-features').forEach(el => progObs.observe(el));
+
+// ============================================================
+// ANIMATE
+// ============================================================
+const clock = new THREE.Clock();
+let dataAnimated = false;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // Camera lerp towards target
+  camera.position.lerp(targetCamPos, 0.028);
+  camLookCurrent.lerp(targetCamLook, 0.028);
+  camera.lookAt(camLookCurrent);
+
+  // Brain rotation
+  brainGroup.rotation.y = t * 0.15;
+  brainGroup.rotation.x = Math.sin(t * 0.08) * 0.06;
+
+  // Pulse rings
+  pulseRing.rotation.z = t * 0.3;
+  pulseRing.scale.setScalar(1 + Math.sin(t * 1.2) * 0.04);
+  pulseRing.material.opacity = 0.3 + Math.sin(t * 1.2) * 0.2;
+  pulseRing2.rotation.x = t * 0.25;
+  pulseRing2.material.opacity = 0.2 + Math.sin(t * 0.9 + 1) * 0.15;
+
+  // Node pulsing
+  nodeSpheres.forEach(n => {
+    n.material.opacity = n.userData.baseOpacity * (0.5 + 0.5 * Math.sin(t * 1.5 + n.userData.phase));
+  });
+
+  // Connection line pulsing
+  connections.forEach(l => {
+    l.material.opacity = l.userData.baseOpacity * (0.4 + 0.6 * Math.abs(Math.sin(t * 0.8 + l.userData.phase)));
+  });
+
+  // Orbital rings
+  orbitalGroup.children.forEach(ring => {
+    ring.rotateOnAxis(ring.userData.axis, ring.userData.rotSpeed);
+  });
+
+  // Data bars rise in
+  const dataBars = dataGroup.children.filter(c => c.userData.targetH);
+  if (!dataAnimated) {
+    let allDone = true;
+    dataBars.forEach(bar => {
+      const target = bar.userData.targetH;
+      if (bar.scale.y < 1) {
+        bar.scale.y = Math.min(1, bar.scale.y + 0.015);
+        bar.position.y = (bar.scale.y * target) / 2;
+        allDone = false;
+      }
+    });
+    if (allDone) dataAnimated = true;
+  }
+
+  // Data group floating
+  dataGroup.position.y = -1.5 + Math.sin(t * 0.4) * 0.3;
+  dataGroup.rotation.y = Math.sin(t * 0.2) * 0.2;
+
+  // Pricing group floating
+  pricingGroup.position.y = Math.sin(t * 0.35 + 1) * 0.4;
+  pricingGroup.rotation.y = Math.sin(t * 0.15) * 0.15;
+  pricingGroup.children.forEach((child, i) => {
+    if (child.userData.phase !== undefined) {
+      child.position.y = (i < 3 ? i * 0.3 : 0) + Math.sin(t * 0.5 + child.userData.phase) * 0.15;
+    }
+  });
+
+  // Grid time
+  floorMat.uniforms.uTime.value = t;
+  floorMat.uniforms.uSection.value += (currentSection - floorMat.uniforms.uSection.value) * 0.05;
+
+  // Light pulse
+  blueLight.intensity = 5 + Math.sin(t * 0.7) * 1.5;
+  orangeLight.intensity = 3.5 + Math.sin(t * 0.9 + 1.5) * 1.0;
+
+  composer.render();
+}
+
+animate();
+
+// ============================================================
+// LOADING VEIL DISMISS
+// ============================================================
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    const veil = document.getElementById('loading-veil');
+    veil.style.opacity = '0';
+    setTimeout(() => { veil.style.display = 'none'; }, 700);
+  }, 2000);
+});
+
+// If Three.js loaded, dismiss faster
+setTimeout(() => {
+  const veil = document.getElementById('loading-veil');
+  if (veil) {
+    veil.style.opacity = '0';
+    setTimeout(() => { veil.style.display = 'none'; }, 600);
+  }
+}, 2200);
+
+// ============================================================
+// LIVE STAT COUNTER ANIMATION
+// ============================================================
+function animateCount(el, target, duration) {
+  if (!el) return;
+  let start = 0;
+  const step = target / (duration / 16);
+  const tick = () => {
+    start = Math.min(start + step, target);
+    el.textContent = Math.floor(start);
+    if (start < target) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+const statsObs = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      animateCount(document.getElementById('stat-tools'), 227, 1200);
+      animateCount(document.getElementById('stat-blogs'), 33, 800);
+      animateCount(document.getElementById('stat-partners'), 18, 600);
+      statsObs.disconnect();
+    }
+  });
+}, { threshold: 0.3 });
+const featSection = document.getElementById('s-features');
+if (featSection) statsObs.observe(featSection);
+
+</script>
+
+<!-- VANILLA JS — section tracking, mobile, etc. -->
+<script>
+// Touch swipe for mobile section navigation
+let touchStartY = 0;
+document.addEventListener('touchstart', e => { touchStartY = e.touches[0].clientY; }, { passive: true });
+document.addEventListener('touchend', e => {
+  const diff = touchStartY - e.changedTouches[0].clientY;
+  if (Math.abs(diff) > 60) {
+    const current = Math.round(window.scrollY / window.innerHeight);
+    const next = diff > 0
+      ? Math.min(current + 1, 5)
+      : Math.max(current - 1, 0);
+    window.scrollTo({ top: next * window.innerHeight, behavior: 'smooth' });
+  }
+}, { passive: true });
+
+// Keyboard navigation
+document.addEventListener('keydown', e => {
+  const current = Math.round(window.scrollY / window.innerHeight);
+  if (e.key === 'ArrowDown' || e.key === ' ' || e.key === 'PageDown') {
+    e.preventDefault();
+    window.scrollTo({ top: Math.min(current + 1, 5) * window.innerHeight, behavior: 'smooth' });
+  }
+  if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+    e.preventDefault();
+    window.scrollTo({ top: Math.max(current - 1, 0) * window.innerHeight, behavior: 'smooth' });
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology — Living Logo Avatar</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%; height: 100%;
+  background: #000000;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+}
+
+canvas { display: block; }
+
+/* ---- Loading screen ---- */
+#loading {
+  position: fixed; inset: 0;
+  background: #000;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 200;
+  transition: opacity 1.2s ease;
+}
+#loading.fade-out { opacity: 0; pointer-events: none; }
+.loader-ring {
+  width: 48px; height: 48px;
+  border: 2px solid rgba(43,147,193,0.15);
+  border-top-color: #2b93c1;
+  border-right-color: #f1420b;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- State label ---- */
+#state-label {
+  position: fixed;
+  top: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.0);
+  pointer-events: none;
+  transition: color 0.6s ease, opacity 0.6s ease;
+  white-space: nowrap;
+}
+#state-label.visible { color: rgba(255,255,255,0.22); }
+
+/* ---- Control panel ---- */
+#controls {
+  position: fixed;
+  bottom: 36px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 1.2s ease 1.5s;
+}
+#controls.visible { opacity: 1; }
+
+.ctrl-btn {
+  padding: 8px 16px;
+  border-radius: 100px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.55);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  user-select: none;
+}
+.ctrl-btn:hover {
+  border-color: rgba(43,147,193,0.5);
+  background: rgba(43,147,193,0.12);
+  color: rgba(255,255,255,0.85);
+  transform: translateY(-1px);
+}
+.ctrl-btn.active {
+  border-color: rgba(43,147,193,0.8);
+  background: rgba(43,147,193,0.2);
+  color: #fff;
+}
+.ctrl-btn.active.orange {
+  border-color: rgba(241,66,11,0.8);
+  background: rgba(241,66,11,0.18);
+}
+
+/* ---- Auto-cycle hint ---- */
+#cycle-hint {
+  position: fixed;
+  bottom: 88px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  letter-spacing: 0.25em;
+  color: rgba(255,255,255,0.12);
+  pointer-events: none;
+  white-space: nowrap;
+  transition: opacity 0.6s ease;
+}
+
+/* ---- Cursor proximity ring ---- */
+#cursor-ring {
+  position: fixed;
+  width: 20px; height: 20px;
+  border: 1px solid rgba(43,147,193,0.4);
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: opacity 0.3s ease;
+  opacity: 0;
+  z-index: 50;
+}
+</style>
+</head>
+<body>
+
+<div id="loading"><div class="loader-ring"></div></div>
+
+<div id="state-label">Idle</div>
+<div id="cursor-ring"></div>
+<div id="cycle-hint">AUTO-CYCLING &nbsp;|&nbsp; CLICK TO INTERACT</div>
+
+<div id="controls">
+  <button class="ctrl-btn active" data-state="idle">Idle</button>
+  <button class="ctrl-btn" data-state="listening">Listen</button>
+  <button class="ctrl-btn" data-state="thinking">Think</button>
+  <button class="ctrl-btn" data-state="speaking">Speak</button>
+  <button class="ctrl-btn" data-state="happy">Happy</button>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ============================================================
+//  PURE TECHNOLOGY — LIVING LOGO AVATAR
+//  Three.js r160+ | UnrealBloom + OutputPass
+//
+//  Logo spec:
+//    3 hexagon units × 13 rings each = 39 hex strokes
+//    Unit rotation offset: 9° between units
+//    Ring twist: 5° per ring (30° base)
+//    Color: #2b93c1 (outer blue) → #f1420b (inner orange)
+//    Orientation: pointy-top (outermost ring vertex at top)
+//
+//  States: idle | listening | thinking | speaking | happy
+// ============================================================
+
+const DEG = Math.PI / 180;
+
+// ---- Brand colors ----
+const C_BLUE   = new THREE.Color(0x2b93c1);
+const C_ORANGE = new THREE.Color(0xf1420b);
+const C_CYAN   = new THREE.Color(0x12d4f5);
+
+function lerpHexColor(t) {
+  // t=0 → inner orange, t=1 → outer blue
+  const r = 241 + (43  - 241) * t;
+  const g =  66 + (147 -  66) * t;
+  const b =  11 + (193 -  11) * t;
+  return new THREE.Color(r / 255, g / 255, b / 255);
+}
+
+// ---- Logo geometry constants ----
+// 13 concentric hex rings (forensic from exact recreation)
+const RING_NORMS = [
+  0.110, 0.160, 0.220, 0.280, 0.335, 0.400,
+  0.460, 0.535, 0.615, 0.685, 0.755, 0.840, 0.970
+];
+const N_RINGS    = RING_NORMS.length;  // 13
+const INNER_NORM = 0.110;
+const OUTER_NORM = 0.970;
+const LOGO_SCALE = 1.35;               // world units, outer radius
+
+function normToT(n) {
+  return Math.max(0, Math.min(1, (n - INNER_NORM) / (OUTER_NORM - INNER_NORM)));
+}
+
+// ============================================================
+//  STATE MACHINE
+// ============================================================
+
+const STATES = ['idle', 'listening', 'thinking', 'speaking', 'happy'];
+
+const STATE_DEFS = {
+  idle: {
+    bloomStrength: 1.1,
+    bloomRadius: 0.6,
+    bloomThreshold: 0.84,
+    rotSpeed: 0.18,          // Y-axis rotation speed (rad/s)
+    breatheAmp: 0.03,        // scale pulse ±
+    breatheFreq: 1.1,        // Hz
+    spreadMult: 1.0,         // ring radius multiplier
+    tiltX: 0.0,              // logo tilt toward camera
+    tiltY: 0.0,
+    particleInward: 0.0,     // 0 = orbit normal, 1 = converge to center
+    particleSpeed: 1.0,
+    particleCount: 1200,
+    colorShift: 0.0,         // 0 = normal, 1 = full cyan
+    coreSize: 1.0,
+    label: 'Idle',
+  },
+  listening: {
+    bloomStrength: 1.55,
+    bloomRadius: 0.75,
+    bloomThreshold: 0.78,
+    rotSpeed: 0.08,
+    breatheAmp: 0.005,
+    breatheFreq: 0.6,
+    spreadMult: 1.12,        // rings slightly open
+    tiltX: 0.18,             // tilt forward (toward viewer)
+    tiltY: 0.06,
+    particleInward: 0.0,
+    particleSpeed: 0.7,
+    particleCount: 1800,
+    colorShift: 0.0,
+    coreSize: 1.4,
+    label: 'Listening',
+  },
+  thinking: {
+    bloomStrength: 1.3,
+    bloomRadius: 0.55,
+    bloomThreshold: 0.80,
+    rotSpeed: 0.38,          // faster spin
+    breatheAmp: 0.02,
+    breatheFreq: 1.8,
+    spreadMult: 0.95,
+    tiltX: 0.0,
+    tiltY: 0.0,
+    particleInward: 0.72,   // particles converge inward
+    particleSpeed: 1.4,
+    particleCount: 2200,
+    colorShift: 0.65,       // shift toward cyan
+    coreSize: 1.8,
+    label: 'Thinking',
+  },
+  speaking: {
+    bloomStrength: 1.8,
+    bloomRadius: 0.9,
+    bloomThreshold: 0.76,
+    rotSpeed: 0.22,
+    breatheAmp: 0.0,        // override: wave oscillation instead
+    breatheFreq: 0.0,
+    spreadMult: 1.08,
+    tiltX: 0.0,
+    tiltY: 0.0,
+    particleInward: -0.3,   // slight outward expansion
+    particleSpeed: 1.6,
+    particleCount: 2800,
+    colorShift: 0.0,
+    coreSize: 2.2,
+    label: 'Speaking',
+  },
+  happy: {
+    bloomStrength: 2.2,
+    bloomRadius: 1.1,
+    bloomThreshold: 0.72,
+    rotSpeed: 0.5,
+    breatheAmp: 0.0,
+    breatheFreq: 0.0,
+    spreadMult: 1.25,       // rings expand outward
+    tiltX: 0.0,
+    tiltY: 0.0,
+    particleInward: -0.8,   // particles burst outward
+    particleSpeed: 2.2,
+    particleCount: 3500,
+    colorShift: 0.0,
+    coreSize: 3.0,
+    label: 'Happy',
+  }
+};
+
+let currentState  = 'idle';
+let targetState   = 'idle';
+let transitionT   = 1.0;   // 0..1, 1 = fully in targetState
+const TRANS_SPEED = 0.9;   // blend rate per second
+
+function getBlendedParam(key) {
+  if (transitionT >= 0.999) return STATE_DEFS[targetState][key];
+  const a = STATE_DEFS[currentState][key];
+  const b = STATE_DEFS[targetState][key];
+  const t = transitionT;
+  if (typeof a === 'number') return a + (b - a) * t;
+  return t > 0.5 ? b : a;
+}
+
+function setState(name) {
+  if (name === targetState) return;
+  currentState  = targetState;
+  targetState   = name;
+  transitionT   = 0.0;
+  updateControlPanel(name);
+  document.getElementById('state-label').textContent = STATE_DEFS[name].label;
+}
+
+// ============================================================
+//  SCENE SETUP
+// ============================================================
+
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(
+  48, window.innerWidth / window.innerHeight, 0.1, 300
+);
+camera.position.set(0, 0, 6.5);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.body.appendChild(renderer.domElement);
+
+// ============================================================
+//  POSTPROCESSING
+// ============================================================
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  1.1,    // strength
+  0.6,    // radius
+  0.84    // threshold
+);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
+
+// ============================================================
+//  LOGO GEOMETRY
+//  3 units × 13 rings. Each unit has 9° base rotation offset.
+//  Per-ring twist: 5° per ring index.
+//  Each ring stored separately so we can animate individual opacity/scale.
+// ============================================================
+
+const logoGroup   = new THREE.Group();
+const ringObjects = [];  // { line, unitIndex, ringIndex, normR, t, baseRadius }
+
+const UNIT_Z_OFFSETS     = [-0.10, 0.0, 0.10];
+const UNIT_ROT_OFFSET    = 9 * DEG;
+const Z_DEPTH_RANGE      = 0.24;
+
+function buildLogoUnit(unitIndex) {
+  const group     = new THREE.Group();
+  const rotOffset = unitIndex * UNIT_ROT_OFFSET;
+
+  for (let i = 0; i < N_RINGS; i++) {
+    const normR  = RING_NORMS[i];
+    const baseR  = normR * LOGO_SCALE;
+    const rotRad = 30 * DEG + i * 5 * DEG + rotOffset;
+    const t      = normToT(normR);
+    const color  = lerpHexColor(t);
+
+    // Z: inner rings protrude toward viewer
+    const ringZ  = (1 - t) * Z_DEPTH_RANGE - Z_DEPTH_RANGE * 0.5;
+
+    const pts = [];
+    for (let j = 0; j <= 6; j++) {
+      const a = rotRad + (Math.PI * 2 * (j % 6)) / 6;
+      pts.push(new THREE.Vector3(baseR * Math.cos(a), baseR * Math.sin(a), ringZ));
+    }
+
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const mat = new THREE.LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 1.0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const line = new THREE.Line(geo, mat);
+    group.add(line);
+
+    ringObjects.push({
+      line, unitIndex, ringIndex: i,
+      normR, t, baseRadius: baseR,
+      rotRad, ringZ,
+    });
+
+    // ---- Vortex spokes ----
+    if (i < N_RINGS - 1) {
+      const normR2  = RING_NORMS[i + 1];
+      const baseR2  = normR2 * LOGO_SCALE;
+      const rotRad2 = 30 * DEG + (i + 1) * 5 * DEG + rotOffset;
+      const t2      = normToT(normR2);
+      const ringZ2  = (1 - t2) * Z_DEPTH_RANGE - Z_DEPTH_RANGE * 0.5;
+
+      const vA = [];
+      const vB = [];
+      for (let k = 0; k < 6; k++) {
+        const aA = rotRad  + (Math.PI * 2 * k) / 6;
+        const aB = rotRad2 + (Math.PI * 2 * k) / 6;
+        vA.push(new THREE.Vector3(baseR  * Math.cos(aA), baseR  * Math.sin(aA), ringZ));
+        vB.push(new THREE.Vector3(baseR2 * Math.cos(aB), baseR2 * Math.sin(aB), ringZ2));
+      }
+
+      const midT   = (t + t2) / 2;
+      const sColor = lerpHexColor(midT);
+
+      for (let k = 0; k < 6; k++) {
+        // Straight spoke
+        const sg0 = new THREE.BufferGeometry().setFromPoints([vA[k], vB[k]]);
+        const sm0 = new THREE.LineBasicMaterial({
+          color: sColor, transparent: true, opacity: 0.80,
+          blending: THREE.AdditiveBlending, depthWrite: false
+        });
+        group.add(new THREE.Line(sg0, sm0));
+
+        // Diagonal spoke (vortex lean)
+        const sg1 = new THREE.BufferGeometry().setFromPoints([vA[k], vB[(k + 1) % 6]]);
+        const sm1 = new THREE.LineBasicMaterial({
+          color: sColor, transparent: true, opacity: 0.45,
+          blending: THREE.AdditiveBlending, depthWrite: false
+        });
+        group.add(new THREE.Line(sg1, sm1));
+      }
+    }
+  }
+
+  group.position.z = UNIT_Z_OFFSETS[unitIndex];
+  return group;
+}
+
+for (let u = 0; u < 3; u++) {
+  logoGroup.add(buildLogoUnit(u));
+}
+
+logoGroup.rotation.x = 0.05;
+scene.add(logoGroup);
+
+// ---- Collect all spoke materials for wave animation ----
+const spokeMaterials = [];
+logoGroup.children.forEach(unitGroup => {
+  unitGroup.children.forEach(child => {
+    if (child.material && child.material.opacity < 0.95) {
+      spokeMaterials.push(child.material);
+    }
+  });
+});
+
+// ============================================================
+//  GLOW CORE — emissive sphere at logo center
+// ============================================================
+
+const coreGeo = new THREE.SphereGeometry(0.028, 16, 16);
+const coreMat = new THREE.MeshBasicMaterial({
+  color: C_ORANGE,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  transparent: true,
+  opacity: 0.92,
+});
+const core = new THREE.Mesh(coreGeo, coreMat);
+scene.add(core);
+
+// ---- Core halo rings (listening state "eyes" effect) ----
+const haloRings = [];
+for (let h = 0; h < 3; h++) {
+  const hGeo = new THREE.RingGeometry(0.04 + h * 0.06, 0.05 + h * 0.06, 32);
+  const hMat = new THREE.MeshBasicMaterial({
+    color: h === 0 ? C_ORANGE : C_BLUE,
+    transparent: true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+    side: THREE.DoubleSide
+  });
+  const hMesh = new THREE.Mesh(hGeo, hMat);
+  scene.add(hMesh);
+  haloRings.push(hMesh);
+}
+
+// ============================================================
+//  ENERGY PULSE RINGS — expand outward from center
+// ============================================================
+
+const pulseRings  = [];
+let lastPulseTime = 0;
+
+function createPulse(color = C_BLUE, bright = 1.0) {
+  const geo = new THREE.RingGeometry(0.01, 0.03, 6);
+  const mat = new THREE.MeshBasicMaterial({
+    color: color.clone(),
+    transparent: true, opacity: 0.9 * bright,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+    side: THREE.DoubleSide
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = logoGroup.rotation.x;
+  mesh.userData   = { age: 0, maxAge: 2.0 + Math.random() * 0.5, bright };
+  scene.add(mesh);
+  pulseRings.push(mesh);
+}
+
+// ============================================================
+//  PARTICLE SYSTEM
+// ============================================================
+
+const MAX_PARTICLES    = 3500;
+const particlePositions = new Float32Array(MAX_PARTICLES * 3);
+const particleColors    = new Float32Array(MAX_PARTICLES * 3);
+const particleData      = [];
+
+for (let i = 0; i < MAX_PARTICLES; i++) {
+  const orbitRadius   = 0.5 + Math.random() * 3.8;
+  const inclination   = (Math.random() - 0.5) * Math.PI * 0.9;
+  const planeAzimuth  = Math.random() * Math.PI * 2;
+  const angle         = Math.random() * Math.PI * 2;
+  const baseSpeed     = 0.07 + 0.3 / orbitRadius;
+  const drift         = (Math.random() - 0.5) * 0.003;
+  const normalizedR   = Math.min(1, (orbitRadius - 0.5) / 3.8);
+  const col           = lerpHexColor(normalizedR);
+
+  particleColors[i * 3    ] = col.r;
+  particleColors[i * 3 + 1] = col.g;
+  particleColors[i * 3 + 2] = col.b;
+
+  particleData.push({
+    orbitRadius, inclination, planeAzimuth, angle, baseSpeed, drift,
+    active: i < 1200
+  });
+}
+
+const particleGeo = new THREE.BufferGeometry();
+particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+particleGeo.setAttribute('color',    new THREE.BufferAttribute(particleColors,    3));
+
+const particleMat = new THREE.PointsMaterial({
+  size: 0.024,
+  vertexColors: true,
+  transparent: true,
+  opacity: 0.70,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  sizeAttenuation: true
+});
+
+const particleSystem = new THREE.Points(particleGeo, particleMat);
+scene.add(particleSystem);
+
+// ============================================================
+//  HAPPY BURST — burst particles for happy state
+// ============================================================
+
+const BURST_COUNT = 80;
+const burstMeshes = [];
+const burstData   = [];
+
+for (let i = 0; i < BURST_COUNT; i++) {
+  const size = 0.014 + Math.random() * 0.028;
+  const geo  = new THREE.SphereGeometry(size, 4, 4);
+  const mat  = new THREE.MeshBasicMaterial({
+    color: Math.random() < 0.5 ? C_BLUE.clone() : C_ORANGE.clone(),
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    transparent: true,
+    opacity: 0,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  scene.add(mesh);
+  burstMeshes.push(mesh);
+  burstData.push({ active: false, age: 0, maxAge: 0, vx: 0, vy: 0, vz: 0, x: 0, y: 0, z: 0 });
+}
+
+function triggerBurst() {
+  for (let i = 0; i < BURST_COUNT; i++) {
+    const d   = burstData[i];
+    const spd = 1.2 + Math.random() * 2.8;
+    const th  = Math.random() * Math.PI * 2;
+    const ph  = Math.acos(2 * Math.random() - 1);
+    d.active  = true;
+    d.age     = 0;
+    d.maxAge  = 0.6 + Math.random() * 0.8;
+    d.x = d.y = d.z = 0;
+    d.vx = spd * Math.sin(ph) * Math.cos(th);
+    d.vy = spd * Math.sin(ph) * Math.sin(th);
+    d.vz = spd * Math.cos(ph);
+    burstMeshes[i].material.opacity = 0.85 + Math.random() * 0.15;
+  }
+}
+
+// ============================================================
+//  MOUSE / CURSOR
+// ============================================================
+
+const mouse = new THREE.Vector2(9999, 9999);   // normalized device coords
+const mouseWorld = new THREE.Vector3();         // approx world pos in logo plane
+let   mouseProximity = 0;                       // 0..1, how close to logo
+
+const cursorRing = document.getElementById('cursor-ring');
+
+window.addEventListener('mousemove', e => {
+  mouse.x =  (e.clientX / window.innerWidth)  * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+  // Approx world position at z=0 plane
+  mouseWorld.set(mouse.x * (window.innerWidth / window.innerHeight) * 4.8, mouse.y * 4.8, 0);
+
+  // Proximity to logo center (world units)
+  const dist = mouseWorld.length();
+  mouseProximity = Math.max(0, 1 - dist / 3.5);
+
+  // Show cursor ring when near
+  if (mouseProximity > 0.05) {
+    cursorRing.style.left = e.clientX + 'px';
+    cursorRing.style.top  = e.clientY + 'px';
+    cursorRing.style.opacity = (mouseProximity * 0.8).toString();
+  } else {
+    cursorRing.style.opacity = '0';
+  }
+});
+
+window.addEventListener('click', () => {
+  if (mouseProximity > 0.2) {
+    setState('speaking');
+    // Trigger a pulse on click
+    createPulse(C_BLUE, 1.4);
+    createPulse(C_ORANGE, 0.9);
+  }
+});
+
+// ============================================================
+//  AUTO-CYCLE
+// ============================================================
+
+const AUTO_CYCLE_ORDER    = ['idle', 'listening', 'thinking', 'speaking', 'idle', 'happy'];
+const AUTO_CYCLE_DURATION = [5000, 4500, 4000, 5000, 4000, 3500];  // ms per state
+let   autoCycleIndex      = 0;
+let   lastStateChange     = 0;
+let   autoCycleEnabled    = true;
+
+// ============================================================
+//  CONTROL PANEL
+// ============================================================
+
+function updateControlPanel(name) {
+  document.querySelectorAll('.ctrl-btn').forEach(btn => {
+    btn.classList.remove('active', 'orange');
+    if (btn.dataset.state === name) {
+      btn.classList.add('active');
+      if (name === 'happy' || name === 'speaking') btn.classList.add('orange');
+    }
+  });
+}
+
+document.querySelectorAll('.ctrl-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    autoCycleEnabled = false;
+    document.getElementById('cycle-hint').style.opacity = '0';
+    setState(btn.dataset.state);
+  });
+});
+
+// ============================================================
+//  RESIZE
+// ============================================================
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  bloomPass.resolution.set(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ============================================================
+//  ANIMATION LOOP
+// ============================================================
+
+let prevTime      = performance.now();
+let totalTime     = 0;
+let happyTimeout  = null;
+let wasHappy      = false;
+
+const stateLabel = document.getElementById('state-label');
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const now   = performance.now();
+  const delta = Math.min((now - prevTime) / 1000, 0.05); // cap at 50ms
+  prevTime    = now;
+  totalTime  += delta;
+
+  // ---- Transition blend ----
+  transitionT = Math.min(1.0, transitionT + delta * TRANS_SPEED * 2.5);
+
+  // ---- Auto-cycle ----
+  if (autoCycleEnabled && now - lastStateChange > AUTO_CYCLE_DURATION[autoCycleIndex]) {
+    autoCycleIndex   = (autoCycleIndex + 1) % AUTO_CYCLE_ORDER.length;
+    lastStateChange  = now;
+    const nextState  = AUTO_CYCLE_ORDER[autoCycleIndex];
+    setState(nextState);
+  }
+
+  // ---- Happy burst trigger ----
+  if (targetState === 'happy' && !wasHappy) {
+    wasHappy = true;
+    triggerBurst();
+    setTimeout(triggerBurst, 400);
+    setTimeout(triggerBurst, 900);
+  }
+  if (targetState !== 'happy') wasHappy = false;
+
+  // ---- Read blended params ----
+  const bStr  = getBlendedParam('bloomStrength');
+  const bRad  = getBlendedParam('bloomRadius');
+  const bThr  = getBlendedParam('bloomThreshold');
+  const rotSp = getBlendedParam('rotSpeed');
+  const brAmp = getBlendedParam('breatheAmp');
+  const brFrq = getBlendedParam('breatheFreq');
+  const spMlt = getBlendedParam('spreadMult');
+  const tiltX = getBlendedParam('tiltX');
+  const tiltY = getBlendedParam('tiltY');
+  const pInwd = getBlendedParam('particleInward');
+  const pSpd  = getBlendedParam('particleSpeed');
+  const pCnt  = Math.round(getBlendedParam('particleCount'));
+  const cShft = getBlendedParam('colorShift');
+  const cSize = getBlendedParam('coreSize');
+
+  // ---- Mouse proximity influence ----
+  const listenFactor = mouseProximity * 0.85;
+  const curTiltX = tiltX + listenFactor * 0.15;
+  const curTiltY = tiltY + mouse.x * mouseProximity * 0.12;
+
+  // ---- Update bloom ----
+  bloomPass.strength  = bStr;
+  bloomPass.radius    = bRad;
+  bloomPass.threshold = bThr;
+
+  // ---- Rotate logo ----
+  logoGroup.rotation.y += rotSp * delta;
+  logoGroup.rotation.x  = THREE.MathUtils.lerp(logoGroup.rotation.x, curTiltX, 4.0 * delta);
+  logoGroup.rotation.z  = THREE.MathUtils.lerp(logoGroup.rotation.z, -curTiltY * 0.4, 3.0 * delta);
+
+  // ---- Breathe (idle / listening) ----
+  let breatheScale = 1.0;
+  if (brFrq > 0) {
+    breatheScale = 1.0 + Math.sin(totalTime * brFrq * Math.PI * 2) * brAmp;
+  }
+
+  // ---- Speaking wave: strokes oscillate outward in waves from center ----
+  let waveActive = false;
+  if (targetState === 'speaking' || (currentState === 'speaking' && transitionT < 0.7)) {
+    waveActive = true;
+  }
+
+  // ---- Update ring scales (spread + breathe + wave) ----
+  let rIdx = 0;
+  ringObjects.forEach(ro => {
+    const { line, ringIndex, normR, t, baseRadius } = ro;
+    let r = baseRadius * spMlt * breatheScale;
+
+    if (waveActive) {
+      // Radial wave: amplitude decays with t (inner rings move more)
+      const wavePhase = totalTime * 4.5 - normR * 6.0;
+      const waveAmp   = 0.06 * (1 - t * 0.5) * (transitionT < 0.7 ? transitionT : 1.0);
+      r *= 1.0 + Math.sin(wavePhase) * waveAmp;
+
+      // Pulse radial bloom outward
+      const pulseSharp = Math.max(0, Math.sin(totalTime * 3.0 - normR * 8.0));
+      line.material.opacity = 0.75 + pulseSharp * 0.25;
+    } else {
+      line.material.opacity = 1.0;
+    }
+
+    // ---- Color shift for thinking (blue → cyan) ----
+    if (cShft > 0.01) {
+      const base   = lerpHexColor(t);
+      const shifted = base.clone().lerp(C_CYAN, cShft * (0.5 + t * 0.5));
+      line.material.color.copy(shifted);
+    } else {
+      line.material.color.copy(lerpHexColor(t));
+    }
+
+    // ---- Scale ring geometry by updating points ----
+    const pos    = line.geometry.attributes.position;
+    const rotRad = 30 * DEG + ringIndex * 5 * DEG + ro.unitIndex * UNIT_ROT_OFFSET;
+    for (let j = 0; j <= 6; j++) {
+      const a = rotRad + (Math.PI * 2 * (j % 6)) / 6;
+      pos.setXYZ(j, r * Math.cos(a), r * Math.sin(a), ro.ringZ);
+    }
+    pos.needsUpdate = true;
+
+    rIdx++;
+  });
+
+  // ---- Update core ----
+  const coreScale = cSize * (0.9 + Math.sin(totalTime * 3.2) * 0.1);
+  core.scale.setScalar(coreScale);
+
+  if (cShft > 0.01) {
+    core.material.color.lerpColors(C_ORANGE, C_CYAN, cShft);
+  } else {
+    core.material.color.copy(C_ORANGE);
+  }
+
+  // ---- Halo rings (listening state) ----
+  const haloVis = targetState === 'listening' ? transitionT : (currentState === 'listening' ? 1 - transitionT : 0);
+  haloRings.forEach((h, i) => {
+    h.material.opacity = haloVis * (0.3 - i * 0.08);
+    h.rotation.z = totalTime * (0.4 + i * 0.25);
+  });
+
+  // ---- Energy pulses ----
+  const pulseInterval = targetState === 'speaking' ? 0.6
+                      : targetState === 'thinking'  ? 0.9
+                      : targetState === 'happy'     ? 0.4
+                      : 3.5;
+
+  if (totalTime - lastPulseTime > pulseInterval) {
+    const pColor = (targetState === 'thinking') ? C_CYAN.clone()
+                 : (targetState === 'happy' || targetState === 'speaking') ? C_ORANGE.clone()
+                 : C_BLUE.clone();
+    createPulse(pColor, 0.7 + Math.random() * 0.5);
+    lastPulseTime = totalTime;
+  }
+
+  for (let i = pulseRings.length - 1; i >= 0; i--) {
+    const p   = pulseRings[i];
+    p.userData.age += delta;
+    const progress = p.userData.age / p.userData.maxAge;
+
+    if (progress >= 1) {
+      scene.remove(p);
+      p.geometry.dispose();
+      p.material.dispose();
+      pulseRings.splice(i, 1);
+      continue;
+    }
+
+    const s = 0.15 + progress * 6.0;
+    p.scale.setScalar(s);
+    p.material.opacity = (1 - progress) * (1 - progress) * 0.75 * p.userData.bright;
+  }
+
+  // ---- Particles ----
+  for (let i = 0; i < MAX_PARTICLES; i++) {
+    const pd  = particleData[i];
+    pd.active = i < pCnt;
+
+    if (!pd.active) {
+      particlePositions[i * 3    ] = 9999;
+      particlePositions[i * 3 + 1] = 9999;
+      particlePositions[i * 3 + 2] = 9999;
+      continue;
+    }
+
+    // Advance orbit
+    pd.angle         += pd.baseSpeed * pSpd * delta;
+    pd.orbitRadius   += pd.drift;
+    if (pd.orbitRadius < 0.3) pd.orbitRadius = 0.3;
+    if (pd.orbitRadius > 4.5) pd.orbitRadius = 0.3;
+
+    // Inward/outward pull
+    pd.orbitRadius -= pInwd * 0.4 * delta;
+
+    // Position on tilted orbit
+    const x = pd.orbitRadius * Math.cos(pd.angle);
+    const y = pd.orbitRadius * Math.sin(pd.angle);
+
+    // Rotate orbit plane
+    const cosI = Math.cos(pd.inclination);
+    const sinI = Math.sin(pd.inclination);
+    const cosP = Math.cos(pd.planeAzimuth);
+    const sinP = Math.sin(pd.planeAzimuth);
+
+    particlePositions[i * 3    ] =  x * cosP - y * sinI * sinP;
+    particlePositions[i * 3 + 1] =  x * sinP + y * sinI * cosP;
+    particlePositions[i * 3 + 2] =              y * cosI;
+
+    // Color shift for thinking
+    if (cShft > 0.01) {
+      const normR    = Math.min(1, (pd.orbitRadius - 0.3) / 4.2);
+      const baseCol  = lerpHexColor(normR);
+      const shifted  = baseCol.clone().lerp(C_CYAN, cShft * 0.7);
+      particleColors[i * 3    ] = shifted.r;
+      particleColors[i * 3 + 1] = shifted.g;
+      particleColors[i * 3 + 2] = shifted.b;
+    }
+  }
+
+  particleGeo.attributes.position.needsUpdate = true;
+  if (cShft > 0.01) particleGeo.attributes.color.needsUpdate = true;
+
+  // ---- Happy burst particles ----
+  for (let i = 0; i < BURST_COUNT; i++) {
+    const d = burstData[i];
+    if (!d.active) continue;
+
+    d.age += delta;
+    const prog = d.age / d.maxAge;
+
+    if (prog >= 1) {
+      d.active = false;
+      burstMeshes[i].material.opacity = 0;
+      continue;
+    }
+
+    d.x += d.vx * delta;
+    d.y += d.vy * delta;
+    d.z += d.vz * delta;
+
+    burstMeshes[i].position.set(d.x, d.y, d.z);
+    burstMeshes[i].material.opacity = (1 - prog) * (1 - prog) * 0.9;
+  }
+
+  // ---- Render ----
+  composer.render();
+}
+
+// ============================================================
+//  INIT — fade in after short delay
+// ============================================================
+
+const loadScreen = document.getElementById('loading');
+const controls   = document.getElementById('controls');
+
+setTimeout(() => {
+  loadScreen.classList.add('fade-out');
+  setTimeout(() => { loadScreen.style.display = 'none'; }, 1400);
+  controls.classList.add('visible');
+  stateLabel.classList.add('visible');
+  lastStateChange = performance.now();
+  animate();
+}, 350);
+
+</script>
+</body>
+</html>

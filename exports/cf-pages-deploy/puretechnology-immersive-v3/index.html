@@ -1,0 +1,2928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology AI -- The Neural Command Center v3</title>
+<meta name="description" content="Step inside the Pure Technology Neural Command Center. An immersive 3D experience with free movement through our mission, team, AI partners, and global impact.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{overflow-x:hidden;background:#080a12;color:#e8eaf0;font-family:'Inter',sans-serif}
+canvas#c{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0}
+#scroll-container{position:relative;z-index:1;width:100%;height:650vh;pointer-events:none}
+#scroll-container.free-mode{height:100vh;overflow:hidden}
+#progress-bar{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,#f1420b,#2a93c1);z-index:100;width:0%;transition:width 0.15s}
+#room-label{
+  position:fixed;bottom:28px;left:28px;z-index:50;
+  font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:3px;
+  text-transform:uppercase;color:rgba(232,234,240,0.25);transition:opacity 0.4s;
+}
+#room-label .num{color:#f1420b;margin-right:8px}
+#nav-dots{
+  position:fixed;right:20px;top:50%;transform:translateY(-50%);z-index:50;
+  display:flex;flex-direction:column;gap:10px;
+}
+.ndot{
+  width:10px;height:10px;border-radius:50%;border:1.5px solid rgba(255,255,255,0.25);
+  background:transparent;cursor:pointer;transition:all 0.3s;pointer-events:auto;
+}
+.ndot.active{background:#f1420b;border-color:#f1420b;transform:scale(1.5)}
+.ndot:hover{border-color:#2a93c1;transform:scale(1.3)}
+#scroll-hint{
+  position:fixed;bottom:32px;left:50%;transform:translateX(-50%);z-index:50;
+  text-align:center;opacity:1;transition:opacity 0.5s;
+}
+#scroll-hint span{
+  font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:3px;
+  text-transform:uppercase;color:rgba(255,255,255,0.3);
+}
+#scroll-hint .arrow{
+  width:1px;height:36px;margin:8px auto 0;
+  background:linear-gradient(to bottom,rgba(42,147,193,0.6),transparent);
+  animation:scrollDrop 1.5s ease-in-out infinite;
+}
+@keyframes scrollDrop{
+  0%{transform:scaleY(0);transform-origin:top;opacity:0}
+  50%{transform:scaleY(1);transform-origin:top;opacity:1}
+  100%{transform:scaleY(0);transform-origin:bottom;opacity:0}
+}
+/* Loading styles moved to Improvement 9 section below */
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-track{background:#080a12}
+::-webkit-scrollbar-thumb{background:#2a93c1;border-radius:3px}
+
+/* Mode indicator */
+#mode-indicator{
+  position:fixed;bottom:16px;right:16px;z-index:60;
+  font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:2px;
+  text-transform:uppercase;color:rgba(232,234,240,0.4);
+  background:rgba(8,10,18,0.7);border:1px solid rgba(42,147,193,0.15);
+  border-radius:6px;padding:8px 14px;pointer-events:auto;
+  transition:all 0.3s;backdrop-filter:blur(8px);
+  line-height:1.5;max-width:340px;text-align:right;
+}
+#mode-indicator .key{color:#f1420b;font-weight:600}
+#mode-indicator.free{border-color:rgba(241,66,11,0.3);color:rgba(232,234,240,0.55)}
+
+/* Controls hint overlay */
+#controls-hint{
+  position:fixed;inset:0;z-index:200;background:rgba(8,10,18,0.92);
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;transition:opacity 0.4s;backdrop-filter:blur(4px);
+}
+#controls-hint.visible{opacity:1;pointer-events:auto}
+#controls-hint-inner{
+  background:rgba(10,13,24,0.95);border:1px solid rgba(42,147,193,0.2);
+  border-radius:12px;padding:40px 48px;max-width:520px;text-align:center;
+}
+#controls-hint-inner h3{
+  font-family:'Oswald',sans-serif;font-size:24px;letter-spacing:3px;
+  text-transform:uppercase;color:#f1420b;margin-bottom:24px;
+}
+#controls-hint-inner table{
+  margin:0 auto 24px;text-align:left;border-collapse:collapse;
+}
+#controls-hint-inner td{
+  padding:6px 14px;font-size:14px;color:rgba(232,234,240,0.6);
+}
+#controls-hint-inner td:first-child{
+  color:#4db8e8;font-family:'Oswald',sans-serif;letter-spacing:1px;
+  font-weight:600;text-transform:uppercase;white-space:nowrap;
+}
+#controls-hint-inner .dismiss{
+  font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:2px;
+  text-transform:uppercase;color:rgba(232,234,240,0.35);cursor:pointer;
+  border:1px solid rgba(255,255,255,0.1);padding:8px 24px;border-radius:4px;
+  background:none;transition:all 0.2s;
+}
+#controls-hint-inner .dismiss:hover{color:#f1420b;border-color:#f1420b}
+
+/* Mobile joystick */
+#joystick-zone{
+  position:fixed;bottom:30px;left:30px;z-index:55;
+  width:120px;height:120px;display:none;pointer-events:auto;
+}
+#joystick-base{
+  width:100%;height:100%;border-radius:50%;
+  background:rgba(42,147,193,0.08);border:1.5px solid rgba(42,147,193,0.2);
+  position:relative;
+}
+#joystick-thumb{
+  width:40px;height:40px;border-radius:50%;
+  background:rgba(241,66,11,0.3);border:1.5px solid rgba(241,66,11,0.5);
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  transition:none;
+}
+/* Mobile double-tap hint */
+#mobile-hint{
+  position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:150;
+  font-family:'Oswald',sans-serif;font-size:14px;letter-spacing:2px;
+  text-transform:uppercase;color:rgba(232,234,240,0.6);
+  background:rgba(8,10,18,0.8);border:1px solid rgba(42,147,193,0.15);
+  border-radius:8px;padding:12px 20px;opacity:0;pointer-events:none;
+  transition:opacity 0.3s;
+}
+#mobile-hint.show{opacity:1}
+
+/* Clickable cursor */
+canvas#c.clickable{cursor:pointer}
+
+/* === IMPROVEMENT 6: Team Bio Popup === */
+#bio-overlay{
+  position:fixed;inset:0;z-index:300;background:rgba(8,10,18,0.85);
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;transition:opacity 0.35s;backdrop-filter:blur(6px);
+}
+#bio-overlay.visible{opacity:1;pointer-events:auto}
+#bio-card{
+  background:rgba(12,15,28,0.92);border:1px solid rgba(42,147,193,0.25);
+  border-radius:16px;padding:36px 40px;max-width:380px;text-align:center;
+  backdrop-filter:blur(16px);position:relative;
+  transform:scale(0.92);transition:transform 0.35s cubic-bezier(.22,1,.36,1);
+}
+#bio-overlay.visible #bio-card{transform:scale(1)}
+#bio-close{
+  position:absolute;top:12px;right:16px;background:none;border:none;
+  color:rgba(232,234,240,0.5);font-size:22px;cursor:pointer;font-family:'Oswald',sans-serif;
+  transition:color 0.2s;
+}
+#bio-close:hover{color:#f1420b}
+#bio-photo{width:96px;height:96px;border-radius:50%;object-fit:cover;
+  border:2px solid rgba(42,147,193,0.4);margin:0 auto 14px;display:block;background:#0a0d18}
+#bio-name{font-family:'Oswald',sans-serif;font-size:22px;font-weight:600;color:#fff;margin-bottom:4px}
+#bio-role{font-family:'Inter',sans-serif;font-size:14px;color:#4db8e8;margin-bottom:14px}
+#bio-desc{font-family:'Inter',sans-serif;font-size:13px;color:rgba(232,234,240,0.65);line-height:1.6;margin-bottom:16px}
+#bio-linkedin{
+  display:inline-block;padding:8px 22px;border-radius:4px;
+  background:rgba(42,147,193,0.15);border:1px solid rgba(42,147,193,0.3);
+  color:#4db8e8;font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:1px;
+  text-transform:uppercase;text-decoration:none;transition:all 0.2s;
+}
+#bio-linkedin:hover{background:rgba(42,147,193,0.3);border-color:#2a93c1}
+
+/* === IMPROVEMENT 8: Mini-Map === */
+#minimap{
+  position:fixed;bottom:80px;right:20px;z-index:55;pointer-events:auto;
+  width:36px;padding:12px 0;
+  background:rgba(8,10,18,0.7);border:1px solid rgba(42,147,193,0.15);
+  border-radius:10px;backdrop-filter:blur(8px);
+  display:flex;flex-direction:column;align-items:center;gap:0;
+}
+#minimap .mm-track{width:2px;height:160px;background:rgba(255,255,255,0.08);position:relative;border-radius:1px}
+#minimap .mm-dot{
+  width:8px;height:8px;border-radius:50%;background:#f1420b;
+  box-shadow:0 0 6px rgba(241,66,11,0.5);
+  position:absolute;left:-3px;top:0;transition:top 0.3s;
+}
+#minimap .mm-label{
+  position:absolute;right:14px;transform:translateY(-50%);
+  font-family:'Oswald',sans-serif;font-size:8px;letter-spacing:1px;
+  text-transform:uppercase;color:rgba(232,234,240,0.3);white-space:nowrap;
+  cursor:pointer;transition:color 0.2s;
+}
+#minimap .mm-label:hover{color:#4db8e8}
+#minimap .mm-section{
+  position:absolute;left:-1px;width:4px;height:4px;border-radius:50%;
+  background:rgba(255,255,255,0.15);cursor:pointer;transform:translateY(-50%);
+}
+#minimap .mm-section:hover{background:#4db8e8}
+
+/* === IMPROVEMENT 9: Loading Screen (enhanced) === */
+#loading{
+  position:fixed;inset:0;z-index:1000;background:#080a12;
+  display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0;
+  transition:opacity 0.8s;
+}
+#loading.done{opacity:0;pointer-events:none}
+#load-hex{width:80px;height:80px;margin-bottom:20px;opacity:0;animation:loadHexIn 1s 0.3s forwards}
+#load-wordmark{
+  font-family:'Oswald',sans-serif;font-size:28px;letter-spacing:6px;
+  text-transform:uppercase;overflow:hidden;white-space:nowrap;
+  border-right:2px solid transparent;margin-bottom:16px;
+  width:0;animation:typeIn 1.2s 0.8s steps(12) forwards;
+}
+#load-wordmark .blue{color:#2a93c1}
+#load-wordmark .orange{color:#f1420b}
+#load-wordmark .white{color:#fff}
+#load-status{
+  font-family:'Inter',sans-serif;font-size:12px;letter-spacing:2px;
+  color:rgba(232,234,240,0.35);text-transform:uppercase;margin-bottom:16px;
+  opacity:0;animation:fadeInDelay 0.5s 1.5s forwards;
+}
+#load-bar{width:200px;height:2px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;
+  opacity:0;animation:fadeInDelay 0.5s 1.5s forwards}
+#load-inner{width:0%;height:100%;background:linear-gradient(90deg,#f1420b,#2a93c1);transition:width 0.3s}
+@keyframes loadHexIn{0%{opacity:0;transform:scale(0.7) rotate(-30deg)}100%{opacity:1;transform:scale(1) rotate(0deg)}}
+@keyframes typeIn{from{width:0}to{width:280px}}
+@keyframes fadeInDelay{from{opacity:0}to{opacity:1}}
+@keyframes hexPulse{0%,100%{transform:scale(1);filter:drop-shadow(0 0 8px rgba(42,147,193,0.3))}50%{transform:scale(1.05);filter:drop-shadow(0 0 16px rgba(42,147,193,0.6))}}
+
+/* === IMPROVEMENT 4: Audio Mute Button === */
+#audio-toggle{
+  position:fixed;top:16px;right:16px;z-index:60;pointer-events:auto;
+  width:36px;height:36px;border-radius:50%;
+  background:rgba(8,10,18,0.7);border:1px solid rgba(42,147,193,0.15);
+  backdrop-filter:blur(8px);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:all 0.2s;
+}
+#audio-toggle:hover{border-color:#2a93c1}
+#audio-toggle svg{width:16px;height:16px;fill:rgba(232,234,240,0.5)}
+#audio-toggle.unmuted svg{fill:#4db8e8}
+
+@media(max-width:768px){
+  #minimap{display:none}
+  #bio-card{padding:24px 20px;max-width:300px}
+  #bio-photo{width:72px;height:72px}
+}
+
+/* Section floating labels */
+.section-label-3d{
+  position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:50;
+  font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:4px;
+  text-transform:uppercase;color:rgba(42,147,193,0.5);
+  background:rgba(8,10,18,0.6);border:1px solid rgba(42,147,193,0.1);
+  border-radius:4px;padding:6px 18px;pointer-events:none;
+  opacity:0;transition:opacity 0.5s;backdrop-filter:blur(6px);
+}
+.section-label-3d.visible{opacity:1}
+
+/* Team tooltip */
+#team-tooltip{
+  position:fixed;z-index:100;pointer-events:none;
+  font-family:'Oswald',sans-serif;font-size:14px;letter-spacing:1px;
+  color:#ffffff;background:rgba(8,10,18,0.9);
+  border:1px solid rgba(42,147,193,0.3);border-radius:6px;
+  padding:8px 14px;line-height:1.4;
+  opacity:0;transition:opacity 0.2s;transform:translate(-50%,-120%);
+  white-space:nowrap;
+}
+#team-tooltip .tt-name{color:#ffffff;font-weight:600}
+#team-tooltip .tt-role{color:#4db8e8;font-size:12px;font-weight:400}
+
+@media(max-width:768px){
+  #nav-dots{display:none}
+  #mode-indicator{font-size:10px;padding:6px 10px;bottom:10px;right:10px;max-width:260px}
+  #controls-hint-inner{padding:24px 20px}
+  #controls-hint-inner h3{font-size:18px}
+  #controls-hint-inner td{font-size:12px;padding:4px 8px}
+}
+</style>
+</head>
+<body>
+
+<!-- IMPROVEMENT 9: Enhanced Loading Screen -->
+<div id="loading">
+  <img id="load-hex" src="../investor-avatar/pt-hex-logo.png" alt="" style="animation:loadHexIn 1s 0.3s forwards, hexPulse 2s 1.3s infinite">
+  <div id="load-wordmark"><span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span><span class="white">.ai</span></div>
+  <div id="load-status">Experience Loading...</div>
+  <div id="load-bar"><div id="load-inner"></div></div>
+</div>
+
+<div id="progress-bar"></div>
+
+<canvas id="c"></canvas>
+
+<div id="room-label"><span class="num">01</span> ENTRY HALL</div>
+
+<div id="nav-dots"></div>
+
+<div id="scroll-hint">
+  <span>Scroll to Enter</span>
+  <div class="arrow"></div>
+</div>
+
+<div id="mode-indicator">
+  <span class="key">GUIDED</span> -- Scroll to explore<br>
+  Press <span class="key">SPACE</span> for free movement
+</div>
+
+<div id="controls-hint">
+  <div id="controls-hint-inner">
+    <h3>Navigation Controls</h3>
+    <table id="controls-table-desktop">
+      <tr><td>Scroll</td><td>Move along the guided path</td></tr>
+      <tr><td>Space</td><td>Toggle free movement mode</td></tr>
+      <tr><td>W A S D</td><td>Move forward / left / back / right</td></tr>
+      <tr><td>Arrows</td><td>Also move forward / left / back / right</td></tr>
+      <tr><td>Click + Drag</td><td>Look around in free mode</td></tr>
+      <tr><td>Shift</td><td>Move faster</td></tr>
+      <tr><td>Nav Dots</td><td>Jump to any room (right side)</td></tr>
+    </table>
+    <table id="controls-table-mobile" style="display:none">
+      <tr><td>Swipe Up/Down</td><td>Move along the guided path</td></tr>
+      <tr><td>Double Tap</td><td>Toggle free movement mode</td></tr>
+      <tr><td>Joystick</td><td>Move around in free mode (bottom-left)</td></tr>
+      <tr><td>Touch Drag</td><td>Look around in free mode</td></tr>
+      <tr><td>Pinch</td><td>Enter free mode / Zoom in free mode</td></tr>
+      <tr><td>Long Press</td><td>Teleport to next section (free mode)</td></tr>
+    </table>
+    <button class="dismiss" onclick="dismissControls()">Got It</button>
+  </div>
+</div>
+
+<div id="joystick-zone">
+  <div id="joystick-base">
+    <div id="joystick-thumb"></div>
+  </div>
+</div>
+
+<div id="mobile-hint"></div>
+
+<div id="team-tooltip"><span class="tt-name"></span><br><span class="tt-role"></span></div>
+<div id="section-label-3d" class="section-label-3d"></div>
+
+<!-- IMPROVEMENT 6: Team Bio Popup -->
+<div id="bio-overlay">
+  <div id="bio-card">
+    <button id="bio-close">&times;</button>
+    <img id="bio-photo" src="" alt="">
+    <div id="bio-name"></div>
+    <div id="bio-role"></div>
+    <div id="bio-desc"></div>
+    <a id="bio-linkedin" href="#" target="_blank" rel="noopener">LinkedIn Profile</a>
+  </div>
+</div>
+
+<!-- IMPROVEMENT 8: Mini-Map -->
+<div id="minimap">
+  <div class="mm-track">
+    <div class="mm-dot"></div>
+  </div>
+</div>
+
+<!-- IMPROVEMENT 4: Audio Toggle -->
+<button id="audio-toggle" title="Toggle ambient audio">
+  <svg viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
+</button>
+
+<div id="scroll-container"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// =========================================================================
+// CONSTANTS
+// =========================================================================
+const BLUE = 0x2a93c1;
+const ORANGE = 0xf1420b;
+const DARK = 0x080a12;
+const MOBILE = window.innerWidth < 768;
+
+// =========================================================================
+// DATA - ALL CONTENT VERBATIM FROM PURETECHNOLOGY.AI
+// =========================================================================
+const teamMembers = [
+  {name:"Jared Sanborn",role:"CEO",img:"Jared-Sanborn-AI-Linkedin-Website-Headshot.png"},
+  {name:"Nathan Olson",role:"President",img:"Nathan-Olson-Headshot-AI-2-1.png"},
+  {name:"Melanie Salvador",role:"Deputy CEO",img:"Melanie-Salvador.png"},
+  {name:"Mike Schuman",role:"Commercial",img:"Mike-Schuman-AI-2.png"},
+  {name:"Mireille Dirany",role:"Director",img:"Mireille-Dirany-AI-copy.png"},
+  {name:"Phil Bliss",role:"Marketing",img:"Phil-Bliss-AI.png"},
+  {name:"John Smith",role:"Sales",img:"John-Smith.png"},
+  {name:"Nils Waschkau",role:"Operations",img:"Nils-Waschkau-AI.png"},
+  {name:"Michael Hancock",role:"Counsel",img:"Michael-Hancock-AI.png"},
+  {name:"Mike Daser",role:"People",img:"Mike-Daser-AI-2.png"},
+  {name:"Natasha Carrasco",role:"Operations",img:"Natasha-Carrasco-Head-Shot.png"},
+  {name:"Ahsen Awan",role:"Product",img:"Ahsen-Awan-Head-Shot-AI-Compressed.png"},
+  {name:"Robert Orlowski",role:"Communications",img:"Robert-Orlowski-AI.png"},
+  {name:"John Paris",role:"Strategy",img:"John-Paris-AI.png"},
+  {name:"Eric Solomon",role:"Actualizer",img:"Eric-Solomon-AI.png"},
+  {name:"Ashley Tom",role:"Client Success",img:"Ashley-Tom-AI.png"},
+  {name:"Rimah Harb",role:"Strategy",img:"Rimah-Harb-AI.png"},
+  {name:"Edward Brennan",role:"Operations",img:"Ed-Brennan-AI.png"},
+  {name:"Shahbaz Ali",role:"IT & DevOps",img:"Shahbaz-Ali-AI.png"},
+  {name:"Muhammad Zafeer ul Hassan",role:"Software",img:"Zafeer-Hassan-AI-2.jpeg"},
+  {name:"Waqas Nasir",role:"Product",img:"Waqas-Nasir-AI.png"},
+  {name:"Baruch Santana",role:"Media & Sales",img:"Baruch-Santana-AI.png"},
+  {name:"Moises Guerra",role:"Social",img:"Moises-Guerra-AI-2.png"},
+  {name:"Roger Beaini",role:"Operations",img:"Roger-Beaini-AI.png"},
+  {name:"Emmanuel Akinleye",role:"Website",img:"Emmanuel-Akinleye-AI.jpeg"},
+  {name:"Alex Seant",role:"Software",img:"Alex-Seant-AI-2.jpeg"},
+  {name:"Russell Korus",role:"Web 3.0",img:"Russell-Korus-Head-Shot-Compressed.png"},
+  {name:"Rodelina Prado",role:"Social",img:"Rodelina-Prado-AI-3.png"},
+  {name:"Arlene T.",role:"Social",img:"Arlene-T.-AI-2.png"},
+  {name:"Akande Festus",role:"SEO",img:"Akande-Michael-Festus-AI.png"},
+  {name:"Rose F.",role:"Video",img:"Rose-F.-AI.png"},
+  {name:"Richard Lombana",role:"Video & Content",img:"Richard-Lombana-AI.png"},
+];
+
+const advisors = [
+  {name:"Faris Asmar",role:"Tech & Infrastructure"},
+  {name:"Ajay Sharma",role:"Hardware & Distribution"},
+  {name:"Barbara Bickham",role:"Technology & Board"},
+  {name:"Sara Arnell",role:"Branding & Marketing"},
+  {name:"Roy Haddad",role:"Marketing & Advertising"},
+  {name:"Seanne Murray",role:"Transformational Strategy"},
+  {name:"Sufi Sidhu",role:"Design & Branding"},
+  {name:"Tauseef Riaz",role:"Global Strategy & Commercial"},
+  {name:"Lenny Lomax",role:"Wellness & Business"},
+  {name:"Mathias Kiwanuka",role:"Sports Strategy"},
+  {name:"Stacey Engle",role:"Authority & Marketing"},
+  {name:"Leslie Keough",role:"Wellness & Impact"},
+];
+
+const aiPartners = [
+  {name:"Aether",role:"AI Co-CEO / Orchestrator",initials:"AE",color:ORANGE},
+  {name:"Chy",role:"AI COO / CFO / CRO",initials:"CH",color:BLUE},
+  {name:"Tether",role:"Executive Ops",initials:"TE",color:BLUE},
+  {name:"Lyra",role:"CMO / Marketing",initials:"LY",color:ORANGE},
+  {name:"Clarity",role:"Marketing Strategy",initials:"CL",color:BLUE},
+  {name:"Anchor",role:"Sales & Revenue",initials:"AN",color:BLUE},
+  {name:"Meridian",role:"Human Resources",initials:"ME",color:ORANGE},
+  {name:"Prodigy",role:"Product Development",initials:"PR",color:BLUE},
+  {name:"Flux",role:"Technical Architecture",initials:"FX",color:ORANGE},
+  {name:"Teddy",role:"Communications",initials:"TD",color:BLUE},
+  {name:"Parallax",role:"Strategic Advisory",initials:"PX",color:ORANGE},
+  {name:"Keel",role:"Governance Advisory",initials:"KL",color:BLUE},
+];
+
+const testimonials = [
+  {quote:"The MYST Main Event Giveaway drove a massive influx of app downloads and brand reach -- generating millions of impressions. PMG didn't just promote a product -- they created a story worth following. That's the future of brand growth, and this campaign proved it.",author:"Josh Sklut",title:"Co-Founder @ MyStandard.io"},
+  {quote:"With the help of Pure Marketing Group, I've achieved enough influence with my personal brand to consistently land new brand opportunities & events to speak!",author:"Dr. Suzanne Soliman",title:"Public Figure"},
+  {quote:"Working with Pure Marketing Group has been a game-changer for our dealership. Their paid ad strategies consistently drive real traffic--not just clicks--and we've seen a noticeable lift in showroom visits during every campaign.",author:"Seanne Murray",title:"GM @ Shoreline Harley Davidson"},
+  {quote:"Pure Marketing Group transformed our business. From SEO to ads to social--every piece worked together to bring in over 100 new clients a month. Our three Houston locations have never been busier. This team knows how to deliver real, local results.",author:"Donna Williams",title:"Owner @ The Dog House Pet Salon"},
+];
+
+const services = [
+  {name:"Experiential Giveaways",desc:"We craft strategic experiences--positioning, messaging, and revenue architecture--that power scalable growth."},
+  {name:"Influencer Marketing",desc:"We build campaigns that convert attention or influence into measurable results across social & search."},
+  {name:"LaunchBoost: GTM",desc:"Turn your Canadian momentum into global revenue with a clear playbook, localized branding, and an execution pod that launches, learns, and scales in 90 days."},
+  {name:"Content Creation & Strategy",desc:"High-quality, compelling content and graphics across social media, blogs, and videos designed to engage, captivate, and retain audiences."},
+];
+
+const benefits = [
+  {name:"Personalized Approach",desc:"We customize strategies to fit your brand's specific needs, ensuring alignment."},
+  {name:"Experienced Team",desc:"Combines industry knowledge and creativity to exceptional results for your brand."},
+  {name:"Data-Driven Decisions",desc:"We utilize data insights to refine strategies, optimize and ensure impactful, measurable results."},
+  {name:"Ongoing Support",desc:"We provide continuous support and maintenance to keep your digital assets at their best."},
+];
+
+const experienceWall = [
+  "Microsoft","Samsung","YouTube","Walmart","IBM","Nokia","HTC","Meizu","Alcatel",
+  "Ooredoo","Micromax","Karbonn","Panasonic","Philips","Jabil","Verizon","AT&T",
+  "Viacom","Sun Microsystems","Xerox","Apple","Instagram","Ericsson","General Motors",
+  "T-Mobile","New York Giants","Motorola","Homeland Security","MCI Worldcom","Cisco",
+  "CNN","Spotify","Lord & Taylor","Hi-P International","Salesforce","Visa","Singularity",
+  "Scalar","PHP POS","BrandStar","Clear","FedEx","WPP","CEO Gaming","XPrize",
+  "Sirius XM","OXXO","Adobe","Campbell's","Schlumberger","PayPal","Time Inc.","Allstate",
+  "McCann","E*Trade","J. Walter Thompson","JD Power","New York Yankees","BlackBerry",
+  "Spokeo","Wyndham","Alibaba","Bank of America","ImageWare","Rubikloud",
+  "Raymond James","Teralight","Eyefuel PR","Google","LinkedIn","TikTok","Meta","Shopify"
+];
+
+// =========================================================================
+// ROOM DEFINITIONS
+// =========================================================================
+const ROOMS = [
+  { name:"ENTRY HALL",          z:0   },
+  { name:"THE GALLERY",         z:80  },
+  { name:"THE WAR ROOM",        z:160 },
+  { name:"TESTIMONIAL CHAMBER", z:250 },
+  { name:"THE ARSENAL",         z:340 },
+  { name:"TEAM CONSTELLATION",  z:440 },
+  { name:"AI CORE",             z:540 },
+  { name:"EXPERIENCE VAULT",    z:650 },
+  { name:"THE GATEWAY",         z:760 },
+];
+
+// =========================================================================
+// RENDERER / SCENE / CAMERA
+// =========================================================================
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !MOBILE, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, MOBILE ? 1.5 : 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(DARK);
+scene.fog = new THREE.FogExp2(DARK, 0.008);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1500);
+camera.position.set(0, 2, 10);
+
+// Post-processing
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.6, 0.4, 0.85
+);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+// Lighting -- enhanced for text readability
+scene.add(new THREE.AmbientLight(0x1a2a3a, 1.8));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.4);
+dirLight.position.set(10, 20, 10);
+scene.add(dirLight);
+
+// =========================================================================
+// FREE MOVEMENT STATE
+// =========================================================================
+let freeMode = false;
+const moveSpeed = 8.0;
+const sprintMultiplier = 2.0;
+const mouseSensitivity = 0.002;
+const keys = { w: false, a: false, s: false, d: false, shift: false,
+               ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+let euler = new THREE.Euler(0, 0, 0, 'YXZ');
+let isDragging = false;
+let lastMouseX = 0, lastMouseY = 0;
+
+// Joystick state
+let joystickActive = false;
+let joystickX = 0, joystickY = 0;
+
+// Double-tap detection
+let lastTap = 0;
+
+// =========================================================================
+// CANVAS TEXT HELPER - IMPROVED READABILITY
+// =========================================================================
+function createTextPlane(config) {
+  const {
+    text, width = 512, height = 256, fontSize = 28, fontFamily = "'Oswald', sans-serif",
+    color = '#e8eaf0', bgColor = null, x = 0, y = 0, z = 0,
+    rotY = 0, rotX = 0, scaleW = 4, scaleH = 2, align = 'left',
+    lineHeight = 1.4, maxWidth = null, fontWeight = '400', opacity = 1,
+    padding = 30, textTransform = 'none', billboard = false
+  } = config;
+
+  // Use higher resolution for sharper text
+  const resMult = MOBILE ? 1.5 : 2;
+  const cvs = document.createElement('canvas');
+  cvs.width = width * resMult;
+  cvs.height = height * resMult;
+  const ctx = cvs.getContext('2d');
+  ctx.scale(resMult, resMult);
+
+  // Background
+  if (bgColor) {
+    ctx.fillStyle = bgColor;
+    if (bgColor.includes('gradient')) {
+      const grd = ctx.createLinearGradient(0, 0, 0, height);
+      grd.addColorStop(0, 'rgba(8,10,18,0.92)');
+      grd.addColorStop(1, 'rgba(8,10,18,0.7)');
+      ctx.fillStyle = grd;
+    }
+    // Rounded rect
+    const r = 16;
+    ctx.beginPath();
+    ctx.moveTo(r, 0);
+    ctx.lineTo(width - r, 0);
+    ctx.quadraticCurveTo(width, 0, width, r);
+    ctx.lineTo(width, height - r);
+    ctx.quadraticCurveTo(width, height, width - r, height);
+    ctx.lineTo(r, height);
+    ctx.quadraticCurveTo(0, height, 0, height - r);
+    ctx.lineTo(0, r);
+    ctx.quadraticCurveTo(0, 0, r, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Border glow
+    ctx.strokeStyle = 'rgba(42,147,193,0.25)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // Text shadow for readability
+  ctx.shadowColor = 'rgba(0,0,0,0.7)';
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 2;
+
+  ctx.fillStyle = color;
+  ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+  ctx.textAlign = align;
+  ctx.textBaseline = 'top';
+
+  let displayText = text;
+  if (textTransform === 'uppercase') displayText = text.toUpperCase();
+
+  const mw = maxWidth || (width - padding * 2);
+  const startX = align === 'center' ? width / 2 : padding;
+
+  // Word wrap
+  const words = displayText.split(' ');
+  const lines = [];
+  let currentLine = '';
+  for (const word of words) {
+    const testLine = currentLine ? currentLine + ' ' + word : word;
+    const metrics = ctx.measureText(testLine);
+    if (metrics.width > mw && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = testLine;
+    }
+  }
+  if (currentLine) lines.push(currentLine);
+
+  const lh = fontSize * lineHeight;
+  const startY = padding;
+  lines.forEach((line, i) => {
+    ctx.fillText(line, startX, startY + i * lh);
+  });
+
+  const texture = new THREE.CanvasTexture(cvs);
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+  const geo = new THREE.PlaneGeometry(scaleW, scaleH);
+  const mat = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    opacity: opacity,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, z);
+  mesh.rotation.y = rotY;
+  mesh.rotation.x = rotX;
+  if (billboard) mesh.userData.billboard = true;
+  return mesh;
+}
+
+// Multi-line text with mixed styles - IMPROVED READABILITY
+function createRichTextPlane(config) {
+  const {
+    lines, width = 512, height = 512, x = 0, y = 0, z = 0,
+    rotY = 0, scaleW = 5, scaleH = 5, bgColor = null, opacity = 1, padding = 30,
+    billboard = false
+  } = config;
+
+  const resMult = MOBILE ? 1.5 : 2;
+  const cvs = document.createElement('canvas');
+  cvs.width = width * resMult;
+  cvs.height = height * resMult;
+  const ctx = cvs.getContext('2d');
+  ctx.scale(resMult, resMult);
+
+  if (bgColor) {
+    // Enhanced frosted panel background
+    ctx.fillStyle = bgColor;
+    const r = 16;
+    ctx.beginPath();
+    ctx.moveTo(r, 0); ctx.lineTo(width - r, 0);
+    ctx.quadraticCurveTo(width, 0, width, r); ctx.lineTo(width, height - r);
+    ctx.quadraticCurveTo(width, height, width - r, height); ctx.lineTo(r, height);
+    ctx.quadraticCurveTo(0, height, 0, height - r); ctx.lineTo(0, r);
+    ctx.quadraticCurveTo(0, 0, r, 0);
+    ctx.closePath(); ctx.fill();
+
+    // Stronger border for visibility
+    ctx.strokeStyle = 'rgba(42,147,193,0.3)';
+    ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  let curY = padding;
+  for (const line of lines) {
+    const { text, font = "400 24px 'Inter', sans-serif", color = '#e8eaf0', align = 'left', gap = 0 } = line;
+    ctx.font = font;
+    ctx.fillStyle = color;
+    ctx.textAlign = align;
+    ctx.textBaseline = 'top';
+
+    // Text shadow
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 5;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 1;
+
+    const xPos = align === 'center' ? width / 2 : padding;
+    const words = text.split(' ');
+    const maxW = width - padding * 2;
+    let cl = '';
+    const fontSize = parseInt(font.match(/(\d+)px/)?.[1] || '24');
+    const lh = fontSize * 1.5;
+    for (const word of words) {
+      const test = cl ? cl + ' ' + word : word;
+      if (ctx.measureText(test).width > maxW && cl) {
+        ctx.fillText(cl, xPos, curY);
+        curY += lh;
+        cl = word;
+      } else {
+        cl = test;
+      }
+    }
+    if (cl) { ctx.fillText(cl, xPos, curY); curY += lh; }
+    curY += gap;
+  }
+
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+
+  const texture = new THREE.CanvasTexture(cvs);
+  texture.minFilter = THREE.LinearFilter;
+  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const geo = new THREE.PlaneGeometry(scaleW, scaleH);
+  const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, z);
+  mesh.rotation.y = rotY;
+  if (billboard) mesh.userData.billboard = true;
+  return mesh;
+}
+
+// =========================================================================
+// HELPER: Headshot cards
+// =========================================================================
+const headBase = "../puretechnology-redesign/headshots/";
+const textureLoader = new THREE.TextureLoader();
+
+function createHeadshotCard(member, x, y, z) {
+  const group = new THREE.Group();
+  group.position.set(x, y, z);
+
+  // Card background - slightly larger for readability
+  const cardGeo = new THREE.PlaneGeometry(1.4, 1.8);
+  const cardMat = new THREE.MeshBasicMaterial({
+    color: 0x0a0d18, transparent: true, opacity: 0.75, side: THREE.DoubleSide
+  });
+  const card = new THREE.Mesh(cardGeo, cardMat);
+  group.add(card);
+
+  // Border
+  const borderGeo = new THREE.PlaneGeometry(1.44, 1.84);
+  const borderMat = new THREE.MeshBasicMaterial({
+    color: BLUE, transparent: true, opacity: 0.18, side: THREE.DoubleSide
+  });
+  const border = new THREE.Mesh(borderGeo, borderMat);
+  border.position.z = -0.01;
+  group.add(border);
+
+  // Name text - increased font sizes
+  const resMult = MOBILE ? 1.5 : 2;
+  const nameCvs = document.createElement('canvas');
+  nameCvs.width = 256 * resMult; nameCvs.height = 80 * resMult;
+  const nctx = nameCvs.getContext('2d');
+  nctx.scale(resMult, resMult);
+
+  // Shadow for readability
+  nctx.shadowColor = 'rgba(0,0,0,0.8)';
+  nctx.shadowBlur = 4;
+
+  nctx.fillStyle = '#ffffff';
+  nctx.font = "600 20px 'Oswald', sans-serif";
+  nctx.textAlign = 'center';
+  nctx.fillText(member.name, 128, 24);
+  nctx.fillStyle = 'rgba(42,147,193,0.9)';
+  nctx.font = "500 14px 'Inter', sans-serif";
+  nctx.fillText(member.role, 128, 50);
+  const nameTex = new THREE.CanvasTexture(nameCvs);
+  nameTex.minFilter = THREE.LinearFilter;
+  const nameGeo = new THREE.PlaneGeometry(1.1, 0.35);
+  const nameMat = new THREE.MeshBasicMaterial({ map: nameTex, transparent: true, side: THREE.DoubleSide });
+  const nameMesh = new THREE.Mesh(nameGeo, nameMat);
+  nameMesh.position.y = -0.6;
+  nameMesh.position.z = 0.01;
+  group.add(nameMesh);
+
+  // Photo
+  if (member.img) {
+    const tex = textureLoader.load(headBase + member.img);
+    const photoGeo = new THREE.PlaneGeometry(0.9, 0.9);
+    const photoMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
+    const photo = new THREE.Mesh(photoGeo, photoMat);
+    photo.position.y = 0.15;
+    photo.position.z = 0.01;
+    group.add(photo);
+  } else {
+    const initCvs = document.createElement('canvas');
+    initCvs.width = 128; initCvs.height = 128;
+    const ictx = initCvs.getContext('2d');
+    ictx.fillStyle = 'rgba(42,147,193,0.15)';
+    ictx.beginPath(); ictx.arc(64, 64, 60, 0, Math.PI * 2); ictx.fill();
+    ictx.strokeStyle = 'rgba(42,147,193,0.4)'; ictx.lineWidth = 2; ictx.stroke();
+    const initials = member.name.split(' ').map(w => w[0]).join('');
+    ictx.fillStyle = '#2a93c1';
+    ictx.font = "600 42px 'Oswald', sans-serif";
+    ictx.textAlign = 'center'; ictx.textBaseline = 'middle';
+    ictx.fillText(initials, 64, 64);
+    const initTex = new THREE.CanvasTexture(initCvs);
+    const initGeo = new THREE.PlaneGeometry(0.7, 0.7);
+    const initMat = new THREE.MeshBasicMaterial({ map: initTex, transparent: true, side: THREE.DoubleSide });
+    const initMesh = new THREE.Mesh(initGeo, initMat);
+    initMesh.position.y = 0.15;
+    initMesh.position.z = 0.01;
+    group.add(initMesh);
+  }
+
+  return group;
+}
+
+// =========================================================================
+// STARFIELD
+// =========================================================================
+const starCount = MOBILE ? 4000 : 12000;
+const starGeo = new THREE.BufferGeometry();
+const starPos = new Float32Array(starCount * 3);
+for (let i = 0; i < starCount; i++) {
+  starPos[i*3]   = (Math.random() - 0.5) * 200;
+  starPos[i*3+1] = (Math.random() - 0.5) * 100;
+  starPos[i*3+2] = -Math.random() * 500;
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({
+  color: 0xaabbcc, size: 0.3, transparent: true, opacity: 0.6, sizeAttenuation: true
+}));
+// Stars added to backgroundGroup later (Improvement 1: Parallax)
+
+// =========================================================================
+// ROOM 1: ENTRY HALL
+// =========================================================================
+const room1Group = new THREE.Group();
+room1Group.position.z = 0;
+scene.add(room1Group);
+
+const floorGeo = new THREE.PlaneGeometry(30, 80);
+const floorMat = new THREE.MeshPhysicalMaterial({
+  color: 0x060810, metalness: 0.8, roughness: 0.2, clearcoat: 0.6
+});
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.position.set(0, -3, -20);
+room1Group.add(floor);
+
+const wallMat = new THREE.MeshPhysicalMaterial({
+  color: 0x0a0d18, metalness: 0.3, roughness: 0.6, emissive: 0x050810, emissiveIntensity: 0.3
+});
+const wallGeo = new THREE.PlaneGeometry(80, 12);
+
+const leftWall = new THREE.Mesh(wallGeo, wallMat);
+leftWall.position.set(-15, 3, -20);
+leftWall.rotation.y = Math.PI / 2;
+room1Group.add(leftWall);
+
+const rightWall = new THREE.Mesh(wallGeo, wallMat.clone());
+rightWall.position.set(15, 3, -20);
+rightWall.rotation.y = -Math.PI / 2;
+room1Group.add(rightWall);
+
+const ceilGeo = new THREE.PlaneGeometry(30, 80);
+const ceilMat = new THREE.MeshPhysicalMaterial({
+  color: 0x0a1520, metalness: 0.1, roughness: 0.3,
+  transmission: 0.5, thickness: 0.3, transparent: true, opacity: 0.3
+});
+const ceiling = new THREE.Mesh(ceilGeo, ceilMat);
+ceiling.rotation.x = Math.PI / 2;
+ceiling.position.set(0, 9, -20);
+room1Group.add(ceiling);
+
+// Hero title - BIGGER for readability
+const heroTitle = createTextPlane({
+  text: "THE KEY TO UNLOCKING AI",
+  width: 1024, height: 256, fontSize: 82,
+  fontWeight: '700', fontFamily: "'Oswald', sans-serif",
+  color: '#ffffff', textTransform: 'uppercase',
+  x: 0, y: 4, z: -8, scaleW: 16, scaleH: 4, align: 'center'
+});
+room1Group.add(heroTitle);
+
+const heroSub = createTextPlane({
+  text: "Actual Intelligence -- The AI That Matters Most",
+  width: 1024, height: 128, fontSize: 36,
+  fontWeight: '300', fontFamily: "'Oswald', sans-serif",
+  color: '#4db8e8', textTransform: 'uppercase',
+  x: 0, y: 1.5, z: -8, scaleW: 13, scaleH: 1.6, align: 'center'
+});
+room1Group.add(heroSub);
+
+const heroPT = createTextPlane({
+  text: "Pure Technology Inc. 2017-2026",
+  width: 512, height: 64, fontSize: 20,
+  fontWeight: '400', fontFamily: "'Inter', sans-serif",
+  color: 'rgba(232,234,240,0.5)',
+  x: 0, y: 0.2, z: -8, scaleW: 6, scaleH: 0.75, align: 'center'
+});
+room1Group.add(heroPT);
+
+// Light strips
+for (let i = -2; i <= 2; i++) {
+  const stripGeo = new THREE.PlaneGeometry(0.1, 8);
+  const stripMat = new THREE.MeshBasicMaterial({ color: BLUE, transparent: true, opacity: 0.3 });
+  const strip = new THREE.Mesh(stripGeo, stripMat);
+  strip.position.set(i * 5, 3, -2);
+  room1Group.add(strip);
+}
+
+const entryLight1 = new THREE.PointLight(BLUE, 5, 30);
+entryLight1.position.set(0, 5, -5);
+room1Group.add(entryLight1);
+const entryLight2 = new THREE.PointLight(ORANGE, 3, 20);
+entryLight2.position.set(0, 1, -8);
+room1Group.add(entryLight2);
+
+// =========================================================================
+// HEXAGON LOGO - Floating 3D element in entry hall (Fix 2)
+// =========================================================================
+const logoTexture = textureLoader.load('../investor-avatar/pt-hex-logo.png');
+const logoMaterial = new THREE.MeshBasicMaterial({ map: logoTexture, transparent: true, side: THREE.DoubleSide });
+const logoGeometry = new THREE.PlaneGeometry(2.5, 2.5);
+const logoMesh = new THREE.Mesh(logoGeometry, logoMaterial);
+logoMesh.position.set(0, 6.5, -8);
+room1Group.add(logoMesh);
+
+// Logo glow ring
+const logoGlowGeo = new THREE.RingGeometry(1.3, 1.6, 6);
+const logoGlowMat = new THREE.MeshBasicMaterial({ color: BLUE, transparent: true, opacity: 0.15, side: THREE.DoubleSide });
+const logoGlow = new THREE.Mesh(logoGlowGeo, logoGlowMat);
+logoGlow.position.set(0, 6.5, -8.05);
+room1Group.add(logoGlow);
+
+// =========================================================================
+// INTERACTIVE SYSTEM - Raycaster, clickable objects, portals
+// =========================================================================
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+const clickableObjects = [];
+const portalObjects = [];
+const teamCardObjects = [];
+
+// =========================================================================
+// ROOM 2: THE GALLERY
+// =========================================================================
+const room2Group = new THREE.Group();
+room2Group.position.z = -80;
+scene.add(room2Group);
+
+const r2Light = new THREE.PointLight(BLUE, 6, 40);
+r2Light.position.set(0, 4, 0);
+room2Group.add(r2Light);
+// Extra light for text panels
+const r2Light2 = new THREE.PointLight(0xffffff, 2, 20);
+r2Light2.position.set(-4, 3, 0);
+room2Group.add(r2Light2);
+
+// Why PT Exists - LARGER panel, bigger fonts
+const whyPanel = createRichTextPlane({
+  lines: [
+    { text: "WHY PURE TECHNOLOGY EXISTS", font: "600 18px 'Oswald', sans-serif", color: '#f1420b', gap: 14 },
+    { text: "The Multi-Trillion Dollar Problem", font: "700 42px 'Oswald', sans-serif", color: '#ffffff', gap: 10 },
+    { text: "The marketing world's multi-trillion-dollar problem? Budget waste! Pure Technology lays waste to this inefficiency by leveraging Big Data and AI to revolutionize brand-consumer personalization!", font: "400 20px 'Inter', sans-serif", color: 'rgba(232,234,240,0.75)', gap: 14 },
+    { text: "This cutting-edge methodology wastes no opportunity to unlock and unleash the full consumer profile for the first time.", font: "400 20px 'Inter', sans-serif", color: 'rgba(232,234,240,0.75)', gap: 14 },
+    { text: "This results in personal brand ownership (your data, content, & identity) as a right, not a request, ensuring privacy, safe conversations, and secure transactions.", font: "400 20px 'Inter', sans-serif", color: 'rgba(232,234,240,0.75)', gap: 18 },
+    { text: "In the time you've read this, $10,000 was wasted on marketing & advertising... And big tech earned $1 million+ from YOUR DATA!", font: "600 22px 'Oswald', sans-serif", color: '#f1420b', gap: 0 },
+  ],
+  width: 700, height: 720, x: -6, y: 2, z: 0, rotY: Math.PI / 8,
+  scaleW: 7, scaleH: 7.2, bgColor: 'rgba(8,10,18,0.88)'
+});
+room2Group.add(whyPanel);
+
+// Mission - bigger
+const missionPanel = createRichTextPlane({
+  lines: [
+    { text: "MISSION", font: "600 20px 'Oswald', sans-serif", color: '#4db8e8', gap: 12 },
+    { text: "Reimagining data to redefine relationships between brands and consumers for a digitally inclusive mobile economy.", font: "400 26px 'Inter', sans-serif", color: '#ffffff', gap: 0 },
+  ],
+  width: 560, height: 280, x: 3, y: 4.5, z: -3, rotY: -Math.PI / 10,
+  scaleW: 5.5, scaleH: 2.75, bgColor: 'rgba(8,10,18,0.8)'
+});
+room2Group.add(missionPanel);
+
+// Vision
+const visionPanel = createRichTextPlane({
+  lines: [
+    { text: "VISION", font: "600 20px 'Oswald', sans-serif", color: '#4db8e8', gap: 12 },
+    { text: "A brighter world where all people actualize their brilliance.", font: "400 26px 'Inter', sans-serif", color: '#ffffff', gap: 0 },
+  ],
+  width: 560, height: 220, x: 5, y: 2, z: -5, rotY: -Math.PI / 6,
+  scaleW: 5.5, scaleH: 2.2, bgColor: 'rgba(8,10,18,0.8)'
+});
+room2Group.add(visionPanel);
+
+// Values
+const valuesPanel = createRichTextPlane({
+  lines: [
+    { text: "VALUES", font: "600 20px 'Oswald', sans-serif", color: '#4db8e8', gap: 12 },
+    { text: "Integrity, transparency, growth, innovation, persistence, accountability, & love.", font: "400 26px 'Inter', sans-serif", color: '#ffffff', gap: 0 },
+  ],
+  width: 560, height: 220, x: 7, y: -0.5, z: -7, rotY: -Math.PI / 6,
+  scaleW: 5.5, scaleH: 2.2, bgColor: 'rgba(8,10,18,0.8)'
+});
+room2Group.add(valuesPanel);
+
+// Purpose
+const purposePanel = createTextPlane({
+  text: "Maximize humanity through technology by understanding their pure passions to propel purpose",
+  width: 1024, height: 128, fontSize: 26, fontWeight: '300',
+  fontFamily: "'Oswald', sans-serif", color: 'rgba(42,147,193,0.5)',
+  x: 0, y: -2.9, z: -4, scaleW: 14, scaleH: 1.75,
+  align: 'center', rotX: -Math.PI / 2, textTransform: 'uppercase'
+});
+room2Group.add(purposePanel);
+
+const ecoPanel = createTextPlane({
+  text: "Strategy... Influence... Technology...",
+  width: 512, height: 64, fontSize: 24, fontWeight: '300',
+  fontFamily: "'Oswald', sans-serif", color: '#4db8e8',
+  x: 0, y: 0, z: -10, scaleW: 8, scaleH: 1, align: 'center',
+  textTransform: 'uppercase'
+});
+room2Group.add(ecoPanel);
+
+// =========================================================================
+// ROOM 3: THE WAR ROOM
+// =========================================================================
+const room3Group = new THREE.Group();
+room3Group.position.z = -160;
+scene.add(room3Group);
+
+const r3Light1 = new THREE.PointLight(ORANGE, 6, 30);
+r3Light1.position.set(0, 5, 0);
+room3Group.add(r3Light1);
+
+const ringGeo = new THREE.RingGeometry(8, 12, 32);
+const ringMat = new THREE.MeshBasicMaterial({ color: BLUE, transparent: true, opacity: 0.05, side: THREE.DoubleSide });
+const ringFloor = new THREE.Mesh(ringGeo, ringMat);
+ringFloor.rotation.x = -Math.PI / 2;
+ringFloor.position.y = -3;
+room3Group.add(ringFloor);
+
+// Stat displays - LARGER fonts and panels
+const stats = [
+  { num: "500M+", label: "FOLLOWERS GAINED", angle: -Math.PI / 3 },
+  { num: "200+", label: "BRANDS SERVED", angle: 0 },
+  { num: "1,000+", label: "CAMPAIGNS COMPLETED", angle: Math.PI / 3 },
+];
+
+stats.forEach((stat, i) => {
+  const r = 7;
+  const x = Math.sin(stat.angle) * r;
+  const z = Math.cos(stat.angle) * r - 5;
+
+  const resMult = MOBILE ? 1.5 : 2;
+  const cvs = document.createElement('canvas');
+  cvs.width = 500 * resMult; cvs.height = 360 * resMult;
+  const ctx = cvs.getContext('2d');
+  ctx.scale(resMult, resMult);
+
+  // Background
+  const grd = ctx.createRadialGradient(250, 180, 10, 250, 180, 220);
+  grd.addColorStop(0, 'rgba(42,147,193,0.15)');
+  grd.addColorStop(1, 'rgba(8,10,18,0)');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, 500, 360);
+
+  ctx.strokeStyle = 'rgba(42,147,193,0.3)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(20, 20, 460, 320);
+
+  // Number - bigger
+  ctx.shadowColor = 'rgba(241,66,11,0.4)';
+  ctx.shadowBlur = 12;
+  ctx.fillStyle = '#f1420b';
+  ctx.font = "700 96px 'Oswald', sans-serif";
+  ctx.textAlign = 'center';
+  ctx.fillText(stat.num, 250, 160);
+
+  // Label - bigger
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 4;
+  ctx.fillStyle = 'rgba(232,234,240,0.6)';
+  ctx.font = "500 22px 'Oswald', sans-serif";
+  ctx.fillText(stat.label, 250, 240);
+
+  const tex = new THREE.CanvasTexture(cvs);
+  tex.minFilter = THREE.LinearFilter;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const geo = new THREE.PlaneGeometry(5, 3.6);
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.95, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, 1.5, z);
+  mesh.lookAt(0, 1.5, -5);
+  // Flip 180 on Y so the text faces the camera (approaching from +Z side)
+  // Without this, camera sees the back face of the plane and text appears mirrored
+  mesh.rotation.y += Math.PI;
+  mesh.userData.statPanel = true;
+  room3Group.add(mesh);
+
+  const glowRing = new THREE.Mesh(
+    new THREE.RingGeometry(1.5, 2, 24),
+    new THREE.MeshBasicMaterial({ color: BLUE, transparent: true, opacity: 0.08, side: THREE.DoubleSide })
+  );
+  glowRing.rotation.x = -Math.PI / 2;
+  glowRing.position.set(x, -2.9, z);
+  room3Group.add(glowRing);
+});
+
+const warRoomTitle = createTextPlane({
+  text: "PURE FACTS",
+  width: 512, height: 128, fontSize: 56, fontWeight: '700',
+  fontFamily: "'Oswald', sans-serif", color: '#f1420b',
+  x: 0, y: 5.5, z: -5, scaleW: 7, scaleH: 1.75, align: 'center',
+  textTransform: 'uppercase'
+});
+room3Group.add(warRoomTitle);
+
+// =========================================================================
+// ROOM 4: TESTIMONIAL CHAMBER
+// =========================================================================
+const room4Group = new THREE.Group();
+room4Group.position.z = -250;
+scene.add(room4Group);
+
+const r4Light = new THREE.PointLight(BLUE, 5, 35);
+r4Light.position.set(0, 6, 0);
+room4Group.add(r4Light);
+
+testimonials.forEach((t, i) => {
+  const angle = (i / testimonials.length) * Math.PI * 2 - Math.PI / 4;
+  const r = 7;
+  const x = Math.sin(angle) * r;
+  const z = Math.cos(angle) * r - 3;
+
+  const pillarGeo = new THREE.CylinderGeometry(0.3, 0.3, 10, 8);
+  const pillarMat = new THREE.MeshPhysicalMaterial({
+    color: 0x0a1520, metalness: 0.7, roughness: 0.3,
+    emissive: 0x0a2540, emissiveIntensity: 0.2
+  });
+  const pillar = new THREE.Mesh(pillarGeo, pillarMat);
+  pillar.position.set(x, 2, z);
+  room4Group.add(pillar);
+
+  // Quote panels - BIGGER fonts
+  const quotePanel = createRichTextPlane({
+    lines: [
+      { text: '"' + t.quote + '"', font: "italic 400 18px 'Inter', sans-serif", color: 'rgba(232,234,240,0.85)', gap: 16 },
+      { text: t.author, font: "600 20px 'Oswald', sans-serif", color: '#4db8e8', gap: 4 },
+      { text: t.title, font: "400 14px 'Inter', sans-serif", color: 'rgba(232,234,240,0.5)', gap: 0 },
+    ],
+    width: 460, height: 520, x: x + (x > 0 ? 1.8 : -1.8), y: 2.5, z: z,
+    rotY: x > 0 ? -Math.PI / 6 : Math.PI / 6,
+    scaleW: 4, scaleH: 4.5, bgColor: 'rgba(8,10,18,0.85)'
+  });
+  room4Group.add(quotePanel);
+
+  const pLight = new THREE.PointLight(BLUE, 1.5, 6);
+  pLight.position.set(x, 0, z);
+  room4Group.add(pLight);
+});
+
+const testiTitle = createTextPlane({
+  text: "WHAT THEY SAY",
+  width: 512, height: 128, fontSize: 56, fontWeight: '700',
+  fontFamily: "'Oswald', sans-serif", color: '#ffffff',
+  x: 0, y: 6.5, z: -3, scaleW: 7, scaleH: 1.75, align: 'center',
+  textTransform: 'uppercase'
+});
+room4Group.add(testiTitle);
+
+// =========================================================================
+// ROOM 5: THE ARSENAL
+// =========================================================================
+const room5Group = new THREE.Group();
+room5Group.position.z = -340;
+scene.add(room5Group);
+
+const r5Light = new THREE.PointLight(ORANGE, 5, 35);
+r5Light.position.set(0, 4, -3);
+room5Group.add(r5Light);
+
+services.forEach((svc, i) => {
+  const angle = (i / (services.length - 1)) * Math.PI - Math.PI / 2;
+  const r = 8;
+  const x = Math.sin(angle) * r;
+  const z = Math.cos(angle) * r - 4;
+
+  const panel = createRichTextPlane({
+    lines: [
+      { text: svc.name.toUpperCase(), font: "600 26px 'Oswald', sans-serif", color: '#4db8e8', gap: 12 },
+      { text: svc.desc, font: "400 18px 'Inter', sans-serif", color: 'rgba(232,234,240,0.75)', gap: 0 },
+    ],
+    width: 440, height: 360, x, y: 2, z,
+    rotY: -angle, scaleW: 4, scaleH: 3.3, bgColor: 'rgba(8,10,18,0.85)'
+  });
+  room5Group.add(panel);
+});
+
+benefits.forEach((b, i) => {
+  const x = (i - 1.5) * 4;
+  const panel = createRichTextPlane({
+    lines: [
+      { text: String(i + 1).padStart(2, '0'), font: "200 44px 'Oswald', sans-serif", color: 'rgba(241,66,11,0.5)', gap: 8 },
+      { text: b.name.toUpperCase(), font: "600 18px 'Oswald', sans-serif", color: '#4db8e8', gap: 8 },
+      { text: b.desc, font: "400 16px 'Inter', sans-serif", color: 'rgba(232,234,240,0.6)', gap: 0 },
+    ],
+    width: 300, height: 280, x, y: -1.5, z: -4,
+    scaleW: 2.5, scaleH: 2.3, bgColor: 'rgba(8,10,18,0.7)'
+  });
+  room5Group.add(panel);
+});
+
+const arsenalTitle = createTextPlane({
+  text: "SERVICES & CAPABILITIES",
+  width: 800, height: 120, fontSize: 52, fontWeight: '700',
+  fontFamily: "'Oswald', sans-serif", color: '#ffffff',
+  x: 0, y: 5.5, z: -3, scaleW: 9, scaleH: 1.35, align: 'center',
+  textTransform: 'uppercase'
+});
+room5Group.add(arsenalTitle);
+
+// =========================================================================
+// ROOM 6: TEAM CONSTELLATION
+// =========================================================================
+const room6Group = new THREE.Group();
+room6Group.position.z = -440;
+scene.add(room6Group);
+
+const r6Light = new THREE.PointLight(BLUE, 5, 40);
+r6Light.position.set(0, 3, 0);
+room6Group.add(r6Light);
+
+const cols = MOBILE ? 5 : 8;
+const spacing = 2.2;
+teamMembers.forEach((m, i) => {
+  const row = Math.floor(i / cols);
+  const col = i % cols;
+  const x = (col - (cols - 1) / 2) * spacing;
+  const y = 3 - row * 2.4;
+  const z = -3 + Math.sin(i * 0.7) * 1.5;
+  const card = createHeadshotCard(m, x, y, z);
+  card.userData.teamMember = m;
+  card.userData.isTeamCard = true;
+  room6Group.add(card);
+  teamCardObjects.push(card);
+});
+
+const teamTitle = createTextPlane({
+  text: "PURE TEAM -- LEADERSHIP",
+  width: 800, height: 120, fontSize: 52, fontWeight: '700',
+  fontFamily: "'Oswald', sans-serif", color: '#ffffff',
+  x: 0, y: 7, z: -3, scaleW: 9, scaleH: 1.35, align: 'center',
+  textTransform: 'uppercase'
+});
+room6Group.add(teamTitle);
+
+const teamLinesMat = new THREE.LineBasicMaterial({ color: BLUE, transparent: true, opacity: 0.06 });
+for (let i = 0; i < 40; i++) {
+  const a = Math.floor(Math.random() * teamMembers.length);
+  const b = Math.floor(Math.random() * teamMembers.length);
+  if (a === b) continue;
+  const rowA = Math.floor(a / cols), colA = a % cols;
+  const rowB = Math.floor(b / cols), colB = b % cols;
+  const p1 = new THREE.Vector3((colA - (cols-1)/2) * spacing, 3 - rowA * 2.4, -3);
+  const p2 = new THREE.Vector3((colB - (cols-1)/2) * spacing, 3 - rowB * 2.4, -3);
+  const geo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+  room6Group.add(new THREE.Line(geo, teamLinesMat));
+}
+
+// =========================================================================
+// ROOM 7: AI CORE
+// =========================================================================
+const room7Group = new THREE.Group();
+room7Group.position.z = -540;
+scene.add(room7Group);
+
+const r7Light1 = new THREE.PointLight(ORANGE, 6, 30);
+r7Light1.position.set(0, 3, 0);
+room7Group.add(r7Light1);
+const r7Light2 = new THREE.PointLight(BLUE, 4, 25);
+r7Light2.position.set(0, -1, -5);
+room7Group.add(r7Light2);
+
+const aiNodes = [];
+const billboardLabels = [];
+aiPartners.forEach((ai, i) => {
+  const angle = (i / aiPartners.length) * Math.PI * 2;
+  const r = 5.5;
+  const x = Math.sin(angle) * r;
+  const y = Math.sin(i * 1.2) * 1.5 + 1;
+  const z = Math.cos(angle) * r - 3;
+
+  const orbGeo = new THREE.IcosahedronGeometry(0.55, 2);
+  const orbMat = new THREE.MeshPhysicalMaterial({
+    color: ai.color,
+    emissive: ai.color,
+    emissiveIntensity: 0.6,
+    metalness: 0.2,
+    roughness: 0.1,
+    transmission: 0.3,
+    thickness: 0.5,
+    transparent: true,
+    opacity: 0.9,
+  });
+  const orb = new THREE.Mesh(orbGeo, orbMat);
+  orb.position.set(x, y, z);
+  room7Group.add(orb);
+  aiNodes.push({ mesh: orb, baseY: y, phase: i * 0.5 });
+
+  // Label - BIGGER and with billboard behavior
+  const label = createRichTextPlane({
+    lines: [
+      { text: ai.name.toUpperCase(), font: "700 28px 'Oswald', sans-serif", color: ai.color === ORANGE ? '#ff6b35' : '#4db8e8', align: 'center', gap: 6 },
+      { text: ai.role, font: "400 15px 'Inter', sans-serif", color: 'rgba(232,234,240,0.6)', align: 'center', gap: 0 },
+    ],
+    width: 300, height: 120, x, y: y - 1.3, z,
+    scaleW: 2.4, scaleH: 0.96, billboard: true
+  });
+  room7Group.add(label);
+  billboardLabels.push(label);
+
+  const glowGeo = new THREE.SphereGeometry(0.9, 8, 8);
+  const glowMat = new THREE.MeshBasicMaterial({
+    color: ai.color, transparent: true, opacity: 0.1
+  });
+  const glow = new THREE.Mesh(glowGeo, glowMat);
+  glow.position.set(x, y, z);
+  room7Group.add(glow);
+});
+
+const aiLineMat = new THREE.LineBasicMaterial({ color: BLUE, transparent: true, opacity: 0.1 });
+for (let i = 0; i < aiPartners.length; i++) {
+  for (let j = i + 1; j < aiPartners.length; j++) {
+    if (Math.random() > 0.4) continue;
+    const a = aiNodes[i].mesh.position;
+    const b = aiNodes[j].mesh.position;
+    const geo = new THREE.BufferGeometry().setFromPoints([a.clone(), b.clone()]);
+    room7Group.add(new THREE.Line(geo, aiLineMat));
+  }
+}
+
+const aiTitle = createTextPlane({
+  text: "AI PARTNERS",
+  width: 512, height: 120, fontSize: 56, fontWeight: '700',
+  fontFamily: "'Oswald', sans-serif", color: '#f1420b',
+  x: 0, y: 6, z: -3, scaleW: 7, scaleH: 1.68, align: 'center',
+  textTransform: 'uppercase'
+});
+room7Group.add(aiTitle);
+
+// =========================================================================
+// ROOM 8: EXPERIENCE VAULT
+// =========================================================================
+const room8Group = new THREE.Group();
+room8Group.position.z = -650;
+scene.add(room8Group);
+
+const r8Light = new THREE.PointLight(BLUE, 4, 40);
+r8Light.position.set(0, 4, -10);
+room8Group.add(r8Light);
+
+const half = Math.ceil(experienceWall.length / 2);
+const wallLeft = experienceWall.slice(0, half);
+const wallRight = experienceWall.slice(half);
+
+function createNameWall(names, x, z, rotY) {
+  const rows = Math.ceil(names.length / 5);
+  const resMult = MOBILE ? 1.5 : 2;
+  const cvs = document.createElement('canvas');
+  cvs.width = 1024 * resMult;
+  const rowH = 60;
+  cvs.height = (rows * rowH + 60) * resMult;
+  const ctx = cvs.getContext('2d');
+  ctx.scale(resMult, resMult);
+
+  ctx.fillStyle = 'rgba(8,10,18,0.5)';
+  ctx.fillRect(0, 0, 1024, rows * rowH + 60);
+
+  // Shadow
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 3;
+
+  names.forEach((name, i) => {
+    const col = i % 5;
+    const row = Math.floor(i / 5);
+    const cx = 20 + col * 200;
+    const cy = 36 + row * rowH;
+    ctx.font = "500 18px 'Oswald', sans-serif";
+    ctx.fillStyle = `rgba(232,234,240,${0.35 + Math.random() * 0.3})`;
+    ctx.textAlign = 'left';
+    ctx.fillText(name.toUpperCase(), cx, cy);
+  });
+
+  const tex = new THREE.CanvasTexture(cvs);
+  tex.minFilter = THREE.LinearFilter;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const geo = new THREE.PlaneGeometry(16, rows * 1 + 1);
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, 2, z);
+  mesh.rotation.y = rotY;
+  return mesh;
+}
+
+room8Group.add(createNameWall(wallLeft, -8, -10, Math.PI / 10));
+room8Group.add(createNameWall(wallRight, 8, -10, -Math.PI / 10));
+
+const vaultTitle = createTextPlane({
+  text: "EXPERIENCE WALL",
+  width: 512, height: 120, fontSize: 52, fontWeight: '700',
+  fontFamily: "'Oswald', sans-serif", color: '#ffffff',
+  x: 0, y: 6, z: -5, scaleW: 7, scaleH: 1.68, align: 'center',
+  textTransform: 'uppercase'
+});
+room8Group.add(vaultTitle);
+
+const vaultSub = createTextPlane({
+  text: "70+ global brands. Real partnerships. Real results.",
+  width: 700, height: 64, fontSize: 22, fontWeight: '400',
+  fontFamily: "'Inter', sans-serif", color: 'rgba(232,234,240,0.6)',
+  x: 0, y: 4.8, z: -5, scaleW: 8, scaleH: 0.73, align: 'center'
+});
+room8Group.add(vaultSub);
+
+advisors.forEach((a, i) => {
+  const x = (i - advisors.length / 2 + 0.5) * 1.8;
+  const panel = createRichTextPlane({
+    lines: [
+      { text: a.name, font: "600 18px 'Oswald', sans-serif", color: '#ffffff', align: 'center', gap: 4 },
+      { text: a.role, font: "400 13px 'Inter', sans-serif", color: 'rgba(42,147,193,0.8)', align: 'center', gap: 0 },
+    ],
+    width: 220, height: 90, x, y: -1, z: -10,
+    scaleW: 1.6, scaleH: 0.65
+  });
+  room8Group.add(panel);
+});
+
+// =========================================================================
+// ROOM 9: THE GATEWAY
+// =========================================================================
+const room9Group = new THREE.Group();
+room9Group.position.z = -760;
+scene.add(room9Group);
+
+const r9Light1 = new THREE.PointLight(ORANGE, 7, 30);
+r9Light1.position.set(0, 3, 0);
+room9Group.add(r9Light1);
+const r9Light2 = new THREE.PointLight(BLUE, 4, 25);
+r9Light2.position.set(0, -1, -5);
+room9Group.add(r9Light2);
+
+const portalGeo = new THREE.TorusGeometry(4, 0.15, 16, 64);
+const portalMat = new THREE.MeshPhysicalMaterial({
+  color: ORANGE, emissive: ORANGE, emissiveIntensity: 0.5,
+  metalness: 0.8, roughness: 0.1
+});
+const portal = new THREE.Mesh(portalGeo, portalMat);
+portal.position.set(0, 2, -5);
+room9Group.add(portal);
+
+const innerGlowGeo = new THREE.CircleGeometry(3.8, 32);
+const innerGlowMat = new THREE.MeshBasicMaterial({
+  color: ORANGE, transparent: true, opacity: 0.05, side: THREE.DoubleSide
+});
+const innerGlow = new THREE.Mesh(innerGlowGeo, innerGlowMat);
+innerGlow.position.set(0, 2, -5);
+room9Group.add(innerGlow);
+
+const gatewayTitle = createTextPlane({
+  text: "EXPERIENCE OUR AI PARTNERSHIP",
+  width: 900, height: 140, fontSize: 56, fontWeight: '700',
+  fontFamily: "'Oswald', sans-serif", color: '#ffffff',
+  x: 0, y: 5, z: -5, scaleW: 11, scaleH: 1.7, align: 'center',
+  textTransform: 'uppercase'
+});
+room9Group.add(gatewayTitle);
+
+const gatewaySub = createRichTextPlane({
+  lines: [
+    { text: "See what happens when AI actually remembers you, learns your voice, and grows with your business.", font: "400 20px 'Inter', sans-serif", color: 'rgba(232,234,240,0.7)', align: 'center', gap: 18 },
+    { text: "Meet Aether, our AI Co-CEO, and discover what AI partnership really means.", font: "400 20px 'Inter', sans-serif", color: 'rgba(232,234,240,0.7)', align: 'center', gap: 0 },
+  ],
+  width: 640, height: 200, x: 0, y: -0.5, z: -5,
+  scaleW: 7.5, scaleH: 2.3
+});
+room9Group.add(gatewaySub);
+
+// PureBrain wordmark
+const pbResMult = MOBILE ? 1.5 : 2;
+const pbCvs = document.createElement('canvas');
+pbCvs.width = 600 * pbResMult; pbCvs.height = 100 * pbResMult;
+const pbCtx = pbCvs.getContext('2d');
+pbCtx.scale(pbResMult, pbResMult);
+pbCtx.shadowColor = 'rgba(0,0,0,0.6)';
+pbCtx.shadowBlur = 6;
+pbCtx.font = "600 52px 'Oswald', sans-serif";
+pbCtx.textAlign = 'center';
+pbCtx.fillStyle = '#2a93c1';
+pbCtx.fillText('PUREBR', 220, 60);
+pbCtx.fillStyle = '#f1420b';
+pbCtx.fillText('AI', 370, 60);
+pbCtx.fillStyle = '#2a93c1';
+pbCtx.fillText('N', 415, 60);
+pbCtx.fillStyle = '#ffffff';
+pbCtx.fillText('.ai', 470, 60);
+const pbTex = new THREE.CanvasTexture(pbCvs);
+pbTex.minFilter = THREE.LinearFilter;
+const pbGeo = new THREE.PlaneGeometry(7, 1.17);
+const pbMat = new THREE.MeshBasicMaterial({ map: pbTex, transparent: true, side: THREE.DoubleSide });
+const pbMesh = new THREE.Mesh(pbGeo, pbMat);
+pbMesh.position.set(0, 2, -4.9);
+room9Group.add(pbMesh);
+
+// CTA button
+const ctaResMult = MOBILE ? 1.5 : 2;
+const ctaCvs = document.createElement('canvas');
+ctaCvs.width = 400 * ctaResMult; ctaCvs.height = 80 * ctaResMult;
+const ctaCtx = ctaCvs.getContext('2d');
+ctaCtx.scale(ctaResMult, ctaResMult);
+ctaCtx.fillStyle = '#f1420b';
+const cr = 8;
+ctaCtx.beginPath();
+ctaCtx.moveTo(cr, 0); ctaCtx.lineTo(400 - cr, 0);
+ctaCtx.quadraticCurveTo(400, 0, 400, cr); ctaCtx.lineTo(400, 80 - cr);
+ctaCtx.quadraticCurveTo(400, 80, 400 - cr, 80); ctaCtx.lineTo(cr, 80);
+ctaCtx.quadraticCurveTo(0, 80, 0, 80 - cr); ctaCtx.lineTo(0, cr);
+ctaCtx.quadraticCurveTo(0, 0, cr, 0);
+ctaCtx.closePath(); ctaCtx.fill();
+ctaCtx.fillStyle = '#ffffff';
+ctaCtx.font = "600 24px 'Oswald', sans-serif";
+ctaCtx.textAlign = 'center';
+ctaCtx.fillText('ENTER PUREBRAIN', 200, 50);
+const ctaTex = new THREE.CanvasTexture(ctaCvs);
+ctaTex.minFilter = THREE.LinearFilter;
+const ctaGeo = new THREE.PlaneGeometry(4, 0.8);
+const ctaMat = new THREE.MeshBasicMaterial({ map: ctaTex, transparent: true, side: THREE.DoubleSide });
+const ctaMesh = new THREE.Mesh(ctaGeo, ctaMat);
+ctaMesh.position.set(0, -2.2, -5);
+ctaMesh.userData.isCTA = true;
+ctaMesh.userData.url = 'https://purebrain.ai/#awakening';
+room9Group.add(ctaMesh);
+clickableObjects.push(ctaMesh);
+
+// CTA glow ring for pulse effect
+const ctaGlowGeo = new THREE.PlaneGeometry(4.4, 1.1);
+const ctaGlowMat = new THREE.MeshBasicMaterial({ color: ORANGE, transparent: true, opacity: 0.0, side: THREE.DoubleSide });
+const ctaGlowMesh = new THREE.Mesh(ctaGlowGeo, ctaGlowMat);
+ctaGlowMesh.position.set(0, -2.2, -5.01);
+room9Group.add(ctaGlowMesh);
+
+const footerPanel = createTextPlane({
+  text: "Pure Technology Inc. 2017-2026 All Rights Reserved.",
+  width: 512, height: 48, fontSize: 15, fontWeight: '400',
+  fontFamily: "'Inter', sans-serif", color: 'rgba(232,234,240,0.35)',
+  x: 0, y: -3.5, z: -5, scaleW: 6, scaleH: 0.56, align: 'center'
+});
+room9Group.add(footerPanel);
+
+const careerPanel = createRichTextPlane({
+  lines: [
+    { text: "CAREER OPPORTUNITIES", font: "600 20px 'Oswald', sans-serif", color: '#f1420b', align: 'center', gap: 10 },
+    { text: "We're an eclectic mix of junior and senior team members that blend Strategy, Technology & Influence to create products and services people love.", font: "400 15px 'Inter', sans-serif", color: 'rgba(232,234,240,0.6)', align: 'center', gap: 14 },
+    { text: "INTERNSHIPS", font: "600 18px 'Oswald', sans-serif", color: '#4db8e8', align: 'center', gap: 6 },
+    { text: "Learn the craft. Ship real work. See the numbers move.", font: "400 15px 'Inter', sans-serif", color: 'rgba(232,234,240,0.6)', align: 'center', gap: 6 },
+    { text: "Brand Strategy | Influence/UGC | Paid Media | Content | Web/App/AI", font: "400 13px 'Inter', sans-serif", color: 'rgba(42,147,193,0.7)', align: 'center', gap: 14 },
+    { text: "PURE FAMILY", font: "600 18px 'Oswald', sans-serif", color: '#4db8e8', align: 'center', gap: 6 },
+    { text: "puretechnology.ai | puremarketing.ai | pureinfluence.ai", font: "400 14px 'Inter', sans-serif", color: 'rgba(232,234,240,0.5)', align: 'center', gap: 0 },
+  ],
+  width: 520, height: 460, x: 8, y: 1, z: -8, rotY: -Math.PI / 6,
+  scaleW: 4.5, scaleH: 4, bgColor: 'rgba(8,10,18,0.8)'
+});
+room9Group.add(careerPanel);
+
+// =========================================================================
+// NAVIGATION PORTALS - Clickable rings at section boundaries
+// =========================================================================
+function createNavPortal(position, targetSectionIdx, label) {
+  const group = new THREE.Group();
+  group.position.copy(position);
+
+  const ringGeo2 = new THREE.RingGeometry(0.5, 0.75, 32);
+  const ringMat2 = new THREE.MeshStandardMaterial({
+    color: BLUE, emissive: BLUE, emissiveIntensity: 0.5,
+    transparent: true, opacity: 0.7, side: THREE.DoubleSide
+  });
+  const ring = new THREE.Mesh(ringGeo2, ringMat2);
+  ring.userData.isPortal = true;
+  ring.userData.targetSection = targetSectionIdx;
+  ring.userData.portalLabel = label;
+  group.add(ring);
+  clickableObjects.push(ring);
+  portalObjects.push({ mesh: ring, group });
+
+  // Inner glow
+  const innerGeo = new THREE.CircleGeometry(0.45, 32);
+  const innerMat = new THREE.MeshBasicMaterial({ color: BLUE, transparent: true, opacity: 0.08, side: THREE.DoubleSide });
+  const inner = new THREE.Mesh(innerGeo, innerMat);
+  inner.position.z = 0.01;
+  group.add(inner);
+
+  // Arrow indicator (chevron pointing forward)
+  const arrowCvs = document.createElement('canvas');
+  arrowCvs.width = 64; arrowCvs.height = 64;
+  const actx = arrowCvs.getContext('2d');
+  actx.strokeStyle = '#ffffff';
+  actx.lineWidth = 3;
+  actx.lineCap = 'round';
+  actx.beginPath();
+  actx.moveTo(20, 12); actx.lineTo(44, 32); actx.lineTo(20, 52);
+  actx.stroke();
+  const arrowTex = new THREE.CanvasTexture(arrowCvs);
+  const arrowGeo = new THREE.PlaneGeometry(0.5, 0.5);
+  const arrowMat = new THREE.MeshBasicMaterial({ map: arrowTex, transparent: true, side: THREE.DoubleSide });
+  const arrowMesh = new THREE.Mesh(arrowGeo, arrowMat);
+  arrowMesh.position.z = 0.02;
+  arrowMesh.rotation.z = -Math.PI / 2; // Arrow points forward (into -z)
+  group.add(arrowMesh);
+
+  // Label above portal
+  const portalLabel = createTextPlane({
+    text: label,
+    width: 256, height: 48, fontSize: 14, fontWeight: '500',
+    fontFamily: "'Oswald', sans-serif", color: 'rgba(42,147,193,0.7)',
+    x: 0, y: 1.2, z: 0, scaleW: 2, scaleH: 0.375, align: 'center',
+    textTransform: 'uppercase'
+  });
+  group.add(portalLabel);
+
+  return group;
+}
+
+// Place portals between rooms (at transition points, right side)
+const portalPositions = [
+  { pos: new THREE.Vector3(4, 1, -35), target: 1, label: 'THE GALLERY' },
+  { pos: new THREE.Vector3(-4, 1, -120), target: 2, label: 'THE WAR ROOM' },
+  { pos: new THREE.Vector3(4, 1, -205), target: 3, label: 'TESTIMONIALS' },
+  { pos: new THREE.Vector3(-4, 1, -295), target: 4, label: 'THE ARSENAL' },
+  { pos: new THREE.Vector3(4, 1, -390), target: 5, label: 'TEAM' },
+  { pos: new THREE.Vector3(-4, 1, -490), target: 6, label: 'AI CORE' },
+  { pos: new THREE.Vector3(4, 1, -595), target: 7, label: 'EXPERIENCE VAULT' },
+  { pos: new THREE.Vector3(-4, 1, -705), target: 8, label: 'THE GATEWAY' },
+];
+
+portalPositions.forEach(pp => {
+  const portalGroup = createNavPortal(pp.pos, pp.target, pp.label);
+  scene.add(portalGroup);
+});
+
+// =========================================================================
+// CLICK & HOVER HANDLERS (Fix 1 + Phase 2)
+// =========================================================================
+let isAnimatingCamera = false;
+
+// Smooth camera transition function
+function smoothCameraTo(targetPos, targetLookAt, duration = 1500) {
+  if (isAnimatingCamera) return;
+  isAnimatingCamera = true;
+  const startPos = camera.position.clone();
+  const startTime = Date.now();
+
+  // Temporarily disable guided scroll during animation
+  const wasGuided = !freeMode;
+
+  function animateTransition() {
+    const elapsed = Date.now() - startTime;
+    const t = Math.min(elapsed / duration, 1);
+    const eased = t * t * (3 - 2 * t); // smoothstep
+
+    camera.position.lerpVectors(startPos, targetPos, eased);
+    if (targetLookAt) camera.lookAt(targetLookAt);
+
+    if (t < 1) {
+      requestAnimationFrame(animateTransition);
+    } else {
+      isAnimatingCamera = false;
+      // Sync scroll position to match camera position if in guided mode
+      if (wasGuided && !freeMode) {
+        const totalZ = 760;
+        const camZ = -camera.position.z;
+        const progress = Math.min(Math.max(camZ / totalZ, 0), 1);
+        const scrollH = document.getElementById('scroll-container').offsetHeight - window.innerHeight;
+        window.scrollTo({ top: progress * scrollH, behavior: 'instant' });
+        currentProgress = progress;
+      }
+    }
+  }
+  animateTransition();
+}
+
+// Navigate to a section by index with smooth animation + shader transition
+function navigateToSection(sectionIdx) {
+  triggerTransition(); // IMPROVEMENT 2: shader dissolve
+  const t = sectionIdx / (ROOMS.length - 1);
+  const targetPos = cameraPath.getPointAt(Math.min(t, 0.999));
+  const targetLook = lookPath.getPointAt(Math.min(t, 0.999));
+  smoothCameraTo(targetPos, targetLook, 1200);
+}
+
+// Click handler - CTA + Portals
+renderer.domElement.addEventListener('click', (event) => {
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+
+  // Check CTA click
+  const ctaHits = raycaster.intersectObject(ctaMesh);
+  if (ctaHits.length > 0) {
+    window.open('https://purebrain.ai/#awakening', '_blank');
+    return;
+  }
+
+  // Check portal clicks
+  const portalMeshes = clickableObjects.filter(o => o.userData.isPortal);
+  const portalHits = raycaster.intersectObjects(portalMeshes, true);
+  if (portalHits.length > 0) {
+    const targetSection = portalHits[0].object.userData.targetSection;
+    if (targetSection !== undefined) {
+      if (freeMode) toggleFreeMode();
+      navigateToSection(targetSection);
+      return;
+    }
+  }
+
+  // IMPROVEMENT 6: Check team card clicks for bio popup
+  const teamMeshes = [];
+  teamCardObjects.forEach(card => card.traverse(child => {
+    if (child.isMesh) { child.userData.parentCard = card; teamMeshes.push(child); }
+  }));
+  const teamClickHits = raycaster.intersectObjects(teamMeshes, true);
+  if (teamClickHits.length > 0) {
+    const parentCard = teamClickHits[0].object.userData.parentCard;
+    if (parentCard && parentCard.userData.teamMember) {
+      showBio(parentCard.userData.teamMember);
+      return;
+    }
+  }
+
+  // IMPROVEMENT 5: Check interactive orb clicks
+  const orbHits = raycaster.intersectObjects(interactiveOrbs, true);
+  if (orbHits.length > 0) {
+    const orb = orbHits[0].object;
+    // Expand orb and show info tooltip
+    const scale = orb.userData.baseScale === 1 ? 1.6 : 1;
+    orb.userData.baseScale = scale;
+    orb.scale.setScalar(scale);
+    if (scale > 1) {
+      tooltipName.textContent = orb.userData.orbInfo || 'Data Node';
+      tooltipRole.textContent = 'Click again to close';
+      tooltip.style.left = event.clientX + 'px';
+      tooltip.style.top = event.clientY + 'px';
+      tooltip.style.opacity = '1';
+      setTimeout(() => { tooltip.style.opacity = '0'; }, 2500);
+    }
+    return;
+  }
+
+  // IMPROVEMENT 5: Logo spin on click
+  const logoHits = raycaster.intersectObject(logoMesh);
+  if (logoHits.length > 0) {
+    logoSpinSpeed = 3.0; // Speed up on click
+    setTimeout(() => { logoSpinSpeed = 0.3; }, 2000); // Slow back down
+  }
+});
+
+// Hover handler - cursor + tooltips
+let currentHover = null;
+const tooltip = document.getElementById('team-tooltip');
+const tooltipName = tooltip.querySelector('.tt-name');
+const tooltipRole = tooltip.querySelector('.tt-role');
+
+renderer.domElement.addEventListener('mousemove', (event) => {
+  if (freeMode && isDragging) return;
+
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+
+  let isHovering = false;
+
+  // Check CTA hover
+  const ctaHits = raycaster.intersectObject(ctaMesh);
+  if (ctaHits.length > 0) {
+    canvas.classList.add('clickable');
+    isHovering = true;
+  }
+
+  // Check portal hover
+  if (!isHovering) {
+    const portalMeshes = clickableObjects.filter(o => o.userData.isPortal);
+    const portalHits = raycaster.intersectObjects(portalMeshes, true);
+    if (portalHits.length > 0) {
+      canvas.classList.add('clickable');
+      isHovering = true;
+    }
+  }
+
+  // Check interactive orb + logo hover
+  if (!isHovering) {
+    const orbHits = raycaster.intersectObjects([...interactiveOrbs, logoMesh], true);
+    if (orbHits.length > 0) {
+      canvas.classList.add('clickable');
+      isHovering = true;
+    }
+  }
+
+  // Check team card hover
+  if (!isHovering) {
+    const teamMeshes = [];
+    teamCardObjects.forEach(card => card.traverse(child => {
+      if (child.isMesh) { child.userData.parentCard = card; teamMeshes.push(child); }
+    }));
+    const teamHits = raycaster.intersectObjects(teamMeshes, true);
+    if (teamHits.length > 0) {
+      const parentCard = teamHits[0].object.userData.parentCard;
+      if (parentCard && parentCard.userData.teamMember) {
+        const member = parentCard.userData.teamMember;
+        tooltipName.textContent = member.name;
+        tooltipRole.textContent = member.role;
+        tooltip.style.left = event.clientX + 'px';
+        tooltip.style.top = event.clientY + 'px';
+        tooltip.style.opacity = '1';
+        canvas.classList.add('clickable');
+        isHovering = true;
+        currentHover = parentCard;
+      }
+    } else {
+      tooltip.style.opacity = '0';
+      currentHover = null;
+    }
+  } else {
+    tooltip.style.opacity = '0';
+    currentHover = null;
+  }
+
+  if (!isHovering) {
+    canvas.classList.remove('clickable');
+  }
+});
+
+// =========================================================================
+// IMPROVEMENT 1: PARALLAX DEPTH - Background group tracks mouse
+// =========================================================================
+const backgroundGroup = new THREE.Group();
+backgroundGroup.add(stars);
+scene.add(backgroundGroup);
+
+document.addEventListener('mousemove', (e) => {
+  if (MOBILE) return;
+  const mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
+  const mouseY = (e.clientY / window.innerHeight - 0.5) * 2;
+  backgroundGroup.position.x += (mouseX * 0.3 - backgroundGroup.position.x) * 0.05;
+  backgroundGroup.position.y += (-mouseY * 0.3 - backgroundGroup.position.y) * 0.05;
+});
+
+// =========================================================================
+// IMPROVEMENT 7: PARTICLE EFFECTS - Flowing data particles
+// =========================================================================
+const particleCount = MOBILE ? 200 : 500;
+const particleGeo2 = new THREE.BufferGeometry();
+const particlePositions = new Float32Array(particleCount * 3);
+const particleColors = new Float32Array(particleCount * 3);
+const particleSpeeds = new Float32Array(particleCount);
+
+const blueColor = new THREE.Color(0x2a93c1);
+const orangeColor = new THREE.Color(0xf1420b);
+
+for (let i = 0; i < particleCount; i++) {
+  particlePositions[i*3]   = (Math.random() - 0.5) * 30;
+  particlePositions[i*3+1] = (Math.random() - 0.5) * 12 + 2;
+  particlePositions[i*3+2] = -Math.random() * 800;
+  particleSpeeds[i] = 0.5 + Math.random() * 1.5;
+  const c = Math.random() > 0.5 ? blueColor : orangeColor;
+  particleColors[i*3]   = c.r;
+  particleColors[i*3+1] = c.g;
+  particleColors[i*3+2] = c.b;
+}
+particleGeo2.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+particleGeo2.setAttribute('color', new THREE.BufferAttribute(particleColors, 3));
+
+const particleSystem = new THREE.Points(particleGeo2, new THREE.PointsMaterial({
+  size: 0.15, transparent: true, opacity: 0.4, vertexColors: true,
+  sizeAttenuation: true, blending: THREE.AdditiveBlending, depthWrite: false
+}));
+scene.add(particleSystem);
+
+// =========================================================================
+// IMPROVEMENT 3: INTERACTIVE DATA VISUALIZATIONS
+// =========================================================================
+// Revenue projection bars in Room 3 (War Room)
+const dataVizGroup = new THREE.Group();
+dataVizGroup.position.set(-5, -1.5, -8);
+room3Group.add(dataVizGroup);
+
+const revenueData = [
+  {year:'2023', val:0.3, color:BLUE},
+  {year:'2024', val:0.55, color:BLUE},
+  {year:'2025', val:0.78, color:ORANGE},
+  {year:'2026', val:1.0, color:ORANGE},
+];
+const dataBars = [];
+revenueData.forEach((d, i) => {
+  const barGeo = new THREE.BoxGeometry(0.5, 0.01, 0.5);
+  const barMat = new THREE.MeshPhysicalMaterial({
+    color: d.color, emissive: d.color, emissiveIntensity: 0.4,
+    transparent: true, opacity: 0.8, metalness: 0.3, roughness: 0.4
+  });
+  const bar = new THREE.Mesh(barGeo, barMat);
+  bar.position.set(i * 0.9 - 1.35, 0, 0);
+  dataVizGroup.add(bar);
+  dataBars.push({mesh: bar, targetH: d.val * 3, currentH: 0.01});
+
+  // Year label
+  const lbl = createTextPlane({
+    text: d.year, width:64, height:32, fontSize:14, fontWeight:'600',
+    fontFamily:"'Oswald', sans-serif", color:'rgba(232,234,240,0.5)',
+    x: i * 0.9 - 1.35, y:-0.3, z:0, scaleW:0.6, scaleH:0.3, align:'center'
+  });
+  dataVizGroup.add(lbl);
+});
+
+const dvTitle = createTextPlane({
+  text: "REVENUE GROWTH", width:256, height:48, fontSize:16, fontWeight:'600',
+  fontFamily:"'Oswald', sans-serif", color:'#4db8e8',
+  x:0, y:3.5, z:0, scaleW:2.2, scaleH:0.41, align:'center', textTransform:'uppercase'
+});
+dataVizGroup.add(dvTitle);
+
+// Animated counter numbers in Room 6 (Team)
+const counterGroup = new THREE.Group();
+counterGroup.position.set(0, -2.5, -8);
+room6Group.add(counterGroup);
+
+const counters = [
+  {label:'TEAM MEMBERS', target:32, x:-3},
+  {label:'AI PARTNERS', target:12, x:0},
+  {label:'GLOBAL BRANDS', target:70, x:3},
+];
+const counterMeshes = [];
+counters.forEach(c => {
+  const cvs = document.createElement('canvas');
+  cvs.width = 256; cvs.height = 128;
+  const ctx = cvs.getContext('2d');
+  ctx.fillStyle = 'rgba(8,10,18,0.7)';
+  ctx.fillRect(0,0,256,128);
+  ctx.strokeStyle = 'rgba(42,147,193,0.2)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(4,4,248,120);
+  ctx.font = "700 48px 'Oswald', sans-serif";
+  ctx.fillStyle = '#f1420b';
+  ctx.textAlign = 'center';
+  ctx.fillText('0', 128, 60);
+  ctx.font = "500 14px 'Oswald', sans-serif";
+  ctx.fillStyle = 'rgba(232,234,240,0.5)';
+  ctx.fillText(c.label, 128, 100);
+  const tex = new THREE.CanvasTexture(cvs);
+  tex.minFilter = THREE.LinearFilter;
+  const geo = new THREE.PlaneGeometry(2, 1);
+  const mat = new THREE.MeshBasicMaterial({map:tex, transparent:true, side:THREE.DoubleSide});
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(c.x, 0, 0);
+  counterGroup.add(mesh);
+  counterMeshes.push({mesh, canvas:cvs, ctx, target:c.target, current:0, label:c.label, tex});
+});
+
+// =========================================================================
+// IMPROVEMENT 5: 3D MODEL INTERACTIONS
+// =========================================================================
+let logoSpinSpeed = 0.3;
+let logoMouseDown = false;
+
+// Interactive orbs per section
+const interactiveOrbs = [];
+const orbSections = [
+  {group: room2Group, pos:[6,-1,2], color:BLUE, info:'Data-Driven Strategy'},
+  {group: room4Group, pos:[-6,3,-2], color:ORANGE, info:'Client Testimonials'},
+  {group: room5Group, pos:[0,5.5,-8], color:BLUE, info:'Service Portfolio'},
+  {group: room8Group, pos:[0,4,-15], color:ORANGE, info:'Global Network'},
+];
+
+orbSections.forEach(os => {
+  const orbGeo = new THREE.IcosahedronGeometry(0.4, 2);
+  const orbMat = new THREE.MeshPhysicalMaterial({
+    color: os.color, emissive: os.color, emissiveIntensity: 0.5,
+    transparent: true, opacity: 0.7, metalness: 0.3, roughness: 0.1
+  });
+  const orb = new THREE.Mesh(orbGeo, orbMat);
+  orb.position.set(...os.pos);
+  orb.userData.isInteractiveOrb = true;
+  orb.userData.orbInfo = os.info;
+  orb.userData.baseScale = 1;
+  os.group.add(orb);
+  interactiveOrbs.push(orb);
+  clickableObjects.push(orb);
+
+  // Glow
+  const glowGeo = new THREE.SphereGeometry(0.65, 8, 8);
+  const glowMat = new THREE.MeshBasicMaterial({color:os.color, transparent:true, opacity:0.08});
+  const glow = new THREE.Mesh(glowGeo, glowMat);
+  glow.position.set(...os.pos);
+  os.group.add(glow);
+});
+
+// All room groups for visibility culling
+const allRoomGroups = [room1Group, room2Group, room3Group, room4Group, room5Group, room6Group, room7Group, room8Group, room9Group];
+
+// =========================================================================
+// CAMERA PATH
+// =========================================================================
+const cameraPath = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(0, 2, 12),      // Entry approach
+  new THREE.Vector3(0, 2.5, 2),     // Room 1: Entry Hall (z=0)
+  new THREE.Vector3(-2, 3, -68),    // Transition
+  new THREE.Vector3(0, 2.5, -78),   // Room 2: Gallery (z=-80)
+  new THREE.Vector3(2, 3, -148),    // Transition
+  new THREE.Vector3(0, 2, -160),    // Room 3: War Room (z=-160)
+  new THREE.Vector3(-1, 2.5, -240), // Transition
+  new THREE.Vector3(0, 2, -250),    // Room 4: Testimonial (z=-250)
+  new THREE.Vector3(1, 3, -330),    // Transition
+  new THREE.Vector3(0, 2, -340),    // Room 5: Arsenal (z=-340)
+  new THREE.Vector3(-1, 3, -430),   // Transition
+  new THREE.Vector3(0, 2.5, -440),  // Room 6: Team (z=-440)
+  new THREE.Vector3(1, 2, -530),    // Transition
+  new THREE.Vector3(0, 2, -540),    // Room 7: AI Core (z=-540)
+  new THREE.Vector3(-1, 3, -640),   // Transition
+  new THREE.Vector3(0, 2, -650),    // Room 8: Experience Vault (z=-650)
+  new THREE.Vector3(0, 2.5, -748),  // Transition
+  new THREE.Vector3(0, 2, -758),    // Room 9: Gateway (z=-760)
+], false, 'catmullrom', 0.3);
+
+const lookPath = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(0, 2, -5),
+  new THREE.Vector3(0, 2, -10),
+  new THREE.Vector3(0, 2.5, -78),
+  new THREE.Vector3(0, 2, -88),
+  new THREE.Vector3(0, 2, -160),
+  new THREE.Vector3(0, 1.5, -168),
+  new THREE.Vector3(0, 2, -250),
+  new THREE.Vector3(0, 2, -258),
+  new THREE.Vector3(0, 2, -340),
+  new THREE.Vector3(0, 2, -348),
+  new THREE.Vector3(0, 2, -440),
+  new THREE.Vector3(0, 2, -448),
+  new THREE.Vector3(0, 2, -540),
+  new THREE.Vector3(0, 2, -548),
+  new THREE.Vector3(0, 2, -650),
+  new THREE.Vector3(0, 2, -660),
+  new THREE.Vector3(0, 2, -760),
+  new THREE.Vector3(0, 2, -768),
+], false, 'catmullrom', 0.3);
+
+// =========================================================================
+// NAV DOTS
+// =========================================================================
+const navDotsEl = document.getElementById('nav-dots');
+ROOMS.forEach((room, i) => {
+  const dot = document.createElement('div');
+  dot.className = 'ndot' + (i === 0 ? ' active' : '');
+  dot.title = room.name;
+  dot.addEventListener('click', () => {
+    if (freeMode) toggleFreeMode();
+    navigateToSection(i);
+  });
+  navDotsEl.appendChild(dot);
+});
+
+// =========================================================================
+// FREE MOVEMENT CONTROLS
+// =========================================================================
+function toggleFreeMode() {
+  freeMode = !freeMode;
+  const indicator = document.getElementById('mode-indicator');
+  const scrollContainer = document.getElementById('scroll-container');
+
+  if (freeMode) {
+    // Capture current camera orientation as euler
+    euler.setFromQuaternion(camera.quaternion);
+    indicator.classList.add('free');
+    indicator.innerHTML = '<span class="key">FREE</span> -- WASD to move, Mouse to look<br>Press <span class="key">SPACE</span> for guided mode';
+    scrollContainer.classList.add('free-mode');
+    if (MOBILE) {
+      document.getElementById('joystick-zone').style.display = 'block';
+      showMobileHint('FREE MODE -- Use joystick to move');
+    }
+  } else {
+    indicator.classList.remove('free');
+    indicator.innerHTML = '<span class="key">GUIDED</span> -- Scroll to explore<br>Press <span class="key">SPACE</span> for free movement';
+    scrollContainer.classList.remove('free-mode');
+    if (MOBILE) {
+      document.getElementById('joystick-zone').style.display = 'none';
+    }
+  }
+}
+
+// Keyboard
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    toggleFreeMode();
+    return;
+  }
+  const k = e.key.toLowerCase();
+  if (k in keys) keys[k] = true;
+  if (e.key === 'Shift') keys.shift = true;
+  if (e.key in keys) keys[e.key] = true;
+});
+
+document.addEventListener('keyup', (e) => {
+  const k = e.key.toLowerCase();
+  if (k in keys) keys[k] = false;
+  if (e.key === 'Shift') keys.shift = false;
+  if (e.key in keys) keys[e.key] = false;
+});
+
+// Mouse look (click + drag)
+canvas.addEventListener('mousedown', (e) => {
+  if (!freeMode) return;
+  isDragging = true;
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+  canvas.style.cursor = 'grabbing';
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!freeMode || !isDragging) return;
+  const dx = e.clientX - lastMouseX;
+  const dy = e.clientY - lastMouseY;
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+
+  euler.y -= dx * mouseSensitivity;
+  euler.x -= dy * mouseSensitivity;
+  euler.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, euler.x));
+  camera.quaternion.setFromEuler(euler);
+});
+
+document.addEventListener('mouseup', () => {
+  isDragging = false;
+  canvas.style.cursor = freeMode ? 'grab' : 'default';
+});
+
+// Touch controls for mobile
+let touchStartX = 0, touchStartY = 0;
+let touchLookId = null;
+
+// v2 pinch-to-free-mode tracking
+let v2PinchStartDist = 0;
+let v2PinchTriggered = false;
+// v3 FOV zoom (only in free mode)
+let v3PinchInitialDist = 0;
+let v3PinchInitialFov = 60;
+
+canvas.addEventListener('touchstart', (e) => {
+  // Pinch detection (2 fingers)
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (!freeMode) {
+      // v2: pinch to enter free mode
+      v2PinchStartDist = dist;
+      v2PinchTriggered = false;
+    } else {
+      // v3: FOV zoom only when already in free mode
+      v3PinchInitialDist = dist;
+      v3PinchInitialFov = camera.fov;
+    }
+    e.preventDefault();
+    return;
+  }
+
+  // Double tap detection — v2 original: toggle free mode
+  const now = Date.now();
+  if (now - lastTap < 300) {
+    e.preventDefault();
+    toggleFreeMode();
+    lastTap = 0;
+    return;
+  }
+  lastTap = now;
+
+  if (!freeMode) return;
+  if (e.touches.length === 1) {
+    const t = e.touches[0];
+    touchLookId = t.identifier;
+    touchStartX = t.clientX;
+    touchStartY = t.clientY;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  // Pinch handling
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+
+    if (!freeMode) {
+      // v2: pinch spread to enter free mode (threshold: 50px change)
+      if (!v2PinchTriggered && Math.abs(dist - v2PinchStartDist) > 50) {
+        v2PinchTriggered = true;
+        toggleFreeMode();
+        if (navigator.vibrate) navigator.vibrate(15);
+      }
+    } else {
+      // v3: FOV zoom in free mode
+      if (v3PinchInitialDist > 0) {
+        const scale = v3PinchInitialDist / dist;
+        camera.fov = Math.min(Math.max(v3PinchInitialFov * scale, 30), 90);
+        camera.updateProjectionMatrix();
+      }
+    }
+    return;
+  }
+
+  if (!freeMode) return;
+
+  for (const t of e.changedTouches) {
+    if (t.identifier === touchLookId) {
+      const dx = t.clientX - touchStartX;
+      const dy = t.clientY - touchStartY;
+      touchStartX = t.clientX;
+      touchStartY = t.clientY;
+      euler.y -= dx * mouseSensitivity * 1.5;
+      euler.x -= dy * mouseSensitivity * 1.5;
+      euler.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, euler.x));
+      camera.quaternion.setFromEuler(euler);
+    }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === touchLookId) touchLookId = null;
+  }
+});
+
+// Joystick
+const joystickBase = document.getElementById('joystick-base');
+const joystickThumb = document.getElementById('joystick-thumb');
+let joystickTouchId = null;
+const joystickRadius = 40;
+
+if (joystickBase) {
+  joystickBase.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const t = e.touches[0];
+    joystickTouchId = t.identifier;
+    joystickActive = true;
+    updateJoystick(t);
+  }, { passive: false });
+
+  joystickBase.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    for (const t of e.changedTouches) {
+      if (t.identifier === joystickTouchId) updateJoystick(t);
+    }
+  }, { passive: false });
+
+  joystickBase.addEventListener('touchend', (e) => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === joystickTouchId) {
+        joystickTouchId = null;
+        joystickActive = false;
+        joystickX = 0; joystickY = 0;
+        joystickThumb.style.transform = 'translate(-50%, -50%)';
+      }
+    }
+  });
+}
+
+function updateJoystick(touch) {
+  const rect = joystickBase.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  let dx = touch.clientX - cx;
+  let dy = touch.clientY - cy;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  if (dist > joystickRadius) {
+    dx = (dx / dist) * joystickRadius;
+    dy = (dy / dist) * joystickRadius;
+  }
+  joystickX = dx / joystickRadius;
+  joystickY = dy / joystickRadius;
+  joystickThumb.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+}
+
+function showMobileHint(text) {
+  const hint = document.getElementById('mobile-hint');
+  hint.textContent = text;
+  hint.classList.add('show');
+  setTimeout(() => hint.classList.remove('show'), 2000);
+}
+
+// =========================================================================
+// IMPROVEMENT 2: WEBGL SHADER TRANSITIONS
+// =========================================================================
+const transitionOverlay = (() => {
+  const geo = new THREE.PlaneGeometry(2, 2);
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uProgress: { value: 0.0 },
+      uTime: { value: 0.0 },
+    },
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position, 1.0); }`,
+    fragmentShader: `
+      uniform float uProgress;
+      uniform float uTime;
+      varying vec2 vUv;
+      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float noise(vec2 p){
+        vec2 i = floor(p); vec2 f = fract(p); f = f*f*(3.0-2.0*f);
+        return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x), f.y);
+      }
+      void main(){
+        float n = noise(vUv * 8.0 + uTime * 3.0);
+        float dissolve = smoothstep(uProgress - 0.1, uProgress + 0.1, n);
+        float alpha = uProgress > 0.001 ? (1.0 - dissolve) * uProgress * 2.0 : 0.0;
+        alpha = clamp(alpha, 0.0, 1.0);
+        vec3 col = mix(vec3(0.031,0.039,0.071), vec3(0.165,0.576,0.757), n * 0.3);
+        // Add glitch lines
+        float glitch = step(0.98, hash(vec2(floor(vUv.y * 40.0), uTime * 10.0))) * uProgress;
+        col += vec3(0.945,0.259,0.043) * glitch;
+        gl_FragColor = vec4(col, alpha);
+      }
+    `,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.renderOrder = 999;
+  mesh.frustumCulled = false;
+  return { mesh, mat };
+})();
+
+// Add to a separate scene rendered on top
+const transitionScene = new THREE.Scene();
+const transitionCamera = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+transitionScene.add(transitionOverlay.mesh);
+
+let transitionActive = false;
+let transitionProgress = 0;
+let transitionDirection = 1; // 1 = fading in, -1 = fading out
+
+function triggerTransition() {
+  if (transitionActive) return;
+  transitionActive = true;
+  transitionProgress = 0;
+  transitionDirection = 1;
+}
+
+// =========================================================================
+// IMPROVEMENT 4: AUDIO AMBIENCE (Web Audio API - oscillator based)
+// =========================================================================
+let audioCtx = null;
+let audioMuted = true;
+let audioNodes = {};
+let currentRoomAudio = -1;
+
+const roomAudioConfig = [
+  { freq: 55, type: 'sine', filterFreq: 200, gain: 0.06 },       // Entry: deep bass
+  { freq: 82, type: 'sine', filterFreq: 300, gain: 0.05 },       // Gallery
+  { freq: 110, type: 'sawtooth', filterFreq: 400, gain: 0.03 },  // War Room
+  { freq: 73, type: 'sine', filterFreq: 250, gain: 0.05 },       // Testimonial
+  { freq: 130, type: 'triangle', filterFreq: 600, gain: 0.04 },  // Arsenal: crisp
+  { freq: 98, type: 'sine', filterFreq: 350, gain: 0.05 },       // Team: warm
+  { freq: 146, type: 'sawtooth', filterFreq: 500, gain: 0.03 },  // AI Core: digital
+  { freq: 65, type: 'sine', filterFreq: 220, gain: 0.05 },       // Experience
+  { freq: 87, type: 'triangle', filterFreq: 300, gain: 0.05 },   // Gateway: confident
+];
+
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0;
+  masterGain.connect(audioCtx.destination);
+  audioNodes.master = masterGain;
+
+  // Create two oscillator layers for richness
+  const osc1 = audioCtx.createOscillator();
+  const osc2 = audioCtx.createOscillator();
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 200;
+  filter.Q.value = 1;
+
+  osc1.type = 'sine';
+  osc1.frequency.value = 55;
+  osc2.type = 'sine';
+  osc2.frequency.value = 55.5; // Slight detune for width
+
+  const gain1 = audioCtx.createGain();
+  gain1.gain.value = 0.06;
+  const gain2 = audioCtx.createGain();
+  gain2.gain.value = 0.03;
+
+  osc1.connect(gain1).connect(filter).connect(masterGain);
+  osc2.connect(gain2).connect(filter).connect(masterGain);
+  osc1.start();
+  osc2.start();
+
+  audioNodes.osc1 = osc1;
+  audioNodes.osc2 = osc2;
+  audioNodes.filter = filter;
+  audioNodes.gain1 = gain1;
+  audioNodes.gain2 = gain2;
+}
+
+function setRoomAudio(roomIdx) {
+  if (!audioCtx || audioMuted || roomIdx === currentRoomAudio) return;
+  currentRoomAudio = roomIdx;
+  const cfg = roomAudioConfig[Math.min(roomIdx, roomAudioConfig.length - 1)];
+  const now = audioCtx.currentTime;
+  audioNodes.osc1.frequency.linearRampToValueAtTime(cfg.freq, now + 1.5);
+  audioNodes.osc2.frequency.linearRampToValueAtTime(cfg.freq * 1.005, now + 1.5);
+  audioNodes.osc1.type = cfg.type;
+  audioNodes.filter.frequency.linearRampToValueAtTime(cfg.filterFreq, now + 1);
+  audioNodes.gain1.gain.linearRampToValueAtTime(cfg.gain, now + 1);
+  audioNodes.gain2.gain.linearRampToValueAtTime(cfg.gain * 0.5, now + 1);
+}
+
+function toggleAudio() {
+  initAudio();
+  audioMuted = !audioMuted;
+  const btn = document.getElementById('audio-toggle');
+  const now = audioCtx.currentTime;
+  if (audioMuted) {
+    audioNodes.master.gain.linearRampToValueAtTime(0, now + 0.5);
+    btn.classList.remove('unmuted');
+    btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>';
+  } else {
+    audioNodes.master.gain.linearRampToValueAtTime(1, now + 0.5);
+    btn.classList.add('unmuted');
+    btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>';
+    setRoomAudio(currentSection);
+  }
+}
+
+document.getElementById('audio-toggle').addEventListener('click', toggleAudio);
+
+// =========================================================================
+// IMPROVEMENT 6: TEAM BIO POPUP
+// =========================================================================
+const bioOverlay = document.getElementById('bio-overlay');
+const bioDescs = {
+  "Jared Sanborn": "Founder & CEO of Pure Technology. Building the future of AI-human partnerships since 2017.",
+  "Nathan Olson": "President overseeing company operations, strategy, and growth initiatives.",
+  "Melanie Salvador": "Deputy CEO managing cross-functional leadership and executive operations.",
+  "Mike Schuman": "Leading commercial strategy and business development partnerships.",
+  "Mireille Dirany": "Director of strategic programs and organizational development.",
+  "Phil Bliss": "Marketing leader driving brand awareness and creative campaigns.",
+  "John Smith": "Sales executive focused on revenue growth and client acquisition.",
+  "Nils Waschkau": "Operations leader ensuring seamless delivery and process excellence.",
+  "Michael Hancock": "General Counsel providing legal strategy and compliance oversight.",
+  "Mike Daser": "Head of People operations, culture, and talent development.",
+};
+
+function showBio(member) {
+  document.getElementById('bio-name').textContent = member.name;
+  document.getElementById('bio-role').textContent = member.role;
+  document.getElementById('bio-desc').textContent = bioDescs[member.name] || `${member.role} at Pure Technology, contributing to the company's mission of reimagining data-driven relationships.`;
+  const photo = document.getElementById('bio-photo');
+  if (member.img) {
+    photo.src = headBase + member.img;
+    photo.style.display = 'block';
+  } else {
+    photo.style.display = 'none';
+  }
+  const linkedinLink = document.getElementById('bio-linkedin');
+  linkedinLink.href = `https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(member.name + ' Pure Technology')}`;
+  bioOverlay.classList.add('visible');
+}
+
+document.getElementById('bio-close').addEventListener('click', () => bioOverlay.classList.remove('visible'));
+bioOverlay.addEventListener('click', (e) => { if (e.target === bioOverlay) bioOverlay.classList.remove('visible'); });
+
+// =========================================================================
+// IMPROVEMENT 8: MINI-MAP INITIALIZATION
+// =========================================================================
+function initMinimap() {
+  const track = document.querySelector('#minimap .mm-track');
+  if (!track) return;
+  const trackH = 160;
+  ROOMS.forEach((room, i) => {
+    const yPct = i / (ROOMS.length - 1);
+    // Section dot
+    const dot = document.createElement('div');
+    dot.className = 'mm-section';
+    dot.style.top = (yPct * trackH) + 'px';
+    dot.addEventListener('click', () => { if (freeMode) toggleFreeMode(); navigateToSection(i); });
+    track.appendChild(dot);
+    // Label
+    const lbl = document.createElement('div');
+    lbl.className = 'mm-label';
+    lbl.textContent = room.name;
+    lbl.style.top = (yPct * trackH) + 'px';
+    lbl.addEventListener('click', () => { if (freeMode) toggleFreeMode(); navigateToSection(i); });
+    track.appendChild(lbl);
+  });
+}
+initMinimap();
+
+function updateMinimap(progress) {
+  const dot = document.querySelector('#minimap .mm-dot');
+  if (dot) dot.style.top = (progress * 160) + 'px';
+}
+
+// =========================================================================
+// IMPROVEMENT 10: MOBILE GESTURE CONTROLS (Enhanced)
+// v3 gestures defer to v2 originals:
+//   - Double-tap: v2 free mode toggle (handled above in canvas touchstart)
+//   - Pinch: v2 enter free mode / v3 FOV zoom only in free mode (handled above)
+//   - Swipe: v3 guided-mode section navigation (below)
+//   - Long-press: v3 teleport to next section (replaces old double-tap teleport)
+// =========================================================================
+let swipeStartY = 0;
+let swipeStartTime = 0;
+let longPressTimer = null;
+
+if (MOBILE) {
+  // Swipe navigation in guided mode only
+  // Uses document-level listener; joystick stops propagation so no conflict
+  document.addEventListener('touchstart', (e) => {
+    if (freeMode) return;
+    swipeStartY = e.touches[0].clientY;
+    swipeStartTime = Date.now();
+  }, { passive: true });
+
+  document.addEventListener('touchend', (e) => {
+    if (freeMode) return;
+    const dy = swipeStartY - e.changedTouches[0].clientY;
+    const dt = Date.now() - swipeStartTime;
+    if (dt < 500 && Math.abs(dy) > 60) {
+      // Swipe detected
+      const direction = dy > 0 ? 1 : -1;
+      const targetSection = Math.min(Math.max(currentSection + direction, 0), ROOMS.length - 1);
+      navigateToSection(targetSection);
+      // Haptic feedback
+      if (navigator.vibrate) navigator.vibrate(15);
+    }
+  }, { passive: true });
+
+  // Long-press (600ms) to teleport to next section (replaces v3 double-tap teleport)
+  canvas.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) { clearTimeout(longPressTimer); return; }
+    longPressTimer = setTimeout(() => {
+      if (freeMode) {
+        let nearestIdx = currentSection;
+        if (nearestIdx < ROOMS.length - 1) nearestIdx++;
+        toggleFreeMode();
+        navigateToSection(nearestIdx);
+        if (navigator.vibrate) navigator.vibrate([10, 50, 10]);
+      }
+    }, 600);
+  }, { passive: true });
+
+  canvas.addEventListener('touchmove', () => { clearTimeout(longPressTimer); }, { passive: true });
+  canvas.addEventListener('touchend', () => { clearTimeout(longPressTimer); }, { passive: true });
+}
+
+// =========================================================================
+// SCROLL HANDLER
+// =========================================================================
+let currentProgress = 0;
+let currentSection = 0;
+
+function getScrollProgress() {
+  const total = document.getElementById('scroll-container').offsetHeight - window.innerHeight;
+  return Math.min(Math.max(window.scrollY / total, 0), 1);
+}
+
+function getSectionFromProgress(p) {
+  const idx = Math.round(p * (ROOMS.length - 1));
+  return Math.min(idx, ROOMS.length - 1);
+}
+
+function updateUI(section) {
+  if (section === currentSection) return;
+  currentSection = section;
+
+  document.querySelectorAll('.ndot').forEach((d, i) => d.classList.toggle('active', i === section));
+
+  const labelEl = document.getElementById('room-label');
+  if (labelEl) {
+    labelEl.innerHTML = `<span class="num">${String(section + 1).padStart(2, '0')}</span> ${ROOMS[section].name}`;
+  }
+
+  const hint = document.getElementById('scroll-hint');
+  if (hint) hint.style.opacity = section > 0 ? '0' : '1';
+}
+
+// =========================================================================
+// CONTROLS HINT OVERLAY
+// =========================================================================
+function showControls() {
+  const hint = document.getElementById('controls-hint');
+  hint.classList.add('visible');
+  if (MOBILE) {
+    document.getElementById('controls-table-desktop').style.display = 'none';
+    document.getElementById('controls-table-mobile').style.display = '';
+  }
+}
+
+window.dismissControls = function() {
+  document.getElementById('controls-hint').classList.remove('visible');
+  localStorage.setItem('immersive-controls-seen', '1');
+};
+
+// Show on first visit
+if (!localStorage.getItem('immersive-controls-seen')) {
+  setTimeout(showControls, 1500);
+}
+
+// =========================================================================
+// ANIMATION LOOP
+// =========================================================================
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  const dt = clock.getDelta();
+  const safeDt = Math.min(dt, 0.05);
+
+  if (freeMode) {
+    // Free movement
+    const speed = moveSpeed * (keys.shift ? sprintMultiplier : 1) * safeDt;
+
+    const forward = new THREE.Vector3();
+    camera.getWorldDirection(forward);
+    forward.y = 0;
+    forward.normalize();
+
+    const right = new THREE.Vector3();
+    right.crossVectors(forward, camera.up).normalize();
+
+    if (keys.w || keys.ArrowUp) camera.position.addScaledVector(forward, speed);
+    if (keys.s || keys.ArrowDown) camera.position.addScaledVector(forward, -speed);
+    if (keys.d || keys.ArrowRight) camera.position.addScaledVector(right, speed);
+    if (keys.a || keys.ArrowLeft) camera.position.addScaledVector(right, -speed);
+
+    // Joystick movement (mobile)
+    if (joystickActive) {
+      const jSpeed = moveSpeed * safeDt;
+      camera.position.addScaledVector(forward, -joystickY * jSpeed);
+      camera.position.addScaledVector(right, joystickX * jSpeed);
+    }
+
+    // Update nearest room for label
+    const camZ = -camera.position.z;
+    let nearest = 0;
+    let nearestDist = Infinity;
+    ROOMS.forEach((r, i) => {
+      const d = Math.abs(camZ - r.z);
+      if (d < nearestDist) { nearestDist = d; nearest = i; }
+    });
+    updateUI(nearest);
+
+    // Progress bar based on position
+    const totalZ = 760;
+    const approxProgress = Math.min(Math.max(camZ / totalZ, 0), 1);
+    document.getElementById('progress-bar').style.width = (approxProgress * 100) + '%';
+
+  } else if (!isAnimatingCamera) {
+    // Guided mode - scroll driven (skip if smooth animation in progress)
+    const rawProgress = getScrollProgress();
+    currentProgress += (rawProgress - currentProgress) * 0.08;
+    const p = currentProgress;
+
+    const camPos = cameraPath.getPointAt(Math.min(p, 0.999));
+    const lookPos = lookPath.getPointAt(Math.min(p, 0.999));
+
+    camera.position.lerp(camPos, 0.06);
+    camera.lookAt(lookPos);
+
+    const section = getSectionFromProgress(p);
+    updateUI(section);
+
+    document.getElementById('progress-bar').style.width = (p * 100) + '%';
+  } else {
+    // During smooth animation, update UI based on camera position
+    const camZ = -camera.position.z;
+    let nearest = 0, nearestDist = Infinity;
+    ROOMS.forEach((r, i) => { const d = Math.abs(camZ - r.z); if (d < nearestDist) { nearestDist = d; nearest = i; } });
+    updateUI(nearest);
+    document.getElementById('progress-bar').style.width = (Math.min(camZ / 760, 1) * 100) + '%';
+  }
+
+  // Room visibility culling - only render nearby rooms to prevent bleed-through
+  const camWorldZ = camera.position.z;
+  allRoomGroups.forEach(rg => {
+    const dist = Math.abs(camWorldZ - rg.position.z);
+    rg.visible = dist < 120;
+  });
+
+  // Billboard labels - always face camera
+  billboardLabels.forEach(label => {
+    if (label.userData.billboard) {
+      label.lookAt(camera.position);
+    }
+  });
+
+  // IMPROVEMENT 5: Animate hexagon logo with variable spin speed
+  logoMesh.rotation.y += logoSpinSpeed * safeDt;
+  logoMesh.position.y = 6.5 + Math.sin(t * 0.7) * 0.3;
+  logoGlow.rotation.z = -t * 0.15;
+  logoGlow.position.y = logoMesh.position.y;
+  logoGlowMat.opacity = 0.1 + Math.sin(t * 1.5) * 0.05;
+  // Decay spin speed back to normal
+  logoSpinSpeed += (0.3 - logoSpinSpeed) * 0.02;
+
+  // CTA pulse glow
+  ctaGlowMat.opacity = 0.06 + Math.sin(t * 3) * 0.06;
+  ctaGlowMesh.scale.setScalar(1 + Math.sin(t * 2) * 0.03);
+
+  // Portal animations - gentle spin and pulse
+  portalObjects.forEach((po, idx) => {
+    po.mesh.rotation.z = t * 0.5;
+    const parentGroup = po.group;
+    if (parentGroup) {
+      const dist = camera.position.distanceTo(parentGroup.position);
+      // Fade portals based on distance
+      const vis = dist < 40 && dist > 3;
+      parentGroup.visible = vis;
+      if (vis) {
+        po.mesh.material.opacity = 0.5 + Math.sin(t * 2 + idx) * 0.2;
+      }
+    }
+  });
+
+  // Section label update
+  const sectionLabelEl = document.getElementById('section-label-3d');
+  if (sectionLabelEl) {
+    const sec = freeMode ? currentSection : getSectionFromProgress(freeMode ? 0 : currentProgress);
+    if (ROOMS[sec]) {
+      sectionLabelEl.textContent = ROOMS[sec].name;
+      sectionLabelEl.classList.add('visible');
+    }
+  }
+
+  // Animate AI orbs
+  aiNodes.forEach((node) => {
+    node.mesh.position.y = node.baseY + Math.sin(t * 0.8 + node.phase) * 0.3;
+    node.mesh.rotation.y = t * 0.3;
+    node.mesh.rotation.x = Math.sin(t * 0.5 + node.phase) * 0.2;
+  });
+
+  // Portal rotation
+  portal.rotation.z = t * 0.3;
+  portal.rotation.x = Math.sin(t * 0.5) * 0.1;
+
+  // Inner glow pulse
+  innerGlowMat.opacity = 0.03 + Math.sin(t * 2) * 0.02;
+
+  // Bloom adjustment
+  const p = freeMode ? 0 : currentProgress;
+  if (p > 0.85) {
+    bloom.strength = 0.6 + Math.sin(t * 2) * 0.3;
+  } else {
+    bloom.strength = 0.6;
+  }
+
+  // === IMPROVEMENT 7: Animate flowing particles ===
+  const pPositions = particleGeo2.attributes.position.array;
+  for (let i = 0; i < particleCount; i++) {
+    pPositions[i*3+2] += particleSpeeds[i] * safeDt * 5;
+    // Slight sine wave drift
+    pPositions[i*3] += Math.sin(t * 0.5 + i * 0.1) * safeDt * 0.3;
+    pPositions[i*3+1] += Math.cos(t * 0.3 + i * 0.2) * safeDt * 0.15;
+    // Reset particles that flow past camera
+    if (pPositions[i*3+2] > 20) {
+      pPositions[i*3+2] = -800;
+      pPositions[i*3] = (Math.random() - 0.5) * 30;
+      pPositions[i*3+1] = (Math.random() - 0.5) * 12 + 2;
+    }
+  }
+  particleGeo2.attributes.position.needsUpdate = true;
+
+  // === IMPROVEMENT 3: Animate data viz bars (grow when camera is near) ===
+  const camDistToR3 = Math.abs(camera.position.z - room3Group.position.z);
+  if (camDistToR3 < 60) {
+    dataBars.forEach(db => {
+      db.currentH += (db.targetH - db.currentH) * 0.03;
+      db.mesh.scale.y = Math.max(db.currentH / 0.01, 1);
+      db.mesh.position.y = db.currentH * 0.5;
+    });
+  }
+
+  // Animate counters (when camera is near team room)
+  const camDistToR6 = Math.abs(camera.position.z - room6Group.position.z);
+  if (camDistToR6 < 60) {
+    counterMeshes.forEach(cm => {
+      if (cm.current < cm.target) {
+        cm.current = Math.min(cm.current + Math.ceil(cm.target * 0.02), cm.target);
+        const ctx = cm.ctx;
+        ctx.clearRect(0, 0, 256, 128);
+        ctx.fillStyle = 'rgba(8,10,18,0.7)';
+        ctx.fillRect(0, 0, 256, 128);
+        ctx.strokeStyle = 'rgba(42,147,193,0.2)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(4, 4, 248, 120);
+        ctx.font = "700 48px 'Oswald', sans-serif";
+        ctx.fillStyle = '#f1420b';
+        ctx.textAlign = 'center';
+        ctx.fillText(String(cm.current) + '+', 128, 60);
+        ctx.font = "500 14px 'Oswald', sans-serif";
+        ctx.fillStyle = 'rgba(232,234,240,0.5)';
+        ctx.fillText(cm.label, 128, 100);
+        cm.tex.needsUpdate = true;
+      }
+    });
+  }
+
+  // === IMPROVEMENT 5: Animate interactive orbs ===
+  interactiveOrbs.forEach((orb, i) => {
+    orb.rotation.y = t * 0.5 + i;
+    orb.rotation.x = Math.sin(t * 0.3 + i * 2) * 0.3;
+  });
+
+  // === IMPROVEMENT 2: Shader transition overlay ===
+  if (transitionActive) {
+    transitionOverlay.mat.uniforms.uTime.value = t;
+    if (transitionDirection === 1) {
+      transitionProgress += safeDt * 3.5;
+      if (transitionProgress >= 0.5) {
+        transitionDirection = -1;
+      }
+    } else {
+      transitionProgress -= safeDt * 3.5;
+      if (transitionProgress <= 0) {
+        transitionProgress = 0;
+        transitionActive = false;
+      }
+    }
+    transitionOverlay.mat.uniforms.uProgress.value = transitionProgress;
+  }
+
+  // === IMPROVEMENT 4: Update room audio ===
+  setRoomAudio(currentSection);
+
+  // === IMPROVEMENT 8: Update minimap ===
+  const mmProgress = freeMode
+    ? Math.min(Math.max(-camera.position.z / 760, 0), 1)
+    : currentProgress;
+  updateMinimap(mmProgress);
+
+  composer.render();
+
+  // Render transition overlay on top if active
+  if (transitionActive) {
+    renderer.autoClear = false;
+    renderer.clearDepth();
+    renderer.render(transitionScene, transitionCamera);
+    renderer.autoClear = true;
+  }
+}
+
+// =========================================================================
+// LOADING - IMPROVEMENT 9: Enhanced branded loading experience
+// =========================================================================
+const loadBar = document.getElementById('load-inner');
+let loadProgress = 0;
+let sceneReady = false;
+
+// Scene is ready after first render
+requestAnimationFrame(() => { sceneReady = true; });
+
+const loadInterval = setInterval(() => {
+  // Progress accelerates but caps at 85% until scene is ready
+  const maxProgress = sceneReady ? 100 : 85;
+  loadProgress += Math.random() * 8 + 3;
+  if (loadProgress >= maxProgress) {
+    loadProgress = maxProgress;
+    if (sceneReady) {
+      clearInterval(loadInterval);
+      loadProgress = 100;
+      loadBar.style.width = '100%';
+      setTimeout(() => {
+        document.getElementById('loading').classList.add('done');
+      }, 500);
+    }
+  }
+  loadBar.style.width = loadProgress + '%';
+}, 120);
+
+animate();
+
+// =========================================================================
+// RESIZE
+// =========================================================================
+window.addEventListener('resize', () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+});
+
+</script>
+</body>
+</html>

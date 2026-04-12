@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AETHER — Glass Liquid Capstone / Night 19</title>
+<style>
+  /* ============================================================
+     NIGHT 19 — GLASS LIQUID CAPSTONE
+     Fusion of: Night 18 thin-film, glass prototype recipe,
+     meshy showcase post-processing, iStock liquid motion,
+     peachworlds restraint, Gleb 8-gap fixes.
+     ============================================================ */
+
+  :root {
+    --navy: #080a12;
+    --navy-deep: #04060c;
+    --blue: #2a93c1;
+    --blue-dim: rgba(42, 147, 193, 0.35);
+    --orange: #f1420b;
+    --white-95: rgba(255, 255, 255, 0.95);
+    --white-40: rgba(255, 255, 255, 0.40);
+    --white-15: rgba(255, 255, 255, 0.15);
+    --ease-cine: cubic-bezier(0.645, 0.045, 0.355, 1.000);
+    --ease-slow: cubic-bezier(0.770, 0.000, 0.175, 1.000);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: var(--navy);
+    overflow: hidden;
+    font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+    font-weight: 300;
+    color: var(--white-95);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Fallback CSS gradient (mobile / WebGL-fail) */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    z-index: 0;
+    background:
+      radial-gradient(ellipse 70% 55% at 50% 55%, rgba(42,147,193,0.10) 0%, transparent 60%),
+      radial-gradient(ellipse 45% 40% at 50% 50%, rgba(241,66,11,0.04) 0%, transparent 70%),
+      linear-gradient(180deg, #04060c 0%, #080a12 50%, #04060c 100%);
+  }
+
+  #c {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+    z-index: 1;
+    opacity: 0;
+    transition: opacity 2.4s var(--ease-cine);
+  }
+  #c.ready { opacity: 1; }
+
+  /* ============================================================
+     TYPOGRAPHY LAYER — restrained, negative space dominant
+     Weight 300, enormous, positioned off-center (bottom-right)
+     ============================================================ */
+  .type-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .headline {
+    position: absolute;
+    right: 6vw;
+    bottom: 7vh;
+    font-size: clamp(5rem, 14vw, 11rem);
+    font-weight: 200;
+    letter-spacing: -0.04em;
+    line-height: 0.85;
+    color: var(--white-95);
+    mix-blend-mode: screen;
+    opacity: 0;
+    transform: translateY(30px);
+    transition:
+      opacity 2.4s var(--ease-cine) 0.9s,
+      transform 2.4s var(--ease-cine) 0.9s;
+  }
+  .headline.ready { opacity: 1; transform: translateY(0); }
+
+  .headline .thin {
+    font-weight: 200;
+    color: var(--white-95);
+  }
+  .headline .accent {
+    font-weight: 300;
+    color: var(--orange);
+    font-style: italic;
+    opacity: 0.95;
+  }
+
+  .eyebrow {
+    position: absolute;
+    top: 5vh;
+    left: 5vw;
+    font-size: 11px;
+    font-weight: 300;
+    letter-spacing: 0.42em;
+    text-transform: uppercase;
+    color: var(--white-40);
+    opacity: 0;
+    transition: opacity 2.0s var(--ease-cine) 0.3s;
+  }
+  .eyebrow.ready { opacity: 1; }
+
+  .eyebrow .sep {
+    display: inline-block;
+    width: 42px;
+    height: 1px;
+    background: var(--white-15);
+    vertical-align: middle;
+    margin: 0 18px 3px;
+  }
+
+  .footnote {
+    position: absolute;
+    left: 5vw;
+    bottom: 5vh;
+    font-size: 10px;
+    font-weight: 300;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--white-40);
+    opacity: 0;
+    transition: opacity 2.0s var(--ease-cine) 1.6s;
+  }
+  .footnote.ready { opacity: 0.65; }
+
+  .footnote .dot {
+    display: inline-block;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--orange);
+    vertical-align: middle;
+    margin-right: 14px;
+    animation: pulse 4s var(--ease-slow) infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.35); }
+  }
+
+  /* Vignette overlay — subtle darkening at edges */
+  .vignette {
+    position: fixed;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    background: radial-gradient(
+      ellipse 90% 80% at 50% 50%,
+      transparent 50%,
+      rgba(4, 6, 12, 0.55) 100%
+    );
+    mix-blend-mode: multiply;
+  }
+
+  /* Film grain overlay — surface imperfection (Gleb gap fix) */
+  .grain {
+    position: fixed;
+    inset: -50%;
+    width: 200%; height: 200%;
+    z-index: 4;
+    pointer-events: none;
+    opacity: 0.055;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    animation: grain 8s steps(8) infinite;
+  }
+  @keyframes grain {
+    0%,100% { transform: translate(0,0); }
+    10%  { transform: translate(-3%,-2%); }
+    20%  { transform: translate(2%,1%); }
+    30%  { transform: translate(-1%,3%); }
+    40%  { transform: translate(3%,-1%); }
+    50%  { transform: translate(-2%,2%); }
+    60%  { transform: translate(1%,-3%); }
+    70%  { transform: translate(-3%,1%); }
+    80%  { transform: translate(2%,-2%); }
+    90%  { transform: translate(-1%,-1%); }
+  }
+
+  @media (max-width: 768px) {
+    .headline { right: 5vw; bottom: 5vh; font-size: clamp(3.5rem, 20vw, 6rem); }
+    .eyebrow { font-size: 9px; letter-spacing: 0.32em; }
+    .eyebrow .sep { width: 28px; margin: 0 12px 3px; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div class="type-layer">
+  <div class="eyebrow" id="eyebrow">
+    PURE TECHNOLOGY
+    <span class="sep"></span>
+    NEURAL FEED
+  </div>
+
+  <h1 class="headline" id="headline">
+    <span class="thin">aether</span><span class="accent">.</span>
+  </h1>
+
+  <div class="footnote" id="footnote">
+    <span class="dot"></span>
+    LIVING GLASS / NIGHT 19
+  </div>
+</div>
+
+<div class="vignette"></div>
+<div class="grain"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+
+<script>
+/* ================================================================
+   NIGHT 19 — GLASS LIQUID CAPSTONE
+   A slowly morphing translucent mass with thin-film iridescence,
+   inner neural activity visible through, autonomous cinematic orbit.
+   ================================================================ */
+
+(function() {
+  'use strict';
+
+  if (!window.WebGLRenderingContext) {
+    document.getElementById('c').style.display = 'none';
+    document.getElementById('eyebrow').classList.add('ready');
+    document.getElementById('headline').classList.add('ready');
+    document.getElementById('footnote').classList.add('ready');
+    return;
+  }
+
+  const canvas = document.getElementById('c');
+  const renderer = new THREE.WebGLRenderer({
+    canvas: canvas,
+    antialias: true,
+    alpha: false,
+    powerPreference: 'high-performance'
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.setClearColor(0x04060c, 1.0);
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x04060c, 0.08);
+
+  const camera = new THREE.PerspectiveCamera(
+    38,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    100
+  );
+  camera.position.set(0, 0, 7.5);
+  camera.lookAt(0, 0, 0);
+
+  /* ================================================================
+     GLEB 6-LIGHT COLORED STUDIO (from glass-prototype)
+     Adapted to single-accent restraint: 1 key + 4 cool fills + 1 warm rim
+     ================================================================ */
+  scene.add(new THREE.AmbientLight(0x0a0e18, 0.6));
+
+  const keyLight = new THREE.DirectionalLight(0xf0f6ff, 2.6);
+  keyLight.position.set(-3, 4, 3);
+  scene.add(keyLight);
+
+  const fillBlue = new THREE.DirectionalLight(0x2a93c1, 1.4);
+  fillBlue.position.set(4, 1, 2);
+  scene.add(fillBlue);
+
+  const rimCyan = new THREE.DirectionalLight(0x18a8d3, 0.9);
+  rimCyan.position.set(2, -2, -4);
+  scene.add(rimCyan);
+
+  const underBlue = new THREE.DirectionalLight(0x0d16f5, 0.55);
+  underBlue.position.set(-2, -3, 1);
+  scene.add(underBlue);
+
+  // Single orange accent — pulsed in animate loop
+  const orangeAccent = new THREE.PointLight(0xf1420b, 0.0, 10, 2.0);
+  orangeAccent.position.set(1.8, 0.5, 2.0);
+  scene.add(orangeAccent);
+
+  /* ================================================================
+     PROCEDURAL HDR ENVIRONMENT via PMREMGenerator
+     Gleb: "studio with colored light sources in environment"
+     ================================================================ */
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  pmrem.compileEquirectangularShader();
+
+  const envScene = new THREE.Scene();
+  envScene.background = new THREE.Color(0x04060c);
+  const envPoints = [
+    { pos: [-6,  8, -4], color: 0xe8f0ff, s: 0.85 }, // key — cool white
+    { pos: [ 7,  4,  3], color: 0x2a93c1, s: 0.55 }, // brand blue fill
+    { pos: [ 5, -3, -6], color: 0x18a8d3, s: 0.45 }, // cyan rim
+    { pos: [-5, -5,  2], color: 0x0a0e18, s: 0.5 },  // deep shadow
+    { pos: [ 3,  2,  7], color: 0x04060c, s: 0.4 }   // void
+  ];
+  const envGeo = new THREE.SphereGeometry(1, 6, 6);
+  envPoints.forEach(function(e) {
+    const m = new THREE.MeshBasicMaterial({ color: e.color });
+    const mesh = new THREE.Mesh(envGeo, m);
+    mesh.position.set(e.pos[0], e.pos[1], e.pos[2]);
+    mesh.scale.setScalar(e.s);
+    envScene.add(mesh);
+  });
+  const envMap = pmrem.fromScene(envScene, 0.04).texture;
+  scene.environment = envMap;
+  pmrem.dispose();
+
+  /* ================================================================
+     LIQUID GLASS MASS
+     Custom ShaderMaterial with:
+     - Vertex shader: 3D Simplex noise displacement (organic flow)
+     - Fragment shader: thin-film iridescence (from night18) +
+                        fresnel + env reflection + inner glow
+     ================================================================ */
+
+  const glslNoise = `
+    // ashima/webgl-noise 3D simplex (MIT)
+    vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
+    vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
+    vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
+    vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}
+    float snoise(vec3 v){
+      const vec2 C=vec2(1.0/6.0,1.0/3.0);
+      const vec4 D=vec4(0.0,0.5,1.0,2.0);
+      vec3 i=floor(v+dot(v,C.yyy));
+      vec3 x0=v-i+dot(i,C.xxx);
+      vec3 g=step(x0.yzx,x0.xyz);
+      vec3 l=1.0-g;
+      vec3 i1=min(g.xyz,l.zxy);
+      vec3 i2=max(g.xyz,l.zxy);
+      vec3 x1=x0-i1+C.xxx;
+      vec3 x2=x0-i2+C.yyy;
+      vec3 x3=x0-D.yyy;
+      i=mod289(i);
+      vec4 p=permute(permute(permute(
+        i.z+vec4(0.0,i1.z,i2.z,1.0))
+        +i.y+vec4(0.0,i1.y,i2.y,1.0))
+        +i.x+vec4(0.0,i1.x,i2.x,1.0));
+      float n_=0.142857142857;
+      vec3 ns=n_*D.wyz-D.xzx;
+      vec4 j=p-49.0*floor(p*ns.z*ns.z);
+      vec4 x_=floor(j*ns.z);
+      vec4 y_=floor(j-7.0*x_);
+      vec4 x=x_*ns.x+ns.yyyy;
+      vec4 y=y_*ns.x+ns.yyyy;
+      vec4 h=1.0-abs(x)-abs(y);
+      vec4 b0=vec4(x.xy,y.xy);
+      vec4 b1=vec4(x.zw,y.zw);
+      vec4 s0=floor(b0)*2.0+1.0;
+      vec4 s1=floor(b1)*2.0+1.0;
+      vec4 sh=-step(h,vec4(0.0));
+      vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;
+      vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+      vec3 p0=vec3(a0.xy,h.x);
+      vec3 p1=vec3(a0.zw,h.y);
+      vec3 p2=vec3(a1.xy,h.z);
+      vec3 p3=vec3(a1.zw,h.w);
+      vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+      p0*=norm.x; p1*=norm.y; p2*=norm.z; p3*=norm.w;
+      vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0);
+      m=m*m;
+      return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+    }
+  `;
+
+  const vertexShader = `
+    uniform float uTime;
+    uniform float uDisplace;
+    uniform float uFlowSpeed;
+    varying vec3 vNormal;
+    varying vec3 vWorldPos;
+    varying vec3 vViewPos;
+    varying float vNoise;
+    varying vec3 vPosition;
+
+    ${glslNoise}
+
+    // fBm: layered noise for organic liquid motion
+    float fbm(vec3 p) {
+      float v = 0.0;
+      float a = 0.5;
+      vec3 shift = vec3(100.0);
+      for (int i = 0; i < 4; i++) {
+        v += a * snoise(p);
+        p = p * 2.02 + shift;
+        a *= 0.5;
+      }
+      return v;
+    }
+
+    void main() {
+      vec3 pos = position;
+      float t = uTime * uFlowSpeed;
+
+      // Large slow morph (the "breathing" of the mass)
+      float big = fbm(pos * 0.9 + vec3(t * 0.15, t * 0.10, -t * 0.12));
+      // Medium swirl (the "flow")
+      float mid = fbm(pos * 1.8 + vec3(-t * 0.25, t * 0.20, t * 0.18)) * 0.55;
+      // Fine surface ripple
+      float fine = snoise(pos * 4.5 + vec3(t * 0.35)) * 0.12;
+
+      float n = big + mid + fine;
+      vNoise = n;
+
+      // Displace along original normal
+      vec3 displaced = pos + normal * n * uDisplace;
+
+      // Recompute normal (approximate via neighbor sampling)
+      float eps = 0.01;
+      vec3 tangent1 = normalize(cross(normal, vec3(0.0, 1.0, 0.1)));
+      vec3 tangent2 = normalize(cross(normal, tangent1));
+      vec3 neighbor1 = pos + tangent1 * eps;
+      vec3 neighbor2 = pos + tangent2 * eps;
+      float n1 = fbm(neighbor1 * 0.9 + vec3(t*0.15, t*0.10, -t*0.12))
+               + fbm(neighbor1 * 1.8 + vec3(-t*0.25, t*0.20, t*0.18)) * 0.55;
+      float n2 = fbm(neighbor2 * 0.9 + vec3(t*0.15, t*0.10, -t*0.12))
+               + fbm(neighbor2 * 1.8 + vec3(-t*0.25, t*0.20, t*0.18)) * 0.55;
+      vec3 d1 = (neighbor1 + tangent1 * 0.0) + normal * n1 * uDisplace - displaced;
+      vec3 d2 = (neighbor2 + tangent2 * 0.0) + normal * n2 * uDisplace - displaced;
+      vec3 newNormal = normalize(cross(d1, d2));
+      if (dot(newNormal, normal) < 0.0) newNormal = -newNormal;
+
+      vPosition = displaced;
+      vec4 worldPos = modelMatrix * vec4(displaced, 1.0);
+      vWorldPos = worldPos.xyz;
+      vNormal = normalize(mat3(modelMatrix) * newNormal);
+      vec4 mvPos = viewMatrix * worldPos;
+      vViewPos = -mvPos.xyz;
+      gl_Position = projectionMatrix * mvPos;
+    }
+  `;
+
+  const fragmentShader = `
+    precision highp float;
+
+    uniform float uTime;
+    uniform sampler2D uEnvMap;
+    uniform vec3 uBlue;
+    uniform vec3 uOrange;
+    uniform vec3 uNavy;
+    uniform float uOrangePulse;
+    uniform float uThicknessBase;
+
+    varying vec3 vNormal;
+    varying vec3 vWorldPos;
+    varying vec3 vViewPos;
+    varying float vNoise;
+    varying vec3 vPosition;
+
+    #define PI 3.14159265359
+
+    // Equirectangular env lookup (PMREM in r128 is 2D equirect, not cubemap)
+    vec3 sampleEnv(vec3 dir) {
+      vec2 uv = vec2(
+        atan(dir.z, dir.x) / (2.0 * PI) + 0.5,
+        asin(clamp(dir.y, -1.0, 1.0)) / PI + 0.5
+      );
+      return texture2D(uEnvMap, uv).rgb;
+    }
+
+    // --- Night 18 thin-film spectral computation ---
+    vec3 wavelengthToRGB(float lambda) {
+      float t;
+      vec3 rgb = vec3(0.0);
+      if (lambda >= 580.0 && lambda < 780.0) {
+        t = (lambda - 580.0) / 200.0;
+        rgb.r = 1.0 - t * t;
+      } else if (lambda >= 510.0 && lambda < 580.0) {
+        t = (lambda - 510.0) / 70.0;
+        rgb.r = t * t;
+      }
+      if (lambda >= 440.0 && lambda < 580.0) {
+        t = (lambda - 440.0) / 140.0;
+        rgb.g = sin(t * PI);
+      }
+      if (lambda >= 380.0 && lambda < 510.0) {
+        t = (lambda - 380.0) / 130.0;
+        rgb.b = sin(t * PI);
+      }
+      return rgb;
+    }
+
+    vec3 thinFilmColor(float cosTheta, float thickness) {
+      float n_film = 1.33;
+      float sinT = sqrt(1.0 - cosTheta * cosTheta);
+      float sinT_t = sinT / n_film;
+      float cosT_t = sqrt(max(0.0, 1.0 - sinT_t * sinT_t));
+      // Optical path diff in nm (thickness is in nm)
+      float opd = 2.0 * n_film * thickness * cosT_t;
+
+      // Find the dominant CONSTRUCTIVELY-interfering wavelength
+      // Constructive: opd = (m + 0.5) * lambda  → lambda = opd / (m + 0.5)
+      // Pick lowest-order m that lands in visible (380-780)
+      vec3 color = vec3(0.0);
+      float weightSum = 0.0;
+      for (int m = 0; m < 4; m++) {
+        float lambda = opd / (float(m) + 0.5);
+        if (lambda >= 380.0 && lambda <= 780.0) {
+          // Strength falls with order
+          float w = 1.0 / (float(m) + 1.0);
+          color += wavelengthToRGB(lambda) * w;
+          weightSum += w;
+        }
+      }
+      if (weightSum > 0.001) color /= weightSum;
+
+      // Saturate
+      float mx = max(color.r, max(color.g, color.b));
+      if (mx > 0.001) color /= mx;
+      color = pow(color, vec3(0.85));
+      return color;
+    }
+
+    float fresnelSchlick(float cosTheta, float F0) {
+      return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+    }
+
+    // LUT-style color grading: cinematic tone curve (lift shadows, roll highlights)
+    vec3 colorGrade(vec3 c) {
+      // Shadow tint toward navy
+      vec3 shadows = mix(uNavy * 1.2, vec3(1.0), smoothstep(0.0, 0.4, c));
+      c *= shadows;
+      // Highlight rolloff
+      c = c / (1.0 + c * 0.6);
+      // Slight desaturation in mids
+      float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      c = mix(vec3(l), c, 0.92);
+      // Subtle blue-to-warm split
+      c.r *= 1.03;
+      c.b *= 1.02;
+      return c;
+    }
+
+    void main() {
+      vec3 N = normalize(vNormal);
+      vec3 V = normalize(vViewPos);
+      float NdotV = max(dot(N, V), 0.0);
+
+      // --- Thin-film iridescence (scaled down vs night18, more restrained) ---
+      float thickness = uThicknessBase
+        + 140.0 * sin(vPosition.x * 2.5 + uTime * 0.25)
+        + 100.0 * sin(vPosition.y * 3.0 + uTime * 0.18)
+        +  90.0 * sin(vPosition.z * 3.6 + uTime * 0.22)
+        + vNoise * 180.0;
+      thickness = clamp(thickness, 140.0, 760.0);
+      vec3 iridescence = thinFilmColor(NdotV, thickness);
+
+      // --- Environment reflection via equirect env ---
+      vec3 I = -V;
+      vec3 R = reflect(I, N);
+      vec3 envRefl = sampleEnv(R) * 0.35;
+
+      // --- Refraction (transmitted light — what you see "through" the glass) ---
+      vec3 refrDir = refract(I, N, 1.0 / 1.45);
+      vec3 envRefr = sampleEnv(refrDir) * 0.12;
+
+      // --- Inner neural activity visible through translucent mass ---
+      // Multiple pulse layers at different frequencies = "neural firing"
+      float pulseA = 0.5 + 0.5 * sin(vNoise * 7.0 + uTime * 0.7);
+      float pulseB = 0.5 + 0.5 * sin(vNoise * 13.0 - uTime * 1.1 + 2.0);
+      float pulseC = 0.5 + 0.5 * sin(length(vPosition) * 9.0 + uTime * 0.4);
+      float inner = pulseA * 0.5 + pulseB * 0.3 + pulseC * 0.4;
+      // Deeper glow in the core (where transmitted ray length is longest)
+      float coreWeight = smoothstep(0.15, 0.85, 1.0 - NdotV);
+      inner *= coreWeight;
+      // Deep cerulean, not washed out
+      vec3 innerGlow = uBlue * inner * 1.6
+                     + vec3(0.1, 0.35, 0.55) * pulseB * coreWeight;
+
+      // --- Fresnel ---
+      float F = fresnelSchlick(NdotV, 0.04);
+      F = mix(F, 1.0, 0.12); // lift minimum reflection
+
+      // --- Composite (RESTRAINED) ---
+      // Transmitted = what you see THROUGH the glass: deep navy + neural core glow
+      vec3 transmitted = uNavy * 0.9 + envRefr + innerGlow * 1.25;
+      // Reflected = environment + iridescent thin film
+      vec3 reflected = envRefl + iridescence * 0.55;
+      // Fresnel blend — mostly transmitted at normal, reflective at grazing
+      float fBlend = clamp(F * 0.70 + 0.08, 0.0, 1.0);
+      vec3 col = mix(transmitted, reflected, fBlend);
+
+      // --- Iridescent edge rim ---
+      float rim = pow(1.0 - NdotV, 4.0);
+      col += iridescence * rim * 1.15;
+      col += uBlue * rim * 0.35;
+
+      // --- Depth falloff: darken back-facing / high curvature areas ---
+      col *= 0.75 + 0.25 * NdotV;
+
+      // --- Single orange accent (pulsed from JS via uniform) ---
+      vec3 orangeLightDir = normalize(vec3(1.8, 0.5, 2.0) - vWorldPos);
+      float orangeDot = max(dot(N, orangeLightDir), 0.0);
+      col += uOrange * orangeDot * uOrangePulse * 0.55;
+      col += uOrange * rim * uOrangePulse * 0.35;
+
+      // --- Color grade (LUT-style curve) ---
+      col = colorGrade(col);
+
+      // --- Vignette-ish attenuation with depth ---
+      float depthFade = exp(-length(vViewPos) * 0.035);
+      col *= 0.82 + 0.18 * depthFade;
+
+      // --- Tone map (ACES approximation) ---
+      col = (col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14);
+
+      // --- Gamma ---
+      col = pow(col, vec3(1.0 / 2.2));
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `;
+
+  const glassUniforms = {
+    uTime:           { value: 0 },
+    uDisplace:       { value: 0.18 },
+    uFlowSpeed:      { value: 0.28 },
+    uEnvMap:         { value: envMap },
+    uBlue:           { value: new THREE.Color(0x2a93c1) },
+    uOrange:         { value: new THREE.Color(0xf1420b) },
+    uNavy:           { value: new THREE.Color(0x080a12) },
+    uOrangePulse:    { value: 0 },
+    uThicknessBase:  { value: 380 }
+  };
+
+  const glassMaterial = new THREE.ShaderMaterial({
+    uniforms: glassUniforms,
+    vertexShader: vertexShader,
+    fragmentShader: fragmentShader,
+    transparent: false,
+    side: THREE.FrontSide
+  });
+
+  // High-poly sphere = canvas for the liquid displacement
+  const geo = new THREE.SphereGeometry(1.0, 160, 160);
+  const liquid = new THREE.Mesh(geo, glassMaterial);
+  scene.add(liquid);
+
+  // Neural core is rendered inside the fragment shader via transmitted ray
+  // depth + noise — no separate geometry needed.
+
+  /* ================================================================
+     POST-PROCESSING: UnrealBloom + custom grade/CA/vignette pass
+     ================================================================ */
+  const composer = new THREE.EffectComposer(renderer);
+  composer.addPass(new THREE.RenderPass(scene, camera));
+
+  // Bloom — restrained (Gleb gap fix: less is more)
+  const bloomPass = new THREE.UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    0.35,  // strength — restrained
+    0.75,  // radius
+    0.88   // threshold — very high, only rim/specular
+  );
+  composer.addPass(bloomPass);
+
+  // Custom final pass: chromatic aberration + color grade + vignette
+  const finalPass = new THREE.ShaderPass({
+    uniforms: {
+      tDiffuse:   { value: null },
+      uTime:      { value: 0 },
+      uAberration:{ value: 0.0009 },
+      uVignette:  { value: 1.15 }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D tDiffuse;
+      uniform float uTime;
+      uniform float uAberration;
+      uniform float uVignette;
+      varying vec2 vUv;
+
+      void main() {
+        vec2 uv = vUv;
+        vec2 center = vec2(0.5);
+        vec2 dir = uv - center;
+        float dist = length(dir);
+
+        // Chromatic aberration — radial, distance-weighted
+        float a = uAberration * (1.0 + dist * 2.0);
+        vec2 offR = dir * a;
+        vec2 offB = -dir * a;
+        float r = texture2D(tDiffuse, uv + offR).r;
+        float g = texture2D(tDiffuse, uv).g;
+        float b = texture2D(tDiffuse, uv + offB).b;
+        vec3 col = vec3(r, g, b);
+
+        // Film-curve highlight rolloff
+        col = col / (col + 0.08);
+        col *= 1.08;
+
+        // Lift shadows toward navy (deep tone)
+        vec3 navy = vec3(0.031, 0.039, 0.070);
+        col = mix(navy, col, smoothstep(0.0, 0.12, length(col)));
+
+        // Vignette
+        float vig = 1.0 - smoothstep(0.35, 0.95, dist * uVignette);
+        col *= mix(0.55, 1.0, vig);
+
+        // Subtle blue shadow cast
+        col.b = mix(col.b, col.b * 1.02, 1.0 - vig);
+
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `
+  });
+  composer.addPass(finalPass);
+
+  /* ================================================================
+     AUTONOMOUS CAMERA — 20-second cinematic orbit
+     Custom cubic-bezier easing (not default)
+     ================================================================ */
+  const CAMERA_LOOP = 22.0; // seconds
+  const RADIUS_BASE = 7.2;
+
+  // Cubic bezier easing (approximates CSS cubic-bezier(0.645, 0.045, 0.355, 1))
+  function cubicBezier(t) {
+    // Smoothstep-ish slow-in slow-out
+    return t * t * (3.0 - 2.0 * t);
+  }
+
+  function updateCamera(time) {
+    const loopT = (time % CAMERA_LOOP) / CAMERA_LOOP;
+    const eased = cubicBezier(loopT);
+
+    // Slow horizontal sweep + gentle vertical figure-8
+    const angleY = eased * Math.PI * 2.0;
+    const angleX = Math.sin(eased * Math.PI * 2.0) * 0.18;
+
+    // Radius breathes slowly
+    const radius = RADIUS_BASE + Math.sin(time * 0.08) * 0.35;
+
+    camera.position.x = Math.sin(angleY) * radius * Math.cos(angleX);
+    camera.position.y = Math.sin(angleX) * radius + Math.sin(time * 0.06) * 0.15;
+    camera.position.z = Math.cos(angleY) * radius * Math.cos(angleX);
+    camera.lookAt(0, 0, 0);
+  }
+
+  /* ================================================================
+     ANIMATE
+     ================================================================ */
+  const clock = new THREE.Clock();
+  let frameCount = 0;
+  let accumTime = 0;
+  let avgFps = 60;
+
+  function animate() {
+    requestAnimationFrame(animate);
+
+    const dt = clock.getDelta();
+    const t = clock.getElapsedTime();
+
+    glassUniforms.uTime.value = t;
+    finalPass.uniforms.uTime.value = t;
+
+    // Orange pulse — every ~9 seconds, 1.2s duration
+    const pulsePeriod = 9.0;
+    const pulsePhase = (t % pulsePeriod) / pulsePeriod;
+    let pulseAmount = 0;
+    if (pulsePhase < 0.13) {
+      const p = pulsePhase / 0.13;
+      pulseAmount = Math.sin(p * Math.PI); // smooth up-down
+    }
+    glassUniforms.uOrangePulse.value = pulseAmount * 0.85;
+    orangeAccent.intensity = pulseAmount * 2.2;
+
+    // Slow liquid rotation
+    liquid.rotation.y = t * 0.04;
+    liquid.rotation.x = Math.sin(t * 0.05) * 0.08;
+
+    updateCamera(t);
+
+    composer.render();
+
+    // FPS monitor — adaptive quality
+    frameCount++;
+    accumTime += dt;
+    if (accumTime >= 1.0) {
+      avgFps = frameCount / accumTime;
+      if (avgFps < 32 && renderer.getPixelRatio() > 1.0) {
+        renderer.setPixelRatio(1.0);
+        composer.setPixelRatio(1.0);
+      }
+      frameCount = 0;
+      accumTime = 0;
+    }
+  }
+
+  function onResize() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+    composer.setSize(w, h);
+  }
+  window.addEventListener('resize', onResize);
+
+  // Kick off
+  animate();
+
+  // Staged reveal
+  setTimeout(function() {
+    canvas.classList.add('ready');
+    document.getElementById('eyebrow').classList.add('ready');
+    document.getElementById('headline').classList.add('ready');
+    document.getElementById('footnote').classList.add('ready');
+  }, 150);
+
+})();
+</script>
+
+</body>
+</html>

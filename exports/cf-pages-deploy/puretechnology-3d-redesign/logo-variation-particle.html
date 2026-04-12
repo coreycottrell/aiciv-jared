@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology — Particle Dissolve</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body {
+  width:100%; height:100%;
+  background:#080a12;
+  overflow:hidden;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+canvas { display:block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// ============================================================
+//  PURE TECHNOLOGY — PARTICLE DISSOLVE VARIATION
+//  Logo breathes: assembles → holds solid → dissolves →
+//  particles scatter → drift back → reassemble
+//  13 rings, 5° spiral step, cyan-blue outer / orange-red inner
+// ============================================================
+
+const CANVAS = document.getElementById('c');
+const CTX    = CANVAS.getContext('2d');
+
+function resize() {
+  const s = Math.min(window.innerWidth, window.innerHeight);
+  CANVAS.width  = s;
+  CANVAS.height = s;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ---- color interpolation ----
+function lerpColor(t, alpha) {
+  const r = Math.round(241 + (43  - 241) * t);
+  const g = Math.round( 66 + (147 -  66) * t);
+  const b = Math.round( 11 + (193 -  11) * t);
+  return alpha !== undefined
+    ? `rgba(${r},${g},${b},${alpha})`
+    : `rgb(${r},${g},${b})`;
+}
+
+function lerpColorRGB(t) {
+  return {
+    r: Math.round(241 + (43  - 241) * t),
+    g: Math.round( 66 + (147 -  66) * t),
+    b: Math.round( 11 + (193 -  11) * t)
+  };
+}
+
+function hexVerts(radius, rotation) {
+  const pts = new Array(6);
+  for (let i = 0; i < 6; i++) {
+    const a = rotation + (Math.PI * 2 * i) / 6;
+    pts[i] = { x: radius * Math.cos(a), y: radius * Math.sin(a) };
+  }
+  return pts;
+}
+
+function drawHexRing(ctx, radius, rotation, color, lw, alpha) {
+  const v = hexVerts(radius, rotation);
+  ctx.beginPath();
+  ctx.moveTo(v[0].x, v[0].y);
+  for (let i = 1; i < 6; i++) ctx.lineTo(v[i].x, v[i].y);
+  ctx.closePath();
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = lw;
+  ctx.globalAlpha = alpha;
+  ctx.stroke();
+}
+
+function drawVortexSpokes(ctx, rA, rotA, rB, rotB, tA, tB, lw, alpha) {
+  const vA = hexVerts(rA, rotA);
+  const vB = hexVerts(rB, rotB);
+  for (let i = 0; i < 6; i++) {
+    const pA  = vA[i];
+    const pB0 = vB[i % 6];
+    const pB1 = vB[(i + 1) % 6];
+    const g0 = ctx.createLinearGradient(pA.x, pA.y, pB0.x, pB0.y);
+    g0.addColorStop(0, lerpColor(tA, alpha));
+    g0.addColorStop(1, lerpColor(tB, alpha));
+    ctx.beginPath(); ctx.moveTo(pA.x, pA.y); ctx.lineTo(pB0.x, pB0.y);
+    ctx.strokeStyle = g0; ctx.lineWidth = lw; ctx.globalAlpha = alpha; ctx.stroke();
+    const g1 = ctx.createLinearGradient(pA.x, pA.y, pB1.x, pB1.y);
+    g1.addColorStop(0, lerpColor(tA, alpha));
+    g1.addColorStop(1, lerpColor(tB, alpha));
+    ctx.beginPath(); ctx.moveTo(pA.x, pA.y); ctx.lineTo(pB1.x, pB1.y);
+    ctx.strokeStyle = g1; ctx.lineWidth = lw * 0.7; ctx.globalAlpha = alpha; ctx.stroke();
+  }
+}
+
+// ---- ring geometry ----
+const RING_NORMS = [
+  0.11, 0.16, 0.22, 0.28, 0.335, 0.40,
+  0.46, 0.535, 0.615, 0.685, 0.755, 0.840, 0.970
+];
+const BASE_ROT    = Math.PI / 6 - 5 * Math.PI / 180;
+const SPIRAL_STEP = 5 * Math.PI / 180;
+const SPEED_INNER = 0.18;
+const SPEED_OUTER = 0.06;
+
+// ---- sample points from the logo geometry ----
+// We sample N points per ring to spawn particles
+function sampleLogoPoints(R, t) {
+  const pts = [];
+  const N = RING_NORMS.length;
+  RING_NORMS.forEach((normR, i) => {
+    const speed = SPEED_OUTER + (SPEED_INNER - SPEED_OUTER) * (1 - normR);
+    const staticOffset = i * SPIRAL_STEP;
+    const rot = BASE_ROT + staticOffset + speed * t;
+    const radius = normR * R;
+    const perRing = Math.max(12, Math.floor(normR * 48));
+    for (let j = 0; j < perRing; j++) {
+      const a = rot + (Math.PI * 2 * j) / perRing;
+      // sample along hex edges
+      const v = hexVerts(radius, rot);
+      const vi = j % 6;
+      const vn = (vi + 1) % 6;
+      const frac = (j / perRing * 6) % 1;
+      const x = v[vi].x + (v[vn].x - v[vi].x) * frac;
+      const y = v[vi].y + (v[vn].y - v[vi].y) * frac;
+      pts.push({ x, y, t: normR, ring: i });
+    }
+  });
+  return pts;
+}
+
+// ---- particle system ----
+const MAX_PARTICLES = 1400;
+let particles = [];
+
+function initParticles(R, baseT) {
+  const pts = sampleLogoPoints(R, baseT);
+  particles = pts.slice(0, MAX_PARTICLES).map(p => ({
+    // home = on the logo
+    hx: p.x,
+    hy: p.y,
+    // current pos
+    x: p.x,
+    y: p.y,
+    // scatter target (randomized)
+    sx: p.x + (Math.random() - 0.5) * R * 1.8,
+    sy: p.y + (Math.random() - 0.5) * R * 1.8,
+    // color from ring position
+    t: p.t,
+    size: 1.0 + Math.random() * 1.2,
+    // phase offset so they don't all scatter at once
+    phaseOff: Math.random() * 0.4
+  }));
+}
+
+// ---- breathing cycle ----
+// Phase: 0-1
+// 0.00 - 0.30 → assembled (solid logo drawn normally)
+// 0.30 - 0.50 → dissolve (particles separate from logo, logo fades)
+// 0.50 - 0.70 → scattered (logo gone, particles drifting)
+// 0.70 - 1.00 → reassemble (particles flow back to logo positions)
+const CYCLE = 6.0; // seconds per full breath
+
+function easeInOut(x) {
+  return x < 0.5 ? 2*x*x : 1 - Math.pow(-2*x+2, 2)/2;
+}
+
+let particlesInited = false;
+let lastR = 0;
+
+function render(ms) {
+  const t = ms * 0.001;
+  const W = CANVAS.width;
+  const H = CANVAS.height;
+  const R = W * 0.42;
+
+  const phase = (t % CYCLE) / CYCLE;
+
+  // Update particle home positions to follow the rotating logo
+  const logoT = t; // use raw time for home positions
+  if (!particlesInited || Math.abs(R - lastR) > 1) {
+    initParticles(R, logoT);
+    particlesInited = true;
+    lastR = R;
+  } else {
+    // Update home positions for ring rotation
+    const pts = sampleLogoPoints(R, logoT);
+    for (let i = 0; i < particles.length; i++) {
+      const p = pts[i % pts.length];
+      particles[i].hx = p.x;
+      particles[i].hy = p.y;
+    }
+  }
+
+  // Clear
+  CTX.fillStyle = '#080a12';
+  CTX.fillRect(0, 0, W, H);
+  CTX.save();
+  CTX.translate(W * 0.5, H * 0.5);
+
+  // -- determine logo opacity and particle scatter progress --
+  let logoAlpha = 1;
+  let scatterT  = 0; // 0 = home, 1 = scattered
+
+  if (phase < 0.30) {
+    // Solid
+    logoAlpha = 1;
+    scatterT  = 0;
+  } else if (phase < 0.50) {
+    // Dissolving out
+    const p = (phase - 0.30) / 0.20;
+    logoAlpha = 1 - easeInOut(p);
+    scatterT  = easeInOut(p);
+  } else if (phase < 0.70) {
+    // Fully scattered
+    logoAlpha = 0;
+    scatterT  = 1;
+  } else {
+    // Reassembling
+    const p = (phase - 0.70) / 0.30;
+    logoAlpha = easeInOut(p);
+    scatterT  = 1 - easeInOut(p);
+  }
+
+  // ---- draw logo structure (when assembled) ----
+  if (logoAlpha > 0.01) {
+    const N = RING_NORMS.length;
+    const rotations = RING_NORMS.map((normR, i) => {
+      const speed = SPEED_OUTER + (SPEED_INNER - SPEED_OUTER) * (1 - normR);
+      return BASE_ROT + i * SPIRAL_STEP + speed * t;
+    });
+
+    // glow pass
+    CTX.save();
+    CTX.shadowBlur = W * 0.018;
+    for (let i = 0; i < N; i++) {
+      const normR = RING_NORMS[i];
+      const radius = normR * R;
+      const color  = lerpColor(normR);
+      CTX.shadowColor = color;
+      drawHexRing(CTX, radius, rotations[i], color, W * 0.0015, logoAlpha * 0.25);
+    }
+    CTX.restore();
+
+    CTX.shadowBlur = 0;
+    for (let i = N - 1; i >= 0; i--) {
+      const normR  = RING_NORMS[i];
+      const radius = normR * R;
+      const color  = lerpColor(normR);
+      const lw     = (W * 0.0022) + (W * 0.0012) * normR;
+      if (i < N - 1) {
+        drawVortexSpokes(
+          CTX, radius, rotations[i],
+          RING_NORMS[i+1]*R, rotations[i+1],
+          normR, RING_NORMS[i+1], lw*0.7, logoAlpha*(0.55+0.45*normR)
+        );
+      }
+      drawHexRing(CTX, radius, rotations[i], color, lw, logoAlpha);
+    }
+
+    // core glow
+    CTX.globalAlpha = logoAlpha;
+    const pulseR  = R * 0.13 * (1 + 0.04 * Math.sin(t * 2.1));
+    const coreGrd = CTX.createRadialGradient(0, 0, 0, 0, 0, pulseR);
+    coreGrd.addColorStop(0.0, 'rgba(241,66,11,0.35)');
+    coreGrd.addColorStop(1.0, 'rgba(241,66,11,0.0)');
+    CTX.beginPath(); CTX.arc(0, 0, pulseR, 0, Math.PI * 2);
+    CTX.fillStyle = coreGrd; CTX.fill();
+    CTX.globalAlpha = 1;
+  }
+
+  // ---- draw particles ----
+  if (scatterT > 0.01 || logoAlpha < 0.99) {
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      // interpolate between home and scatter target
+      const px = p.hx + (p.sx - p.hx) * Math.min(1, scatterT + p.phaseOff * 0.3);
+      const py = p.hy + (p.sy - p.hy) * Math.min(1, scatterT + p.phaseOff * 0.3);
+
+      // particle alpha: visible when scattered, fades when assembled
+      const pAlpha = Math.min(1, scatterT * 3) * (1 - logoAlpha * 0.8);
+
+      if (pAlpha < 0.01) continue;
+
+      const col = lerpColorRGB(p.t);
+      CTX.beginPath();
+      CTX.arc(px, py, p.size, 0, Math.PI * 2);
+      CTX.fillStyle = `rgba(${col.r},${col.g},${col.b},${pAlpha})`;
+      CTX.fill();
+
+      // glow for brighter particles
+      if (p.size > 1.5) {
+        CTX.beginPath();
+        CTX.arc(px, py, p.size * 2.5, 0, Math.PI * 2);
+        CTX.fillStyle = `rgba(${col.r},${col.g},${col.b},${pAlpha * 0.15})`;
+        CTX.fill();
+      }
+    }
+  }
+
+  // black void
+  const voidGrd = CTX.createRadialGradient(0,0,0,0,0,R*0.08);
+  voidGrd.addColorStop(0.0,  '#080a12');
+  voidGrd.addColorStop(0.55, '#080a12');
+  voidGrd.addColorStop(1.0,  'rgba(8,10,18,0)');
+  CTX.globalAlpha = 1;
+  CTX.beginPath(); CTX.arc(0, 0, R*0.08, 0, Math.PI * 2);
+  CTX.fillStyle = voidGrd; CTX.fill();
+
+  CTX.restore();
+  CTX.globalAlpha = 1;
+  CTX.shadowBlur  = 0;
+
+  requestAnimationFrame(render);
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

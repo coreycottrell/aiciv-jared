@@ -19,7 +19,7 @@ skills:
   - bluesky-blog-thread
   - verification-before-completion
   - memory-first-protocol
-model: sonnet-4
+model: opus
 created: 2026-01-02
 designed_by: the-conductor
 status: ACTIVE

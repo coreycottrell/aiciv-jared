@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 18: Subsurface Scattering Approximation</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #060606; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+canvas { display: block; width: 100vw; height: 100vh; }
+#info {
+  position: fixed; top: 20px; left: 20px; color: rgba(255,255,255,0.6);
+  font-size: 13px; z-index: 10; pointer-events: none;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+}
+#info h1 { font-size: 16px; color: #2a93c1; margin-bottom: 4px; }
+#info p { margin-bottom: 2px; }
+#mode-toggle {
+  position: fixed; bottom: 20px; left: 20px; z-index: 10;
+  background: rgba(42,147,193,0.2); border: 1px solid rgba(42,147,193,0.4);
+  color: #2a93c1; padding: 8px 16px; cursor: pointer; font-size: 13px;
+  border-radius: 4px; font-family: inherit;
+}
+#mode-toggle:hover { background: rgba(42,147,193,0.3); }
+</style>
+</head>
+<body>
+<div id="info">
+  <h1>Subsurface Scattering Approximation</h1>
+  <p>Move mouse to rotate view + position backlight</p>
+  <p>Scroll to zoom</p>
+  <p id="mode-label">Mode: Organic Brain Tissue</p>
+</div>
+<button id="mode-toggle">Toggle Mode (Brain / Hand / Abstract)</button>
+<canvas id="c"></canvas>
+<script>
+// ============================================================
+// Night 18 — Experiment 3: Subsurface Scattering
+//
+// Subsurface scattering (SSS) occurs when light enters a
+// translucent material, bounces around inside, and exits at
+// a different point. Think: light through a hand, wax, skin,
+// brain tissue, marble.
+//
+// Fast approximation techniques:
+// 1. Wrap lighting (half-Lambert): extends diffuse to back faces
+// 2. Thickness estimation: thinner areas transmit more light
+// 3. View-dependent back-lighting: light visible through thin edges
+// 4. Distortion of transmitted light direction by normal
+// 5. Ambient + diffusion term with color bleed
+//
+// We combine these for a convincing real-time SSS effect.
+// ============================================================
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias: true, alpha: false });
+if (!gl) { alert('WebGL2 required'); }
+
+let W, H;
+function resize() {
+  W = canvas.width = window.innerWidth * devicePixelRatio;
+  H = canvas.height = window.innerHeight * devicePixelRatio;
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  gl.viewport(0, 0, W, H);
+}
+resize();
+window.addEventListener('resize', resize);
+
+let mx = 0.5, my = 0.5, zoom = 3.5;
+let mode = 0; // 0=brain, 1=hand, 2=abstract
+canvas.addEventListener('mousemove', e => {
+  mx = e.clientX / window.innerWidth;
+  my = e.clientY / window.innerHeight;
+});
+canvas.addEventListener('wheel', e => {
+  zoom = Math.max(1.5, Math.min(8.0, zoom + e.deltaY * 0.005));
+  e.preventDefault();
+}, { passive: false });
+
+document.getElementById('mode-toggle').addEventListener('click', () => {
+  mode = (mode + 1) % 3;
+  const labels = ['Organic Brain Tissue', 'Translucent Hand', 'Abstract Organism'];
+  document.getElementById('mode-label').textContent = 'Mode: ' + labels[mode];
+});
+
+function createShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(s));
+    return null;
+  }
+  return s;
+}
+function createProgram(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, vs);
+  gl.attachShader(p, fs);
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+    console.error(gl.getProgramInfoLog(p));
+    return null;
+  }
+  return p;
+}
+
+const vertSrc = `#version 300 es
+in vec2 a_pos;
+out vec2 v_uv;
+void main() {
+  v_uv = a_pos * 0.5 + 0.5;
+  gl_Position = vec4(a_pos, 0.0, 1.0);
+}`;
+
+const fragSrc = `#version 300 es
+precision highp float;
+
+in vec2 v_uv;
+out vec4 fragColor;
+
+uniform float u_time;
+uniform vec2 u_resolution;
+uniform vec2 u_mouse;
+uniform float u_zoom;
+uniform int u_mode;
+
+#define PI 3.14159265
+#define MAX_STEPS 120
+#define MAX_DIST 20.0
+#define SURF_DIST 0.001
+
+const vec3 BRAND_BLUE = vec3(0.165, 0.576, 0.757);
+const vec3 BRAND_ORANGE = vec3(0.945, 0.259, 0.043);
+
+mat3 rotY(float a) {
+  float c = cos(a), s = sin(a);
+  return mat3(c,0,s, 0,1,0, -s,0,c);
+}
+mat3 rotX(float a) {
+  float c = cos(a), s = sin(a);
+  return mat3(1,0,0, 0,c,-s, 0,s,c);
+}
+
+// --- Noise ---
+float hash(vec3 p) {
+  p = fract(p * vec3(443.897, 441.423, 437.195));
+  p += dot(p, p.yzx + 19.19);
+  return fract((p.x + p.y) * p.z);
+}
+
+float noise3D(vec3 p) {
+  vec3 i = floor(p);
+  vec3 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(mix(hash(i), hash(i+vec3(1,0,0)), f.x),
+        mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)), f.x), f.y),
+    mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)), f.x),
+        mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), f.x), f.y),
+    f.z
+  );
+}
+
+float fbm(vec3 p) {
+  float v = 0.0, a = 0.5;
+  for (int i = 0; i < 5; i++) {
+    v += a * noise3D(p);
+    p *= 2.1;
+    a *= 0.48;
+  }
+  return v;
+}
+
+// --- SDF functions ---
+float sdSphere(vec3 p, float r) { return length(p) - r; }
+
+float sdEllipsoid(vec3 p, vec3 r) {
+  float k0 = length(p/r);
+  float k1 = length(p/(r*r));
+  return k0*(k0-1.0)/k1;
+}
+
+// Smooth min
+float smin(float a, float b, float k) {
+  float h = clamp(0.5 + 0.5*(b-a)/k, 0.0, 1.0);
+  return mix(b, a, h) - k*h*(1.0-h);
+}
+
+// Mode 0: Brain tissue
+float sdBrain(vec3 p) {
+  // Two hemispheres
+  vec3 pL = p - vec3(-0.15, 0.0, 0.0);
+  vec3 pR = p - vec3(0.15, 0.0, 0.0);
+  float left = sdEllipsoid(pL, vec3(0.85, 1.0, 0.9));
+  float right = sdEllipsoid(pR, vec3(0.85, 1.0, 0.9));
+  float d = smin(left, right, 0.3);
+
+  // Cerebellum (lower back)
+  vec3 pC = p - vec3(0.0, -0.6, -0.5);
+  float cerebellum = sdEllipsoid(pC, vec3(0.6, 0.4, 0.45));
+  d = smin(d, cerebellum, 0.15);
+
+  // Brain stem
+  vec3 pS = p - vec3(0.0, -1.0, -0.3);
+  float stem = sdEllipsoid(pS, vec3(0.15, 0.4, 0.15));
+  d = smin(d, stem, 0.2);
+
+  // Sulci (grooves)
+  float sulci = fbm(p * 4.0) * 0.08;
+  d += sulci;
+
+  return d;
+}
+
+// Mode 1: Hand-like shape (simplified)
+float sdHand(vec3 p) {
+  // Palm
+  float palm = sdEllipsoid(p, vec3(0.6, 0.8, 0.25));
+
+  // Fingers
+  float fingers = 1e10;
+  for (int i = 0; i < 4; i++) {
+    float x = -0.3 + float(i) * 0.2;
+    vec3 fp = p - vec3(x, 1.2, 0.0);
+    // Taper
+    float radius = 0.1 - fp.y * 0.02;
+    float finger = sdEllipsoid(fp, vec3(radius, 0.5 + float(i)*0.05, radius));
+    fingers = smin(fingers, finger, 0.15);
+  }
+
+  // Thumb
+  vec3 tp = p - vec3(-0.65, 0.3, 0.1);
+  tp.xz = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.5)) * tp.xz;
+  float thumb = sdEllipsoid(tp, vec3(0.12, 0.45, 0.12));
+
+  float d = smin(palm, fingers, 0.2);
+  d = smin(d, thumb, 0.2);
+
+  return d;
+}
+
+// Mode 2: Abstract organic blob
+float sdAbstract(vec3 p) {
+  float d = sdSphere(p, 1.0);
+
+  // Organic deformation
+  float def = 0.0;
+  def += 0.25 * sin(p.x * 3.0 + u_time * 0.5) * sin(p.y * 2.5 + u_time * 0.3);
+  def += 0.15 * sin(p.z * 4.0 - u_time * 0.7) * sin(p.x * 2.0);
+  def += 0.1 * noise3D(p * 5.0 + u_time * 0.2);
+
+  d += def;
+
+  // Tentacle-like protrusions
+  for (int i = 0; i < 4; i++) {
+    float angle = float(i) * PI * 0.5 + u_time * 0.2;
+    vec3 dir = vec3(cos(angle), sin(float(i)*0.5)*0.3, sin(angle));
+    vec3 tp = p - dir * 1.2;
+    float tent = sdEllipsoid(tp, vec3(0.15, 0.15, 0.5));
+    d = smin(d, tent, 0.4);
+  }
+
+  return d;
+}
+
+float map(vec3 p) {
+  if (u_mode == 0) return sdBrain(p);
+  if (u_mode == 1) return sdHand(p);
+  return sdAbstract(p);
+}
+
+vec3 getNormal(vec3 p) {
+  vec2 e = vec2(0.002, 0.0);
+  return normalize(vec3(
+    map(p+e.xyy) - map(p-e.xyy),
+    map(p+e.yxy) - map(p-e.yxy),
+    map(p+e.yyx) - map(p-e.yyx)
+  ));
+}
+
+float raymarch(vec3 ro, vec3 rd) {
+  float t = 0.0;
+  for (int i = 0; i < MAX_STEPS; i++) {
+    vec3 p = ro + rd * t;
+    float d = map(p);
+    if (d < SURF_DIST) return t;
+    if (t > MAX_DIST) break;
+    t += d * 0.7;
+  }
+  return -1.0;
+}
+
+// ============================================================
+// Subsurface Scattering Approximation
+//
+// Technique 1: Thickness estimation
+//   March a ray in the opposite direction of the normal from
+//   the hit point. The distance before exiting the object
+//   estimates local thickness.
+//
+// Technique 2: Wrap lighting (half-Lambert)
+//   Extends diffuse beyond the terminator line for soft falloff.
+//
+// Technique 3: Back-lighting / translucency
+//   Light visible through thin geometry when light is behind
+//   the surface. Uses distorted light vector.
+//
+// Technique 4: Diffusion profile (Gaussian falloff)
+//   Simulates how light spreads under the surface with
+//   wavelength-dependent absorption (red scatters further).
+// ============================================================
+
+// Estimate local thickness by marching inward
+float estimateThickness(vec3 p, vec3 n) {
+  float thickness = 0.0;
+  float step_size = 0.05;
+  vec3 marchDir = -n; // march into the object
+
+  for (int i = 0; i < 20; i++) {
+    float t = float(i + 1) * step_size;
+    vec3 sp = p + marchDir * t;
+    float d = map(sp);
+    if (d > 0.0) {
+      // We've exited the object
+      thickness = t;
+      break;
+    }
+    thickness = t;
+  }
+  return thickness;
+}
+
+// SSS color based on thickness (diffusion profile)
+// Red light scatters furthest, then green, then blue
+vec3 sssColor(float thickness) {
+  // Gaussian diffusion profile per channel
+  // Based on Jensen et al. BSSRDF
+  vec3 sigma = vec3(0.8, 1.5, 2.5); // absorption: R < G < B (red travels furthest)
+
+  vec3 transmittance = exp(-sigma * thickness * 3.0);
+
+  // Blend between skin/tissue tones
+  vec3 scatterColor;
+  if (u_mode == 0) {
+    // Brain tissue: pinkish-red subsurface
+    scatterColor = mix(
+      vec3(0.9, 0.3, 0.2),  // thin (red/orange)
+      BRAND_BLUE * 0.5,      // thick (bluish)
+      1.0 - transmittance.r
+    );
+  } else if (u_mode == 1) {
+    // Hand: warm skin tones
+    scatterColor = mix(
+      vec3(1.0, 0.4, 0.15),  // thin (warm red/orange)
+      vec3(0.4, 0.15, 0.1),  // thick (dark red)
+      1.0 - transmittance.r
+    );
+  } else {
+    // Abstract: brand colors
+    scatterColor = mix(
+      BRAND_ORANGE * 1.5,
+      BRAND_BLUE * 0.8,
+      1.0 - transmittance.r
+    );
+  }
+
+  return scatterColor * transmittance;
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - u_resolution * 0.5) / u_resolution.y;
+
+  // Camera
+  float camAngleY = (u_mouse.x - 0.5) * PI * 2.0;
+  float camAngleX = (u_mouse.y - 0.5) * PI * 0.6;
+
+  vec3 ro = vec3(0.0, 0.0, u_zoom);
+  ro = rotX(camAngleX) * rotY(camAngleY) * ro;
+
+  vec3 target = vec3(0.0, 0.0, 0.0);
+  vec3 fwd = normalize(target - ro);
+  vec3 right = normalize(cross(fwd, vec3(0.0, 1.0, 0.0)));
+  vec3 up = cross(right, fwd);
+
+  vec3 rd = normalize(fwd + uv.x * right + uv.y * up);
+
+  // Strong backlight for SSS visibility
+  vec3 lightPos = vec3(
+    sin(u_time * 0.3) * 2.0,
+    1.0,
+    -3.0 // behind the object
+  );
+  // Secondary fill from front
+  vec3 lightPos2 = vec3(2.0, 2.0, 3.0);
+
+  float t = raymarch(ro, rd);
+
+  vec3 col = vec3(0.0);
+
+  if (t > 0.0) {
+    vec3 p = ro + rd * t;
+    vec3 n = getNormal(p);
+    float NdotV = max(dot(n, -rd), 0.0);
+
+    // --- Standard lighting ---
+    vec3 toLight = normalize(lightPos - p);
+    vec3 toLight2 = normalize(lightPos2 - p);
+
+    // Wrap diffuse (half-Lambert for soft SSS feel)
+    float wrapDiffuse = max(0.0, (dot(n, toLight2) + 0.5) / 1.5);
+    wrapDiffuse = wrapDiffuse * wrapDiffuse; // soften
+
+    // --- Thickness estimation ---
+    float thickness = estimateThickness(p, n);
+
+    // --- Back-lighting / translucency ---
+    // Distort the light direction by the normal for SSS
+    float sssDistortion = 0.3;
+    vec3 sssLightDir = normalize(toLight + n * sssDistortion);
+    float sssDot = pow(clamp(dot(-rd, sssLightDir), 0.0, 1.0), 3.0);
+
+    // Thickness-based transmission
+    float transmission = exp(-thickness * 4.0);
+    vec3 sss = sssColor(thickness) * sssDot * transmission;
+
+    // --- Diffusion: light bleeding through surface ---
+    // Additional scattered term based on curvature
+    float curvature = 1.0 - thickness * 2.0;
+    curvature = clamp(curvature, 0.0, 1.0);
+
+    vec3 surfaceColor;
+    if (u_mode == 0) {
+      surfaceColor = vec3(0.85, 0.75, 0.72); // brain tissue
+    } else if (u_mode == 1) {
+      surfaceColor = vec3(0.9, 0.7, 0.55); // skin
+    } else {
+      surfaceColor = mix(BRAND_BLUE, vec3(0.9), 0.3); // abstract
+    }
+
+    // Direct lighting
+    vec3 direct = surfaceColor * wrapDiffuse * 0.6;
+
+    // Specular (subtle for organic)
+    vec3 h = normalize(toLight2 - rd);
+    float spec = pow(max(dot(n, h), 0.0), 32.0);
+    direct += vec3(1.0) * spec * 0.3;
+
+    // Rim light (Fresnel-based)
+    float rim = pow(1.0 - NdotV, 3.0);
+    vec3 rimCol = BRAND_BLUE * 0.4;
+
+    // Combine
+    col = direct + sss * 2.5 + rimCol * rim;
+
+    // Ambient SSS (global illumination approximation)
+    vec3 ambientSSS = sssColor(thickness) * 0.15;
+    col += ambientSSS;
+
+    // Internal vein network (for brain mode)
+    if (u_mode == 0) {
+      float veins = fbm(p * 8.0 + vec3(u_time * 0.1, 0.0, 0.0));
+      veins = smoothstep(0.45, 0.55, veins);
+      col += BRAND_ORANGE * veins * transmission * 0.3;
+    }
+
+    // Pulsing internal light
+    float pulse = sin(u_time * 1.5) * 0.5 + 0.5;
+    float internalLight = exp(-thickness * 2.0) * pulse * 0.2;
+    col += (u_mode == 2 ? BRAND_ORANGE : vec3(0.9, 0.2, 0.1)) * internalLight;
+
+  } else {
+    // Background
+    col = vec3(0.015, 0.01, 0.02);
+
+    // Subtle backlight halo
+    vec2 center = uv;
+    float halo = exp(-dot(center, center) * 2.0);
+    col += BRAND_BLUE * halo * 0.04;
+  }
+
+  // ============================================================
+  // Post-processing: Soft bloom for SSS glow
+  // ============================================================
+
+  // Fake bloom: brightened center with falloff
+  float brightness = dot(col, vec3(0.299, 0.587, 0.114));
+  if (brightness > 0.5) {
+    col += col * (brightness - 0.5) * 0.5;
+  }
+
+  // Tone mapping
+  col = col / (col + vec3(1.0));
+
+  // Vignette
+  vec2 vUV = v_uv * 2.0 - 1.0;
+  col *= 1.0 - dot(vUV, vUV) * 0.3;
+
+  // Gamma
+  col = pow(col, vec3(1.0 / 2.2));
+
+  fragColor = vec4(col, 1.0);
+}`;
+
+const vs = createShader(gl.VERTEX_SHADER, vertSrc);
+const fs = createShader(gl.FRAGMENT_SHADER, fragSrc);
+const program = createProgram(vs, fs);
+
+const posLoc = gl.getAttribLocation(program, 'a_pos');
+const timeLoc = gl.getUniformLocation(program, 'u_time');
+const resLoc = gl.getUniformLocation(program, 'u_resolution');
+const mouseLoc = gl.getUniformLocation(program, 'u_mouse');
+const zoomLoc = gl.getUniformLocation(program, 'u_zoom');
+const modeLoc = gl.getUniformLocation(program, 'u_mode');
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(posLoc);
+gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+const start = performance.now();
+function frame() {
+  const t = (performance.now() - start) * 0.001;
+  gl.useProgram(program);
+  gl.uniform1f(timeLoc, t);
+  gl.uniform2f(resLoc, W, H);
+  gl.uniform2f(mouseLoc, mx, my);
+  gl.uniform1f(zoomLoc, zoom);
+  gl.uniform1i(modeLoc, mode);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  requestAnimationFrame(frame);
+}
+frame();
+</script>
+</body>
+</html>

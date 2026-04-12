@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AETHER Night 23 — Hexagonal Iris Caustics</title>
+<style>
+  :root { --navy: #080a12; --blue: #2a93c1; --orange: #f1420b; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--navy); }
+  canvas { display: block; width: 100%; height: 100%; }
+  #info {
+    position: fixed; top: 16px; left: 16px; color: rgba(255,255,255,0.5);
+    font: 11px/1.4 'SF Mono', monospace; pointer-events: none; z-index: 10;
+  }
+  #info h3 { color: rgba(255,255,255,0.8); font-size: 13px; margin-bottom: 4px; }
+  #fps { position: fixed; top: 16px; right: 16px; color: rgba(255,255,255,0.4);
+    font: 11px 'SF Mono', monospace; z-index: 10; }
+</style>
+</head>
+<body>
+<div id="info">
+  <h3>Night 23 / Exercise 3</h3>
+  Hexagonal Iris Caustics<br>
+  Aperture-shaped caustic patterns<br>
+  6-blade iris bokeh → caustic projection<br>
+  Brand hex alignment + Gleb god rays
+</div>
+<div id="fps">--</div>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+if (!gl) document.body.innerHTML = '<p style="color:white;padding:2em">WebGL2 required</p>';
+
+function resize() {
+  const dpr = Math.min(devicePixelRatio, 2.0);
+  canvas.width = canvas.clientWidth * dpr;
+  canvas.height = canvas.clientHeight * dpr;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+resize();
+window.addEventListener('resize', resize);
+
+let mx = 0.5, my = 0.5;
+canvas.addEventListener('mousemove', e => {
+  mx = e.clientX / canvas.clientWidth;
+  my = e.clientY / canvas.clientHeight;
+});
+
+const vs = `#version 300 es
+in vec2 p;
+void main(){ gl_Position = vec4(p, 0, 1); }`;
+
+const fs = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform vec2 uRes;
+uniform float uTime;
+uniform vec2 uMouse;
+
+#define PI 3.14159265
+#define TAU 6.28318530
+#define MAX_STEPS 80
+#define SURF_DIST 0.002
+
+float hash(vec3 p) {
+  p = fract(p * vec3(443.897, 397.297, 491.187));
+  p += dot(p, p.yzx + 19.19);
+  return fract((p.x + p.y) * p.z);
+}
+
+float noise3(vec3 p) {
+  vec3 i = floor(p), f = fract(p);
+  f = f*f*(3.0-2.0*f);
+  float a = hash(i), b = hash(i+vec3(1,0,0));
+  float c = hash(i+vec3(0,1,0)), d = hash(i+vec3(1,1,0));
+  float e = hash(i+vec3(0,0,1)), f2 = hash(i+vec3(1,0,1));
+  float g = hash(i+vec3(0,1,1)), h = hash(i+vec3(1,1,1));
+  return mix(mix(mix(a,b,f.x),mix(c,d,f.x),f.y),
+             mix(mix(e,f2,f.x),mix(g,h,f.x),f.y), f.z);
+}
+
+float fbm(vec3 p) {
+  float v = 0.0, a = 0.5;
+  for(int i = 0; i < 4; i++) { v += a * noise3(p); p *= 2.1; a *= 0.5; }
+  return v;
+}
+
+// Hexagonal distance function (for iris aperture shape)
+float hexDist(vec2 p) {
+  p = abs(p);
+  return max(dot(p, normalize(vec2(1.0, 1.732))), p.x);
+}
+
+// 6-blade iris aperture SDF
+float irisSDF(vec2 p, float radius, float openAmount) {
+  float hex = hexDist(p) - radius * openAmount;
+  // Add blade edges
+  float angle = atan(p.y, p.x);
+  float blade = cos(angle * 3.0 + PI/6.0) * 0.03 * (1.0 - openAmount);
+  return hex + blade;
+}
+
+float brainSDF(vec3 p) {
+  float sphere = length(p) - 1.2;
+  float folds = fbm(p * 2.5 + uTime * 0.05) * 0.12;
+  return sphere + folds;
+}
+
+vec3 brainNormal(vec3 p) {
+  vec2 e = vec2(0.002, 0.0);
+  return normalize(vec3(
+    brainSDF(p+e.xyy) - brainSDF(p-e.xyy),
+    brainSDF(p+e.yxy) - brainSDF(p-e.yxy),
+    brainSDF(p+e.yyx) - brainSDF(p-e.yyx)
+  ));
+}
+
+float march(vec3 ro, vec3 rd, out float t) {
+  t = 0.0;
+  for(int i = 0; i < MAX_STEPS; i++) {
+    float d = brainSDF(ro + rd * t);
+    if(d < SURF_DIST) return d;
+    t += d * 0.8;
+    if(t > 12.0) break;
+  }
+  return 1e5;
+}
+
+// Hexagonal caustic pattern on ground plane
+// Models light passing through a hexagonal iris before hitting glass brain
+vec3 hexCaustics(vec3 groundPoint, vec3 lightPos, float time) {
+  vec3 toLightDir = normalize(lightPos - groundPoint);
+  vec3 causticColor = vec3(0.0);
+
+  // Simulate light from hexagonal aperture
+  // Each point on the aperture sends light through the brain
+  float apertureSize = 0.8;
+  float openAmount = 0.6 + 0.2 * sin(time * 0.5); // breathing iris
+
+  // Sample the aperture with hex pattern
+  for(int i = 0; i < 6; i++) {
+    float angle = float(i) * TAU / 6.0 + time * 0.1;
+    for(int r = 1; r <= 3; r++) {
+      float radius = float(r) * apertureSize / 3.0;
+      vec2 aperturePoint = vec2(cos(angle), sin(angle)) * radius;
+
+      // Check if this point is inside the iris aperture
+      if(irisSDF(aperturePoint, apertureSize, openAmount) > 0.0) continue;
+
+      // Light ray from aperture point through brain to ground
+      vec3 aperturePos3D = lightPos + vec3(aperturePoint.x, 0.0, aperturePoint.y);
+      vec3 rayDir = normalize(groundPoint - aperturePos3D);
+
+      // Find brain intersection
+      float t;
+      float d = march(aperturePos3D, rayDir, t);
+      if(d > SURF_DIST * 2.0) continue;
+
+      vec3 hitPos = aperturePos3D + rayDir * t;
+      vec3 n = brainNormal(hitPos);
+
+      // Refract through brain with chromatic dispersion
+      float ior = 1.50 + float(i) * 0.005; // slight IOR variation per hex vertex
+      vec3 refr = refract(rayDir, n, 1.0 / ior);
+      if(length(refr) < 0.001) continue;
+
+      // Project refracted ray to ground
+      if(refr.y > -0.01) continue;
+      float gT = (groundPoint.y - hitPos.y) / refr.y;
+      vec3 projectedPoint = hitPos + refr * gT;
+
+      // Energy based on proximity to evaluation point
+      float dist = length(projectedPoint.xz - groundPoint.xz);
+      float energy = exp(-dist * 8.0) * 0.04;
+
+      // Color based on hex vertex (brand colors distributed around hex)
+      float hue = float(i) / 6.0;
+      vec3 hexColor;
+      if(i < 2) hexColor = vec3(0.165, 0.576, 0.757); // brand blue
+      else if(i < 4) hexColor = vec3(0.945, 0.259, 0.043); // brand orange
+      else hexColor = vec3(0.4, 0.7, 1.0); // accent cyan
+
+      causticColor += hexColor * energy;
+    }
+  }
+
+  return causticColor;
+}
+
+// Hex bokeh depth-of-field effect on the brain surface
+vec3 hexBokeh(vec3 pos, vec3 n, vec3 lightPos) {
+  vec3 toLight = normalize(lightPos - pos);
+  vec3 h = normalize(toLight + normalize(-pos)); // half vector toward camera
+  float ndotH = max(dot(n, h), 0.0);
+
+  // High-power specular creates point highlights
+  float spec = pow(ndotH, 512.0);
+
+  // Shape the highlight as hexagon
+  // Project highlight direction onto tangent plane
+  vec3 tangent = normalize(cross(n, vec3(0,1,0)));
+  vec3 bitangent = cross(n, tangent);
+  vec2 highlightUV = vec2(dot(h - n * dot(h, n), tangent),
+                          dot(h - n * dot(h, n), bitangent));
+
+  // Hexagonal shaping
+  float hexShape = hexDist(highlightUV * 80.0);
+  float hexHighlight = smoothstep(1.2, 0.8, hexShape) * spec * 6.0;
+
+  // Add 6-fold internal structure (iris blade lines)
+  float bladeAngle = atan(highlightUV.y, highlightUV.x);
+  float blades = abs(sin(bladeAngle * 3.0)) * 0.5 + 0.5;
+  hexHighlight *= mix(0.7, 1.0, blades);
+
+  return vec3(1.0, 0.97, 0.92) * hexHighlight;
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
+  vec3 ro = vec3(0.0, 0.5, 4.5);
+  vec3 rd = normalize(vec3(uv, -1.8));
+
+  float ca = (uMouse.x - 0.5) * 0.4;
+  float sa = sin(ca), csa = cos(ca);
+  rd.xz = mat2(csa, -sa, sa, csa) * rd.xz;
+  ro.xz = mat2(csa, -sa, sa, csa) * ro.xz;
+
+  float lt = uTime * 0.3;
+  vec3 lightPos = vec3(cos(lt)*3.0, 3.0, sin(lt)*3.0);
+  vec3 light2 = vec3(-1.5, 2.0, 2.0);
+
+  vec3 col = vec3(0.0);
+
+  float t;
+  float d = march(ro, rd, t);
+
+  if(d < SURF_DIST * 2.0) {
+    vec3 pos = ro + rd * t;
+    vec3 n = brainNormal(pos);
+    float ior = 1.50;
+
+    // Fresnel
+    float f0 = pow((ior - 1.0) / (ior + 1.0), 2.0);
+    float fresnel = f0 + (1.0 - f0) * pow(1.0 - max(dot(-rd, n), 0.0), 5.0);
+
+    // Reflection
+    vec3 reflDir = reflect(rd, n);
+    float reflY = reflDir.y * 0.5 + 0.5;
+    vec3 reflCol = mix(vec3(0.02, 0.04, 0.08), vec3(0.08, 0.14, 0.22), reflY);
+
+    // Refraction with extinction
+    vec3 refr = refract(rd, n, 1.0 / ior);
+    if(length(refr) < 0.001) refr = reflect(rd, n);
+
+    // Simple interior march for color
+    float intT = 0.0;
+    vec3 intCol = vec3(0.0);
+    vec3 absorption = vec3(0.6, 0.3, 0.12);
+    for(int i = 0; i < 30; i++) {
+      vec3 ip = pos + refr * intT;
+      if(brainSDF(ip) > 0.0) break;
+      vec3 ext = exp(-absorption * intT);
+      float glow = exp(-intT * 2.0);
+      intCol += ext * vec3(0.165, 0.576, 0.757) * glow * 0.015;
+      intT += 0.03;
+    }
+    vec3 transmittance = exp(-absorption * intT);
+
+    // Environment through glass
+    vec3 exitPos = pos + refr * intT;
+    vec3 exitN = -brainNormal(exitPos);
+    vec3 exitRay = refract(refr, exitN, ior);
+    if(length(exitRay) < 0.001) exitRay = reflect(refr, exitN);
+    float envY = exitRay.y * 0.5 + 0.5;
+    vec3 envCol = mix(vec3(0.01, 0.02, 0.04), vec3(0.04, 0.08, 0.14), envY);
+
+    // === HEX BOKEH HIGHLIGHTS ===
+    vec3 bokeh1 = hexBokeh(pos, n, lightPos);
+    vec3 bokeh2 = hexBokeh(pos, n, light2) * 0.4;
+
+    // Rim
+    float rim = pow(1.0 - max(dot(-rd, n), 0.0), 3.0);
+    vec3 rimCol = mix(vec3(0.165, 0.576, 0.757), vec3(0.945, 0.259, 0.043), rim) * rim * 0.4;
+
+    col = reflCol * fresnel
+        + (intCol + envCol * transmittance) * (1.0 - fresnel)
+        + bokeh1 + bokeh2
+        + rimCol;
+  }
+
+  // Ground with hex iris caustics
+  float groundY = -1.8;
+  if(rd.y < -0.01) {
+    float gt = (groundY - ro.y) / rd.y;
+    if(gt > 0.0 && (d > SURF_DIST * 2.0 || gt < t)) {
+      vec3 gp = ro + rd * gt;
+      float falloff = exp(-length(gp.xz) * 0.12);
+
+      // Base ground
+      vec3 groundCol = vec3(0.008, 0.012, 0.02) * falloff;
+
+      // Subtle hex grid on ground (brand element)
+      vec2 hexUV = gp.xz * 2.0;
+      float hexGrid = hexDist(fract(hexUV) - 0.5);
+      float hexLine = smoothstep(0.02, 0.0, abs(hexGrid - 0.4));
+      groundCol += vec3(0.02, 0.04, 0.06) * hexLine * 0.3 * falloff;
+
+      // === HEX IRIS CAUSTICS ===
+      vec3 caustics = hexCaustics(gp, lightPos, uTime);
+      groundCol += caustics * 8.0 * falloff;
+
+      if(d > SURF_DIST * 2.0) col = groundCol;
+    }
+  }
+
+  // God rays with 6-fold hex symmetry
+  if(d > SURF_DIST * 2.0) {
+    vec3 rayCol = vec3(0.0);
+    float raySteps = 24.0;
+    for(float i = 0.0; i < raySteps; i++) {
+      float rt = i / raySteps * 8.0 + 0.5;
+      vec3 rp = ro + rd * rt;
+
+      // Distance to light beam axis
+      vec3 toLight = lightPos - rp;
+      float beamDist = length(cross(toLight, normalize(lightPos))) / length(lightPos);
+
+      // 6-fold symmetry modulation
+      float angle = atan(rp.z, rp.x);
+      float hexMod = 0.7 + 0.3 * cos(angle * 3.0 + uTime * 0.2);
+
+      // Mie forward scattering
+      float cosAngle = dot(normalize(rd), normalize(toLight));
+      float mie = 0.1 + 0.9 * pow(max(cosAngle, 0.0), 12.0);
+
+      // Brain shadow test
+      float bDist = brainSDF(rp);
+      float shadow = smoothstep(0.0, 0.3, bDist);
+
+      float rayEnergy = exp(-beamDist * 2.0) * mie * shadow * hexMod / raySteps;
+      rayCol += vec3(0.165, 0.576, 0.757) * rayEnergy * 0.15;
+    }
+    col += rayCol;
+  }
+
+  // Atmospheric glow
+  if(d > SURF_DIST * 2.0 && col == vec3(0.0)) {
+    float closestT = 0.0;
+    float minD = 1e5;
+    for(int i = 0; i < 30; i++) {
+      vec3 sp = ro + rd * closestT;
+      float sd = abs(brainSDF(sp));
+      minD = min(minD, sd);
+      closestT += max(sd, 0.06);
+      if(closestT > 10.0) break;
+    }
+    float glow = exp(-minD * 2.5) * 0.08;
+    col += vec3(0.165, 0.576, 0.757) * glow;
+  }
+
+  // Tone map + vignette
+  col = col / (col + 0.7);
+  col = pow(col, vec3(0.4545));
+  float vign = 1.0 - 0.25 * length((gl_FragCoord.xy / uRes - 0.5) * 1.3);
+  col *= vign;
+
+  fragColor = vec4(col, 1.0);
+}`;
+
+function compile(src, type) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+    console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(vs, gl.VERTEX_SHADER));
+gl.attachShader(prog, compile(fs, gl.FRAGMENT_SHADER));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+const pLoc = gl.getAttribLocation(prog, 'p');
+gl.enableVertexAttribArray(pLoc);
+gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
+
+const uRes = gl.getUniformLocation(prog, 'uRes');
+const uTime = gl.getUniformLocation(prog, 'uTime');
+const uMouse = gl.getUniformLocation(prog, 'uMouse');
+
+let frames = 0, lastFps = performance.now();
+const fpsEl = document.getElementById('fps');
+
+function render(time) {
+  gl.uniform2f(uRes, canvas.width, canvas.height);
+  gl.uniform1f(uTime, time * 0.001);
+  gl.uniform2f(uMouse, mx, my);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  frames++;
+  if(time - lastFps > 1000) {
+    fpsEl.textContent = Math.round(frames * 1000 / (time - lastFps)) + ' fps';
+    frames = 0;
+    lastFps = time;
+  }
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

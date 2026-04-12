@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Variation 2: Real-time Caustics on Glass — PureBrain 3D Training</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #040608; overflow: hidden; font-family: system-ui, sans-serif; }
+  canvas { display: block; }
+  #label {
+    position: fixed; top: 24px; left: 24px;
+    color: rgba(255,255,255,0.5); font-size: 12px; letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  #label strong { color: #f1420b; }
+  #info {
+    position: fixed; bottom: 24px; left: 24px;
+    color: rgba(255,255,255,0.3); font-size: 11px; letter-spacing: 0.06em;
+  }
+</style>
+</head>
+<body>
+<div id="label"><strong>Variation 2</strong> — Real-time Caustics Projection on Glass</div>
+<div id="info">Move mouse to shift caustic light angle</div>
+<canvas id="c"></canvas>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ─── Scene Setup ───────────────────────────────────────────────────────────
+const W = window.innerWidth, H = window.innerHeight;
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true });
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 100);
+camera.position.set(0, 1.5, 5.5);
+camera.lookAt(0, 0, 0);
+
+let mouseX = 0, mouseY = 0;
+window.addEventListener('mousemove', e => {
+  mouseX = (e.clientX / W - 0.5) * 2;
+  mouseY = (e.clientY / H - 0.5) * 2;
+});
+
+// ─── PMREM Probe ─────────────────────────────────────────────────────────────
+const pmrem = new THREE.PMREMGenerator(renderer);
+const probeScene = new THREE.Scene();
+probeScene.add(new THREE.AmbientLight(0xffffff, 0.15));
+probeScene.add(Object.assign(new THREE.PointLight(0xfff4e0, 5.0, 40), { position: new THREE.Vector3(6, 9, 7) }));
+probeScene.add(Object.assign(new THREE.PointLight(0x2a93c1, 3.0, 35), { position: new THREE.Vector3(-5, 2, 5) }));
+probeScene.add(Object.assign(new THREE.PointLight(0xf1420b, 2.0, 25), { position: new THREE.Vector3(5, -4, -8) }));
+scene.environment = pmrem.fromScene(probeScene, 0.04).texture;
+
+// ─── CAUSTICS TEXTURE GENERATOR ─────────────────────────────────────────────
+// Technique: Generate an animated caustics texture in a fragment shader.
+// Classic caustic simulation uses Voronoi-like cell patterns + wave deformation.
+// The texture is then projected onto a "receiver" plane below the glass.
+
+const causticsFrag = `
+  uniform float uTime;
+  uniform vec2  uLightDir; // Mouse-driven light angle offset
+  varying vec2 vUv;
+
+  // Ward caustics algorithm — approximate
+  // Based on: stacking Voronoi cells with wave-phase offsets
+  float causticCell(vec2 p, float t, float seed) {
+    // Deform UV by wave
+    p.x += sin(p.y * 3.1 + t * 0.9 + seed) * 0.15;
+    p.y += cos(p.x * 2.7 + t * 0.7 + seed * 1.3) * 0.15;
+
+    // Voronoi-like: find distance to nearest cell center
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    float minD = 8.0;
+    for (int y = -1; y <= 1; y++) {
+      for (int x = -1; x <= 1; x++) {
+        vec2 neighbor = vec2(float(x), float(y));
+        // Pseudo-random cell center offset
+        vec2 cell = vec2(x, y) + i;
+        float h1 = fract(sin(dot(cell, vec2(127.1 + seed, 311.7))) * 43758.5);
+        float h2 = fract(sin(dot(cell, vec2(269.5 + seed, 183.3))) * 15731.0);
+        // Animate cell centers with time
+        vec2 offset = 0.5 + 0.5 * sin(t * 0.6 + 6.2831 * vec2(h1, h2));
+        float d = length(f - neighbor - offset);
+        minD = min(minD, d);
+      }
+    }
+    return minD;
+  }
+
+  void main() {
+    // Light direction offset from mouse
+    vec2 uv = vUv + uLightDir * 0.08;
+    uv = uv * 3.5 + vec2(uTime * 0.04, uTime * 0.025);
+
+    // Stack 3 caustic passes at different scales/speeds
+    float c1 = causticCell(uv * 1.0,  uTime * 0.8,  0.0);
+    float c2 = causticCell(uv * 1.62, uTime * 0.55, 3.14);
+    float c3 = causticCell(uv * 0.7,  uTime * 1.1,  7.29);
+
+    // The caustic pattern lives at cell EDGES (low minDist = bright ring)
+    float caustic1 = 1.0 - smoothstep(0.04, 0.18, c1);
+    float caustic2 = 1.0 - smoothstep(0.06, 0.22, c2);
+    float caustic3 = 1.0 - smoothstep(0.03, 0.14, c3);
+
+    // Combine — multiply for intersection (Gleb: blend for softness)
+    float caustic = max(caustic1 * caustic2, caustic3 * 0.6);
+    caustic = pow(caustic, 1.6);  // sharpen
+
+    // Color: PureBrain blue caustic with subtle orange highlight
+    vec3 blueLight  = vec3(0.165, 0.576, 0.757) * caustic * 1.8;
+    vec3 hotSpot    = vec3(0.945, 0.259, 0.043) * pow(caustic, 3.0) * 0.4;
+    vec3 col        = blueLight + hotSpot;
+
+    // Fade at edges (caustics concentrate under the glass)
+    float edge = length(vUv - 0.5);
+    float fade = 1.0 - smoothstep(0.25, 0.5, edge);
+
+    gl_FragColor = vec4(col * fade, caustic * fade * 0.85);
+  }
+`;
+
+const causticsRT = new THREE.WebGLRenderTarget(512, 512);
+const causticsScene = new THREE.Scene();
+const causticsCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const causticsMat = new THREE.ShaderMaterial({
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position, 1.0); }`,
+  fragmentShader: causticsFrag,
+  uniforms: {
+    uTime: { value: 0 },
+    uLightDir: { value: new THREE.Vector2(0, 0) },
+  },
+  transparent: true,
+});
+causticsScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), causticsMat));
+
+// ─── RECEIVER PLANE (floor that receives caustics) ───────────────────────────
+const receiverGeo = new THREE.PlaneGeometry(6, 6, 1, 1);
+const receiverMat = new THREE.MeshStandardMaterial({
+  color: new THREE.Color(0x08101a),
+  roughness: 0.8,
+  metalness: 0.1,
+});
+const receiver = new THREE.Mesh(receiverGeo, receiverMat);
+receiver.rotation.x = -Math.PI / 2;
+receiver.position.y = -1.8;
+scene.add(receiver);
+
+// Caustics projection plane (decal on top of receiver)
+const causticsDecalGeo = new THREE.PlaneGeometry(4.5, 4.5, 1, 1);
+const causticsDecalMat = new THREE.MeshBasicMaterial({
+  map: causticsRT.texture,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+const causticsDecal = new THREE.Mesh(causticsDecalGeo, causticsDecalMat);
+causticsDecal.rotation.x = -Math.PI / 2;
+causticsDecal.position.y = -1.79;
+scene.add(causticsDecal);
+
+// Caustics also projected on back wall
+const wallGeo = new THREE.PlaneGeometry(6, 5, 1, 1);
+const wallMat = new THREE.MeshStandardMaterial({
+  color: new THREE.Color(0x060c14),
+  roughness: 0.9,
+});
+const wall = new THREE.Mesh(wallGeo, wallMat);
+wall.position.z = -3;
+scene.add(wall);
+
+const wallCausticsMat = new THREE.MeshBasicMaterial({
+  map: causticsRT.texture,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  opacity: 0.5,
+});
+const wallCausticsDecal = new THREE.Mesh(new THREE.PlaneGeometry(5, 4, 1, 1), wallCausticsMat);
+wallCausticsDecal.position.z = -2.98;
+scene.add(wallCausticsDecal);
+
+// ─── GLASS ORB (source of caustics) ─────────────────────────────────────────
+// Three-layer structure for premium glass depth
+const orbOuter = new THREE.Mesh(
+  new THREE.SphereGeometry(1.2, 128, 128),
+  new THREE.MeshPhysicalMaterial({
+    transmission: 1.0,
+    thickness: 0.8,
+    roughness: 0.02,
+    ior: 1.5,
+    iridescence: 0.42,
+    iridescenceIOR: 1.35,
+    color: new THREE.Color(0x8ecfe8),
+    envMapIntensity: 2.5,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  })
+);
+scene.add(orbOuter);
+
+const orbInner = new THREE.Mesh(
+  new THREE.SphereGeometry(0.72, 64, 64),
+  new THREE.MeshPhysicalMaterial({
+    color: new THREE.Color(0x2a93c1),
+    emissive: new THREE.Color(0x2a93c1),
+    emissiveIntensity: 1.8,
+    transmission: 0.7,
+    roughness: 0.05,
+    ior: 1.28,
+    depthWrite: false,
+  })
+);
+scene.add(orbInner);
+
+// Thin glass rings at equator (caustic source from ring edges)
+const ringMat = new THREE.MeshPhysicalMaterial({
+  transmission: 0.95,
+  roughness: 0.06,
+  ior: 1.62,
+  iridescence: 0.55,
+  color: new THREE.Color(0xaaddf5),
+  envMapIntensity: 3.0,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
+
+for (let i = 0; i < 3; i++) {
+  const r = 0.95 + i * 0.15;
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(r, 0.022, 20, 120),
+    ringMat
+  );
+  ring.rotation.x = (i * Math.PI) / 3.7;
+  ring.rotation.y = (i * Math.PI) / 2.1;
+  scene.add(ring);
+}
+
+// ─── LIGHT that drives caustics ───────────────────────────────────────────────
+const causticLight = new THREE.PointLight(0xfff4e0, 6.0, 20);
+causticLight.position.set(2, 4, 3);
+scene.add(causticLight);
+
+const ambientLight = new THREE.AmbientLight(0x061020, 0.3);
+scene.add(ambientLight);
+
+// ─── BACKGROUND (dark fBm) ────────────────────────────────────────────────────
+const bgScene = new THREE.Scene();
+const bgCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const bgMat = new THREE.ShaderMaterial({
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform float uTime;
+    varying vec2 vUv;
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float noise(vec2 p) {
+      vec2 i = floor(p), f = fract(p);
+      f = f*f*(3.0-2.0*f);
+      return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
+    }
+    float fbm(vec2 p) { float v=0.0,a=0.5; for(int i=0;i<4;i++){v+=a*noise(p);p=p*2.1+vec2(1.7,9.2);a*=0.5;} return v; }
+    void main() {
+      float f = fbm(vUv * 2.4 + vec2(uTime * 0.012, uTime * 0.008));
+      vec3 col = mix(vec3(0.01, 0.015, 0.025), vec3(0.02, 0.05, 0.08), f * 0.5);
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `,
+  uniforms: { uTime: { value: 0 } },
+});
+bgScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bgMat));
+
+// ─── SIMPLE BLOOM (RT + blur pass) ───────────────────────────────────────────
+const mainRT = new THREE.WebGLRenderTarget(W, H);
+const ppScene = new THREE.Scene(), ppCam = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const ppMat = new THREE.ShaderMaterial({
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D uScene;
+    uniform vec2 uRes;
+    varying vec2 vUv;
+    vec3 blur9(sampler2D img, vec2 uv, vec2 res, vec2 dir) {
+      vec3 c = vec3(0);
+      vec2 o1 = 1.3846 * dir / res;
+      vec2 o2 = 3.2308 * dir / res;
+      c += texture2D(img,uv).rgb * 0.2270;
+      c += texture2D(img,uv+o1).rgb * 0.3162 + texture2D(img,uv-o1).rgb * 0.3162;
+      c += texture2D(img,uv+o2).rgb * 0.0702 + texture2D(img,uv-o2).rgb * 0.0702;
+      return c;
+    }
+    void main() {
+      vec3 col = texture2D(uScene, vUv).rgb;
+      float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
+      vec3 bH = blur9(uScene, vUv, uRes, vec2(2.5, 0));
+      vec3 bV = blur9(uScene, vUv, uRes, vec2(0, 2.5));
+      vec3 bloom = (bH + bV) * 0.5 * smoothstep(0.06, 0.5, dot((bH+bV)*0.5, vec3(0.2126,0.7152,0.0722))) * 0.44;
+      gl_FragColor = vec4(col + bloom, 1.0);
+    }
+  `,
+  uniforms: { uScene: { value: mainRT.texture }, uRes: { value: new THREE.Vector2(W, H) } },
+});
+ppScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), ppMat));
+
+// ─── ANIMATE ───────────────────────────────────────────────────────────────
+let t = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  t += 0.016;
+
+  bgMat.uniforms.uTime.value = t;
+
+  // Update caustics uniforms — mouse drives light direction
+  causticsMat.uniforms.uTime.value = t;
+  causticsMat.uniforms.uLightDir.value.set(
+    mouseX + Math.sin(t * 0.3) * 0.2,
+    -mouseY + Math.cos(t * 0.25) * 0.15
+  );
+
+  // IOR animation on glass orb
+  orbOuter.material.ior = 1.42 + 0.12 * Math.sin(t * 2.1);
+
+  // Orb prime-frequency breathing
+  const b = Math.sin(t * 0.55) * 0.5 + Math.sin(t * 0.38) * 0.3 + Math.sin(t * 0.22) * 0.2;
+  orbOuter.scale.setScalar(1.0 + b * 0.02);
+  orbInner.scale.setScalar(1.0 + b * 0.035);
+
+  // Rings slow rotation
+  scene.children.filter(c => c.geometry && c.geometry.type === 'TorusGeometry').forEach((ring, i) => {
+    ring.rotation.z += 0.003 + i * 0.002;
+    ring.rotation.x += 0.001 + i * 0.0008;
+  });
+
+  // Caustic light pulses gently (drives caustic pattern intensity)
+  causticLight.intensity = 5.5 + 1.5 * Math.sin(t * 0.4) + 0.5 * Math.cos(t * 1.1);
+  causticLight.position.set(
+    2 + mouseX * 0.8 + Math.sin(t * 0.3) * 0.5,
+    4 + mouseY * 0.6,
+    3 + Math.cos(t * 0.2) * 0.3
+  );
+
+  // Camera micro-parallax
+  camera.position.x += (mouseX * 0.3 - camera.position.x) * 0.035;
+  camera.position.y += (1.5 - mouseY * 0.2 - camera.position.y) * 0.035;
+  camera.lookAt(0, 0, 0);
+
+  // Render caustics to RT first
+  renderer.setRenderTarget(causticsRT);
+  renderer.render(causticsScene, causticsCam);
+
+  // Then render main scene
+  renderer.autoClear = false;
+  renderer.setRenderTarget(mainRT);
+  renderer.clear();
+  renderer.render(bgScene, bgCam);
+  renderer.render(scene, camera);
+
+  // Bloom
+  renderer.setRenderTarget(null);
+  renderer.render(ppScene, ppCam);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  mainRT.setSize(w, h);
+  ppMat.uniforms.uRes.value.set(w, h);
+});
+</script>
+</body>
+</html>

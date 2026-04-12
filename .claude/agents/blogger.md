@@ -22,7 +22,7 @@ skills:
   - image-self-review
   - verification-before-completion
   - memory-first-protocol
-model: sonnet-4
+model: opus
 created: 2026-01-03
 designed_by: the-conductor
 status: ACTIVE

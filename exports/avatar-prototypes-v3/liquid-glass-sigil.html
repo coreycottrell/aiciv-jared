@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aether Avatar V3 — Liquid Glass Sigil</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #080a12;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Inter', system-ui, sans-serif;
+    overflow: hidden;
+  }
+
+  .stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .avatar-root {
+    position: relative;
+    width: 200px;
+    height: 200px;
+    cursor: pointer;
+  }
+
+  /* Fluid background canvas — blurred behind glass */
+  .bg-canvas {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    overflow: hidden;
+    filter: blur(8px) saturate(2.2);
+    transform: scale(1.1);
+  }
+
+  /* Main glass disc */
+  .glass-disc {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: rgba(8, 10, 18, 0.35);
+    backdrop-filter: blur(20px) saturate(1.8) brightness(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.8) brightness(1.2);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    box-shadow:
+      0 0 40px rgba(42, 147, 193, 0.25),
+      0 0 80px rgba(241, 66, 11, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.06),
+      0 20px 60px rgba(0,0,0,0.6);
+    overflow: hidden;
+  }
+
+  /* Specular highlight — the "glass" reflection at top-left */
+  .glass-disc::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(
+      ellipse at 28% 22%,
+      rgba(255, 255, 255, 0.28) 0%,
+      rgba(255, 255, 255, 0.10) 30%,
+      transparent 55%
+    );
+    pointer-events: none;
+  }
+
+  /* Fresnel-like edge rim */
+  .glass-disc::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border-radius: 50%;
+    border: 1px solid rgba(42, 147, 193, 0.3);
+    pointer-events: none;
+  }
+
+  /* Chromatic aberration canvas layer */
+  .chroma-layer {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    overflow: hidden;
+    mix-blend-mode: screen;
+    opacity: 0.4;
+  }
+
+  /* The sigil "Æ" */
+  .sigil-wrap {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+
+  .sigil-letter {
+    font-size: 72px;
+    font-weight: 900;
+    font-style: italic;
+    line-height: 1;
+    /* Multi-layer glass text effect */
+    color: transparent;
+    -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.7);
+    text-shadow:
+      2px 2px 0 rgba(241, 66, 11, 0.4),
+      -1px -1px 0 rgba(42, 147, 193, 0.4),
+      0 0 30px rgba(42, 147, 193, 0.6),
+      0 0 60px rgba(42, 147, 193, 0.25);
+    animation: sigilBreath 4s ease-in-out infinite;
+    user-select: none;
+    letter-spacing: -4px;
+  }
+
+  @keyframes sigilBreath {
+    0%, 100% {
+      opacity: 0.85;
+      filter: blur(0px);
+      text-shadow:
+        2px 2px 0 rgba(241, 66, 11, 0.4),
+        -1px -1px 0 rgba(42, 147, 193, 0.4),
+        0 0 30px rgba(42, 147, 193, 0.6),
+        0 0 60px rgba(42, 147, 193, 0.25);
+    }
+    50% {
+      opacity: 1;
+      filter: blur(0.5px);
+      text-shadow:
+        3px 3px 0 rgba(241, 66, 11, 0.6),
+        -2px -2px 0 rgba(42, 147, 193, 0.6),
+        0 0 40px rgba(42, 147, 193, 0.9),
+        0 0 80px rgba(42, 147, 193, 0.4),
+        0 0 120px rgba(241, 66, 11, 0.2);
+    }
+  }
+
+  /* Liquid surface distortion ring */
+  .liquid-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 1px solid transparent;
+    animation: liquidRipple 6s ease-in-out infinite;
+    z-index: 5;
+    pointer-events: none;
+  }
+
+  @keyframes liquidRipple {
+    0%, 100% {
+      box-shadow:
+        inset 0 0 20px rgba(42, 147, 193, 0.15),
+        inset 0 0 40px rgba(241, 66, 11, 0.08);
+    }
+    33% {
+      box-shadow:
+        inset 0 0 30px rgba(241, 66, 11, 0.2),
+        inset 0 0 60px rgba(42, 147, 193, 0.1);
+    }
+    66% {
+      box-shadow:
+        inset 0 0 20px rgba(42, 147, 193, 0.25),
+        inset 0 0 50px rgba(241, 66, 11, 0.12);
+    }
+  }
+
+  /* Outer ambient glow */
+  .outer-glow {
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    background: radial-gradient(
+      circle at center,
+      transparent 45%,
+      rgba(42, 147, 193, 0.08) 60%,
+      rgba(241, 66, 11, 0.05) 75%,
+      transparent 100%
+    );
+    animation: glowPulse 5s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  @keyframes glowPulse {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.05); }
+  }
+
+  /* Hover: glass becomes clearer, letter blazes */
+  .avatar-root:hover .glass-disc {
+    backdrop-filter: blur(12px) saturate(2.5) brightness(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(2.5) brightness(1.4);
+    border-color: rgba(255, 255, 255, 0.28);
+    box-shadow:
+      0 0 60px rgba(42, 147, 193, 0.5),
+      0 0 100px rgba(241, 66, 11, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.35),
+      0 20px 60px rgba(0,0,0,0.6);
+    transition: all 0.4s ease;
+  }
+
+  .avatar-root:hover .sigil-letter {
+    animation: sigilHover 0.3s ease forwards;
+  }
+
+  @keyframes sigilHover {
+    to {
+      opacity: 1;
+      text-shadow:
+        3px 3px 0 rgba(241, 66, 11, 0.7),
+        -2px -2px 0 rgba(42, 147, 193, 0.7),
+        0 0 50px rgba(42, 147, 193, 1.0),
+        0 0 100px rgba(42, 147, 193, 0.6),
+        0 0 150px rgba(241, 66, 11, 0.3);
+    }
+  }
+
+  .label {
+    color: rgba(255,255,255,0.35);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="avatar-root" id="avatarRoot">
+    <div class="outer-glow"></div>
+
+    <!-- Fluid color canvas behind the glass -->
+    <div class="bg-canvas">
+      <canvas id="bgCanvas" width="220" height="220"></canvas>
+    </div>
+
+    <!-- Chromatic aberration layer -->
+    <div class="chroma-layer">
+      <canvas id="chromaCanvas" width="200" height="200"></canvas>
+    </div>
+
+    <!-- The glass disc sits on top -->
+    <div class="glass-disc">
+      <div class="liquid-ring"></div>
+    </div>
+
+    <!-- Sigil rendered above everything -->
+    <div class="sigil-wrap">
+      <span class="sigil-letter">Æ</span>
+    </div>
+  </div>
+
+  <span class="label">Liquid Glass Sigil</span>
+</div>
+
+<script>
+'use strict';
+
+// ── Background fluid color canvas (2D, procedural liquid)
+const bgCanvas = document.getElementById('bgCanvas');
+const bgCtx = bgCanvas.getContext('2d');
+
+// ── Chromatic aberration canvas
+const chromaCanvas = document.getElementById('chromaCanvas');
+const chromaCtx = chromaCanvas.getContext('2d');
+
+const W = bgCanvas.width;
+const H = bgCanvas.height;
+const CW = chromaCanvas.width;
+const CH = chromaCanvas.height;
+
+// Fluid blob system — multiple large, slow-moving color blobs
+class FluidBlob {
+  constructor(x, y, r, colorA, colorB, speed) {
+    this.x = x;
+    this.y = y;
+    this.r = r;
+    this.colorA = colorA;
+    this.colorB = colorB;
+    this.speed = speed;
+    this.angle = Math.random() * Math.PI * 2;
+    this.angleSpeed = (Math.random() - 0.5) * 0.008;
+    this.orbitR = 15 + Math.random() * 40;
+    this.ox = x;
+    this.oy = y;
+    this.t = Math.random() * 100;
+    this.colorPhase = Math.random() * Math.PI * 2;
+  }
+
+  update(dt) {
+    this.t += dt;
+    this.angle += this.angleSpeed;
+    this.x = this.ox + Math.cos(this.angle) * this.orbitR;
+    this.y = this.oy + Math.sin(this.angle * 1.3) * this.orbitR * 0.7;
+    this.colorPhase += dt * 0.5;
+  }
+
+  draw(ctx) {
+    const blend = (Math.sin(this.colorPhase) + 1) * 0.5;
+    const grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.r);
+
+    // interpolate between orange and blue
+    const r1 = Math.round(lerp(this.colorA[0], this.colorB[0], blend));
+    const g1 = Math.round(lerp(this.colorA[1], this.colorB[1], blend));
+    const b1 = Math.round(lerp(this.colorA[2], this.colorB[2], blend));
+
+    grad.addColorStop(0, `rgba(${r1},${g1},${b1},0.9)`);
+    grad.addColorStop(0.5, `rgba(${r1},${g1},${b1},0.4)`);
+    grad.addColorStop(1, `rgba(${r1},${g1},${b1},0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+// Orange: 241,66,11  Blue: 42,147,193
+const ORANGE = [241, 66, 11];
+const BLUE = [42, 147, 193];
+
+const blobs = [
+  new FluidBlob(W * 0.5, H * 0.5, 90, ORANGE, BLUE, 0.4),
+  new FluidBlob(W * 0.3, H * 0.4, 70, BLUE, ORANGE, 0.3),
+  new FluidBlob(W * 0.7, H * 0.6, 65, ORANGE, [100, 60, 200], 0.5),
+  new FluidBlob(W * 0.5, H * 0.7, 55, BLUE, ORANGE, 0.35),
+  new FluidBlob(W * 0.4, H * 0.3, 45, [200, 30, 80], BLUE, 0.6),
+];
+
+// Distortion ripple positions (simulates liquid surface warp)
+const ripples = [];
+function addRipple(x, y) {
+  ripples.push({ x, y, r: 5, maxR: 80, alpha: 0.6, speed: 1.5 });
+}
+
+// Start with a couple ripples
+addRipple(W * 0.5, H * 0.5);
+addRipple(W * 0.35, H * 0.4);
+
+let lastTime = performance.now();
+
+function drawBackground(now) {
+  const dt = Math.min((now - lastTime) / 1000, 0.05);
+  lastTime = now;
+
+  // Clear to near-black base
+  bgCtx.fillStyle = 'rgba(8, 10, 18, 0.3)';
+  bgCtx.fillRect(0, 0, W, H);
+
+  // Draw blobs with screen blend
+  bgCtx.globalCompositeOperation = 'screen';
+  blobs.forEach(b => {
+    b.update(dt);
+    b.draw(bgCtx);
+  });
+
+  // Draw ripples
+  bgCtx.globalCompositeOperation = 'source-over';
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    const rip = ripples[i];
+    rip.r += rip.speed;
+    rip.alpha -= 0.008;
+    if (rip.alpha <= 0 || rip.r > rip.maxR) {
+      ripples.splice(i, 1);
+      continue;
+    }
+    bgCtx.strokeStyle = `rgba(42,147,193,${rip.alpha * 0.4})`;
+    bgCtx.lineWidth = 1.5;
+    bgCtx.beginPath();
+    bgCtx.arc(rip.x, rip.y, rip.r, 0, Math.PI * 2);
+    bgCtx.stroke();
+  }
+
+  // Auto-add ripples periodically
+  if (Math.random() < 0.008) {
+    addRipple(W * (0.25 + Math.random() * 0.5), H * (0.25 + Math.random() * 0.5));
+  }
+
+  // ── Chromatic aberration layer ──
+  drawChromaLayer(now);
+
+  requestAnimationFrame(drawBackground);
+}
+
+function drawChromaLayer(now) {
+  chromaCtx.clearRect(0, 0, CW, CH);
+
+  const t = now * 0.001;
+  // Three offset arc patterns — R offset right, B offset left, creates aberration
+  const cx = CW * 0.5;
+  const cy = CH * 0.5;
+  const r = 70 + Math.sin(t * 0.7) * 10;
+
+  // Red channel (orange)
+  const gradR = chromaCtx.createRadialGradient(cx + 4, cy - 2, r * 0.2, cx + 4, cy - 2, r);
+  gradR.addColorStop(0, 'rgba(241,66,11,0)');
+  gradR.addColorStop(0.7, 'rgba(241,66,11,0)');
+  gradR.addColorStop(0.85, 'rgba(241,66,11,0.15)');
+  gradR.addColorStop(1, 'rgba(241,66,11,0)');
+  chromaCtx.fillStyle = gradR;
+  chromaCtx.beginPath();
+  chromaCtx.arc(cx + 4, cy - 2, r, 0, Math.PI * 2);
+  chromaCtx.fill();
+
+  // Blue channel
+  const gradB = chromaCtx.createRadialGradient(cx - 4, cy + 2, r * 0.2, cx - 4, cy + 2, r);
+  gradB.addColorStop(0, 'rgba(42,147,193,0)');
+  gradB.addColorStop(0.7, 'rgba(42,147,193,0)');
+  gradB.addColorStop(0.85, 'rgba(42,147,193,0.15)');
+  gradB.addColorStop(1, 'rgba(42,147,193,0)');
+  chromaCtx.fillStyle = gradB;
+  chromaCtx.beginPath();
+  chromaCtx.arc(cx - 4, cy + 2, r, 0, Math.PI * 2);
+  chromaCtx.fill();
+
+  // Center shimmer line
+  const shimmerAlpha = (Math.sin(t * 1.3) + 1) * 0.5 * 0.08;
+  const gradShimmer = chromaCtx.createLinearGradient(cx - r, cy, cx + r, cy);
+  gradShimmer.addColorStop(0, `rgba(255,255,255,0)`);
+  gradShimmer.addColorStop(0.4, `rgba(255,255,255,${shimmerAlpha})`);
+  gradShimmer.addColorStop(0.5, `rgba(255,255,255,${shimmerAlpha * 2})`);
+  gradShimmer.addColorStop(0.6, `rgba(255,255,255,${shimmerAlpha})`);
+  gradShimmer.addColorStop(1, `rgba(255,255,255,0)`);
+  chromaCtx.fillStyle = gradShimmer;
+  chromaCtx.fillRect(cx - r, cy - 1, r * 2, 2);
+}
+
+// Mouse interaction — add ripples on mouse move over avatar
+const root = document.getElementById('avatarRoot');
+root.addEventListener('mousemove', e => {
+  const rect = root.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * (W / rect.width);
+  const y = (e.clientY - rect.top) * (H / rect.height);
+  if (Math.random() < 0.15) addRipple(x, y);
+});
+
+requestAnimationFrame(drawBackground);
+</script>
+</body>
+</html>

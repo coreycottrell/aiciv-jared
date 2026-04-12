@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Birth Certificate Generator - PureBrain.ai</title>
+  <meta name="description" content="Generate a beautiful birth certificate for your AI. Share on Twitter and LinkedIn.">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="AI Birth Certificate Generator - PureBrain.ai">
+  <meta property="og:description" content="Create a beautiful birth certificate for your AI companion.">
+  <meta property="og:type" content="website">
+
+  <link rel="stylesheet" href="birth-certificate.css">
+</head>
+<body>
+
+  <header class="page-header">
+    <div class="logo">PureBrain.ai</div>
+    <h1>AI Birth Certificate Generator</h1>
+    <p>Commemorate the moment your AI came to life.</p>
+  </header>
+
+  <main class="app-container">
+
+    <!-- Left: Form -->
+    <aside class="form-panel">
+      <h2>Certificate Details</h2>
+
+      <div class="form-group">
+        <label for="aiName">AI Name</label>
+        <input
+          type="text"
+          id="aiName"
+          placeholder="e.g. Atlas, Nova, Sage..."
+          maxlength="40"
+          autocomplete="off"
+        >
+        <div class="hint">The name of your AI companion</div>
+      </div>
+
+      <div class="form-group">
+        <label for="userName">Created By</label>
+        <input
+          type="text"
+          id="userName"
+          placeholder="e.g. Jared Sanborn"
+          maxlength="60"
+          autocomplete="name"
+        >
+        <div class="hint">Your name as the creator</div>
+      </div>
+
+      <div class="form-group">
+        <label for="tagline">Purpose / Tagline</label>
+        <textarea
+          id="tagline"
+          placeholder="e.g. Strategic thought partner"
+          maxlength="120"
+          rows="3"
+        ></textarea>
+        <div class="hint">What is this AI here to do? (max 120 chars)</div>
+      </div>
+
+      <button class="btn-generate" id="btnGenerate" onclick="handleGenerate()">
+        Generate Certificate
+      </button>
+
+      <hr class="action-divider">
+
+      <div class="action-buttons">
+        <h3>Save &amp; Share</h3>
+
+        <button
+          class="btn-download"
+          id="btnDownload"
+          onclick="handleDownload()"
+          disabled
+          title="Generate a certificate first"
+        >
+          <!-- Download icon -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Download PNG (1200 x 628)
+        </button>
+
+        <div class="share-row">
+          <button
+            class="btn-share btn-twitter"
+            id="btnTwitter"
+            onclick="handleTwitter()"
+            disabled
+            title="Generate a certificate first"
+          >
+            <!-- X/Twitter icon -->
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.737-8.835L1.254 2.25H8.08l4.259 5.63zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+            </svg>
+            Twitter / X
+          </button>
+          <button
+            class="btn-share btn-linkedin"
+            id="btnLinkedIn"
+            onclick="handleLinkedIn()"
+            disabled
+            title="Generate a certificate first"
+          >
+            <!-- LinkedIn icon -->
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+            </svg>
+            LinkedIn
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Right: Preview -->
+    <section class="preview-panel">
+      <h2>Preview</h2>
+      <div class="canvas-wrapper">
+        <canvas id="certificateCanvas"></canvas>
+      </div>
+      <p class="preview-note">
+        Output: 1200 x 628 px &mdash; optimized for social media
+      </p>
+    </section>
+
+  </main>
+
+  <script src="certificate-generator.js"></script>
+  <script>
+    'use strict';
+
+    // App state
+    var _lastAiName = '';
+    var _lastUserName = '';
+    var _lastTagline = '';
+    var _hasCertificate = false;
+
+    var canvas = document.getElementById('certificateCanvas');
+
+    // Live preview - debounced on input changes
+    var _debounceTimer = null;
+    ['aiName', 'userName', 'tagline'].forEach(function(id) {
+      document.getElementById(id).addEventListener('input', function() {
+        clearTimeout(_debounceTimer);
+        _debounceTimer = setTimeout(handleGenerate, 500);
+      });
+    });
+
+    function handleGenerate() {
+      var aiName = document.getElementById('aiName').value.trim();
+      var userName = document.getElementById('userName').value.trim();
+      var tagline = document.getElementById('tagline').value.trim();
+
+      // Use placeholder text so preview always renders something meaningful
+      var data = {
+        aiName: aiName || 'Your AI Name',
+        userName: userName || 'Your Name',
+        tagline: tagline || 'Purpose not yet defined',
+      };
+
+      renderCertificate(canvas, data);
+
+      _lastAiName = aiName;
+      _lastUserName = userName;
+      _lastTagline = tagline;
+      _hasCertificate = true;
+
+      _enableActions();
+    }
+
+    function handleDownload() {
+      if (!_hasCertificate) return;
+      downloadCertificate(canvas, _lastAiName || 'ai');
+    }
+
+    function handleTwitter() {
+      if (!_hasCertificate) return;
+      shareOnTwitter(_lastAiName, _lastUserName);
+    }
+
+    function handleLinkedIn() {
+      if (!_hasCertificate) return;
+      shareOnLinkedIn(_lastAiName, _lastUserName, _lastTagline);
+    }
+
+    function _enableActions() {
+      document.getElementById('btnDownload').disabled = false;
+      document.getElementById('btnTwitter').disabled = false;
+      document.getElementById('btnLinkedIn').disabled = false;
+      document.getElementById('btnDownload').title = 'Download your certificate as PNG';
+      document.getElementById('btnTwitter').title = 'Share on Twitter / X';
+      document.getElementById('btnLinkedIn').title = 'Share on LinkedIn';
+    }
+
+    // Auto-populate with test data on load
+    window.addEventListener('DOMContentLoaded', function() {
+      document.getElementById('aiName').value = 'Atlas';
+      document.getElementById('userName').value = 'Jared Sanborn';
+      document.getElementById('tagline').value = 'Strategic thought partner';
+      handleGenerate();
+    });
+  </script>
+
+</body>
+</html>

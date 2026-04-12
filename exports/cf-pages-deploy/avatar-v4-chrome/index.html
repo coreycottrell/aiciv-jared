@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-WTDXL4VJ');</script>
+<!-- End Google Tag Manager -->
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+(function(c,l,a,r,i,t,y){
+    c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+    t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+    y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+})(window, document, "clarity", "script", "viy9bnc56x");
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aether Avatar — Chrome Mirror</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #080a12;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas {
+    width: 200px; height: 200px;
+    border-radius: 50%;
+    display: block;
+  }
+</style>
+
+<!-- UNIVERSAL REFERRAL CODE CAPTURE — 90-day cookie + localStorage -->
+<script>
+(function() {
+  // Read ?ref= or ?code= from URL
+  var params = new URLSearchParams(window.location.search);
+  var ref = params.get('ref') || params.get('code');
+  
+  if (ref && /^[A-Za-z0-9-]{4,16}$/.test(ref)) {
+    // Store in localStorage
+    try { localStorage.setItem('pb_ref', ref); } catch(e) {}
+    // Store in cookie (90-day expiry, all paths, SameSite=Lax)
+    var expires = new Date();
+    expires.setDate(expires.getDate() + 90);
+    document.cookie = 'pb_ref=' + encodeURIComponent(ref) + '; expires=' + expires.toUTCString() + '; path=/; SameSite=Lax';
+    // Fire click tracking (non-blocking)
+    try {
+      fetch('https://app.purebrain.ai/api/referral/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referral_code: ref.toUpperCase() }),
+        keepalive: true
+      }).catch(function(){});
+    } catch(e) {}
+  }
+  
+  // Global helper: read stored referral code at payment time
+  // Checks URL first, then localStorage, then cookie
+  window.getPbRef = function() {
+    // 1. Check current URL
+    var p = new URLSearchParams(window.location.search);
+    var urlRef = p.get('ref') || p.get('code');
+    if (urlRef && /^[A-Za-z0-9-]{4,16}$/.test(urlRef)) return urlRef;
+    // 2. Check localStorage
+    try {
+      var ls = localStorage.getItem('pb_ref');
+      if (ls && /^[A-Za-z0-9-]{4,16}$/.test(ls)) return ls;
+    } catch(e) {}
+    // 3. Check cookie
+    var match = document.cookie.match(/(?:^|;)\s*pb_ref=([^;]+)/);
+    if (match) {
+      var decoded = decodeURIComponent(match[1]);
+      if (/^[A-Za-z0-9-]{4,16}$/.test(decoded)) return decoded;
+    }
+    return null;
+  };
+})();
+</script>
+
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-WTDXL4VJ"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+<canvas id="c" width="400" height="400"></canvas>
+<script>
+(function() {
+  const canvas = document.getElementById('c');
+  const gl = canvas.getContext('webgl', { antialias: true, alpha: true });
+  if (!gl) { document.body.innerHTML = '<p style="color:#fff">WebGL not supported</p>'; return; }
+
+  // ---- Shared GLSL ----
+  const VALUE_NOISE_GLSL = `
+float hash(vec3 p) {
+  p = fract(p * 0.3183099 + 0.1);
+  p *= 17.0;
+  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+float vnoise(vec3 x) {
+  vec3 i = floor(x);
+  vec3 f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(mix(hash(i), hash(i+vec3(1,0,0)), f.x),
+        mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)), f.x), f.y),
+    mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)), f.x),
+        mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), f.x), f.y), f.z);
+}
+float fbm(vec3 p) {
+  float v = 0.0; float a = 0.5;
+  for(int i=0; i<4; i++) { v += a * vnoise(p); p *= 2.1; a *= 0.5; }
+  return v;
+}
+`;
+
+  // ---- Vertex Shader ----
+  const vsSource = `
+attribute vec2 aPos;
+varying vec2 vUv;
+void main() {
+  vUv = aPos * 0.5 + 0.5;
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}
+`;
+
+  // ---- Fragment Shader (Chrome sphere via ray casting) ----
+  const fsSource = `
+precision highp float;
+varying vec2 vUv;
+uniform float uTime;
+uniform vec2 uMouse;
+uniform vec2 uRes;
+
+${VALUE_NOISE_GLSL}
+
+/* GGX distribution */
+float ggx(float NdH, float rough) {
+  float a2 = rough * rough * rough * rough;
+  float d = NdH * NdH * (a2 - 1.0) + 1.0;
+  return a2 / (3.14159 * d * d);
+}
+
+/* Fresnel Schlick */
+vec3 fresnel(float cos_t, vec3 F0) {
+  return F0 + (1.0 - F0) * pow(clamp(1.0 - cos_t, 0.0, 1.0), 5.0);
+}
+
+/* Environment — procedural chrome environment */
+vec3 envMap(vec3 r, float rough) {
+  /* Layered env: bright cap, horizon glow, floor */
+  float y = r.y;
+  /* Sky gradient */
+  vec3 sky = mix(vec3(0.06, 0.10, 0.22), vec3(0.55, 0.75, 1.0), max(y, 0.0));
+  /* Warm sun disc */
+  vec3 sunDir = normalize(vec3(0.6, 0.8, 0.3));
+  float sun = pow(max(dot(r, sunDir), 0.0), 128.0);
+  sky += vec3(1.0, 0.92, 0.85) * sun * 3.0;
+  /* Orange accent light from side — PureBrain orange */
+  vec3 oDir = normalize(vec3(-0.9, 0.2, 0.4));
+  float orange = pow(max(dot(r, oDir), 0.0), 32.0);
+  sky += vec3(0.94, 0.26, 0.04) * orange * 0.9;
+  /* Blue accent — PureBrain blue */
+  vec3 bDir = normalize(vec3(0.7, -0.1, -0.7));
+  float blue = pow(max(dot(r, bDir), 0.0), 16.0);
+  sky += vec3(0.16, 0.58, 0.76) * blue * 0.6;
+  /* Floor (dark reflection) */
+  vec3 col = (y >= 0.0) ? sky : mix(vec3(0.02, 0.02, 0.04), sky, max(y + 1.0, 0.0));
+  /* Roughness blur via noise perturbation */
+  if (rough > 0.01) {
+    vec3 rPerturb = normalize(r + fbm(r * 4.0 + uTime * 0.1) * rough * 0.3 * vec3(1.0));
+    float yp = rPerturb.y;
+    vec3 skyP = mix(vec3(0.06, 0.10, 0.22), vec3(0.55, 0.75, 1.0), max(yp, 0.0));
+    col = mix(col, (yp >= 0.0) ? skyP : vec3(0.02), rough);
+  }
+  return col;
+}
+
+/* SDF sphere displacement for Ae sigil region */
+float sdCircle(vec2 p, float r) { return length(p) - r; }
+
+/* Æ monogram SDF carved into sphere surface in UV space */
+float sigilSDF(vec2 uv) {
+  /* Map to [-1,1] centered */
+  vec2 p = (uv - 0.5) * 2.2;
+  float d = 1e9;
+  /* A left leg */
+  vec2 aL = p - vec2(-0.28, 0.0);
+  d = min(d, abs(aL.x * 0.8 + aL.y * 0.6) / 1.0 - 0.025);
+  /* A right leg */
+  vec2 aR = p - vec2(0.0, 0.0);
+  d = min(d, abs(aR.x * (-0.8) + aR.y * 0.6) / 1.0 - 0.025);
+  /* A crossbar */
+  float barY = 0.1;
+  d = min(d, abs(p.y - barY) - 0.018 + max(0.0, abs(p.x) - 0.18));
+  /* E - vertical stem */
+  d = min(d, abs(p.x - 0.18) - 0.018 + max(0.0, abs(p.y) - 0.38));
+  /* E top bar */
+  d = min(d, abs(p.y - 0.36) - 0.018 + max(0.0, (p.x - 0.30)));
+  d = min(d, abs(p.y - 0.36) - 0.018 + max(0.0, (0.0 - p.x)));
+  /* E mid bar */
+  d = min(d, abs(p.y) - 0.018 + max(0.0, (p.x - 0.26)));
+  d = min(d, abs(p.y) - 0.018 + max(0.0, (0.0 - p.x)));
+  /* E bot bar */
+  d = min(d, abs(p.y + 0.36) - 0.018 + max(0.0, (p.x - 0.30)));
+  d = min(d, abs(p.y + 0.36) - 0.018 + max(0.0, (0.0 - p.x)));
+  return d;
+}
+
+void main() {
+  vec2 fc = gl_FragCoord.xy;
+  vec2 res = uRes;
+  /* Ray setup */
+  vec2 ndc = (fc / res) * 2.0 - 1.0;
+  ndc.x *= res.x / res.y;
+
+  /* Mouse tilt */
+  vec2 mNorm = (uMouse / res - 0.5) * 2.0;
+  float tiltX = mNorm.y * 0.35;
+  float tiltY = mNorm.x * 0.35;
+
+  vec3 ro = vec3(0.0, 0.0, 3.0);
+  vec3 rd = normalize(vec3(ndc, -1.8));
+
+  /* Rotate camera based on mouse */
+  float cx = cos(tiltX), sx = sin(tiltX);
+  float cy = cos(tiltY), sy = sin(tiltY);
+  rd = vec3(
+    cy * rd.x + sy * rd.z,
+    rd.y,
+    -sy * rd.x + cy * rd.z
+  );
+  rd = vec3(
+    rd.x,
+    cx * rd.y - sx * rd.z,
+    sx * rd.y + cx * rd.z
+  );
+
+  /* Sphere intersection */
+  float R = 1.0;
+  float b = dot(ro, rd);
+  float c = dot(ro, ro) - R * R;
+  float disc = b * b - c;
+
+  if (disc < 0.0) {
+    gl_FragColor = vec4(0.0);
+    return;
+  }
+
+  float t = -b - sqrt(disc);
+  vec3 pos = ro + t * rd;
+  vec3 N = normalize(pos);
+
+  /* Surface noise displacement for chrome bumps */
+  float bumpT = uTime * 0.18;
+  float bump = fbm(N * 3.5 + bumpT) * 0.012;
+  /* Finite difference normal perturbation */
+  float eps = 0.03;
+  float bx = fbm((N + vec3(eps,0,0)) * 3.5 + bumpT);
+  float by = fbm((N + vec3(0,eps,0)) * 3.5 + bumpT);
+  float bz = fbm((N + vec3(0,0,eps)) * 3.5 + bumpT);
+  vec3 grad = vec3(bx - bump, by - bump, bz - bump) / eps * 0.012;
+  vec3 Np = normalize(N - grad);
+
+  vec3 V = -rd;
+  float NdV = max(dot(Np, V), 0.001);
+
+  /* Reflection */
+  vec3 refl = reflect(-V, Np);
+
+  /* Time-animated shimmer in env */
+  float rough = 0.04 + 0.02 * sin(uTime * 0.7);
+  vec3 envCol = envMap(refl, rough);
+
+  /* Chrome F0 */
+  vec3 F0 = vec3(0.95, 0.93, 0.96);
+  vec3 F = fresnel(NdV, F0);
+
+  /* Chrome color: nearly perfect mirror */
+  vec3 col = envCol * F;
+
+  /* Analytical key light for specular highlight */
+  vec3 keyDir = normalize(vec3(0.6, 0.8, 0.3));
+  float NdH_key = max(dot(Np, normalize(V + keyDir)), 0.0);
+  col += vec3(1.0, 0.98, 0.96) * ggx(NdH_key, 0.05) * 0.15;
+
+  /* Orange rim light */
+  vec3 rimDir = normalize(vec3(-0.9, 0.2, 0.4));
+  float NdH_rim = max(dot(Np, normalize(V + rimDir)), 0.0);
+  col += vec3(0.94, 0.26, 0.04) * ggx(NdH_rim, 0.06) * max(1.0 - NdV, 0.0) * 0.5;
+
+  /* Blue fill */
+  vec3 fillDir = normalize(vec3(0.7, -0.1, -0.7));
+  float NdH_fill = max(dot(Np, normalize(V + fillDir)), 0.0);
+  col += vec3(0.16, 0.58, 0.76) * ggx(NdH_fill, 0.08) * 0.08;
+
+  /* Ae monogram — engraved highlight */
+  /* Compute spherical UV */
+  vec3 pN = normalize(pos);
+  vec2 sUV;
+  sUV.x = atan(pN.z, pN.x) / (2.0 * 3.14159) + 0.5;
+  sUV.y = asin(clamp(pN.y, -1.0, 1.0)) / 3.14159 + 0.5;
+  float sigil = sigilSDF(sUV);
+  /* Animate sigil engraving with NdV — more visible face-on */
+  float sigilMask = smoothstep(0.005, -0.005, sigil) * NdV * 0.7;
+  /* Engraved = darkened groove + brightened rim */
+  col = mix(col, col * 0.3 + vec3(0.8, 0.9, 1.0) * 0.4, sigilMask);
+
+  /* Gradient ring edge glow */
+  float edgeDist = abs(length(pos.xy) - 0.98) * 5.0;
+  float ringMask = max(0.0, 1.0 - edgeDist);
+  float ringAngle = atan(pos.y, pos.x);
+  float ringT = sin(ringAngle * 2.0 - uTime * 0.8) * 0.5 + 0.5;
+  vec3 ringCol = mix(vec3(0.16, 0.58, 0.76), vec3(0.94, 0.26, 0.04), ringT);
+  col = mix(col, ringCol * 2.5, ringMask * 0.35 * (1.0 - NdV));
+
+  /* Tone map — ACES approximation */
+  col = col * (2.51 * col + 0.03) / (col * (2.43 * col + 0.59) + 0.14);
+  col = clamp(col, 0.0, 1.0);
+
+  /* Soft edge feather */
+  float edgeFade = smoothstep(0.0, 0.03, sqrt(disc) / R);
+  gl_FragColor = vec4(col, edgeFade);
+}
+`;
+
+  // ---- Compile shaders ----
+  function compile(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      console.error(gl.getShaderInfoLog(s), src);
+      return null;
+    }
+    return s;
+  }
+
+  const vs = compile(gl.VERTEX_SHADER, vsSource);
+  const fs = compile(gl.FRAGMENT_SHADER, fsSource);
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    console.error(gl.getProgramInfoLog(prog));
+    return;
+  }
+
+  // ---- Fullscreen quad ----
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+  const aPos = gl.getAttribLocation(prog, 'aPos');
+  const uTime = gl.getUniformLocation(prog, 'uTime');
+  const uMouse = gl.getUniformLocation(prog, 'uMouse');
+  const uRes = gl.getUniformLocation(prog, 'uRes');
+
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+  // ---- Mouse tracking ----
+  let mx = canvas.width / 2, my = canvas.height / 2;
+  let tmx = mx, tmy = my;
+
+  document.addEventListener('mousemove', e => {
+    const r = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / r.width;
+    const scaleY = canvas.height / r.height;
+    tmx = (e.clientX - r.left) * scaleX;
+    tmy = (e.clientY - r.top) * scaleY;
+  });
+
+  // ---- Render loop ----
+  function render(now) {
+    now *= 0.001;
+    mx += (tmx - mx) * 0.06;
+    my += (tmy - my) * 0.06;
+
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.useProgram(prog);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+    gl.uniform1f(uTime, now);
+    gl.uniform2f(uMouse, mx, canvas.height - my);
+    gl.uniform2f(uRes, canvas.width, canvas.height);
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    requestAnimationFrame(render);
+  }
+  requestAnimationFrame(render);
+})();
+</script>
+</body>
+</html>

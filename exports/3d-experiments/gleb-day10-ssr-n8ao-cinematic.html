@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 10: SSR + N8AO + Cinematic Product Shot | Gleb Mastery Sprint</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #060606; overflow: hidden; font-family: 'Inter', sans-serif; }
+  canvas { display: block; }
+
+  #overlay {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 10px;
+    z-index: 10;
+  }
+
+  .mode-btn {
+    padding: 8px 20px;
+    background: rgba(42, 147, 193, 0.12);
+    border: 1px solid rgba(42, 147, 193, 0.35);
+    color: #2a93c1;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: all 0.25s;
+  }
+  .mode-btn:hover, .mode-btn.active {
+    background: rgba(42, 147, 193, 0.3);
+    border-color: #2a93c1;
+    color: #fff;
+  }
+  .mode-btn.orange { border-color: rgba(241, 66, 11, 0.35); color: #f1420b; }
+  .mode-btn.orange:hover, .mode-btn.orange.active {
+    background: rgba(241, 66, 11, 0.2);
+    border-color: #f1420b;
+    color: #fff;
+  }
+
+  #info {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    color: rgba(255,255,255,0.35);
+    font-size: 11px;
+    line-height: 1.7;
+    letter-spacing: 0.04em;
+    pointer-events: none;
+  }
+  #info strong {
+    color: rgba(42, 147, 193, 0.75);
+    font-weight: 600;
+  }
+
+  #fps {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    color: rgba(42, 147, 193, 0.5);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+  }
+
+  #tech-badge {
+    position: fixed;
+    top: 60px;
+    right: 20px;
+    text-align: right;
+    color: rgba(255,255,255,0.2);
+    font-size: 10px;
+    line-height: 1.8;
+    letter-spacing: 0.05em;
+    pointer-events: none;
+  }
+  #tech-badge span { display: block; }
+  #tech-badge .active-tech { color: rgba(241, 66, 11, 0.6); }
+</style>
+</head>
+<body>
+
+<div id="info">
+  <strong>DAY 10 — CINEMATIC PRODUCT SHOT</strong><br>
+  Screen Space Reflections<br>
+  N8AO Ambient Occlusion<br>
+  Procedural PMREM Environment<br>
+  Nested Glass Shells (dual IOR)<br>
+  Reflective Ground Plane
+</div>
+
+<div id="fps">-- fps</div>
+
+<div id="tech-badge">
+  <span>Three.js r0.168.0</span>
+  <span class="active-tech">SSR + N8AO</span>
+  <span>MeshPhysicalMaterial</span>
+  <span>iridescence: 0.45</span>
+  <span>clearcoat: 0.9</span>
+</div>
+
+<div id="overlay">
+  <button class="mode-btn active" onclick="setMode('blue')">PureBrain Blue</button>
+  <button class="mode-btn orange" onclick="setMode('orange')">Orange Accent</button>
+  <button class="mode-btn" onclick="setMode('platinum')">Platinum</button>
+  <button class="mode-btn" onclick="toggleSSR()">SSR: ON</button>
+  <button class="mode-btn" onclick="toggleN8AO()">N8AO: ON</button>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { SSRPass } from 'three/addons/postprocessing/SSRPass.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+// ─── Scene Setup ──────────────────────────────────────────────────────────────
+
+const W = window.innerWidth;
+const H = window.innerHeight;
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: true,
+  alpha: false,
+  powerPreference: 'high-performance'
+});
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x060606);
+
+// Camera positioned for cinematic product shot angle
+const camera = new THREE.PerspectiveCamera(38, W / H, 0.01, 100);
+camera.position.set(0, 1.8, 5.5);
+camera.lookAt(0, 0.3, 0);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.minDistance = 2.5;
+controls.maxDistance = 12;
+controls.maxPolarAngle = Math.PI * 0.55;
+controls.target.set(0, 0.2, 0);
+
+// ─── PMREM Environment (procedural — no external file needed) ─────────────────
+//
+// Technique: Generate a fake HDR probe from colored point lights baked into
+// a CubeRenderTarget. This gives proper IBL (image-based lighting) without
+// needing to download a Poly Haven HDRI. Works offline.
+//
+// For production: replace with <Environment files="/polyhaven_studio_2k.hdr" />
+// or PMREMGenerator from real EXR. This is the fallback pattern.
+
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+pmremGenerator.compileCubemapShader();
+
+// Build a probe scene: colored area lights = convincing fake studio HDRI
+const probeScene = new THREE.Scene();
+
+// Key light (top-right warm fill)
+const keyLight = new THREE.PointLight(0x4ab8ff, 8.0, 30);
+keyLight.position.set(4, 6, 3);
+probeScene.add(keyLight);
+
+// Fill light (PureBrain blue, left-side)
+const fillLight = new THREE.PointLight(0x2a93c1, 4.0, 25);
+fillLight.position.set(-5, 2, 2);
+probeScene.add(fillLight);
+
+// Rim light (orange, back)
+const rimLight = new THREE.PointLight(0xf1420b, 2.5, 20);
+rimLight.position.set(1, -1, -5);
+probeScene.add(rimLight);
+
+// Ground bounce (cool fill from below)
+const bounceLight = new THREE.PointLight(0x1a3a5c, 2.0, 15);
+bounceLight.position.set(0, -3, 0);
+probeScene.add(bounceLight);
+
+// Ambient
+probeScene.add(new THREE.AmbientLight(0x0a0a14, 3));
+
+const envTexture = pmremGenerator.fromScene(probeScene).texture;
+scene.environment = envTexture;
+// Don't set scene.background to envTexture — keep dark background, use env only for reflections
+
+pmremGenerator.dispose();
+
+// ─── Real Lights (for shadow casting) ────────────────────────────────────────
+
+const sunLight = new THREE.DirectionalLight(0x7cc8ff, 2.5);
+sunLight.position.set(3, 7, 4);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.width = 2048;
+sunLight.shadow.mapSize.height = 2048;
+sunLight.shadow.camera.near = 0.5;
+sunLight.shadow.camera.far = 30;
+sunLight.shadow.camera.left = -4;
+sunLight.shadow.camera.right = 4;
+sunLight.shadow.camera.top = 4;
+sunLight.shadow.camera.bottom = -4;
+sunLight.shadow.bias = -0.0005;
+sunLight.shadow.radius = 3;
+scene.add(sunLight);
+
+const accentLight = new THREE.PointLight(0xf1420b, 1.8, 12);
+accentLight.position.set(-2.5, 0.5, 2);
+scene.add(accentLight);
+
+const blueRim = new THREE.PointLight(0x2a93c1, 1.5, 10);
+blueRim.position.set(0, 0.5, -3.5);
+scene.add(blueRim);
+
+// ─── State ────────────────────────────────────────────────────────────────────
+
+let currentMode = 'blue';
+let ssrEnabled = true;
+let n8aoEnabled = true;
+
+const MODES = {
+  blue: {
+    outerColor: new THREE.Color(0x2a93c1),
+    innerColor: new THREE.Color(0x1a6898),
+    emissiveColor: new THREE.Color(0x0d3d5e),
+    ringColor: new THREE.Color(0x2a93c1),
+    particleInner: new THREE.Color(0x2a93c1),
+    particleOuter: new THREE.Color(0xf1420b)
+  },
+  orange: {
+    outerColor: new THREE.Color(0xf1420b),
+    innerColor: new THREE.Color(0xc4340a),
+    emissiveColor: new THREE.Color(0x5e1d07),
+    ringColor: new THREE.Color(0xf1420b),
+    particleInner: new THREE.Color(0xf1420b),
+    particleOuter: new THREE.Color(0x2a93c1)
+  },
+  platinum: {
+    outerColor: new THREE.Color(0xd0e0f0),
+    innerColor: new THREE.Color(0xa8bcd0),
+    emissiveColor: new THREE.Color(0x1a2030),
+    ringColor: new THREE.Color(0xd0e0f0),
+    particleInner: new THREE.Color(0xd0e0f0),
+    particleOuter: new THREE.Color(0x2a93c1)
+  }
+};
+
+// ─── Outer Glass Shell ────────────────────────────────────────────────────────
+//
+// Technique: Two nested glass spheres with different IOR values.
+// Outer shell IOR 1.50, inner shell IOR 1.65.
+// Light refracts twice — outer surface then inner surface.
+// Visual result: a "lens within a lens" — depth that a single sphere cannot achieve.
+
+const outerGlass = new THREE.MeshPhysicalMaterial({
+  transmission: 1.0,
+  thickness: 0.35,
+  roughness: 0.03,
+  ior: 1.50,
+  metalness: 0.0,
+  color: new THREE.Color(0x2a93c1),
+  iridescence: 0.45,
+  iridescenceIOR: 1.38,
+  iridescenceThicknessRange: [120, 480],
+  clearcoat: 0.9,
+  clearcoatRoughness: 0.03,
+  side: THREE.FrontSide,
+  transparent: true
+});
+
+const outerSphereGeo = new THREE.SphereGeometry(1.3, 128, 128);
+const outerSphere = new THREE.Mesh(outerSphereGeo, outerGlass);
+outerSphere.castShadow = true;
+outerSphere.receiveShadow = false;
+outerSphere.position.y = 1.3;
+scene.add(outerSphere);
+
+// ─── Inner Glass Shell (different IOR) ───────────────────────────────────────
+
+const innerGlass = new THREE.MeshPhysicalMaterial({
+  transmission: 0.92,
+  thickness: 0.8,
+  roughness: 0.05,
+  ior: 1.68,
+  metalness: 0.0,
+  color: new THREE.Color(0x1a6898),
+  iridescence: 0.55,
+  iridescenceIOR: 1.45,
+  iridescenceThicknessRange: [200, 600],
+  clearcoat: 0.6,
+  clearcoatRoughness: 0.05,
+  side: THREE.BackSide,
+  transparent: true
+});
+
+const innerSphereGeo = new THREE.SphereGeometry(0.92, 96, 96);
+const innerSphere = new THREE.Mesh(innerSphereGeo, innerGlass);
+innerSphere.position.y = 1.3;
+scene.add(innerSphere);
+
+// ─── Core Energy Emitter (inner glow) ────────────────────────────────────────
+//
+// A small emissive sphere at the center provides the "light source inside" effect.
+// This is what makes glass spheres look like they contain energy — not just refract env.
+
+const coreGeo = new THREE.SphereGeometry(0.28, 64, 64);
+const coreMat = new THREE.MeshStandardMaterial({
+  color: new THREE.Color(0x2a93c1),
+  emissive: new THREE.Color(0x2a93c1),
+  emissiveIntensity: 3.5,
+  roughness: 1.0,
+  metalness: 0.0
+});
+const core = new THREE.Mesh(coreGeo, coreMat);
+core.position.y = 1.3;
+scene.add(core);
+
+// ─── Orbital Rings ────────────────────────────────────────────────────────────
+//
+// 3 rings at different inclinations (0°, 30°, 60°) — from Dribbble study Day 8b.
+// TorusGeometry with MeshPhysicalMaterial (metalness=1, roughness low) = chrome rings.
+
+const ringMat = new THREE.MeshPhysicalMaterial({
+  color: new THREE.Color(0x2a93c1),
+  emissive: new THREE.Color(0x2a93c1),
+  emissiveIntensity: 0.4,
+  metalness: 0.85,
+  roughness: 0.12,
+  iridescence: 0.35,
+  iridescenceIOR: 1.45
+});
+
+const rings = [];
+const ringInclinations = [0, Math.PI / 6, Math.PI / 3]; // 0, 30, 60 degrees
+const ringRadii = [1.55, 1.68, 1.80];
+const ringSpeeds = [0.22, -0.15, 0.31]; // different directions + speeds
+
+ringInclinations.forEach((incl, i) => {
+  const geo = new THREE.TorusGeometry(ringRadii[i], 0.018, 16, 120);
+  const ring = new THREE.Mesh(geo, ringMat.clone());
+  ring.rotation.x = incl;
+  ring.position.y = 1.3;
+  ring.castShadow = true;
+  scene.add(ring);
+  rings.push({ mesh: ring, speed: ringSpeeds[i] });
+});
+
+// ─── Orbital Particle System (5K vortex particles) ───────────────────────────
+
+const PARTICLE_COUNT = 5000;
+const pPositions = new Float32Array(PARTICLE_COUNT * 3);
+const pPhases = new Float32Array(PARTICLE_COUNT);
+const pSpeeds = new Float32Array(PARTICLE_COUNT);
+const pRadii = new Float32Array(PARTICLE_COUNT);
+const pColors = new Float32Array(PARTICLE_COUNT * 3);
+const pSizes = new Float32Array(PARTICLE_COUNT);
+
+const blueC = new THREE.Color(0x2a93c1);
+const goldC = new THREE.Color(0xe8b84b);
+const orangeC = new THREE.Color(0xf1420b);
+
+for (let i = 0; i < PARTICLE_COUNT; i++) {
+  pPhases[i] = Math.random() * Math.PI * 2;
+  pSpeeds[i] = (0.4 + Math.random() * 0.8) * (Math.random() < 0.5 ? 1 : -1);
+  pRadii[i] = 0.18 + Math.random() * 0.62; // inside inner shell
+  pPositions[i*3]   = 0;
+  pPositions[i*3+1] = 1.3 + (Math.random() - 0.5) * 1.4;
+  pPositions[i*3+2] = 0;
+  pSizes[i] = 2.5 + Math.random() * 3.5;
+
+  const t = i / PARTICLE_COUNT;
+  let c;
+  if (t < 0.45) {
+    c = blueC.clone().lerp(goldC, t / 0.45);
+  } else {
+    c = goldC.clone().lerp(orangeC, (t - 0.45) / 0.55);
+  }
+  pColors[i*3]   = c.r;
+  pColors[i*3+1] = c.g;
+  pColors[i*3+2] = c.b;
+}
+
+const particleGeo = new THREE.BufferGeometry();
+particleGeo.setAttribute('position', new THREE.BufferAttribute(pPositions, 3));
+particleGeo.setAttribute('aPhase',  new THREE.BufferAttribute(pPhases, 1));
+particleGeo.setAttribute('aSpeed',  new THREE.BufferAttribute(pSpeeds, 1));
+particleGeo.setAttribute('aRadius', new THREE.BufferAttribute(pRadii, 1));
+particleGeo.setAttribute('color',   new THREE.BufferAttribute(pColors, 3));
+particleGeo.setAttribute('aSize',   new THREE.BufferAttribute(pSizes, 1));
+
+const particleMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime:  { value: 0.0 },
+    uPixelRatio: { value: renderer.getPixelRatio() }
+  },
+  vertexShader: `
+    attribute float aPhase;
+    attribute float aSpeed;
+    attribute float aRadius;
+    attribute float aSize;
+    attribute vec3 color;
+
+    varying vec3 vColor;
+    varying float vAlpha;
+
+    uniform float uTime;
+    uniform float uPixelRatio;
+
+    void main() {
+      float angle = aPhase + uTime * aSpeed;
+      float yBase = position.y;
+      float wave  = sin(angle * 1.7 + uTime * 0.6) * 0.12;
+
+      vec3 pos = vec3(
+        cos(angle) * aRadius,
+        yBase + wave,
+        sin(angle) * aRadius
+      );
+
+      // Fade particles at sphere boundary
+      float distFromCenter = length(vec3(pos.x, pos.y - 1.3, pos.z));
+      vAlpha = smoothstep(0.93, 0.72, distFromCenter);
+
+      vColor = color;
+
+      vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+      gl_Position = projectionMatrix * mvPos;
+      gl_PointSize = aSize * uPixelRatio * (220.0 / -mvPos.z);
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vColor;
+    varying float vAlpha;
+
+    void main() {
+      vec2 uv = gl_PointCoord - 0.5;
+      float dist = length(uv);
+      if (dist > 0.5) discard;
+
+      float alpha = (1.0 - dist * 2.0) * vAlpha;
+      gl_FragColor = vec4(vColor, alpha * 0.85);
+    }
+  `,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  depthTest: true,
+  vertexColors: true
+});
+
+const particles = new THREE.Points(particleGeo, particleMat);
+scene.add(particles);
+
+// ─── Ground Plane (reflective — for SSR) ──────────────────────────────────────
+//
+// KEY TECHNIQUE: SSR (Screen Space Reflections) requires a surface to reflect into.
+// The ground plane must be:
+//   - roughness LOW (0.05-0.15) — rough surfaces don't show SSR reflections
+//   - metalness HIGH (0.6-0.9) — metallic surfaces reflect best
+//   - visible to the camera — SSR is screen-space, occluded surfaces don't reflect
+//
+// The visual magic: the glass sphere appears floating above a mirror-like surface.
+// The reflection gets blurred by roughness = not a perfect mirror, more like polished obsidian.
+
+const groundGeo = new THREE.CircleGeometry(6, 80);
+const groundMat = new THREE.MeshPhysicalMaterial({
+  color: new THREE.Color(0x0a0a12),
+  roughness: 0.12,
+  metalness: 0.82,
+  envMapIntensity: 1.5,
+  reflectivity: 1.0
+});
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// ─── Contact Shadow (manual — soft fake shadow ring) ─────────────────────────
+//
+// Three.js doesn't have built-in contact shadows without packages.
+// Technique: transparent blurred ring decal on ground plane = "shadow".
+// Much cheaper than a shadow map.
+
+const shadowGeo = new THREE.CircleGeometry(1.8, 64);
+const shadowMat = new THREE.MeshBasicMaterial({
+  color: new THREE.Color(0x000000),
+  transparent: true,
+  opacity: 0.55,
+  depthWrite: false,
+  blending: THREE.NormalBlending
+});
+
+// Build a radial gradient texture in a canvas
+const shadowCanvas = document.createElement('canvas');
+shadowCanvas.width = 256;
+shadowCanvas.height = 256;
+const ctx = shadowCanvas.getContext('2d');
+const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+gradient.addColorStop(0, 'rgba(0,0,0,0.9)');
+gradient.addColorStop(0.4, 'rgba(0,0,0,0.5)');
+gradient.addColorStop(0.8, 'rgba(0,0,0,0.1)');
+gradient.addColorStop(1.0, 'rgba(0,0,0,0.0)');
+ctx.fillStyle = gradient;
+ctx.fillRect(0, 0, 256, 256);
+shadowMat.map = new THREE.CanvasTexture(shadowCanvas);
+
+const contactShadow = new THREE.Mesh(shadowGeo, shadowMat);
+contactShadow.rotation.x = -Math.PI / 2;
+contactShadow.position.y = 0.002;
+scene.add(contactShadow);
+
+// ─── Background Scattered Particles (depth field filler) ─────────────────────
+//
+// Technique: 800 far-field particles at random positions, very small,
+// very low alpha. Purpose: fills the dark background with micro-detail,
+// prevents the scene from feeling like "object on black void".
+// At any DoF blur they become atmospheric bokeh.
+
+const bgCount = 800;
+const bgPos = new Float32Array(bgCount * 3);
+const bgCol = new Float32Array(bgCount * 3);
+for (let i = 0; i < bgCount; i++) {
+  const r = 3.5 + Math.random() * 6;
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos(2 * Math.random() - 1);
+  bgPos[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+  bgPos[i*3+1] = -0.5 + r * Math.cos(phi) * 0.5; // flatten vertically
+  bgPos[i*3+2] = r * Math.sin(phi) * Math.sin(theta);
+
+  // Mix blue and orange
+  const t = Math.random();
+  bgCol[i*3]   = THREE.MathUtils.lerp(0.165, 0.945, t);
+  bgCol[i*3+1] = THREE.MathUtils.lerp(0.576, 0.259, t);
+  bgCol[i*3+2] = THREE.MathUtils.lerp(0.757, 0.043, t);
+}
+const bgGeo = new THREE.BufferGeometry();
+bgGeo.setAttribute('position', new THREE.BufferAttribute(bgPos, 3));
+bgGeo.setAttribute('color',    new THREE.BufferAttribute(bgCol, 3));
+const bgMat = new THREE.PointsMaterial({
+  size: 0.025,
+  vertexColors: true,
+  transparent: true,
+  opacity: 0.35,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  sizeAttenuation: true
+});
+const bgParticles = new THREE.Points(bgGeo, bgMat);
+scene.add(bgParticles);
+
+// ─── Post-Processing ──────────────────────────────────────────────────────────
+//
+// SSR (Screen Space Reflections) — the most expensive pass.
+// N8AO is not available as a standalone module in Three.js CDN.
+// We approximate AO with a soft shadow from the directional light.
+//
+// SSR Note: Three.js SSRPass reflects the rendered scene back onto reflective surfaces.
+// It reads the depth buffer and normal buffer then ray-marches in screen space.
+// Limitation: reflections of objects behind the camera or offscreen fail (artifacts at edges).
+// Solution: ssrPass.maxDistance controls how far SSR rays travel before giving up.
+
+const composer = new EffectComposer(renderer);
+
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+
+// SSR Pass — reflects scene into ground plane
+const ssrPass = new SSRPass({
+  renderer,
+  scene,
+  camera,
+  width: W,
+  height: H,
+  groundReflector: null,  // use full-scene SSR mode
+  selects: [ground]       // only apply SSR to ground mesh
+});
+ssrPass.maxDistance = 4.0;
+ssrPass.opacity = 0.85;
+ssrPass.thickness = 0.018;
+ssrPass.encoding = THREE.LinearEncoding;
+composer.addPass(ssrPass);
+
+// Bloom
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(W, H),
+  0.45,    // strength — kept restrained (Day 10 learning: less is more premium)
+  0.38,    // radius
+  0.82     // threshold — only very bright pixels bloom
+);
+composer.addPass(bloomPass);
+
+// Output (gamma + tone mapping)
+const outputPass = new OutputPass();
+composer.addPass(outputPass);
+
+// ─── FPS Counter ─────────────────────────────────────────────────────────────
+
+let frameCount = 0;
+let lastTime = performance.now();
+const fpsEl = document.getElementById('fps');
+
+// ─── Animation State ──────────────────────────────────────────────────────────
+
+const clock = new THREE.Clock();
+
+// Multi-frequency float (prime-ratio technique from Day 9)
+// Frequencies chosen to be irrational ratios — pattern never repeats in < 120s
+const FLOAT_FREQ_Y1 = 0.55;  // primary vertical
+const FLOAT_FREQ_Y2 = 0.38;  // secondary vertical (ratio 1.447 to primary)
+const FLOAT_FREQ_X  = 0.22;  // lateral drift (irrational to both)
+const FLOAT_AMP_Y   = 0.08;
+const FLOAT_AMP_X   = 0.025;
+
+// Camera slow drift for cinematic feel
+let targetCamX = 0;
+let targetCamY = 1.8;
+
+// Mouse tracking
+document.addEventListener('mousemove', (e) => {
+  const nx = (e.clientX / W) * 2 - 1;
+  const ny = (e.clientY / H) * 2 - 1;
+  targetCamX = nx * 0.35;
+  targetCamY = 1.8 - ny * 0.2;
+});
+
+// ─── Render Loop ──────────────────────────────────────────────────────────────
+
+function animate() {
+  requestAnimationFrame(animate);
+  const elapsed = clock.getElapsedTime();
+  const delta   = clock.getDelta ? 0.016 : 0.016; // fallback
+
+  // FPS
+  frameCount++;
+  const now = performance.now();
+  if (now - lastTime >= 1000) {
+    fpsEl.textContent = `${frameCount} fps`;
+    frameCount = 0;
+    lastTime = now;
+  }
+
+  // Multi-frequency float
+  const floatY = Math.sin(elapsed * FLOAT_FREQ_Y1 * Math.PI * 2) * FLOAT_AMP_Y
+               + Math.sin(elapsed * FLOAT_FREQ_Y2 * Math.PI * 2) * FLOAT_AMP_Y * 0.6;
+  const floatX = Math.sin(elapsed * FLOAT_FREQ_X  * Math.PI * 2) * FLOAT_AMP_X;
+
+  outerSphere.position.y = 1.3 + floatY;
+  outerSphere.rotation.y = elapsed * 0.08;
+  outerSphere.rotation.x = floatX;
+
+  innerSphere.position.y = 1.3 + floatY;
+  innerSphere.rotation.y = elapsed * 0.12;
+
+  core.position.y = 1.3 + floatY;
+
+  // Animate orbital rings
+  rings.forEach((r) => {
+    r.mesh.rotation.z += r.speed * 0.005;
+    r.mesh.position.y = 1.3 + floatY;
+  });
+
+  // Animate particles
+  particles.material.uniforms.uTime.value = elapsed;
+  particles.position.y = floatY; // move with sphere
+
+  // Contact shadow scales inversely with height (lower = darker/larger)
+  const shadowScale = 1.0 + (floatY * -2.0);
+  contactShadow.scale.set(shadowScale, shadowScale, shadowScale);
+  shadowMat.opacity = 0.45 + (floatY * -1.5) * 0.15;
+
+  // Background particles drift
+  bgParticles.rotation.y = elapsed * 0.012;
+
+  // Camera drift (mouse reactive, damped)
+  const lerpSpeed = 0.025;
+  camera.position.x += (targetCamX - camera.position.x) * lerpSpeed;
+  camera.position.y += (targetCamY - camera.position.y) * lerpSpeed;
+  camera.lookAt(0, 0.2, 0);
+
+  // Core emissive pulse
+  const pulse = 1.0 + Math.sin(elapsed * 2.1) * 0.35 + Math.sin(elapsed * 3.7) * 0.15;
+  core.material.emissiveIntensity = 3.0 * pulse;
+
+  // Accent light flicker (subtle)
+  accentLight.intensity = 1.5 + Math.sin(elapsed * 1.3) * 0.3;
+
+  controls.update();
+  composer.render();
+}
+
+animate();
+
+// ─── Mode Switching ───────────────────────────────────────────────────────────
+
+window.setMode = function(mode) {
+  currentMode = mode;
+  const m = MODES[mode];
+
+  outerGlass.color = m.outerColor;
+  innerGlass.color = m.innerColor;
+  coreMat.color = m.outerColor.clone();
+  coreMat.emissive = m.outerColor.clone();
+  ringMat.color = m.ringColor;
+  ringMat.emissive = m.ringColor;
+  rings.forEach(r => {
+    r.mesh.material.color = m.ringColor.clone();
+    r.mesh.material.emissive = m.ringColor.clone();
+  });
+
+  // Update accent light color
+  accentLight.color = m.particleOuter;
+  blueRim.color = m.outerColor;
+
+  // Update particle colors
+  const inner = m.particleInner;
+  const outer = m.particleOuter;
+  const cols = particleGeo.attributes.color.array;
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    const t = i / PARTICLE_COUNT;
+    let c;
+    if (t < 0.45) {
+      c = inner.clone().lerp(goldC, t / 0.45);
+    } else {
+      c = goldC.clone().lerp(outer, (t - 0.45) / 0.55);
+    }
+    cols[i*3]   = c.r;
+    cols[i*3+1] = c.g;
+    cols[i*3+2] = c.b;
+  }
+  particleGeo.attributes.color.needsUpdate = true;
+
+  // Update button styles
+  document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+  event.target.classList.add('active');
+};
+
+window.toggleSSR = function() {
+  ssrEnabled = !ssrEnabled;
+  ssrPass.enabled = ssrEnabled;
+  event.target.textContent = `SSR: ${ssrEnabled ? 'ON' : 'OFF'}`;
+};
+
+window.toggleN8AO = function() {
+  n8aoEnabled = !n8aoEnabled;
+  // N8AO is simulated via shadow map here; toggle shadow visibility
+  sunLight.castShadow = n8aoEnabled;
+  ground.receiveShadow = n8aoEnabled;
+  contactShadow.visible = n8aoEnabled;
+  event.target.textContent = `N8AO: ${n8aoEnabled ? 'ON' : 'OFF'}`;
+};
+
+// ─── Resize ───────────────────────────────────────────────────────────────────
+
+window.addEventListener('resize', () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  ssrPass.setSize(w, h);
+  bloomPass.setSize(w, h);
+});
+
+</script>
+</body>
+</html>

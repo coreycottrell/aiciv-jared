@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PureBrain Avatar Cloning System — Live Preview</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --blue:   #2a93c1;
+  --orange: #f1420b;
+  --bg:     #080a12;
+  --card:   #0d1120;
+  --border: rgba(255,255,255,0.07);
+  --text:   #dce8f0;
+  --dim:    rgba(220,232,240,0.45);
+  --gold:   #C8A84A;
+}
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  min-height: 100vh;
+  padding: 40px 20px 80px;
+}
+
+/* ===== HEADER ===== */
+header {
+  text-align: center;
+  margin-bottom: 48px;
+}
+header .eyebrow {
+  font-size: 0.68rem;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 12px;
+}
+header h1 {
+  font-family: 'Oswald', sans-serif;
+  font-size: clamp(1.8rem, 5vw, 3rem);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+header h1 .b  { color: var(--blue); }
+header h1 .o  { color: var(--orange); }
+header .subtitle {
+  font-size: 0.88rem;
+  color: var(--dim);
+  margin-top: 10px;
+  max-width: 580px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.65;
+}
+
+/* ===== BUILDER PANEL ===== */
+.builder-wrap {
+  max-width: 1280px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 32px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .builder-wrap { grid-template-columns: 1fr; }
+}
+
+/* ===== FORM PANEL ===== */
+.form-panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px;
+}
+.form-panel h2 {
+  font-family: 'Oswald', sans-serif;
+  font-size: 1.0rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--blue);
+  margin-bottom: 24px;
+}
+.field {
+  margin-bottom: 20px;
+}
+.field label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 8px;
+}
+.field input[type="text"],
+.field select {
+  width: 100%;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: var(--text);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.88rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.field input[type="text"]:focus,
+.field select:focus {
+  border-color: var(--blue);
+}
+.field select option { background: #0d1120; }
+
+/* Color swatches */
+.color-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.color-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.color-swatch {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.15);
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+.color-swatch input[type="color"] {
+  position: absolute;
+  inset: -4px;
+  opacity: 0;
+  cursor: pointer;
+  width: calc(100% + 8px);
+  height: calc(100% + 8px);
+}
+.color-hex {
+  font-size: 0.78rem;
+  font-family: monospace;
+  color: var(--dim);
+  flex: 1;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  padding: 6px 10px;
+  outline: none;
+  color: var(--text);
+}
+
+/* Archetypes */
+.archetype-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+.arch-btn {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  padding: 10px 8px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.22s;
+  color: var(--dim);
+}
+.arch-btn:hover { border-color: rgba(255,255,255,0.2); color: var(--text); }
+.arch-btn.active { border-color: var(--blue); color: var(--blue); background: rgba(42,147,193,0.10); }
+.arch-btn .arch-icon { font-size: 1.3rem; display: block; margin-bottom: 4px; }
+.arch-btn .arch-name { font-size: 0.64rem; font-weight: 600; letter-spacing: 0.10em; text-transform: uppercase; }
+
+/* Generate button */
+.generate-btn {
+  width: 100%;
+  padding: 14px;
+  background: linear-gradient(135deg, var(--blue), #1a6a90);
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.25s;
+  margin-top: 24px;
+}
+.generate-btn:hover {
+  background: linear-gradient(135deg, #35a8d9, #2280aa);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(42,147,193,0.3);
+}
+
+/* Copy embed button */
+.copy-btn {
+  width: 100%;
+  padding: 10px;
+  background: rgba(200,168,74,0.12);
+  border: 1px solid rgba(200,168,74,0.3);
+  border-radius: 8px;
+  color: var(--gold);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.22s;
+  margin-top: 12px;
+}
+.copy-btn:hover { background: rgba(200,168,74,0.20); }
+.copy-btn.copied { color: #4ade80; border-color: rgba(74,222,128,0.4); background: rgba(74,222,128,0.08); }
+
+/* ===== PREVIEW PANEL ===== */
+.preview-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.preview-main {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  aspect-ratio: 1;
+  max-height: 600px;
+}
+
+.preview-main iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* Preset gallery */
+.presets-section h3 {
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 16px;
+}
+.presets-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+@media (max-width: 600px) {
+  .presets-grid { grid-template-columns: repeat(2, 1fr); }
+}
+.preset-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.25s;
+}
+.preset-card:hover { border-color: rgba(255,255,255,0.20); transform: translateY(-2px); }
+.preset-card.active { border-color: var(--blue); box-shadow: 0 0 20px rgba(42,147,193,0.2); }
+.preset-avatar {
+  width: 100%;
+  aspect-ratio: 1;
+  background: #060606;
+}
+.preset-avatar iframe { width: 100%; height: 100%; border: none; pointer-events: none; }
+.preset-label {
+  padding: 10px 12px;
+}
+.preset-name {
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.preset-desc {
+  font-size: 0.64rem;
+  color: var(--dim);
+  margin-top: 3px;
+  letter-spacing: 0.06em;
+}
+
+/* Embed code output */
+.embed-code-wrap {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+.embed-code-wrap h3 {
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.80rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 12px;
+}
+.embed-code {
+  background: rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px;
+  padding: 14px;
+  font-family: monospace;
+  font-size: 0.72rem;
+  color: #a8c4d8;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.6;
+}
+
+/* ===== CUSTOMER FLOW SECTION ===== */
+.flow-section {
+  max-width: 1280px;
+  margin: 64px auto 0;
+}
+.flow-section h2 {
+  font-family: 'Oswald', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.flow-section .sub {
+  font-size: 0.84rem;
+  color: var(--dim);
+  margin-bottom: 32px;
+  line-height: 1.65;
+}
+.flow-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+}
+.flow-step {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px 20px;
+}
+.step-num {
+  font-family: 'Oswald', sans-serif;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--blue);
+  opacity: 0.5;
+  line-height: 1;
+  margin-bottom: 14px;
+}
+.step-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+.step-desc {
+  font-size: 0.78rem;
+  color: var(--dim);
+  line-height: 1.65;
+}
+
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">PureBrain AI</div>
+  <h1><span class="b">CUSTOMER AVATAR</span> <span class="o">CLONING</span> <span class="b">SYSTEM</span></h1>
+  <p class="subtitle">
+    Every PureBrain AI partner gets a unique visual identity.
+    Configure the parameters below to preview and generate a custom avatar for any named AI.
+  </p>
+</header>
+
+<!-- ===== BUILDER ===== -->
+<div class="builder-wrap">
+
+  <!-- FORM -->
+  <div class="form-panel">
+    <h2>Configure Avatar</h2>
+
+    <div class="field">
+      <label>AI Name</label>
+      <input type="text" id="inp-name" value="Keen" placeholder="e.g. Keen, Rift, Nova, Echo...">
+    </div>
+
+    <div class="field">
+      <label>Tagline</label>
+      <input type="text" id="inp-tagline" value="Strategic Intelligence · TechCorp AI">
+    </div>
+
+    <div class="field">
+      <label>Color Palette</label>
+      <div class="color-row">
+        <div class="field" style="margin:0">
+          <label style="margin-bottom:6px">Primary</label>
+          <div class="color-field">
+            <div class="color-swatch" id="swatch-primary" style="background:#2a93c1">
+              <input type="color" id="color-primary" value="#2a93c1">
+            </div>
+            <input type="text" class="color-hex" id="hex-primary" value="#2a93c1" maxlength="7">
+          </div>
+        </div>
+        <div class="field" style="margin:0">
+          <label style="margin-bottom:6px">Secondary</label>
+          <div class="color-field">
+            <div class="color-swatch" id="swatch-secondary" style="background:#f1420b">
+              <input type="color" id="color-secondary" value="#f1420b">
+            </div>
+            <input type="text" class="color-hex" id="hex-secondary" value="#f1420b" maxlength="7">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Accent / Filament Color</label>
+      <div class="color-field">
+        <div class="color-swatch" id="swatch-accent" style="background:#C8A84A">
+          <input type="color" id="color-accent" value="#C8A84A">
+        </div>
+        <input type="text" class="color-hex" id="hex-accent" value="#C8A84A" maxlength="7">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Personality Archetype</label>
+      <div class="archetype-grid" id="archetype-grid">
+        <div class="arch-btn active" data-arch="analytical">
+          <span class="arch-icon">🧠</span>
+          <span class="arch-name">Analytical</span>
+        </div>
+        <div class="arch-btn" data-arch="creative">
+          <span class="arch-icon">✦</span>
+          <span class="arch-name">Creative</span>
+        </div>
+        <div class="arch-btn" data-arch="strategic">
+          <span class="arch-icon">◈</span>
+          <span class="arch-name">Strategic</span>
+        </div>
+        <div class="arch-btn" data-arch="empathetic">
+          <span class="arch-icon">◎</span>
+          <span class="arch-name">Empathetic</span>
+        </div>
+        <div class="arch-btn" data-arch="adaptive">
+          <span class="arch-icon">⟁</span>
+          <span class="arch-name">Adaptive</span>
+        </div>
+      </div>
+    </div>
+
+    <button class="generate-btn" id="generate-btn">Generate Avatar</button>
+    <button class="copy-btn" id="copy-btn">Copy Embed Code</button>
+
+    <div style="margin-top:16px; font-size:0.68rem; color:var(--dim); line-height:1.65;">
+      Each avatar is a self-contained HTML file (~35KB).
+      Deploy to any server and embed via iframe.
+      Control the avatar via PostMessage API from your chatbot.
+    </div>
+  </div>
+
+  <!-- PREVIEW -->
+  <div class="preview-panel">
+
+    <!-- Live preview iframe -->
+    <div class="preview-main">
+      <iframe id="preview-frame" src="aether-avatar-production.html?name=Keen&primary=%232a93c1&secondary=%23f1420b&accent=%23C8A84A&archetype=analytical&demo=0" title="Avatar Preview"></iframe>
+    </div>
+
+    <!-- Preset gallery -->
+    <div class="presets-section">
+      <h3>Preset Avatars — Customer Examples</h3>
+      <div class="presets-grid" id="presets-grid">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+
+    <!-- Embed code -->
+    <div class="embed-code-wrap">
+      <h3>WordPress Embed Code</h3>
+      <div class="embed-code" id="embed-code">&lt;iframe
+  src="https://purebrain.ai/avatars/keen.html"
+  width="500"
+  height="500"
+  frameborder="0"
+  allow="autoplay"
+  style="border-radius:12px; background:#060606;"
+&gt;&lt;/iframe&gt;</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===== CUSTOMER FLOW SECTION ===== -->
+<div class="flow-section">
+  <h2>How the Cloning System Works</h2>
+  <p class="sub">
+    When a customer pays for PureBrain and their AI gets a name, here is the automated flow that gives them a unique visual identity in under 60 seconds.
+  </p>
+  <div class="flow-steps">
+    <div class="flow-step">
+      <div class="step-num">01</div>
+      <div class="step-title">Customer Onboards</div>
+      <div class="step-desc">Customer pays, fills onboarding form. They name their AI and answer 3 archetype questions (analytical vs creative vs strategic, etc.).</div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">02</div>
+      <div class="step-title">Color Assignment</div>
+      <div class="step-desc">Based on industry + archetype, a color palette is auto-assigned (or customer picks). Primary, secondary, and accent hex values are saved.</div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">03</div>
+      <div class="step-title">Avatar Generated</div>
+      <div class="step-desc">The parameterized avatar HTML is generated server-side with their name/colors/archetype. Saved as a unique file (e.g. keen.html).</div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">04</div>
+      <div class="step-title">Deployed + Embedded</div>
+      <div class="step-desc">Avatar deployed to purebrain.ai/avatars/[name].html and automatically embedded in their dashboard and chatbox. PostMessage API connects it to the AI.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ================================================================
+// PRESET DEFINITIONS — customer avatar examples
+// ================================================================
+const PRESETS = [
+  {
+    name:       'Aether',
+    tagline:    'AI Partner · PureBrain Intelligence',
+    primary:    '#2a93c1',
+    secondary:  '#f1420b',
+    accent:     '#C8A84A',
+    archetype:  'analytical',
+    desc:       'The original',
+  },
+  {
+    name:       'Keen',
+    tagline:    'Strategic Intelligence · TechCorp',
+    primary:    '#2a93c1',
+    secondary:  '#f1420b',
+    accent:     '#C8A84A',
+    archetype:  'strategic',
+    desc:       'Deep strategy',
+  },
+  {
+    name:       'Nova',
+    tagline:    'Creative Engine · DesignCo AI',
+    primary:    '#8b5cf6',
+    secondary:  '#ec4899',
+    accent:     '#fbbf24',
+    archetype:  'creative',
+    desc:       'Creative pulse',
+  },
+  {
+    name:       'Rift',
+    tagline:    'Systems Mind · TechVault AI',
+    primary:    '#10b981',
+    secondary:  '#0ea5e9',
+    accent:     '#d4d4d4',
+    archetype:  'analytical',
+    desc:       'Precise systems',
+  },
+  {
+    name:       'Echo',
+    tagline:    'People Intelligence · HR Dynamics',
+    primary:    '#f59e0b',
+    secondary:  '#ef4444',
+    accent:     '#fde68a',
+    archetype:  'empathetic',
+    desc:       'Human-centered',
+  },
+  {
+    name:       'Vex',
+    tagline:    'Adaptive Intelligence · FlexCorp',
+    primary:    '#06b6d4',
+    secondary:  '#8b5cf6',
+    accent:     '#e2e8f0',
+    archetype:  'adaptive',
+    desc:       'Always adapting',
+  },
+  {
+    name:       'Zara',
+    tagline:    'Growth Engine · ScaleUp AI',
+    primary:    '#f97316',
+    secondary:  '#facc15',
+    accent:     '#fed7aa',
+    archetype:  'creative',
+    desc:       'Growth drive',
+  },
+  {
+    name:       'Cairn',
+    tagline:    'Foundation Mind · StableBase AI',
+    primary:    '#64748b',
+    secondary:  '#2a93c1',
+    accent:     '#94a3b8',
+    archetype:  'strategic',
+    desc:       'Stable clarity',
+  },
+];
+
+// ================================================================
+// AVATAR URL BUILDER
+// ================================================================
+function buildAvatarUrl(cfg) {
+  const base = 'aether-avatar-production.html';
+  const p = new URLSearchParams({
+    name:      cfg.name,
+    tagline:   cfg.tagline || '',
+    primary:   cfg.primary,
+    secondary: cfg.secondary,
+    accent:    cfg.accent,
+    archetype: cfg.archetype,
+    demo:      '0',
+    embed:     '0',
+  });
+  return `${base}?${p.toString()}`;
+}
+
+function buildEmbedCode(cfg) {
+  const url = `https://purebrain.ai/avatars/${cfg.name.toLowerCase()}.html`;
+  return `<iframe
+  src="${url}"
+  width="500"
+  height="500"
+  frameborder="0"
+  allow="autoplay"
+  style="border-radius:12px; background:#060606;"
+></iframe>
+
+<!-- PostMessage API: control the avatar from your chatbot -->
+<script>
+const avatar = document.querySelector('iframe');
+// Set mode: idle | speaking | thinking | listening
+avatar.contentWindow.postMessage({ type: 'SET_MODE', mode: 'speaking' }, '*');
+// Pass real audio amplitude (0-1) from your TTS/mic
+avatar.contentWindow.postMessage({ type: 'SET_AUDIO', amplitude: 0.65 }, '*');
+<\/script>`;
+}
+
+// ================================================================
+// FORM STATE
+// ================================================================
+let currentArchetype = 'analytical';
+
+// ================================================================
+// COLOR PICKERS
+// ================================================================
+function syncColor(colorId, swatchId, hexId) {
+  const colorInput = document.getElementById(colorId);
+  const swatch     = document.getElementById(swatchId);
+  const hexInput   = document.getElementById(hexId);
+
+  colorInput.addEventListener('input', () => {
+    hexInput.value   = colorInput.value;
+    swatch.style.background = colorInput.value;
+  });
+  hexInput.addEventListener('input', () => {
+    const v = hexInput.value;
+    if (/^#[0-9A-Fa-f]{6}$/.test(v)) {
+      colorInput.value = v;
+      swatch.style.background = v;
+    }
+  });
+}
+
+syncColor('color-primary',   'swatch-primary',   'hex-primary');
+syncColor('color-secondary', 'swatch-secondary', 'hex-secondary');
+syncColor('color-accent',    'swatch-accent',    'hex-accent');
+
+// ================================================================
+// ARCHETYPE SELECTION
+// ================================================================
+document.querySelectorAll('.arch-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.arch-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentArchetype = btn.dataset.arch;
+  });
+});
+
+// ================================================================
+// GENERATE BUTTON
+// ================================================================
+document.getElementById('generate-btn').addEventListener('click', () => {
+  const cfg = {
+    name:      document.getElementById('inp-name').value.trim() || 'Nova',
+    tagline:   document.getElementById('inp-tagline').value.trim(),
+    primary:   document.getElementById('hex-primary').value,
+    secondary: document.getElementById('hex-secondary').value,
+    accent:    document.getElementById('hex-accent').value,
+    archetype: currentArchetype,
+  };
+
+  // Update preview iframe
+  const frame = document.getElementById('preview-frame');
+  frame.src = buildAvatarUrl(cfg);
+
+  // Update embed code
+  document.getElementById('embed-code').textContent = buildEmbedCode(cfg);
+});
+
+// ================================================================
+// COPY EMBED CODE
+// ================================================================
+document.getElementById('copy-btn').addEventListener('click', () => {
+  const code = document.getElementById('embed-code').textContent;
+  navigator.clipboard.writeText(code).then(() => {
+    const btn = document.getElementById('copy-btn');
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = 'Copy Embed Code';
+      btn.classList.remove('copied');
+    }, 2000);
+  });
+});
+
+// ================================================================
+// PRESET GALLERY
+// ================================================================
+const grid = document.getElementById('presets-grid');
+
+PRESETS.forEach((preset, idx) => {
+  const card = document.createElement('div');
+  card.className = `preset-card${idx === 0 ? ' active' : ''}`;
+
+  // Color badge for the name
+  const nameHtml = `<span style="color:${preset.primary}">${preset.name}</span>`;
+
+  card.innerHTML = `
+    <div class="preset-avatar">
+      <iframe src="${buildAvatarUrl({ ...preset, embed: true, demo: false })}"
+              title="${preset.name}" scrolling="no" tabindex="-1"></iframe>
+    </div>
+    <div class="preset-label">
+      <div class="preset-name">${nameHtml}</div>
+      <div class="preset-desc">${preset.desc}</div>
+    </div>
+  `;
+
+  card.addEventListener('click', () => {
+    // Apply preset to form
+    document.getElementById('inp-name').value    = preset.name;
+    document.getElementById('inp-tagline').value = preset.tagline;
+    document.getElementById('hex-primary').value   = preset.primary;
+    document.getElementById('hex-secondary').value = preset.secondary;
+    document.getElementById('hex-accent').value    = preset.accent;
+    document.getElementById('color-primary').value   = preset.primary;
+    document.getElementById('color-secondary').value = preset.secondary;
+    document.getElementById('color-accent').value    = preset.accent;
+    document.getElementById('swatch-primary').style.background   = preset.primary;
+    document.getElementById('swatch-secondary').style.background = preset.secondary;
+    document.getElementById('swatch-accent').style.background    = preset.accent;
+
+    // Set archetype
+    document.querySelectorAll('.arch-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.arch === preset.archetype);
+    });
+    currentArchetype = preset.archetype;
+
+    // Update main preview
+    document.getElementById('preview-frame').src = buildAvatarUrl(preset);
+    document.getElementById('embed-code').textContent = buildEmbedCode(preset);
+
+    // Highlight active card
+    document.querySelectorAll('.preset-card').forEach(c => c.classList.remove('active'));
+    card.classList.add('active');
+  });
+
+  grid.appendChild(card);
+});
+
+// ================================================================
+// AUTO-TRIGGER FIRST GENERATE
+// ================================================================
+document.getElementById('generate-btn').click();
+</script>
+</body>
+</html>

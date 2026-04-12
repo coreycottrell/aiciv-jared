@@ -1,0 +1,1937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PureBrain Migration Portal</title>
+<style>
+/* ============================================================
+   AI MIGRATION PORTAL — PureBrain
+   All CSS prefixed with mig- for WordPress safety
+   Self-contained, zero external dependencies
+   ============================================================ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  background-color: #080a12 !important;
+  color: #e0e6f0 !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Hide WP theme chrome */
+.site-header, .site-footer, .entry-header, .entry-footer,
+.wp-block-post-title, h1.entry-title, .main-navigation,
+header.site-header, footer.site-footer { display: none !important; }
+
+/* ─── Root Vars ─── */
+#mig-root {
+  --bg-deep:    #080a12;
+  --bg-card:    #0d1117;
+  --bg-card2:   #111622;
+  --bg-glass:   rgba(13,17,23,0.7);
+  --border:     rgba(42,147,193,0.15);
+  --border-act: rgba(42,147,193,0.35);
+  --blue:       #2a93c1;
+  --blue-dim:   rgba(42,147,193,0.12);
+  --blue-mid:   rgba(42,147,193,0.25);
+  --orange:     #f1420b;
+  --orange-dim: rgba(241,66,11,0.12);
+  --orange-mid: rgba(241,66,11,0.25);
+  --green:      #22c55e;
+  --text:       #e0e6f0;
+  --text-dim:   #8892a4;
+  --text-muted: #4b5563;
+  --radius:     12px;
+  --radius-lg:  18px;
+  --transition: 0.22s ease;
+}
+
+/* ─── Layout Shell ─── */
+#mig-root {
+  background: var(--bg-deep);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.mig-header {
+  width: 100%;
+  max-width: 760px;
+  padding: 28px 24px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+/* ─── Logo ─── */
+.mig-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+.mig-logo-hex {
+  width: 36px;
+  height: 36px;
+}
+.mig-logo-text {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+.mig-logo-text .mig-blue  { color: #2a93c1; }
+.mig-logo-text .mig-orange{ color: #f1420b; }
+
+/* ─── Step Progress Dots ─── */
+.mig-progress-bar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  max-width: 340px;
+}
+.mig-prog-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  position: relative;
+}
+.mig-prog-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--border);
+  z-index: 0;
+  transition: background var(--transition);
+}
+.mig-prog-step.mig-done:not(:last-child)::after {
+  background: var(--blue);
+}
+.mig-prog-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--bg-card2);
+  border: 2px solid var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  z-index: 1;
+  transition: all var(--transition);
+  position: relative;
+}
+.mig-prog-step.mig-active .mig-prog-dot {
+  background: var(--orange);
+  border-color: var(--orange);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(241,66,11,0.5);
+}
+.mig-prog-step.mig-done .mig-prog-dot {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+.mig-prog-label {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  transition: color var(--transition);
+}
+.mig-prog-step.mig-active .mig-prog-label { color: var(--orange); }
+.mig-prog-step.mig-done .mig-prog-label   { color: var(--blue); }
+
+/* ─── Main Card ─── */
+.mig-card {
+  width: 100%;
+  max-width: 760px;
+  margin: 20px 24px 40px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Step panels — hidden unless active */
+.mig-step {
+  display: none;
+  padding: 36px 40px 40px;
+  animation: mig-fadeSlide 0.32s ease forwards;
+}
+.mig-step.mig-step-active { display: block; }
+
+@keyframes mig-fadeSlide {
+  from { opacity: 0; transform: translateX(18px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ─── Step headings ─── */
+.mig-step-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--orange);
+  margin-bottom: 8px;
+}
+.mig-step-title {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 6px;
+  line-height: 1.2;
+}
+.mig-step-subtitle {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-bottom: 28px;
+  line-height: 1.5;
+}
+
+/* ─── Divider ─── */
+.mig-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 24px 0;
+}
+
+/* ─── Section label ─── */
+.mig-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+
+/* ─── Upload Card (Step 1 primary) ─── */
+.mig-upload-card {
+  background: var(--bg-card2);
+  border: 1px solid var(--border-act);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin-bottom: 20px;
+}
+.mig-upload-card-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.mig-competitor-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+.mig-upload-card-meta h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.mig-upload-card-meta p {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* Drop zone */
+.mig-drop-zone {
+  border: 2px dashed var(--border-act);
+  border-radius: 10px;
+  padding: 28px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--transition);
+  position: relative;
+  background: var(--blue-dim);
+}
+.mig-drop-zone:hover, .mig-drop-zone.mig-drag-over {
+  border-color: var(--blue);
+  background: var(--blue-mid);
+}
+.mig-drop-zone input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+.mig-drop-icon {
+  font-size: 28px;
+  margin-bottom: 8px;
+  display: block;
+}
+.mig-drop-main {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.mig-drop-sub {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.mig-drop-link {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.mig-drop-link:hover { color: var(--blue); }
+
+/* File selected state */
+.mig-file-selected {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  background: rgba(34,197,94,0.1);
+  border: 1px solid rgba(34,197,94,0.3);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 12px;
+}
+.mig-file-selected.mig-visible { display: flex; }
+.mig-file-selected-icon { font-size: 20px; }
+.mig-file-selected-name { font-size: 13px; font-weight: 600; color: var(--green); }
+.mig-file-selected-size { font-size: 11px; color: var(--text-dim); margin-top: 1px; }
+
+/* How to export collapsible */
+.mig-how-toggle {
+  background: none;
+  border: none;
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 0;
+  transition: opacity var(--transition);
+}
+.mig-how-toggle:hover { opacity: 0.8; }
+.mig-how-arrow { transition: transform var(--transition); display: inline-block; }
+.mig-how-arrow.mig-open { transform: rotate(90deg); }
+.mig-how-content {
+  display: none;
+  margin-top: 14px;
+  padding: 16px;
+  background: rgba(42,147,193,0.06);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.mig-how-content.mig-open { display: block; }
+.mig-how-tab-btns {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.mig-how-tab-btn {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.mig-how-tab-btn.mig-tab-active {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+.mig-how-tab-content { display: none; }
+.mig-how-tab-content.mig-tab-active { display: block; }
+.mig-how-steps { list-style: none; counter-reset: mig-step-cnt; }
+.mig-how-steps li {
+  counter-increment: mig-step-cnt;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.mig-how-steps li::before {
+  content: counter(mig-step-cnt);
+  background: var(--blue);
+  color: #fff;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  margin-top: 1px;
+}
+
+/* Secondary integration cards */
+.mig-integrations-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.mig-int-card {
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color var(--transition);
+  cursor: default;
+}
+.mig-int-card:hover { border-color: var(--border-act); }
+.mig-int-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mig-int-icon { font-size: 20px; }
+.mig-int-name { font-size: 14px; font-weight: 700; color: var(--text); }
+.mig-int-desc { font-size: 11px; color: var(--text-dim); }
+.mig-badge-soon {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--orange-dim);
+  border: 1px solid var(--orange-mid);
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--orange);
+  letter-spacing: 0.3px;
+  align-self: flex-start;
+}
+.mig-int-action {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* ─── CTA Buttons ─── */
+.mig-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 28px;
+  background: var(--orange);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all var(--transition);
+  text-decoration: none;
+  width: 100%;
+  justify-content: center;
+  margin-top: 24px;
+}
+.mig-btn-primary:hover {
+  background: #d93808;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(241,66,11,0.35);
+}
+.mig-btn-primary:active { transform: translateY(0); }
+
+.mig-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: none;
+  color: var(--text-dim);
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all var(--transition);
+  text-decoration: none;
+  width: 100%;
+  justify-content: center;
+  margin-top: 10px;
+}
+.mig-btn-secondary:hover {
+  color: var(--text);
+  border-color: var(--border-act);
+}
+
+.mig-btn-blue {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 28px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all var(--transition);
+  text-decoration: none;
+  width: 100%;
+  justify-content: center;
+  margin-top: 12px;
+}
+.mig-btn-blue:hover {
+  background: #2180a8;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(42,147,193,0.35);
+}
+
+/* ─── STEP 2: Review ─── */
+.mig-import-group {
+  margin-bottom: 20px;
+}
+.mig-import-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.mig-import-item {
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 8px;
+  transition: all var(--transition);
+}
+.mig-import-item.mig-removed {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+.mig-import-check {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(34,197,94,0.15);
+  border: 2px solid var(--green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.mig-import-body { flex: 1; }
+.mig-import-body strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.mig-import-body span {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+.mig-remove-btn {
+  background: none;
+  border: 1px solid rgba(241,66,11,0.3);
+  border-radius: 6px;
+  color: var(--orange);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+.mig-remove-btn:hover {
+  background: var(--orange-dim);
+  border-color: var(--orange);
+}
+.mig-remove-btn.mig-restore {
+  color: var(--green);
+  border-color: rgba(34,197,94,0.3);
+}
+.mig-remove-btn.mig-restore:hover {
+  background: rgba(34,197,94,0.1);
+  border-color: var(--green);
+}
+
+/* Privacy note */
+.mig-privacy-note {
+  background: rgba(42,147,193,0.06);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 18px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 24px 0 0;
+}
+.mig-privacy-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+.mig-privacy-text { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+.mig-privacy-text strong { color: var(--text); }
+.mig-privacy-link {
+  color: var(--blue);
+  font-weight: 600;
+  text-decoration: none;
+  font-size: 12px;
+}
+.mig-privacy-link:hover { text-decoration: underline; }
+
+/* ─── STEP 3: Learning Orb ─── */
+.mig-orb-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 28px;
+}
+
+/* CSS Animated PureBrain Orb */
+.mig-orb {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  margin: 0 auto 20px;
+}
+.mig-orb-sphere {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 35% 38%,
+    rgba(255,255,255,0.22) 0%,
+    rgba(42,147,193,0.55) 28%,
+    rgba(13,25,45,0.92) 65%,
+    rgba(8,10,18,0.98) 100%
+  );
+  box-shadow:
+    0 0 40px rgba(42,147,193,0.45),
+    0 0 80px rgba(42,147,193,0.2),
+    inset 0 0 30px rgba(42,147,193,0.15),
+    inset -12px -12px 24px rgba(0,0,0,0.6);
+  animation: mig-orb-breathe 3.2s ease-in-out infinite,
+             mig-orb-hue 6s ease-in-out infinite;
+}
+.mig-orb-sphere.mig-orb-processing {
+  animation: mig-orb-breathe 1.4s ease-in-out infinite,
+             mig-orb-hue-fast 2.4s ease-in-out infinite;
+}
+.mig-orb-glow {
+  position: absolute;
+  inset: -20px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at center,
+    rgba(42,147,193,0.25) 0%,
+    transparent 70%
+  );
+  animation: mig-orb-pulse 3.2s ease-in-out infinite;
+}
+.mig-orb-glow.mig-orb-processing {
+  animation: mig-orb-pulse-fast 1.4s ease-in-out infinite;
+}
+.mig-orb-ring {
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 1px solid rgba(42,147,193,0.3);
+  animation: mig-orb-ring-spin 8s linear infinite;
+}
+.mig-orb-ring::before {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--blue);
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  box-shadow: 0 0 8px var(--blue);
+}
+
+@keyframes mig-orb-breathe {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.06); }
+}
+@keyframes mig-orb-hue {
+  0%, 100% {
+    box-shadow:
+      0 0 40px rgba(42,147,193,0.45),
+      0 0 80px rgba(42,147,193,0.2),
+      inset 0 0 30px rgba(42,147,193,0.15),
+      inset -12px -12px 24px rgba(0,0,0,0.6);
+  }
+  50% {
+    box-shadow:
+      0 0 50px rgba(42,147,193,0.6),
+      0 0 100px rgba(42,147,193,0.28),
+      inset 0 0 36px rgba(42,147,193,0.22),
+      inset -12px -12px 24px rgba(0,0,0,0.6);
+  }
+}
+@keyframes mig-orb-hue-fast {
+  0%, 100% {
+    background: radial-gradient(circle at 35% 38%,
+      rgba(255,255,255,0.22) 0%,
+      rgba(42,147,193,0.55) 28%,
+      rgba(13,25,45,0.92) 65%,
+      rgba(8,10,18,0.98) 100%);
+    box-shadow:
+      0 0 50px rgba(42,147,193,0.6),
+      0 0 100px rgba(42,147,193,0.28),
+      inset 0 0 30px rgba(42,147,193,0.2);
+  }
+  33% {
+    background: radial-gradient(circle at 38% 35%,
+      rgba(255,255,255,0.28) 0%,
+      rgba(90,170,220,0.6) 28%,
+      rgba(13,25,50,0.92) 65%,
+      rgba(8,10,18,0.98) 100%);
+    box-shadow:
+      0 0 60px rgba(90,170,220,0.6),
+      0 0 120px rgba(42,147,193,0.3),
+      inset 0 0 40px rgba(42,147,193,0.25);
+  }
+  66% {
+    background: radial-gradient(circle at 32% 40%,
+      rgba(255,255,255,0.25) 0%,
+      rgba(42,147,193,0.65) 28%,
+      rgba(10,20,42,0.93) 65%,
+      rgba(8,10,18,0.98) 100%);
+  }
+}
+@keyframes mig-orb-pulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50%       { opacity: 1;   transform: scale(1.08); }
+}
+@keyframes mig-orb-pulse-fast {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50%       { opacity: 1;   transform: scale(1.12); }
+}
+@keyframes mig-orb-ring-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.mig-orb-status {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--blue);
+  text-align: center;
+  letter-spacing: 0.3px;
+}
+
+/* Progress bar */
+.mig-progress-track {
+  width: 100%;
+  background: var(--bg-card2);
+  border-radius: 100px;
+  height: 8px;
+  margin: 16px 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.mig-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--blue), #2addff);
+  border-radius: 100px;
+  transition: width 0.4s ease;
+  position: relative;
+  overflow: hidden;
+}
+.mig-progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  animation: mig-shimmer 1.5s ease infinite;
+}
+@keyframes mig-shimmer {
+  from { left: -100%; }
+  to   { left: 100%; }
+}
+.mig-progress-pct {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--blue);
+  text-align: right;
+}
+
+/* Insight cards */
+.mig-insights-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.mig-insight-card {
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.4s ease, transform 0.4s ease, border-color 0.3s ease;
+}
+.mig-insight-card.mig-revealed {
+  opacity: 1;
+  transform: translateY(0);
+  border-color: rgba(42,147,193,0.25);
+}
+.mig-insight-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.mig-insight-text {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.mig-insight-text strong { color: var(--text); }
+
+/* Checklist */
+.mig-checklist {
+  list-style: none;
+}
+.mig-check-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  transition: color var(--transition);
+}
+.mig-check-item:last-child { border-bottom: none; }
+.mig-check-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--text-muted);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  transition: all 0.4s ease;
+}
+.mig-check-item.mig-check-done .mig-check-icon {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+.mig-check-item.mig-check-done { color: var(--text); }
+.mig-check-item.mig-check-active .mig-check-icon {
+  border-color: var(--blue);
+  animation: mig-spin 1s linear infinite;
+}
+@keyframes mig-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.mig-check-dots {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 4px;
+}
+.mig-check-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--blue);
+  animation: mig-dot-bounce 1.2s ease infinite;
+}
+.mig-check-dots span:nth-child(2) { animation-delay: 0.2s; }
+.mig-check-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes mig-dot-bounce {
+  0%, 80%, 100% { transform: scale(1); opacity: 0.4; }
+  40%           { transform: scale(1.5); opacity: 1; }
+}
+
+/* ─── STEP 4: Task Cards ─── */
+.mig-complete-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.mig-complete-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(34,197,94,0.1);
+  border: 1px solid rgba(34,197,94,0.3);
+  border-radius: 100px;
+  padding: 6px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--green);
+  margin-bottom: 14px;
+}
+.mig-complete-title {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.mig-complete-sub {
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+/* Stats bar */
+.mig-stats-bar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+.mig-stat-pill {
+  flex: 1;
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  text-align: center;
+}
+.mig-stat-pill .mig-stat-num {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--blue);
+  display: block;
+  margin-bottom: 3px;
+}
+.mig-stat-pill .mig-stat-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+}
+
+/* Task cards */
+.mig-tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.mig-task-card {
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  transition: all var(--transition);
+}
+.mig-task-card:hover {
+  border-color: var(--border-act);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(42,147,193,0.1);
+}
+.mig-task-icon-wrap {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--blue-dim);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.mig-task-body { flex: 1; }
+.mig-task-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 5px;
+}
+.mig-task-desc {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.mig-task-desc strong { color: var(--orange); }
+.mig-task-start-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--blue-dim);
+  border: 1px solid var(--border-act);
+  border-radius: 7px;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition);
+  text-decoration: none;
+}
+.mig-task-start-btn:hover {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+/* Final CTA */
+.mig-final-cta {
+  background: linear-gradient(135deg, rgba(42,147,193,0.12) 0%, rgba(241,66,11,0.08) 100%);
+  border: 1px solid var(--border-act);
+  border-radius: var(--radius);
+  padding: 24px;
+  text-align: center;
+  margin-top: 24px;
+}
+.mig-final-cta p {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+/* ─── Migration Complete Dashboard Badge ─── */
+#mig-complete-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(8,10,18,0.85);
+  z-index: 9999;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: mig-fadeIn 0.4s ease;
+}
+#mig-complete-overlay.mig-visible { display: flex; }
+@keyframes mig-fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.mig-overlay-card {
+  background: var(--bg-card);
+  border: 1px solid rgba(34,197,94,0.4);
+  border-radius: 20px;
+  padding: 40px 48px;
+  max-width: 480px;
+  width: calc(100% - 48px);
+  text-align: center;
+  box-shadow: 0 0 60px rgba(34,197,94,0.15), 0 20px 60px rgba(0,0,0,0.5);
+  animation: mig-scaleIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+@keyframes mig-scaleIn {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.mig-overlay-check {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: rgba(34,197,94,0.15);
+  border: 2px solid var(--green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34px;
+  margin: 0 auto 20px;
+  animation: mig-checkPop 0.6s 0.2s ease both;
+}
+@keyframes mig-checkPop {
+  from { transform: scale(0); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+.mig-overlay-title {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.mig-overlay-sub {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+.mig-overlay-stats {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.mig-overlay-stat {
+  flex: 1;
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  text-align: center;
+}
+.mig-overlay-stat span {
+  display: block;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--green);
+  margin-bottom: 2px;
+}
+.mig-overlay-stat p {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+.mig-overlay-dismiss {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 28px;
+  background: var(--green);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all var(--transition);
+  width: 100%;
+  justify-content: center;
+}
+.mig-overlay-dismiss:hover {
+  background: #16a34a;
+  transform: translateY(-1px);
+}
+
+/* ─── Footer ─── */
+.mig-footer {
+  padding: 0 24px 32px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  max-width: 760px;
+  width: 100%;
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 600px) {
+  .mig-step { padding: 24px 20px 28px; }
+  .mig-step-title { font-size: 22px; }
+  .mig-integrations-grid { grid-template-columns: 1fr; }
+  .mig-stats-bar { flex-wrap: wrap; }
+  .mig-stat-pill { min-width: 80px; }
+  .mig-overlay-card { padding: 28px 24px; }
+  .mig-overlay-stats { flex-wrap: wrap; }
+  .mig-task-card { flex-direction: column; }
+  .mig-task-icon-wrap { width: 36px; height: 36px; font-size: 16px; }
+}
+@media (max-width: 420px) {
+  .mig-card { border-radius: 12px; }
+  .mig-step-title { font-size: 20px; }
+  .mig-prog-label { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div id="mig-root">
+
+  <!-- ═══ HEADER ═══ -->
+  <div class="mig-header">
+    <!-- Logo -->
+    <div class="mig-logo">
+      <svg class="mig-logo-hex" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M18 2L32 10V26L18 34L4 26V10L18 2Z" fill="none" stroke="#2a93c1" stroke-width="1.5"/>
+        <path d="M18 6L29 12.5V25.5L18 32L7 25.5V12.5L18 6Z" fill="rgba(42,147,193,0.08)"/>
+        <circle cx="18" cy="18" r="6" fill="none" stroke="#2a93c1" stroke-width="1"/>
+        <circle cx="18" cy="18" r="3" fill="#2a93c1" opacity="0.7"/>
+        <line x1="18" y1="6"  x2="18" y2="12" stroke="#f1420b" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="18" y1="24" x2="18" y2="30" stroke="#f1420b" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="7"  y1="12.5" x2="12" y2="15.5" stroke="#2a93c1" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+        <line x1="24" y1="20.5" x2="29" y2="23.5" stroke="#2a93c1" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+      </svg>
+      <span class="mig-logo-text">
+        <span class="mig-blue">PUREBR</span><span class="mig-orange">AI</span><span class="mig-blue">N</span>
+      </span>
+    </div>
+
+    <!-- Progress dots -->
+    <div class="mig-progress-bar" id="mig-prog">
+      <div class="mig-prog-step mig-active" data-step="1">
+        <div class="mig-prog-dot">1</div>
+        <span class="mig-prog-label">Connect</span>
+      </div>
+      <div class="mig-prog-step" data-step="2">
+        <div class="mig-prog-dot">2</div>
+        <span class="mig-prog-label">Review</span>
+      </div>
+      <div class="mig-prog-step" data-step="3">
+        <div class="mig-prog-dot">3</div>
+        <span class="mig-prog-label">Learning</span>
+      </div>
+      <div class="mig-prog-step" data-step="4">
+        <div class="mig-prog-dot">4</div>
+        <span class="mig-prog-label">Tasks</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ MAIN CARD ═══ -->
+  <div class="mig-card">
+
+    <!-- ─── STEP 1: Connect Your Accounts ─── -->
+    <div class="mig-step mig-step-active" id="mig-step-1">
+      <p class="mig-step-eyebrow">Step 1 of 4</p>
+      <h1 class="mig-step-title">Connect Your Accounts</h1>
+      <p class="mig-step-subtitle">We'll pull in the context that matters. You stay in control of everything.</p>
+
+      <!-- Detected competitor -->
+      <p class="mig-section-label">We Detected You're Coming From</p>
+      <div class="mig-upload-card">
+        <div class="mig-upload-card-header">
+          <div class="mig-competitor-icon" id="mig-comp-icon">🤖</div>
+          <div class="mig-upload-card-meta">
+            <h3 id="mig-comp-name">ChatGPT / OpenAI</h3>
+            <p>Import: Conversation history &amp; Custom Instructions</p>
+          </div>
+        </div>
+
+        <!-- Drop Zone -->
+        <div class="mig-drop-zone" id="mig-drop-zone">
+          <input type="file" id="mig-file-input" accept=".zip,.json,.csv" />
+          <span class="mig-drop-icon">📁</span>
+          <p class="mig-drop-main">Drop your conversations.zip here</p>
+          <p class="mig-drop-sub">or click to browse &nbsp;·&nbsp; ZIP, JSON, or CSV</p>
+        </div>
+
+        <!-- File selected confirmation -->
+        <div class="mig-file-selected" id="mig-file-confirm">
+          <span class="mig-file-selected-icon">✅</span>
+          <div>
+            <div class="mig-file-selected-name" id="mig-file-name">conversations.zip</div>
+            <div class="mig-file-selected-size" id="mig-file-size">2.4 MB ready to import</div>
+          </div>
+        </div>
+
+        <!-- How to export collapsible -->
+        <button class="mig-how-toggle" id="mig-how-btn" onclick="migToggleHow()">
+          <span class="mig-how-arrow" id="mig-how-arrow">▶</span>
+          How to export from my AI tool
+        </button>
+        <div class="mig-how-content" id="mig-how-content">
+          <div class="mig-how-tab-btns">
+            <button class="mig-how-tab-btn mig-tab-active" onclick="migSwitchTab('chatgpt', this)">ChatGPT</button>
+            <button class="mig-how-tab-btn" onclick="migSwitchTab('claude', this)">Claude</button>
+          </div>
+          <div class="mig-how-tab-content mig-tab-active" id="mig-tab-chatgpt">
+            <ol class="mig-how-steps">
+              <li>Go to <strong>chat.openai.com</strong> and log in</li>
+              <li>Click your profile picture → <strong>Settings</strong></li>
+              <li>Open <strong>Data Controls</strong> tab</li>
+              <li>Click <strong>Export data</strong> → Confirm the export</li>
+              <li>Wait for the confirmation email from OpenAI (usually within minutes)</li>
+              <li>Download the ZIP file from the email link</li>
+              <li>Upload the ZIP file above — we'll do the rest</li>
+            </ol>
+          </div>
+          <div class="mig-how-tab-content" id="mig-tab-claude">
+            <ol class="mig-how-steps">
+              <li>Go to <strong>claude.ai</strong> and log in</li>
+              <li>Click your profile picture in the bottom-left</li>
+              <li>Go to <strong>Account Settings</strong></li>
+              <li>Scroll to <strong>Privacy</strong> → click <strong>Export data</strong></li>
+              <li>Confirm the export request via email</li>
+              <li>Download your conversation export ZIP</li>
+              <li>Upload the ZIP file above</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+
+      <!-- Also bring in -->
+      <p class="mig-section-label">Also Want To Bring In?</p>
+      <div class="mig-integrations-grid">
+        <div class="mig-int-card">
+          <div class="mig-int-top">
+            <span class="mig-int-icon">📓</span>
+            <span class="mig-int-name">Notion</span>
+          </div>
+          <span class="mig-int-desc">Pages, databases &amp; wikis</span>
+          <span class="mig-badge-soon">Coming Soon</span>
+          <span class="mig-int-action">OAuth integration in Phase 2</span>
+        </div>
+        <div class="mig-int-card">
+          <div class="mig-int-top">
+            <span class="mig-int-icon">🧡</span>
+            <span class="mig-int-name">HubSpot CRM</span>
+          </div>
+          <span class="mig-int-desc">Pipeline &amp; contact context</span>
+          <span class="mig-badge-soon">Coming Soon</span>
+          <span class="mig-int-action">OAuth integration in Phase 2</span>
+        </div>
+        <div class="mig-int-card">
+          <div class="mig-int-top">
+            <span class="mig-int-icon">🎨</span>
+            <span class="mig-int-name">Canva</span>
+          </div>
+          <span class="mig-int-desc">Brand kit, colors &amp; fonts</span>
+          <span class="mig-badge-soon">Coming Soon</span>
+          <span class="mig-int-action">OAuth integration in Phase 2</span>
+        </div>
+        <div class="mig-int-card">
+          <div class="mig-int-top">
+            <span class="mig-int-icon">📤</span>
+            <span class="mig-int-name">Other Tool</span>
+          </div>
+          <span class="mig-int-desc">Upload CSV, JSON, or PDF</span>
+          <span class="mig-int-action" style="color: var(--blue); font-weight: 700; cursor: pointer;" onclick="document.getElementById('mig-file-input').click()">Upload file ↑</span>
+        </div>
+      </div>
+
+      <button class="mig-btn-primary" onclick="migGoToStep(2)">
+        Continue with what I have &nbsp;→
+      </button>
+    </div>
+
+    <!-- ─── STEP 2: Review Your Import ─── -->
+    <div class="mig-step" id="mig-step-2">
+      <p class="mig-step-eyebrow">Step 2 of 4</p>
+      <h1 class="mig-step-title">Here's What We Found</h1>
+      <p class="mig-step-subtitle">Review what PureBrain will learn from. You can remove anything before we start.</p>
+
+      <!-- From ChatGPT -->
+      <div class="mig-import-group" id="mig-chatgpt-group">
+        <p class="mig-import-group-label">From ChatGPT</p>
+        <div class="mig-import-item" id="mig-item-convos">
+          <div class="mig-import-check">✓</div>
+          <div class="mig-import-body">
+            <strong>847 conversations</strong>
+            <span>3.2 years of history &nbsp;·&nbsp; Jan 2023 – Feb 2026</span>
+          </div>
+          <button class="mig-remove-btn" onclick="migToggleItem('mig-item-convos', this)">Remove</button>
+        </div>
+        <div class="mig-import-item" id="mig-item-custom">
+          <div class="mig-import-check">✓</div>
+          <div class="mig-import-body">
+            <strong>Custom Instructions (found)</strong>
+            <span>"You are a direct, no-fluff assistant. Skip preambles. Use bullets..."</span>
+          </div>
+          <button class="mig-remove-btn" onclick="migToggleItem('mig-item-custom', this)">Remove</button>
+        </div>
+        <div class="mig-import-item" id="mig-item-gpts">
+          <div class="mig-import-check">✓</div>
+          <div class="mig-import-body">
+            <strong>12 saved GPT configurations</strong>
+            <span>Writing assistant, Research agent, Code review, and 9 more</span>
+          </div>
+          <button class="mig-remove-btn" onclick="migToggleItem('mig-item-gpts', this)">Remove</button>
+        </div>
+      </div>
+
+      <!-- File uploaded group (shown if file was selected) -->
+      <div class="mig-import-group" id="mig-file-group" style="display:none">
+        <p class="mig-import-group-label">From Your Upload</p>
+        <div class="mig-import-item" id="mig-item-upload">
+          <div class="mig-import-check">✓</div>
+          <div class="mig-import-body">
+            <strong id="mig-review-filename">Your file</strong>
+            <span id="mig-review-filesize">Ready to import</span>
+          </div>
+          <button class="mig-remove-btn" onclick="migToggleItem('mig-item-upload', this)">Remove</button>
+        </div>
+      </div>
+
+      <!-- Privacy note -->
+      <div class="mig-privacy-note">
+        <span class="mig-privacy-icon">🔒</span>
+        <div class="mig-privacy-text">
+          <strong>Your data stays yours.</strong> It is never used to train any model.
+          It lives in your PureBrain instance only — used exclusively to personalize your AI partner.
+          Uploaded files are deleted from our servers after processing.
+          <a href="https://purebrain.ai/privacy" class="mig-privacy-link">See full privacy policy →</a>
+        </div>
+      </div>
+
+      <button class="mig-btn-primary" onclick="migStartImport()">
+        Start Import &nbsp;→
+      </button>
+      <button class="mig-btn-secondary" onclick="migGoToStep(1)">
+        ← Back
+      </button>
+    </div>
+
+    <!-- ─── STEP 3: PureBrain Learns You ─── -->
+    <div class="mig-step" id="mig-step-3">
+      <p class="mig-step-eyebrow">Step 3 of 4</p>
+      <h1 class="mig-step-title">PureBrain Is Learning From You</h1>
+      <p class="mig-step-subtitle">Processing your history to build a profile that makes your AI partner feel like it already knows you.</p>
+
+      <!-- Orb + Progress -->
+      <div class="mig-orb-container">
+        <div class="mig-orb">
+          <div class="mig-orb-glow mig-orb-processing" id="mig-orb-glow"></div>
+          <div class="mig-orb-ring" id="mig-orb-ring"></div>
+          <div class="mig-orb-sphere mig-orb-processing" id="mig-orb-sphere"></div>
+        </div>
+        <p class="mig-orb-status" id="mig-orb-status">Analyzing your conversations...</p>
+        <div style="width:100%">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-size:12px; color:var(--text-dim);">Migration progress</span>
+            <span class="mig-progress-pct" id="mig-pct-label">0%</span>
+          </div>
+          <div class="mig-progress-track">
+            <div class="mig-progress-fill" id="mig-progress-fill" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Insights section label -->
+      <p class="mig-section-label" id="mig-insights-label" style="opacity:0; transition:opacity 0.4s">What We've Learned So Far</p>
+      <div class="mig-insights-list" id="mig-insights-list"></div>
+
+      <!-- Checklist -->
+      <p class="mig-section-label">Building Your Profile</p>
+      <ul class="mig-checklist" id="mig-checklist">
+        <li class="mig-check-item" id="mig-chk-1" data-label="Communication style detected">
+          <div class="mig-check-icon">○</div>
+          <span>Communication style detected</span>
+        </li>
+        <li class="mig-check-item" id="mig-chk-2" data-label="Top 5 use patterns extracted">
+          <div class="mig-check-icon">○</div>
+          <span>Top 5 use patterns extracted</span>
+        </li>
+        <li class="mig-check-item" id="mig-chk-3" data-label="Custom instructions absorbed">
+          <div class="mig-check-icon">○</div>
+          <span>Custom instructions absorbed</span>
+        </li>
+        <li class="mig-check-item" id="mig-chk-4" data-label="Topic vocabulary indexed">
+          <div class="mig-check-icon">○</div>
+          <span>Topic vocabulary indexed</span>
+        </li>
+        <li class="mig-check-item" id="mig-chk-5" data-label="Preference profile complete">
+          <div class="mig-check-icon">○</div>
+          <span>Preference profile complete</span>
+        </li>
+      </ul>
+    </div>
+
+    <!-- ─── STEP 4: Guided First Tasks ─── -->
+    <div class="mig-step" id="mig-step-4">
+      <div class="mig-complete-header">
+        <div class="mig-complete-badge">
+          <span>✓</span> Migration Complete
+        </div>
+        <h1 class="mig-complete-title">You're Ready. Here's Where to Start.</h1>
+        <p class="mig-complete-sub">Based on what you used to do with ChatGPT, here are your first moves with PureBrain.</p>
+      </div>
+
+      <!-- Stats bar -->
+      <div class="mig-stats-bar">
+        <div class="mig-stat-pill">
+          <span class="mig-stat-num">847</span>
+          <span class="mig-stat-label">Conversations absorbed</span>
+        </div>
+        <div class="mig-stat-pill">
+          <span class="mig-stat-num">5</span>
+          <span class="mig-stat-label">Patterns detected</span>
+        </div>
+        <div class="mig-stat-pill">
+          <span class="mig-stat-num">3.2 yr</span>
+          <span class="mig-stat-label">History imported</span>
+        </div>
+      </div>
+
+      <p class="mig-section-label">Suggested Because of Your History</p>
+
+      <!-- Task cards -->
+      <div class="mig-tasks-list">
+
+        <div class="mig-task-card">
+          <div class="mig-task-icon-wrap">📊</div>
+          <div class="mig-task-body">
+            <h3 class="mig-task-title">Market Analysis</h3>
+            <p class="mig-task-desc">
+              You ran market analysis <strong>23 times</strong> in ChatGPT.
+              PureBrain has absorbed your framework and knows your preferred output format.
+              Ask it to run one — see the difference memory makes.
+            </p>
+            <!-- API HOOK: Pre-fill chat with "Run a market analysis on [topic] using my usual framework" -->
+            <button class="mig-task-start-btn" onclick="migStartTask('market-analysis')">
+              Start this task &nbsp;→
+            </button>
+          </div>
+        </div>
+
+        <div class="mig-task-card">
+          <div class="mig-task-icon-wrap">✍️</div>
+          <div class="mig-task-body">
+            <h3 class="mig-task-title">Writing With Your Voice</h3>
+            <p class="mig-task-desc">
+              We detected your writing style across <strong>hundreds of editing sessions</strong>.
+              PureBrain already writes the way you do — direct, no preamble, bullet-point-first.
+              Try asking it to write something and see it match your voice without being told.
+            </p>
+            <!-- API HOOK: Pre-fill chat with "Write [X] in my voice based on what you know about how I write" -->
+            <button class="mig-task-start-btn" onclick="migStartTask('writing-voice')">
+              Start this task &nbsp;→
+            </button>
+          </div>
+        </div>
+
+        <div class="mig-task-card">
+          <div class="mig-task-icon-wrap">🧠</div>
+          <div class="mig-task-body">
+            <h3 class="mig-task-title">Test Your Long-Term Memory</h3>
+            <p class="mig-task-desc">
+              You told us ChatGPT's lack of memory was your biggest frustration.
+              Your <strong>3.2 years of context</strong> are now loaded.
+              Ask PureBrain something only someone who has worked with you would know.
+            </p>
+            <!-- API HOOK: Pre-fill chat with "What are my top recurring topics? What do I work on most?" -->
+            <button class="mig-task-start-btn" onclick="migStartTask('test-memory')">
+              Start this task &nbsp;→
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Final CTA -->
+      <div class="mig-final-cta">
+        <p>Your AI partner is ready and already knows you. Every conversation from here will feel different — because PureBrain carries what ChatGPT forgot.</p>
+        <!-- API HOOK: href should point to the user's PureBrain portal dashboard -->
+        <button class="mig-btn-primary" onclick="migCompleteFinal()" style="margin-top:0">
+          Go to my PureBrain &nbsp;→
+        </button>
+      </div>
+    </div>
+
+  </div><!-- /mig-card -->
+
+  <!-- ─── Footer ─── -->
+  <div class="mig-footer">
+    Built by AETHER (an AI) for PureBrain.ai, PureMarketing.ai &amp; PureTechnology.ai
+  </div>
+
+</div><!-- /mig-root -->
+
+<!-- ─── MIGRATION COMPLETE OVERLAY ─── -->
+<div id="mig-complete-overlay">
+  <div class="mig-overlay-card">
+    <div class="mig-overlay-check">✓</div>
+    <h2 class="mig-overlay-title">Migration Complete!</h2>
+    <p class="mig-overlay-sub">PureBrain has absorbed your context. Your AI partner already knows you.</p>
+    <div class="mig-overlay-stats">
+      <div class="mig-overlay-stat">
+        <span>847</span>
+        <p>Conversations absorbed</p>
+      </div>
+      <div class="mig-overlay-stat">
+        <span>5</span>
+        <p>Patterns detected</p>
+      </div>
+      <div class="mig-overlay-stat">
+        <span>3</span>
+        <p>Connections made</p>
+      </div>
+    </div>
+    <!-- API HOOK: href to user's dashboard -->
+    <button class="mig-overlay-dismiss" onclick="document.getElementById('mig-complete-overlay').classList.remove('mig-visible')">
+      View My Migration Summary &nbsp;→
+    </button>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   AI MIGRATION PORTAL — JavaScript
+   Demo mode: all backend processing is simulated.
+   API hooks are commented where real calls would go.
+   ============================================================ */
+
+// ─── State ───────────────────────────────────────────────────
+const migState = {
+  currentStep: 1,
+  competitor: 'chatgpt',
+  uploadedFile: null,
+  removedItems: new Set(),
+  migrationData: {
+    conversationCount: 847,
+    dateRangeYears: 3.2,
+    topTopics: ['market analysis', 'copywriting', 'competitive research', 'hiring', 'product positioning'],
+    communicationStyle: 'direct, no preamble, prefers bullet points',
+    customInstructions: 'You are a direct, no-fluff assistant...',
+    patterns: 5,
+    startDate: 'Jan 2023',
+    endDate: 'Feb 2026'
+  },
+  migrationComplete: false
+};
+
+// ─── Competitor config (configurable at runtime) ──────────────
+const migCompetitors = {
+  chatgpt: { name: 'ChatGPT / OpenAI', icon: '🤖' },
+  claude:  { name: 'Claude / Anthropic', icon: '🔵' },
+  gemini:  { name: 'Gemini / Google', icon: '💎' },
+  other:   { name: 'Your AI Tool', icon: '📤' }
+};
+
+// ─── Insight cards data ──────────────────────────────────────
+const migInsights = [
+  { icon: '📈', text: '<strong>You asked about market analysis 23 times.</strong> We\'ve flagged this as a core use pattern and loaded your framework into PureBrain.' },
+  { icon: '✍️', text: '<strong>Your Custom Instructions say you prefer direct answers without preamble.</strong> Noted permanently — PureBrain will never waste your time with filler.' },
+  { icon: '🗂️', text: '<strong>5 top topics identified:</strong> market strategy, copywriting, competitive analysis, hiring decisions, product positioning.' },
+  { icon: '🎯', text: '<strong>Communication style: direct, bullets-first, concise.</strong> PureBrain has absorbed this as your default output format.' },
+  { icon: '🔁', text: '<strong>3.2 years of context loaded.</strong> Patterns from Jan 2023 to Feb 2026 are now part of your PureBrain profile.' }
+];
+
+// ─── Progress dots ─────────────────────────────────────────────
+function migUpdateProgress(step) {
+  const steps = document.querySelectorAll('.mig-prog-step');
+  steps.forEach((el, i) => {
+    const n = i + 1;
+    el.classList.remove('mig-active', 'mig-done');
+    if (n < step) el.classList.add('mig-done');
+    else if (n === step) el.classList.add('mig-active');
+  });
+}
+
+// ─── Step navigation ──────────────────────────────────────────
+function migGoToStep(n) {
+  // Hide current
+  const current = document.querySelector('.mig-step-active');
+  if (current) current.classList.remove('mig-step-active');
+
+  // Show target
+  const target = document.getElementById('mig-step-' + n);
+  if (target) {
+    target.classList.add('mig-step-active');
+    migState.currentStep = n;
+    migUpdateProgress(n);
+    // Scroll card into view smoothly
+    const card = document.querySelector('.mig-card');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+// ─── Step 1: File upload ──────────────────────────────────────
+const dropZone = document.getElementById('mig-drop-zone');
+const fileInput = document.getElementById('mig-file-input');
+const fileConfirm = document.getElementById('mig-file-confirm');
+
+fileInput.addEventListener('change', function() {
+  if (this.files && this.files[0]) {
+    migHandleFile(this.files[0]);
+  }
+});
+
+dropZone.addEventListener('dragover', function(e) {
+  e.preventDefault();
+  this.classList.add('mig-drag-over');
+});
+dropZone.addEventListener('dragleave', function() {
+  this.classList.remove('mig-drag-over');
+});
+dropZone.addEventListener('drop', function(e) {
+  e.preventDefault();
+  this.classList.remove('mig-drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) migHandleFile(file);
+});
+
+function migHandleFile(file) {
+  migState.uploadedFile = file;
+
+  // Show file confirmation
+  document.getElementById('mig-file-name').textContent = file.name;
+  const sizeMb = (file.size / 1048576).toFixed(1);
+  document.getElementById('mig-file-size').textContent = sizeMb + ' MB ready to import';
+  fileConfirm.classList.add('mig-visible');
+
+  // Update drop zone appearance
+  dropZone.querySelector('.mig-drop-main').textContent = 'File selected — ready to import';
+  dropZone.querySelector('.mig-drop-icon').textContent = '✅';
+
+  // Update Step 2 review file entry
+  document.getElementById('mig-file-group').style.display = '';
+  document.getElementById('mig-review-filename').textContent = file.name;
+  document.getElementById('mig-review-filesize').textContent = sizeMb + ' MB — parsing conversations';
+
+  /*
+   * API HOOK — FILE UPLOAD (replace simulation with real call):
+   * const formData = new FormData();
+   * formData.append('file', file);
+   * formData.append('competitor', migState.competitor);
+   * fetch('/api/migration/upload', { method: 'POST', body: formData })
+   *   .then(r => r.json())
+   *   .then(data => {
+   *     migState.migrationData = data; // populated from server parse
+   *     // Update Step 2 UI with real counts
+   *   });
+   */
+}
+
+// ─── Step 1: How-to collapsible ───────────────────────────────
+function migToggleHow() {
+  const content = document.getElementById('mig-how-content');
+  const arrow = document.getElementById('mig-how-arrow');
+  const isOpen = content.classList.contains('mig-open');
+  content.classList.toggle('mig-open', !isOpen);
+  arrow.classList.toggle('mig-open', !isOpen);
+}
+
+function migSwitchTab(tabId, btn) {
+  // Deactivate all tabs
+  document.querySelectorAll('.mig-how-tab-content').forEach(el => el.classList.remove('mig-tab-active'));
+  document.querySelectorAll('.mig-how-tab-btn').forEach(el => el.classList.remove('mig-tab-active'));
+  // Activate target
+  document.getElementById('mig-tab-' + tabId).classList.add('mig-tab-active');
+  btn.classList.add('mig-tab-active');
+}
+
+// ─── Step 2: Remove / restore toggle ─────────────────────────
+function migToggleItem(itemId, btn) {
+  const item = document.getElementById(itemId);
+  const removed = item.classList.contains('mig-removed');
+  item.classList.toggle('mig-removed', !removed);
+  btn.textContent = removed ? 'Remove' : 'Restore';
+  btn.classList.toggle('mig-restore', !removed);
+  if (!removed) migState.removedItems.add(itemId);
+  else migState.removedItems.delete(itemId);
+}
+
+// ─── Step 3: Import simulation ────────────────────────────────
+function migStartImport() {
+  migGoToStep(3);
+  setTimeout(migRunLearningSimulation, 400);
+}
+
+function migRunLearningSimulation() {
+  const progressFill = document.getElementById('mig-progress-fill');
+  const pctLabel = document.getElementById('mig-pct-label');
+  const insightsList = document.getElementById('mig-insights-list');
+  const insightsLabel = document.getElementById('mig-insights-label');
+  const statusEl = document.getElementById('mig-orb-status');
+
+  const statusMessages = [
+    'Analyzing your conversations...',
+    'Extracting communication patterns...',
+    'Absorbing custom instructions...',
+    'Indexing your top topics...',
+    'Building your preference profile...',
+    'Finalizing your context...',
+    'Migration complete!'
+  ];
+
+  let pct = 0;
+  let checkStep = 0;
+  let insightStep = 0;
+  let statusIdx = 0;
+
+  // Checklist schedule (percent thresholds)
+  const checkSchedule = [
+    { id: 'mig-chk-1', threshold: 18 },
+    { id: 'mig-chk-2', threshold: 36 },
+    { id: 'mig-chk-3', threshold: 54 },
+    { id: 'mig-chk-4', threshold: 72 },
+    { id: 'mig-chk-5', threshold: 90 }
+  ];
+
+  // Insight schedule (percent thresholds for revealing cards)
+  const insightSchedule = [22, 40, 58, 76, 88];
+
+  /*
+   * API HOOK — POLLING PROCESSING STATUS (replace simulation):
+   * function pollStatus() {
+   *   fetch('/api/migration/status')
+   *     .then(r => r.json())
+   *     .then(data => {
+   *       updateProgress(data.percent);
+   *       if (data.status === 'complete') { migGoToStep(4); return; }
+   *       setTimeout(pollStatus, 1500);
+   *     });
+   * }
+   * pollStatus();
+   */
+
+  // Simulate progress ticks
+  const ticker = setInterval(function() {
+    // Non-linear speed: fast start, slower middle, fast end
+    let increment;
+    if (pct < 25)       increment = 3.5;
+    else if (pct < 65)  increment = 1.8;
+    else if (pct < 85)  increment = 1.2;
+    else                increment = 2.2;
+
+    pct = Math.min(100, pct + increment * (0.8 + Math.random() * 0.4));
+    progressFill.style.width = pct.toFixed(1) + '%';
+    pctLabel.textContent = Math.round(pct) + '%';
+
+    // Update status message
+    const newStatusIdx = Math.min(Math.floor(pct / 15), statusMessages.length - 1);
+    if (newStatusIdx !== statusIdx) {
+      statusIdx = newStatusIdx;
+      statusEl.style.opacity = '0';
+      setTimeout(function() {
+        statusEl.textContent = statusMessages[statusIdx];
+        statusEl.style.opacity = '1';
+        statusEl.style.transition = 'opacity 0.3s';
+      }, 150);
+    }
+
+    // Reveal checklist items
+    while (checkStep < checkSchedule.length && pct >= checkSchedule[checkStep].threshold) {
+      const chk = document.getElementById(checkSchedule[checkStep].id);
+      if (chk) {
+        // Mark active briefly, then done
+        chk.classList.add('mig-check-active');
+        const idx = checkStep; // capture
+        setTimeout(function() {
+          const el = document.getElementById(checkSchedule[idx].id);
+          if (el) {
+            el.classList.remove('mig-check-active');
+            el.classList.add('mig-check-done');
+            el.querySelector('.mig-check-icon').textContent = '✓';
+          }
+        }, 800);
+      }
+      checkStep++;
+    }
+
+    // Reveal insight cards
+    while (insightStep < insightSchedule.length && pct >= insightSchedule[insightStep]) {
+      // Show label
+      insightsLabel.style.opacity = '1';
+
+      // Create and append insight card
+      const data = migInsights[insightStep];
+      const card = document.createElement('div');
+      card.className = 'mig-insight-card';
+      card.innerHTML = '<span class="mig-insight-icon">' + data.icon + '</span>' +
+                       '<p class="mig-insight-text">' + data.text + '</p>';
+      insightsList.appendChild(card);
+
+      // Trigger reveal animation on next frame
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          card.classList.add('mig-revealed');
+        });
+      });
+
+      insightStep++;
+    }
+
+    // Complete
+    if (pct >= 100) {
+      clearInterval(ticker);
+      progressFill.style.width = '100%';
+      pctLabel.textContent = '100%';
+      statusEl.textContent = 'Migration complete!';
+
+      // Transition orb to idle (slower breathing)
+      const sphere = document.getElementById('mig-orb-sphere');
+      const glow = document.getElementById('mig-orb-glow');
+      if (sphere) sphere.classList.remove('mig-orb-processing');
+      if (glow) glow.classList.remove('mig-orb-processing');
+
+      // Proceed to Step 4 after brief pause
+      setTimeout(function() {
+        migGoToStep(4);
+      }, 1200);
+    }
+  }, 80); // tick every 80ms = ~7s total at average speed
+}
+
+// ─── Step 4: Task clicks ──────────────────────────────────────
+function migStartTask(taskType) {
+  /*
+   * API HOOK — PRE-FILLED CHAT SESSION:
+   * const prompts = {
+   *   'market-analysis': 'Run a market analysis on [topic] using my usual framework',
+   *   'writing-voice':   'Write [X] in my detected voice — direct, no preamble',
+   *   'test-memory':     'What are my top recurring topics? What do I work on most?'
+   * };
+   * const prompt = prompts[taskType];
+   * window.location.href = '/purebrain?pre_prompt=' + encodeURIComponent(prompt);
+   */
+  alert('In production this opens PureBrain with a pre-loaded starter prompt for: ' + taskType + '\n\nConnect to /api/migration/start-task to wire up.');
+}
+
+// ─── Final CTA ────────────────────────────────────────────────
+function migCompleteFinal() {
+  migState.migrationComplete = true;
+
+  // Show completion overlay
+  document.getElementById('mig-complete-overlay').classList.add('mig-visible');
+
+  /*
+   * API HOOK — MARK MIGRATION COMPLETE:
+   * fetch('/api/migration/complete', { method: 'POST' })
+   *   .then(() => { window.location.href = '/portal'; });
+   */
+}
+
+// ─── Init: parse URL params for competitor ────────────────────
+(function migInit() {
+  const params = new URLSearchParams(window.location.search);
+  const comp = params.get('from') || 'chatgpt';
+  if (migCompetitors[comp]) {
+    migState.competitor = comp;
+    const cfg = migCompetitors[comp];
+    document.getElementById('mig-comp-name').textContent = cfg.name;
+    document.getElementById('mig-comp-icon').textContent = cfg.icon;
+  }
+})();
+</script>
+
+</body>
+</html>

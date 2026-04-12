@@ -1,0 +1,469 @@
+═══════════════════════════════════════════════════════════════════════════════
+COMPREHENSIVE AUDIT: PureBrain Security Plugin (purebrain-security-plugin.php)
+═══════════════════════════════════════════════════════════════════════════════
+
+File: /home/jared/projects/AI-CIV/aether/tools/security/purebrain-security/purebrain-security-plugin.php
+Total Lines: 6,352
+
+WHAT STAYS (SECURITY ONLY):
+──────────────────────────
+✓ CSP headers (send_headers hook)
+✓ User enumeration blocking (rest_endpoints + template_redirect for ?author=)
+✓ REST API proxies for payment/conversation logging (purebrain_proxy_log_server, purebrain_proxy_verify_payment, purebrain_proxy_acgee_logging)
+✓ Security headers (HSTS, X-Frame-Options, X-Content-Type-Options, etc.)
+✓ Cloudflare tunnel hardening
+✓ Rate limiting functions (purebrain_check_rate_limit, purebrain_get_client_ip)
+✓ Version string removal (purebrain_remove_version_strings)
+✓ Login error obscuring (login_errors filter)
+✓ Cookie hardening (HTTPS enforcement, Secure/HttpOnly flags)
+✓ Admin/Editor script dequeuing on frontend (wp_enqueue_scripts, performance optimization)
+✓ WonderPush defer injection (script_loader_tag filter)
+✓ Robots noindex override for staging pages (wpseo_robots filter + wp_head)
+✓ AI/404 redirect handling (template_redirect for /ai-adoption-assessment → /ai-partnership-assessment/)
+
+═══════════════════════════════════════════════════════════════════════════════
+NON-SECURITY CODE FOUND — MUST BE EXTRACTED
+═══════════════════════════════════════════════════════════════════════════════
+
+PLUGIN 1: pb-video-handler
+──────────────────────────
+Purpose: Homepage video viewport management
+
+1. Video Mobile Pause/Hide on Homepage
+   - Description: Pause/hide background video on mobile, manage living-background overlay
+   - Hook: wp_footer (line 531)
+   - Lines: 521-592
+   - JS Function: handleVideoViewport()
+   - Targets: #bgVideo, .video-background, .living-background
+   - Conditions: is_front_page()
+
+───────────────────────────────────────
+
+PLUGIN 2: pb-blog-faq
+──────────────────────
+Purpose: Blog post FAQ accordion functionality
+
+1. FAQ Accordion — Classic Structure (.faq-section)
+   - Description: Collapse/expand FAQ items with chevron, one-at-a-time accordion
+   - Hook: wp_head (line 2313) - CSS + JS
+   - Lines: 2299-2489
+   - CSS ID: purebrain-faq-accordion
+   - JS ID: purebrain-faq-accordion-js
+   - Targets: body.single-post .post-content .faq-section
+   - Structure: .faq-section { h3 (question), p (answer) }
+
+2. FAQ Accordion Extended — Alternative Structures
+   - Description: Handle pb-faq-item/pb-faq-q/pb-faq-a structure + bare h3+p pairs
+   - Hook: wp_head (line 2508) - CSS + JS
+   - Lines: 2491-2700+ (extends further, need to verify full extent)
+   - CSS ID: purebrain-faq-extended
+   - Targets: .pb-faq-item, .pb-faq-q, .pb-faq-a
+   - Post 879 pattern support
+
+───────────────────────────────────────
+
+PLUGIN 3: pb-content-gate
+─────────────────────────
+Purpose: Password-protected page styling + portal bypass logic
+
+1. Password Form Dark Theme (Page 859)
+   - Description: Custom dark styling for WordPress password protection form
+   - Hook: wp_head (line 970)
+   - Lines: 962-1038
+   - CSS ID: pb-password-form-dark-859
+   - Targets: body.page-id-859, .post-password-form, form inputs/labels
+   - Applies to: brainiac-mastermind-training (page 859)
+
+2. Portal Bypass for Password-Protected Pages
+   - Description: Skip password form when ?bypass=portal present (for portal users)
+   - Hook: post_password_required filter (line 1047)
+   - Lines: 1040-1068
+   - Logic: Checks $_GET['bypass'] === 'portal' for pages [1115, 1298]
+   - Pages: brainiac-mastermind-training (1115), refer-and-earn (1298, by slug)
+
+3. Brainiac Training JS Gate Bypass
+   - Description: Auto-call signIn() function when ?bypass=portal present
+   - Hook: wp_footer (line 1075)
+   - Lines: 1070-1098
+   - JS Function: autoBypass()
+   - Targets: Page 1115, calls signIn() if defined
+   - Retry logic: setTimeout with 100ms backoff
+
+4. AI Partnership Guide Content Gate
+   - Description: Partial content gate with gradient fade + email capture form
+   - Hook: wp_head (line 5120) - CSS injection for gate
+   - Lines: 5118-5400+ (verify full extent)
+   - Conditions: is_page('ai-partnership-guide')
+   - Visible: Sections 1-3
+   - Gated: Sections 4-7 behind email form
+   - REST endpoint: POST /purebrain/v1/guide-unlock
+
+───────────────────────────────────────
+
+PLUGIN 4: pb-breadcrumb-fix
+──────────────────────────
+Purpose: Yoast breadcrumb schema bug fixes
+
+1. Breadcrumb ListItem Schema Fix
+   - Description: Ensure every ListItem in Yoast BreadcrumbList has 'item' (URL) property
+   - Hook: wpseo_schema_breadcrumb filter (line 737)
+   - Lines: 735-780
+   - Issue Fixed: GSC error when URL missing
+   - Logic: Validates and adds missing 'item' field to schema array
+
+───────────────────────────────────────
+
+PLUGIN 5: pb-blog-styling
+──────────────────────────
+Purpose: Blog-specific CSS fixes and features
+
+1. Magic Cursor Body Override (Homepage Background)
+   - Description: Override .tt-magic-cursor dark background on homepage so video shows through
+   - Hook: wp_head (line 1113) + wp_footer (line 1129)
+   - Lines: 1111-1242
+   - CSS ID: pb-magic-cursor-body-fix, pb-magic-cursor-body-override
+   - Targets: body.home.tt-magic-cursor, body.page-id-11.tt-magic-cursor
+   - Fix: Sets background: transparent to allow fixed video background through
+
+2. Blog In-Text Link Hover Fix
+   - Description: Orange background + white text on hover for in-content links (single posts)
+   - Hook: wp_footer (line 1244)
+   - Lines: 1244-1282
+   - CSS ID: pb-blog-text-link-hover-v391
+   - Targets: body.single-post .post-content a
+   - Excludes: .blog-cta-block a, .tags-list a
+
+3. Blog Transparency Section Render
+   - Description: Auto-inject weekly AI partnership transparency report into single blog posts
+   - Hook: wp_footer (line 2738)
+   - Lines: 2736-2975
+   - CSS ID: pb-aether-transparency-section-css
+   - Insertion Point: Before .blog-cta-block
+   - Data Source: wp_option 'purebrain_transparency_data' (JSON)
+   - REST endpoint to populate: POST /purebrain/v1/transparency-data (admin only)
+
+4. Blog CTA Hover Fix
+   - Description: CTA button orange default + blue hover, newsletter link styling
+   - Hook: wp_head (line 3139)
+   - Lines: 3137-3282
+   - CSS ID: purebrain-blog-cta-hover
+   - Targets: .blog-cta-block, newsletter links
+   - Newsletter link: Orange button-style hover
+
+5. Transparency CTA Button White Text Fix
+   - Description: Enforce white text on transparency section CTA button
+   - Hook: wp_head (line 3285)
+   - Lines: 3283-3368
+   - CSS ID: pb-transparency-cta-white
+   - Targets: .aether-transparency__cta-btn
+   - Issue Fixed: Text color inheritance override
+
+6. In-Content Link Orange Hover
+   - Description: Single post content links get orange background + white text on hover
+   - Hook: wp_head (line 3371)
+   - Lines: 3369-3420
+   - CSS ID: pb-single-post-link-hover-v392
+   - Targets: body.single-post .post-content a (with exclusions)
+   - Specificity: High !important to override inherited blue-glow
+
+7. Blog Featured Image Padding
+   - Description: Fix featured image padding/spacing on single posts
+   - Hook: wp_head (line 3423)
+   - Lines: 3421-3461
+   - CSS ID: pb-featured-image-single-post
+   - Targets: body.single-post .featured-image
+   - Issue: Previous version had padding conflicts
+
+8. Blog Category Nav Link
+   - Description: Category navigation link styling on single posts
+   - Hook: wp_head (line 3516)
+   - Lines: 3514-3607
+   - CSS ID: pb-blog-nav-link
+   - Targets: body.single-post, .post-nav-link
+   - Link display + hover states
+
+9. Blog Listing Post Cards Read More Button
+   - Description: Ensure EVERY post card on blog listing has "READ MORE" orange button
+   - Hook: wp_footer (line 4047)
+   - Lines: 4039-4397
+   - JS ID: pb-blog-listing-read-more-js
+   - Targets: Blog listing page (page 319 + home)
+   - Logic: Adds .pb-read-more-btn button if missing
+   - Injection Point: Before post excerpt or at end of post
+
+10. Blog Listing Posts Per Page Filter
+    - Description: Limit blog listing page to max 10 posts
+    - Hook: pre_get_posts (line 5594)
+    - Lines: 5592-5603
+    - Targets: is_page(319) || is_home(), non-admin queries
+    - Filter: posts_per_page = 10
+
+───────────────────────────────────────
+
+PLUGIN 6: pb-page-metadata
+──────────────────────────
+Purpose: OG meta tags, Twitter cards, SEO metadata
+
+1. Twitter/X Card Meta Tags
+   - Description: Inject twitter:card, twitter:site, twitter:title, twitter:description, twitter:image
+   - Hook: wp_head (line 1324)
+   - Lines: 1322-1400
+   - CSS ID: pb-twitter-cards-v610
+   - Pulls from: Yoast SEO settings with fallback chain
+   - Site handle: @purebrain_ai
+
+2. OG Meta Fields REST API Registration
+   - Description: Register OG and Twitter meta fields for REST API access + whitelist for update-post-meta endpoint
+   - Hook: wp_head (line 1403) - via register_post_meta in rest_api_init
+   - Lines: 1403-1440
+   - Fields: _yoast_wpseo_opengraph-*, _yoast_wpseo_twitter-*
+   - Whitelisted in update-post-meta handler (lines 1684-1697)
+
+3. Yoast Meta Fields Whitelisting
+   - Description: Whitelist Yoast SEO meta fields for authenticated REST API updates
+   - Hook: None (passive - used by update-post-meta endpoint)
+   - Lines: 1684-1697 (in purebrain_update_post_meta_handler)
+   - Fields: metadesc, title, focuskw, canonical, twitter-image, twitter-image-id, twitter-title, twitter-description, opengraph-*
+
+───────────────────────────────────────
+
+PLUGIN 7: pb-lead-capture
+─────────────────────────
+Purpose: Email capture forms (in-content + CTA bar)
+
+1. Lead Capture Styles
+   - Description: CSS for in-content subscribe box (#pb-lead-inline) + post-read CTA bar (#pb-lead-bar)
+   - Hook: wp_head (line 3688)
+   - Lines: 3680-4036
+   - CSS ID: purebrain-lead-capture-css
+   - Targets: #pb-lead-inline (50% scroll), #pb-lead-bar (85% scroll)
+   - Triggers: on body.single-post only
+
+2. Lead Capture Markup + JavaScript
+   - Description: Inject HTML forms + JS scroll event listeners
+   - Hook: wp_footer (line 4047)
+   - Lines: 4039-4400+ (extends further, full extent TBD)
+   - JS ID: purebrain-lead-capture-js
+   - Form submission: XHR POST to /wp-json/pb-security/v1/subscribe
+   - localStorage keys: pb_subscribed, pb_inline_dismissed, pb_bar_dismissed
+   - Dismissal TTL: 7 days (inline), 14 days (bar)
+   - Scroll triggers: 50% (inline), 85% (bar)
+
+───────────────────────────────────────
+
+PLUGIN 8: pb-social-sharing
+───────────────────────────
+Purpose: Social share buttons on blog posts
+
+1. Social Sharing Bar CSS
+   - Description: Styled LinkedIn, X (Twitter), Email, Copy Link buttons
+   - Hook: wp_head (line 5616)
+   - Lines: 5605-5741
+   - CSS ID: purebrain-social-share-css
+   - Brand colors: Blue #2a93c1 default, orange #f1420b hover
+   - Also restores theme-native .post-social-sharing
+
+2. Social Sharing Bar JavaScript
+   - Description: Build and inject share bar before .blog-cta-block
+   - Hook: wp_footer (line 5744)
+   - Lines: 5743-5865
+   - JS ID: pb-social-share-js
+   - Functions: buildShareBar(), insertShareBar()
+   - Copy Link fallback: Supports both Clipboard API and legacy execCommand
+   - Insertion: Before .blog-cta-block or fallback to .post-content/.entry-content
+
+───────────────────────────────────────
+
+PLUGIN 9: pb-footer-branding
+───────────────────────────
+Purpose: Footer visual elements and branding
+
+1. Legal Footer Hover Styling
+   - Description: CSS for footer privacy/terms links hover (replaces inline onmouseover)
+   - Hook: wp_head (line 954)
+   - Lines: 948-960
+   - CSS ID: purebrain-legal-footer-css
+   - Targets: #purebrain-legal-footer .pb-legal-link
+   - Hover color: #2a93c1 (Pure Tech Blue)
+
+2. Footer Logo Brand Fix
+   - Description: Replace "Pure Brain" plain text with color-coded PUREBR(blue)+AI(orange)+N(blue).AI
+   - Hook: wp_footer (line 3651)
+   - Lines: 3649-3678
+   - JS ID: purebrain-footer-logo-brand
+   - Targets: .footer-logo h4, #site-footer .footer-logo h4, footer .footer-logo h4
+   - Colors: #2a93c1 (PUREBR + N), #f1420b (AI), #ffffff (.AI)
+
+3. Aether Footer Credit Bar (Fixed Position)
+   - Description: Fixed-position footer on ALL pages: "Built by AETHER (an AI) for PureBrain.ai, PureMarketing.ai & PureTechnology.ai"
+   - Hook: wp_footer (line 5887)
+   - Lines: 5881-6130
+   - CSS ID: pb-aether-footer-v470
+   - Features: Shimmer animation, pulse animation, responsive design
+   - Dimensions: 36px height, z-index 9999, dark background #080a12
+   - Body padding: 36px bottom to prevent overlap
+   - Links: Open in _blank, brand colors for site names
+   - Also includes Assessment page footer hide (mobile only, page 284)
+
+───────────────────────────────────────
+
+PLUGIN 10: pb-indexnow
+────────────────────
+Purpose: IndexNow search engine notification
+
+1. IndexNow Key File Server
+   - Description: Serve IndexNow verification file at /{key}.txt
+   - Hook: wp_init (line 602)
+   - Lines: 594-641
+   - Constant: PUREBRAIN_INDEXNOW_KEY = '823869521fbf4f33b93e67c781571e20'
+   - File content: Just the key string itself
+   - Verification: Fixes 403 Forbidden error from IndexNow API
+
+2. IndexNow Auto-Submit on Publish
+   - Description: Auto-ping api.indexnow.org when posts publish or update
+   - Hook: publish_post (line 680), save_post (line 704)
+   - Lines: 678-734
+   - Function: purebrain_indexnow_submit($url)
+   - API endpoint: api.indexnow.org/IndexNow
+   - Notifications: Bing, Yandex, and other IndexNow-compatible engines
+
+───────────────────────────────────────
+
+PLUGIN 11: pb-button-styling
+───────────────────────────
+Purpose: Button hover state styling across pages
+
+1. Button Hover State Styling (Calculator vs Comparisons)
+   - Description: Calculator pages → blue hover, Comparison pages → orange hover
+   - Hook: wp_head (line 6213)
+   - Lines: 6211-6259
+   - CSS ID: pb-button-hover-v622
+   - Applies to: ALL pages site-wide
+
+───────────────────────────────────────
+
+PLUGIN 12: pb-video-modal
+─────────────────────────
+Purpose: Video demo modal on specific pages
+
+1. Video Modal Close Button Fix
+   - Description: Override .video-modal__close positioning (was fixed above viewport on mobile)
+   - Hook: wp_head (line 6133)
+   - Lines: 6131-6210
+   - CSS ID: pb-video-modal-close-fix-v611
+   - Pages: Homepage (front page), pages 688, 689
+   - Fix: Changes from position:absolute top:-50px to position:fixed top:16px right:16px
+   - Button: Dark circle background, 44x44px tap target, z-index 10010
+
+───────────────────────────────────────
+
+PLUGIN 13: pb-cache-control
+──────────────────────────
+Purpose: WP Super Cache exclusion rules
+
+1. Dynamic Pages Never-Cache List
+   - Description: Exclude pages with PayPal flows, live chatbox, dynamic pricing from caching
+   - Hook: init (line 6262) + wpsc_never_cache_page_ids filter (line 6334)
+   - Lines: 6260-6350
+   - Pages: [439, 468, 688, 689, 1115, 1118, 1232, 1251]
+   - DONOTCACHEPAGE constant definition: Prevents cache for logged-in users
+
+───────────────────────────────────────
+
+PLUGIN 14: pb-301-redirects
+──────────────────────────
+Purpose: Permanent redirects for old URLs
+
+1. AI Adoption Assessment → AI Partnership Assessment Redirect
+   - Description: 301 redirect /ai-adoption-assessment/ → /ai-partnership-assessment/
+   - Hook: template_redirect (line 812)
+   - Lines: 810-827
+   - Status: 301 Permanent (transfers link equity to canonical)
+   - Issue Fixed: Old URL was returning 404
+
+═══════════════════════════════════════════════════════════════════════════════
+SUMMARY TABLE
+═══════════════════════════════════════════════════════════════════════════════
+
+Plugin Name                 | Approx Lines | Dependent REST Endpoints        | Notes
+─────────────────────────────┼──────────────┼────────────────────────────────┼─────────────────────
+pb-video-handler            | 72           | None                           | Homepage video only
+pb-blog-faq                 | 400          | None                           | Single posts only
+pb-content-gate             | 360          | /guide-unlock                  | Password forms + portal bypass
+pb-breadcrumb-fix           | 45           | None                           | Schema/SEO fix
+pb-blog-styling             | 1,500        | /transparency-data             | Largest feature set
+pb-page-metadata            | 150          | None (REST registration)       | OG/Twitter cards
+pb-lead-capture             | 400          | /subscribe, /brevo-subscribe   | Email capture forms
+pb-social-sharing           | 260          | None                           | Share buttons
+pb-footer-branding          | 500          | None                           | Footer elements
+pb-indexnow                 | 150          | None                           | Search engine pings
+pb-button-styling           | 48           | None                           | Global button hover
+pb-video-modal              | 80           | None                           | Modal close button
+pb-cache-control            | 90           | None                           | Cache exclusions
+pb-301-redirects            | 17           | None                           | URL redirects
+
+TOTAL NON-SECURITY CODE: ~4,000+ lines (of 6,352 total = 63%)
+SECURITY CODE (RETAINED): ~2,350 lines
+
+═══════════════════════════════════════════════════════════════════════════════
+KEY REST ENDPOINTS TO MIGRATE
+═══════════════════════════════════════════════════════════════════════════════
+
+Endpoints in pb-blog-styling plugin:
+- POST /purebrain/v1/transparency-data (admin only, populate weekly report)
+
+Endpoints in pb-content-gate plugin:
+- POST /purebrain/v1/guide-unlock (public, email capture for guide unlock)
+
+Endpoints in pb-lead-capture plugin:
+- POST /pb-security/v1/subscribe (public, email to Brevo list 3)
+- POST /purebrain/v1/investor-lead (public, email to Brevo list 20)
+
+STAYING IN SECURITY PLUGIN:
+- POST /purebrain/v1/log-conversation-fallback (conversation logging)
+- POST /purebrain/v1/log-conversation (conversation logging)
+- POST /purebrain/v1/verify-payment (payment verification)
+- POST /purebrain/v1/update-post-meta (admin only, Yoast meta updates)
+
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL IMPLEMENTATION NOTES
+═══════════════════════════════════════════════════════════════════════════════
+
+1. PLUGIN ORDERING & DEPENDENCIES
+   - pb-lead-capture depends on Brevo API key in wp-config.php (BREVO_API_KEY constant)
+   - pb-blog-styling depends on wp_option storage (purebrain_transparency_data)
+   - All blog plugins depend on is_single() conditional
+   - Footer plugins apply GLOBALLY (no conditions)
+
+2. CONSTANTS & CONFIG
+   - PUREBRAIN_INDEXNOW_KEY: Move to pb-indexnow plugin
+   - BREVO_API_KEY: Already in wp-config, used by multiple plugins
+   - PUREBRAIN_BEHIND_CLOUDFLARE: Used by security layer only (stays)
+
+3. HOOK PRIORITIES
+   - wp_head priority 999: Video modal fix (high specificity CSS)
+   - wp_head priority 30: Social share CSS (override Additional CSS)
+   - wp_head priority 25: Lead capture CSS
+   - wp_footer priority 30: Footer logo brand (runs after other footer hooks)
+   - wp_footer priority 25: Lead capture JS
+   - wp_footer priority 14: FAQ schema (before accordion)
+   - wp_footer priority 5: Mission section (removed, but note for reference)
+
+4. JAVASCRIPT INJECTION STRATEGY
+   - All JS is inline (no external .js files)
+   - Uses IIFEs (Immediately Invoked Function Expressions) for scope isolation
+   - DOMContentLoaded checks with readyState fallback
+   - localStorage usage for dismissal tracking and state
+
+5. CSS LOADING STRATEGY
+   - All CSS is inline in <style> tags
+   - Maximum specificity selectors with !important flags
+   - wp_head priority 999 for high-specificity overrides
+   - wp_footer priority p99 (high) for body-level overrides
+
+6. CLOUDFLARE DEPENDENCY
+   - purebrain_get_client_ip() checks for CF-Connecting-IP header
+   - Only when PUREBRAIN_BEHIND_CLOUDFLARE is defined
+   - Used by rate limiting (stays in security plugin)
+
+═══════════════════════════════════════════════════════════════════════════════

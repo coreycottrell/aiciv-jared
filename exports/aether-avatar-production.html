@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aether — PureBrain AI Avatar (Production)</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --primary:   #2a93c1;
+  --secondary: #f1420b;
+  --bg:        #060606;
+  --gold:      #C8A84A;
+  --text:      #dce8f0;
+  --dim:       rgba(220,232,240,0.38);
+  --name-color: var(--primary);
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ===== CANVAS WRAP ===== */
+#cw {
+  position: relative;
+  width: min(100vw, 100vh, 600px);
+  height: min(100vw, 100vh, 600px);
+  max-width: 600px;
+  max-height: 600px;
+  flex-shrink: 0;
+}
+
+#cw canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Dynamic color halo around canvas */
+#cw::after {
+  content: '';
+  position: absolute;
+  inset: -40px;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse 60% 60% at 62% 25%, var(--halo-primary, rgba(42,147,193,0.09)) 0%, transparent 65%),
+    radial-gradient(ellipse 50% 50% at 32% 75%, var(--halo-secondary, rgba(241,66,11,0.07)) 0%, transparent 58%);
+  pointer-events: none;
+  z-index: -1;
+  transition: --halo-primary 1.5s, --halo-secondary 1.5s;
+}
+
+/* ===== NAME PLATE ===== */
+#nameplate {
+  margin-top: 12px;
+  text-align: center;
+  z-index: 20;
+}
+
+#ai-name {
+  font-family: 'Oswald', sans-serif;
+  font-size: clamp(1.4rem, 4vw, 2.0rem);
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  color: var(--name-color);
+  text-transform: uppercase;
+  text-shadow: 0 0 24px var(--name-color);
+  transition: color 0.8s ease, text-shadow 0.8s ease;
+}
+
+#ai-tagline {
+  font-size: clamp(0.60rem, 1.8vw, 0.72rem);
+  letter-spacing: 0.24em;
+  color: var(--dim);
+  text-transform: uppercase;
+  font-weight: 400;
+  margin-top: 5px;
+}
+
+#ai-org {
+  font-size: clamp(0.58rem, 1.6vw, 0.68rem);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-top: 3px;
+}
+
+#ai-org .org-blue   { color: #2a93c1; }
+#ai-org .org-orange { color: #f1420b; }
+#ai-org .org-blue2  { color: #2a93c1; }
+
+/* ===== MODE CONTROLS ===== */
+#controls {
+  display: flex;
+  gap: 8px;
+  margin: 14px 0 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+  z-index: 20;
+  padding: 0 16px;
+}
+
+.btn {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  padding: 6px 14px;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 40px;
+  background: rgba(255,255,255,0.03);
+  color: var(--dim);
+  cursor: pointer;
+  transition: all 0.28s ease;
+  backdrop-filter: blur(5px);
+  outline: none;
+}
+.btn:hover { background: rgba(255,255,255,0.07); color: var(--text); border-color: rgba(255,255,255,0.18); transform: translateY(-1px); }
+.btn.active-idle     { color: var(--primary);   border-color: var(--primary);   background: color-mix(in srgb, var(--primary) 12%, transparent);   box-shadow: 0 0 14px color-mix(in srgb, var(--primary) 28%, transparent); }
+.btn.active-speaking { color: var(--secondary); border-color: var(--secondary); background: color-mix(in srgb, var(--secondary) 12%, transparent); box-shadow: 0 0 14px color-mix(in srgb, var(--secondary) 30%, transparent); }
+.btn.active-thinking { color: #a57de8;           border-color: #a57de8;           background: rgba(165,125,232,0.10); box-shadow: 0 0 12px rgba(165,125,232,0.22); }
+.btn.active-listening{ color: #18a8d3;           border-color: #18a8d3;           background: rgba(24,168,211,0.10);  box-shadow: 0 0 12px rgba(24,168,211,0.22); }
+
+/* ===== STATUS ===== */
+#status {
+  font-size: 0.65rem;
+  letter-spacing: 0.20em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 10px;
+  height: 14px;
+  transition: color 0.5s;
+}
+
+/* ===== AUTO DEMO BADGE ===== */
+#demo-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--dim);
+  padding: 4px 10px;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 24px;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  z-index: 10;
+  transition: all 0.3s ease;
+}
+#demo-badge.on { color: var(--gold); border-color: rgba(200,168,74,0.4); }
+
+/* ===== PERSONALITY ARCHETYPE BADGE ===== */
+#archetype-badge {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(200,168,74,0.65);
+  padding: 3px 9px;
+  border: 1px solid rgba(200,168,74,0.2);
+  border-radius: 20px;
+  background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(6px);
+  z-index: 10;
+}
+
+/* ===== EMBED MODE (clean, no controls) ===== */
+body.embed-mode #controls,
+body.embed-mode #status,
+body.embed-mode #demo-badge,
+body.embed-mode #nameplate {
+  display: none;
+}
+body.embed-mode {
+  overflow: hidden;
+  background: transparent;
+}
+body.embed-mode #cw {
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
+}
+
+/* ===== MOBILE ===== */
+@media (max-width: 480px) {
+  #cw { width: 100vw; height: 100vw; max-width: 100vw; max-height: 100vw; }
+}
+</style>
+</head>
+<body>
+
+<!-- Canvas -->
+<div id="cw">
+  <div id="demo-badge" class="on">Auto Demo</div>
+  <div id="archetype-badge">Analytical</div>
+</div>
+
+<!-- Name plate -->
+<div id="nameplate">
+  <div id="ai-name">Aether</div>
+  <div id="ai-tagline">AI Partner &nbsp;&bull;&nbsp; PureBrain Intelligence</div>
+  <div id="ai-org">
+    <span class="org-blue">PUREBR</span><span class="org-orange">AI</span><span class="org-blue2">N</span>
+  </div>
+</div>
+
+<!-- Mode controls -->
+<div id="controls">
+  <button class="btn active-idle" data-mode="idle">Idle</button>
+  <button class="btn"            data-mode="speaking">Speaking</button>
+  <button class="btn"            data-mode="thinking">Thinking</button>
+  <button class="btn"            data-mode="listening">Listening</button>
+</div>
+
+<div id="status">Idle — Calm Presence</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer }  from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }      from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass }      from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass }      from 'three/addons/postprocessing/OutputPass.js';
+
+// ================================================================
+// AVATAR CONFIG — read from URL params or window.__avatarConfig
+// This is the parameterization layer that enables customer cloning
+// ================================================================
+function parseConfig() {
+  const url  = new URLSearchParams(window.location.search);
+  const win  = window.__avatarConfig || {};
+
+  // Defaults = Aether (PureBrain brand)
+  const defaults = {
+    name:        'Aether',
+    tagline:     'AI Partner · PureBrain Intelligence',
+    archetype:   'analytical',
+    primaryHex:  '#2a93c1',   // PureBrain blue
+    secondaryHex:'#f1420b',   // PureBrain orange
+    accentHex:   '#C8A84A',   // Gold filament
+    bgHex:       '#060606',
+    embedMode:   false,
+    showOrg:     true,
+    autoDemo:    true,
+  };
+
+  return {
+    name:        url.get('name')      || win.name        || defaults.name,
+    tagline:     url.get('tagline')   || win.tagline      || defaults.tagline,
+    archetype:   url.get('archetype') || win.archetype    || defaults.archetype,
+    primaryHex:  url.get('primary')   || win.primaryHex   || defaults.primaryHex,
+    secondaryHex:url.get('secondary') || win.secondaryHex || defaults.secondaryHex,
+    accentHex:   url.get('accent')    || win.accentHex    || defaults.accentHex,
+    bgHex:       url.get('bg')        || win.bgHex        || defaults.bgHex,
+    embedMode:   url.get('embed') === '1' || win.embedMode || defaults.embedMode,
+    showOrg:     url.get('org')  !== '0' && !win.hideOrg  && defaults.showOrg,
+    autoDemo:    url.get('demo') !== '0' && win.autoDemo !== false && defaults.autoDemo,
+  };
+}
+
+const CFG = parseConfig();
+
+// ================================================================
+// ARCHETYPE DEFINITIONS
+// Each archetype shapes the energy + behavioral tendencies
+// ================================================================
+const ARCHETYPES = {
+  analytical: {
+    label:       'Analytical',
+    idleSpeed:   0.55,
+    idleBloom:   0.40,
+    thinkSpeed:  0.30,
+    thinkBloom:  0.52,  // Analytical types show more bloom when thinking
+    coreKnot:    [2,3],
+    rimKnot:     [3,2],
+    torusScale:  1.00,
+    particleCount: 28,
+  },
+  creative: {
+    label:       'Creative',
+    idleSpeed:   0.80,
+    idleBloom:   0.50,
+    thinkSpeed:  0.65,
+    thinkBloom:  0.44,
+    coreKnot:    [3,5],  // More complex knot = more visual complexity
+    rimKnot:     [5,3],
+    torusScale:  1.10,
+    particleCount: 38,  // More particles = more energy
+  },
+  strategic: {
+    label:       'Strategic',
+    idleSpeed:   0.45,
+    idleBloom:   0.38,
+    thinkSpeed:  0.20,
+    thinkBloom:  0.58,
+    coreKnot:    [2,5],
+    rimKnot:     [5,2],
+    torusScale:  0.95,
+    particleCount: 22,
+  },
+  empathetic: {
+    label:       'Empathetic',
+    idleSpeed:   0.70,
+    idleBloom:   0.46,
+    thinkSpeed:  0.50,
+    thinkBloom:  0.42,
+    coreKnot:    [3,4],
+    rimKnot:     [4,3],
+    torusScale:  1.05,
+    particleCount: 32,
+  },
+  adaptive: {
+    label:       'Adaptive',
+    idleSpeed:   0.65,
+    idleBloom:   0.44,
+    thinkSpeed:  0.45,
+    thinkBloom:  0.48,
+    coreKnot:    [2,3],
+    rimKnot:     [3,5],
+    torusScale:  1.00,
+    particleCount: 30,
+  },
+};
+
+const arch = ARCHETYPES[CFG.archetype] || ARCHETYPES.analytical;
+
+// ================================================================
+// APPLY CONFIG TO DOM
+// ================================================================
+document.getElementById('ai-name').textContent = CFG.name;
+document.getElementById('ai-tagline').textContent = CFG.tagline;
+document.getElementById('archetype-badge').textContent = arch.label;
+document.title = `${CFG.name} — PureBrain AI Avatar`;
+
+if (!CFG.showOrg) document.getElementById('ai-org').style.display = 'none';
+if (CFG.embedMode) document.body.classList.add('embed-mode');
+
+// Apply custom colors to CSS vars
+document.documentElement.style.setProperty('--primary',   CFG.primaryHex);
+document.documentElement.style.setProperty('--secondary', CFG.secondaryHex);
+document.documentElement.style.setProperty('--gold',      CFG.accentHex);
+document.documentElement.style.setProperty('--bg',        CFG.bgHex);
+document.documentElement.style.setProperty('--name-color', CFG.primaryHex);
+
+// ================================================================
+// THREE.JS COLOR OBJECTS (derived from config)
+// ================================================================
+const C = {
+  primary:   new THREE.Color(CFG.primaryHex),
+  secondary: new THREE.Color(CFG.secondaryHex),
+  accent:    new THREE.Color(CFG.accentHex),
+  cyan:      new THREE.Color(0x18A8D3),
+  violet:    new THREE.Color(0x7b4fc9),
+  magenta:   new THREE.Color(0xD10DCE),
+  white:     new THREE.Color(0xffffff),
+  bg:        new THREE.Color(CFG.bgHex),
+};
+
+// ================================================================
+// MODE DEFINITIONS (reference primary/secondary from config)
+// ================================================================
+function buildModes() {
+  return {
+    idle: {
+      label:       'Idle — Calm Presence',
+      core:        C.primary,
+      rim:         C.cyan,
+      bloom:       arch.idleBloom,
+      speed:       arch.idleSpeed,
+      envPriStr:   0.55,
+      envSecStr:   0.10,
+    },
+    speaking: {
+      label:       'Speaking — Energy Active',
+      core:        C.secondary,
+      rim:         C.secondary,
+      bloom:       0.72,
+      speed:       1.45,
+      envPriStr:   0.18,
+      envSecStr:   0.60,
+    },
+    thinking: {
+      label:       'Thinking — Deep Focus',
+      core:        C.violet,
+      rim:         C.violet,
+      bloom:       arch.thinkBloom,
+      speed:       arch.thinkSpeed,
+      envPriStr:   0.28,
+      envSecStr:   0.05,
+    },
+    listening: {
+      label:       'Listening — Open Aware',
+      core:        C.cyan,
+      rim:         C.cyan,
+      bloom:       0.52,
+      speed:       0.88,
+      envPriStr:   0.48,
+      envSecStr:   0.18,
+    },
+  };
+}
+
+const MODES = buildModes();
+const DEMO_ORDER   = ['idle','speaking','thinking','listening'];
+const DEMO_TIMINGS = [5.0, 5.5, 5.5, 4.5];
+
+// ================================================================
+// RENDERER
+// ================================================================
+const wrap = document.getElementById('cw');
+const W0   = wrap.offsetWidth  || 600;
+const H0   = wrap.offsetHeight || 600;
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: true,
+  alpha: CFG.embedMode,
+  powerPreference: 'high-performance',
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
+renderer.setSize(W0, H0);
+renderer.outputColorSpace  = THREE.SRGBColorSpace;
+renderer.toneMapping       = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.88;
+wrap.appendChild(renderer.domElement);
+
+const scene  = new THREE.Scene();
+scene.background = CFG.embedMode ? null : C.bg;
+
+const camera = new THREE.PerspectiveCamera(38, W0 / H0, 0.01, 80);
+camera.position.set(0, 0.08, 4.8);
+camera.lookAt(0, 0, 0);
+
+// ================================================================
+// PROCEDURAL ENVIRONMENT MAP (color config aware)
+// ================================================================
+const pmrem = new THREE.PMREMGenerator(renderer);
+pmrem.compileEquirectangularShader();
+let envMap = null;
+
+function buildEnv(modeName) {
+  const cfg = MODES[modeName] || MODES.idle;
+  const W = 512, H = 256;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+
+  // Dark base
+  ctx.fillStyle = CFG.bgHex;
+  ctx.fillRect(0, 0, W, H);
+
+  // Warm key — upper left
+  const g1 = ctx.createRadialGradient(W*0.18, H*0.14, 0, W*0.18, H*0.14, W*0.55);
+  g1.addColorStop(0, 'rgba(255,250,240,0.88)');
+  g1.addColorStop(0.5,'rgba(255,240,210,0.40)');
+  g1.addColorStop(1, 'transparent');
+  ctx.fillStyle = g1; ctx.fillRect(0,0,W,H);
+
+  // Primary color fill — upper right
+  const pc = cfg.core;
+  const g2 = ctx.createRadialGradient(W*0.82, H*0.18, 0, W*0.82, H*0.18, W*0.62);
+  const pStr = Math.max(cfg.envPriStr, 0.42);
+  g2.addColorStop(0, `rgba(${~~(pc.r*255)},${~~(pc.g*255)},${~~(pc.b*255)},${pStr})`);
+  g2.addColorStop(1, 'transparent');
+  ctx.fillStyle = g2; ctx.fillRect(0,0,W,H);
+
+  // Secondary color — lower left
+  const sc = C.secondary;
+  const sStr = Math.max(cfg.envSecStr, 0.25);
+  const g3 = ctx.createRadialGradient(W*0.20, H*0.80, 0, W*0.20, H*0.80, W*0.52);
+  g3.addColorStop(0, `rgba(${~~(sc.r*255)},${~~(sc.g*255)},${~~(sc.b*255)},${sStr})`);
+  g3.addColorStop(1, 'transparent');
+  ctx.fillStyle = g3; ctx.fillRect(0,0,W,H);
+
+  // Cyan rim — bottom center (Gleb backlight halo)
+  const g4 = ctx.createRadialGradient(W*0.50, H*0.92, 0, W*0.50, H*0.92, W*0.55);
+  g4.addColorStop(0, 'rgba(24,168,211,0.60)');
+  g4.addColorStop(1, 'transparent');
+  ctx.fillStyle = g4; ctx.fillRect(0,0,W,H);
+
+  // Magenta accent — right lower
+  const g5 = ctx.createRadialGradient(W*0.88, H*0.70, 0, W*0.88, H*0.70, W*0.30);
+  g5.addColorStop(0, 'rgba(209,13,206,0.22)');
+  g5.addColorStop(1, 'transparent');
+  ctx.fillStyle = g5; ctx.fillRect(0,0,W,H);
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  const rt = pmrem.fromEquirectangular(tex);
+  tex.dispose();
+  return rt.texture;
+}
+
+envMap = buildEnv('idle');
+scene.environment = envMap;
+
+// ================================================================
+// LIGHTING (6-light Gleb rig)
+// ================================================================
+const ambLight = new THREE.AmbientLight(0xffffff, 0.18);
+scene.add(ambLight);
+
+// L1: warm white key (upper-left)
+const keyLight = new THREE.DirectionalLight(0xfff8f0, 2.8);
+keyLight.position.set(-2.8, 4.0, 3.0);
+scene.add(keyLight);
+
+// L2: primary color fill (upper-right) — Gleb's signature color fill
+const fillLight = new THREE.DirectionalLight(CFG.primaryHex, 2.2);
+fillLight.position.set(3.0, 2.5, -1.0);
+scene.add(fillLight);
+
+// L3: cyan rim (behind)
+const rimLight = new THREE.DirectionalLight(0x18A8D3, 1.8);
+rimLight.position.set(0.0, -1.5, -4.5);
+scene.add(rimLight);
+
+// L4: magenta accent (right-lower)
+const accLight = new THREE.DirectionalLight(0xD10DCE, 1.1);
+accLight.position.set(4.0, -1.2, 1.5);
+scene.add(accLight);
+
+// L5: gold specular (near key) — Gleb always uses gold, not white
+const goldLight = new THREE.DirectionalLight(0xC8A84A, 1.8);
+goldLight.position.set(-1.5, 3.0, 4.5);
+scene.add(goldLight);
+
+// L6: secondary underlight (below) — makes glass glow from within
+const underLight = new THREE.PointLight(CFG.secondaryHex, 1.6, 8.0);
+underLight.position.set(0.0, -2.2, 0.5);
+scene.add(underLight);
+
+// Dynamic core lights (inside the hex, animate with mode)
+const coreLight1 = new THREE.PointLight(CFG.primaryHex, 3.8, 5.0);
+coreLight1.position.set(0, 0.2, 0);
+scene.add(coreLight1);
+const coreLight2 = new THREE.PointLight(CFG.secondaryHex, 2.4, 4.0);
+coreLight2.position.set(0.3, -0.2, 0.2);
+scene.add(coreLight2);
+
+// ================================================================
+// GLASS MATERIAL (the soul of the avatar)
+// ================================================================
+function makeGlass(color, opacity = 1.0) {
+  return new THREE.MeshPhysicalMaterial({
+    transmission:       1.0,
+    thickness:          0.9,
+    roughness:          0.02,
+    ior:                1.50,
+    reflectivity:       0.95,
+    envMapIntensity:    4.5,
+    color:              new THREE.Color(color),
+    attenuationColor:   new THREE.Color(CFG.primaryHex).lerp(new THREE.Color(0x88ccff), 0.5),
+    attenuationDistance: 2.8,
+    iridescence:        0.75,
+    iridescenceIOR:     1.38,
+    clearcoat:          1.0,
+    clearcoatRoughness: 0.005,
+    side:               THREE.DoubleSide,
+    transparent:        opacity < 1.0,
+    opacity:            opacity,
+  });
+}
+
+// ================================================================
+// SCENE HIERARCHY
+// ================================================================
+const gazeGroup = new THREE.Group();
+scene.add(gazeGroup);
+
+const spinGroup = new THREE.Group();
+gazeGroup.add(spinGroup);
+
+// --- OUTER HEX PRISM (glass body) ---
+const hexGeo = new THREE.CylinderGeometry(0.95, 0.95, 1.80, 6, 3);
+const hexMat = makeGlass(CFG.primaryHex + '44');  // tinted blue glass
+const hexMesh = new THREE.Mesh(hexGeo, hexMat);
+spinGroup.add(hexMesh);
+
+// Cap faces (solid hex discs at top/bottom)
+const capGeo = new THREE.CylinderGeometry(0.95, 0.95, 0.04, 6);
+
+const capMat = new THREE.MeshStandardMaterial({
+  color:              new THREE.Color(CFG.primaryHex),
+  emissive:           new THREE.Color(CFG.primaryHex),
+  emissiveIntensity:  0.55,
+  metalness:          0.3,
+  roughness:          0.1,
+});
+const topCap = new THREE.Mesh(capGeo, capMat);
+topCap.position.y = 0.90;
+const botCap = new THREE.Mesh(capGeo, capMat.clone());
+botCap.position.y = -0.90;
+spinGroup.add(topCap, botCap);
+
+// Hex edge wireframe rings (3 horizontal rings)
+const ringGeo  = new THREE.CylinderGeometry(0.97, 0.97, 0.0, 6);
+const ringEdge = new THREE.EdgesGeometry(ringGeo);
+
+const ringMatB = new THREE.LineBasicMaterial({ color: CFG.primaryHex,   linewidth: 2 });
+const ringMatG = new THREE.LineBasicMaterial({ color: CFG.accentHex,    linewidth: 1.5 });
+
+const ringTop = new THREE.LineSegments(ringEdge, ringMatB); ringTop.position.y =  0.88;
+const ringMid = new THREE.LineSegments(ringEdge, ringMatG); ringMid.position.y =  0.0;
+const ringBot = new THREE.LineSegments(ringEdge, ringMatB); ringBot.position.y = -0.88;
+spinGroup.add(ringTop, ringMid, ringBot);
+
+// 6 vertical edge lines
+const vEdgeMat = new THREE.LineBasicMaterial({ color: CFG.primaryHex, transparent: true, opacity: 0.35 });
+for (let i = 0; i < 6; i++) {
+  const ang = (i / 6) * Math.PI * 2;
+  const x   = Math.cos(ang) * 0.97;
+  const z   = Math.sin(ang) * 0.97;
+  const pts = [new THREE.Vector3(x, 0.88, z), new THREE.Vector3(x, -0.88, z)];
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  spinGroup.add(new THREE.Line(geo, vEdgeMat));
+}
+
+// ================================================================
+// ENERGY CORES (torus knots — archetype-specific knot ratios)
+// ================================================================
+const [kp, kq] = arch.coreKnot;
+const [rp, rq] = arch.rimKnot;
+const ts = arch.torusScale;
+
+const torusMat1 = new THREE.MeshStandardMaterial({
+  color:             new THREE.Color(CFG.primaryHex),
+  emissive:          new THREE.Color(CFG.primaryHex),
+  emissiveIntensity: 3.2,
+  metalness:         0.0,
+  roughness:         0.1,
+});
+const energyCore1 = new THREE.Mesh(
+  new THREE.TorusKnotGeometry(0.42*ts, 0.065*ts, 240, 22, kp, kq),
+  torusMat1
+);
+spinGroup.add(energyCore1);
+
+const torusMat2 = new THREE.MeshStandardMaterial({
+  color:             new THREE.Color(CFG.secondaryHex),
+  emissive:          new THREE.Color(CFG.secondaryHex),
+  emissiveIntensity: 2.8,
+  metalness:         0.0,
+  roughness:         0.1,
+});
+const energyCore2 = new THREE.Mesh(
+  new THREE.TorusKnotGeometry(0.35*ts, 0.048*ts, 200, 18, rp, rq),
+  torusMat2
+);
+energyCore2.rotation.z = Math.PI / 3;
+spinGroup.add(energyCore2);
+
+const torusMat3 = new THREE.MeshStandardMaterial({
+  color:             new THREE.Color(CFG.accentHex),
+  emissive:          new THREE.Color(CFG.accentHex),
+  emissiveIntensity: 2.5,
+  metalness:         0.0,
+  roughness:         0.15,
+});
+const energyCore3 = new THREE.Mesh(
+  new THREE.TorusKnotGeometry(0.24*ts, 0.022*ts, 140, 12, 5, 3),
+  torusMat3
+);
+spinGroup.add(energyCore3);
+
+// ================================================================
+// CENTRAL EYE (tiny hex at center — the name's initial)
+// ================================================================
+const eyeGeo  = new THREE.CylinderGeometry(0.08, 0.08, 0.12, 6);
+const eyeMat  = new THREE.MeshStandardMaterial({
+  color:             new THREE.Color(CFG.accentHex),
+  emissive:          new THREE.Color(CFG.accentHex),
+  emissiveIntensity: 0.5,
+  metalness:         0.5,
+  roughness:         0.1,
+});
+const eyeMesh = new THREE.Mesh(eyeGeo, eyeMat);
+spinGroup.add(eyeMesh);
+
+// ================================================================
+// INNER SHARDS (3 tilted hex facets)
+// ================================================================
+const shardGroup = new THREE.Group();
+spinGroup.add(shardGroup);
+
+const shardGeo = new THREE.CylinderGeometry(0.30, 0.30, 0.06, 6);
+const shardMats = [
+  makeGlass(CFG.primaryHex + '88'),
+  makeGlass(CFG.secondaryHex + '66'),
+  makeGlass(CFG.accentHex + '55'),
+];
+
+const shardConfigs = [
+  { y: 0.25, rx: 0.6, rz: 0.0  },
+  { y: 0.0,  rx: -0.5, rz: 0.8  },
+  { y:-0.25, rx: 0.4,  rz: -0.6 },
+];
+
+const shards = shardConfigs.map((sc, i) => {
+  const m = new THREE.Mesh(shardGeo, shardMats[i]);
+  m.position.y  = sc.y;
+  m.rotation.x  = sc.rx;
+  m.rotation.z  = sc.rz;
+  shardGroup.add(m);
+  return m;
+});
+
+// ================================================================
+// HELICAL PARTICLES (swirl around the hex — logo vortex pattern)
+// ================================================================
+const ptCount = arch.particleCount;
+const ptMats  = [];
+const particleGroup = new THREE.Group();
+spinGroup.add(particleGroup);
+
+const ptGeo = new THREE.SphereGeometry(0.022, 6, 6);
+
+for (let i = 0; i < ptCount; i++) {
+  const frac = i / ptCount;
+  const angle = frac * Math.PI * 2 * 2.5;  // 2.5-turn helix
+  const r     = 1.08 + Math.sin(frac * Math.PI * 3) * 0.06;
+  const y     = (frac - 0.5) * 1.76;
+
+  // Color gradient: primary -> accent -> secondary
+  let col;
+  if (frac < 0.5) {
+    col = new THREE.Color(CFG.primaryHex).lerp(new THREE.Color(CFG.accentHex), frac * 2);
+  } else {
+    col = new THREE.Color(CFG.accentHex).lerp(new THREE.Color(CFG.secondaryHex), (frac - 0.5) * 2);
+  }
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: col, emissive: col, emissiveIntensity: 4.0, roughness: 0.0, metalness: 0.0,
+  });
+  ptMats.push(mat);
+
+  const mesh = new THREE.Mesh(ptGeo, mat);
+  mesh.position.set(Math.cos(angle)*r, y, Math.sin(angle)*r);
+  mesh.userData = { initAngle: angle, initRadius: r, initY: y };
+  particleGroup.add(mesh);
+}
+
+// ================================================================
+// ORBIT SATELLITES (3-5 hex shards orbiting the main body)
+// ================================================================
+const satellites = [];
+const satGeo  = new THREE.CylinderGeometry(0.075, 0.075, 0.14, 6);
+const satCount = 5;
+
+for (let i = 0; i < satCount; i++) {
+  const frac = i / satCount;
+  const orR  = 1.12 + frac * 0.06;
+  const orY  = (Math.random() - 0.5) * 0.7;
+  const orSpd = 0.28 + frac * 0.22;
+  const phase = frac * Math.PI * 2;
+
+  // Alternate primary/secondary/accent
+  const colors = [CFG.primaryHex, CFG.secondaryHex, CFG.accentHex, CFG.primaryHex, CFG.secondaryHex];
+  const satMat = makeGlass(colors[i % colors.length] + '99');
+  const sat    = new THREE.Mesh(satGeo, satMat);
+  sat.userData  = { orR, orY, orSpd, orPhase: phase };
+  scene.add(sat);  // In scene directly so orbit isn't affected by gazeGroup
+  satellites.push(sat);
+}
+
+// ================================================================
+// POSTPROCESSING (Gleb recipe: Bloom + ChromaticAberration vignette)
+// ================================================================
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(W0, H0),
+  arch.idleBloom, // strength
+  0.42,           // radius
+  0.88            // threshold
+);
+composer.addPass(bloomPass);
+
+// Chromatic aberration + vignette (custom ShaderPass)
+const ChromaVigShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uOffset:  { value: 0.0025 },
+    uTime:    { value: 0.0 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uOffset;
+    uniform float uTime;
+    varying vec2 vUv;
+    void main() {
+      vec2 center = vUv - 0.5;
+      float dist2  = dot(center, center);
+      float ca     = uOffset * (1.0 + dist2 * 2.2);
+      vec2  rd     = normalize(center + 0.0001) * ca;
+      float r = texture2D(tDiffuse, vUv + rd).r;
+      float g = texture2D(tDiffuse, vUv      ).g;
+      float b = texture2D(tDiffuse, vUv - rd).b;
+      // Subtle vignette
+      float vig = 1.0 - smoothstep(0.55, 1.2, dist2 * 2.4);
+      // Micro-scan lines for texture (very subtle)
+      float scan = 1.0 - 0.012 * sin(vUv.y * 800.0 + uTime * 2.0);
+      gl_FragColor = vec4(vec3(r,g,b) * vig * scan, 1.0);
+    }
+  `,
+};
+
+const vigPass = new ShaderPass(ChromaVigShader);
+composer.addPass(vigPass);
+composer.addPass(new OutputPass());
+
+// ================================================================
+// ANIMATION STATE
+// ================================================================
+let mode    = 'idle';
+let modeT   = 1.0;
+let demoOn  = CFG.autoDemo;
+let demoTimer = 0.0;
+let demoIdx   = 0;
+let audioAmp  = 0;
+let audioSmooth = 0;
+let synthClock  = 0;
+
+// ================================================================
+// SYNTHETIC AUDIO ENGINE
+// Generates convincing speech-profile amplitudes without mic
+// ================================================================
+function synthAudio(dt) {
+  synthClock += dt;
+  const s = synthClock;
+  let amp = 0;
+
+  if (mode === 'speaking') {
+    // Syllable * word * phrase * breath modulation layers
+    const syl    = Math.sin(s * 9.1)  * 0.5 + 0.5;
+    const wrd    = Math.sin(s * 2.3)  * 0.5 + 0.5;
+    const phrase = Math.sin(s * 0.55) * 0.5 + 0.5;
+    const breath = Math.abs(Math.sin(s * 0.21));
+    amp = syl * 0.52 * wrd * (0.55 + phrase * 0.45) * (0.45 + breath * 0.55);
+    amp = Math.min(amp * 1.45, 1.0);
+  } else if (mode === 'listening') {
+    amp = (Math.sin(s*3.4)*0.5+0.5)*0.28 + (Math.sin(s*7.8)*0.5+0.5)*0.12;
+  } else if (mode === 'thinking') {
+    amp = Math.abs(Math.sin(s * 0.88)) * 0.32;
+  } else {
+    amp = Math.abs(Math.sin(s * 0.40)) * 0.10;
+  }
+
+  audioAmp    = amp;
+  audioSmooth = audioSmooth + (amp - audioSmooth) * Math.min(1, dt * 8.0);
+}
+
+// ================================================================
+// MODE SWITCHING
+// ================================================================
+function setMode(m, stopDemo = true) {
+  if (stopDemo) {
+    demoOn = false;
+    const badge = document.getElementById('demo-badge');
+    if (badge) { badge.classList.remove('on'); badge.textContent = 'Manual'; }
+  }
+
+  mode  = m;
+  modeT = 0.0;
+
+  document.querySelectorAll('.btn').forEach(b => {
+    b.className = 'btn';
+    if (b.dataset.mode === m) b.classList.add(`active-${m}`);
+  });
+
+  const statusEl = document.getElementById('status');
+  if (statusEl) statusEl.textContent = MODES[m]?.label || '';
+
+  // Rebuild env map for this mode
+  const old = envMap;
+  envMap = buildEnv(m);
+  scene.environment = envMap;
+  if (old) old.dispose();
+}
+
+// Control buttons
+document.querySelectorAll('.btn').forEach(b =>
+  b.addEventListener('click', () => setMode(b.dataset.mode, true))
+);
+
+const badge = document.getElementById('demo-badge');
+if (badge) {
+  badge.addEventListener('click', () => {
+    demoOn = !demoOn;
+    if (demoOn) { badge.classList.add('on'); badge.textContent = 'Auto Demo'; }
+    else        { badge.classList.remove('on'); badge.textContent = 'Manual'; }
+  });
+}
+
+// ================================================================
+// CURSOR / TOUCH GAZE TRACKING
+// ================================================================
+const mouse      = new THREE.Vector2();
+const gazeSmooth = new THREE.Vector2();
+const MAX_GAZE   = 17 * Math.PI / 180;
+
+document.addEventListener('mousemove', e => {
+  const r = wrap.getBoundingClientRect();
+  mouse.x =  ((e.clientX - r.left) / r.width)  * 2 - 1;
+  mouse.y = -((e.clientY - r.top)  / r.height) * 2 + 1;
+});
+
+document.addEventListener('touchmove', e => {
+  const t = e.touches[0];
+  const r = wrap.getBoundingClientRect();
+  mouse.x =  ((t.clientX - r.left) / r.width)  * 2 - 1;
+  mouse.y = -((t.clientY - r.top)  / r.height) * 2 + 1;
+}, { passive: true });
+
+// ================================================================
+// RESIZE
+// ================================================================
+window.addEventListener('resize', () => {
+  const w = wrap.offsetWidth, h = wrap.offsetHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+  bloomPass.setSize(w, h);
+});
+
+// ================================================================
+// POSTMESSAGE API (for iframe embedding)
+// Parent window can control the avatar via:
+//   iframe.contentWindow.postMessage({ type: 'SET_MODE', mode: 'speaking' }, '*')
+//   iframe.contentWindow.postMessage({ type: 'SET_AUDIO', amplitude: 0.5 }, '*')
+//   iframe.contentWindow.postMessage({ type: 'PING' }, '*')
+// ================================================================
+window.addEventListener('message', (e) => {
+  const d = e.data;
+  if (!d || !d.type) return;
+
+  switch (d.type) {
+    case 'SET_MODE':
+      if (MODES[d.mode]) setMode(d.mode, true);
+      break;
+    case 'SET_AUDIO':
+      // Override synthetic audio with real amplitude (0-1)
+      if (typeof d.amplitude === 'number') {
+        audioAmp    = Math.max(0, Math.min(1, d.amplitude));
+        audioSmooth = audioAmp;
+      }
+      break;
+    case 'PING':
+      e.source?.postMessage({ type: 'PONG', version: '1.0', mode }, '*');
+      break;
+    case 'GET_STATE':
+      e.source?.postMessage({ type: 'STATE', mode, archetype: CFG.archetype, name: CFG.name }, '*');
+      break;
+  }
+});
+
+// Signal ready to parent
+window.parent?.postMessage({ type: 'AVATAR_READY', name: CFG.name }, '*');
+
+// ================================================================
+// ANIMATION LOOP
+// ================================================================
+const clock = new THREE.Clock();
+let T = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const dt  = Math.min(clock.getDelta(), 0.05);
+  T        += dt;
+
+  modeT = Math.min(modeT + dt * 0.75, 1.0);
+
+  synthAudio(dt);
+
+  const cfg = MODES[mode] || MODES.idle;
+  const spd = cfg.speed;
+  const amp = audioSmooth;
+
+  // ---- DEMO CYCLE ----
+  if (demoOn) {
+    demoTimer += dt;
+    if (demoTimer >= DEMO_TIMINGS[demoIdx]) {
+      demoTimer = 0;
+      demoIdx   = (demoIdx + 1) % DEMO_ORDER.length;
+      setMode(DEMO_ORDER[demoIdx], false);
+      const b = document.getElementById('demo-badge');
+      if (b) { b.classList.add('on'); b.textContent = 'Auto Demo'; }
+    }
+  }
+
+  // ---- GAZE TRACKING ----
+  gazeSmooth.lerp(mouse, 0.05);
+  gazeGroup.rotation.x = Math.max(-MAX_GAZE, Math.min(MAX_GAZE, gazeSmooth.y * MAX_GAZE)) * -1;
+  gazeGroup.rotation.y = Math.max(-MAX_GAZE, Math.min(MAX_GAZE, gazeSmooth.x * MAX_GAZE));
+
+  // ---- OUTER HEX: spin + breathe + audio scale ----
+  const breathe = 1.0 + Math.sin(T*1.05*spd)*0.010 + amp*0.055;
+  spinGroup.rotation.y = T * 0.095 * spd;
+  spinGroup.rotation.x = Math.sin(T * 0.17 * spd) * 0.038;
+  spinGroup.scale.setScalar(breathe);
+
+  // Cap pulse with mode color
+  topCap.material.emissive.lerpColors(C.primary, cfg.core, modeT * 0.8);
+  topCap.material.emissiveIntensity = 0.55 + amp * 0.6;
+  botCap.material.emissive.copy(topCap.material.emissive);
+  botCap.material.emissiveIntensity = topCap.material.emissiveIntensity;
+
+  // ---- ENERGY CORES ----
+  energyCore1.rotation.x = T * 0.62 * spd;
+  energyCore1.rotation.y = T * 0.40 * spd;
+  const coreScale = 1.0 + amp * 0.28;
+  energyCore1.scale.setScalar(coreScale);
+  torusMat1.emissive.lerpColors(C.primary,    cfg.core, modeT * 0.75);
+  torusMat1.emissiveIntensity = 3.2 + amp * 2.5;
+
+  energyCore2.rotation.x = -T * 0.50 * spd;
+  energyCore2.rotation.z =  T * 0.70 * spd;
+  energyCore2.scale.setScalar(coreScale * 0.90);
+  torusMat2.emissive.lerpColors(C.secondary, cfg.rim, modeT * 0.60);
+  torusMat2.emissiveIntensity = 2.8 + amp * 2.0;
+
+  energyCore3.rotation.y = T * 0.32 * spd;
+  energyCore3.rotation.x = -T * 0.44 * spd;
+  energyCore3.scale.setScalar(1.0 + amp * 0.20);
+  torusMat3.emissiveIntensity = 2.5 + amp * 1.8;
+
+  // Core lights follow mode
+  coreLight1.color.lerpColors(C.primary,   cfg.core, modeT * 0.8);
+  coreLight1.intensity = 3.8 + amp * 3.2;
+  coreLight2.color.lerpColors(C.secondary, cfg.rim,  modeT * 0.65);
+  coreLight2.intensity = 2.4 + amp * 2.6;
+
+  // ---- CENTRAL EYE ----
+  eyeMesh.rotation.y = T * 0.15 * spd;
+  eyeMat.emissiveIntensity = 0.5 + amp * 1.8;
+  eyeMat.emissive.lerpColors(C.accent, cfg.core, modeT * 0.55);
+
+  // ---- INNER SHARDS ----
+  shardGroup.rotation.y = T * 0.20 * spd;
+  shardGroup.rotation.x = Math.sin(T * 0.28 * spd) * 0.055;
+  shards[0].rotation.y =  T * 0.50 * spd;
+  shards[1].rotation.y = -T * 0.42 * spd;
+  shards[2].rotation.y =  T * 0.35 * spd;
+
+  // ---- PARTICLE HELIX ----
+  particleGroup.rotation.y = T * 0.12 * spd;
+  for (let i = 0; i < ptCount; i++) {
+    const p    = particleGroup.children[i];
+    const frac = i / ptCount;
+    const baseAngle = p.userData.initAngle + T * (0.22 + frac * 0.28) * spd;
+    p.position.x = Math.cos(baseAngle) * p.userData.initRadius;
+    p.position.z = Math.sin(baseAngle) * p.userData.initRadius;
+    p.position.y = p.userData.initY + Math.sin(T*(0.55+frac)+frac*6.28)*0.08;
+    if (p.position.y >  0.88) p.userData.initY -= 0.04;
+    if (p.position.y < -0.88) p.userData.initY += 0.04;
+    ptMats[i].emissiveIntensity = 4.0 + amp*3.2 + Math.sin(T*2.4+frac*6.28)*0.8;
+  }
+
+  // ---- ORBIT SATELLITES ----
+  for (const sat of satellites) {
+    const { orR, orY, orSpd, orPhase } = sat.userData;
+    const ang = T * orSpd + orPhase;
+    sat.position.set(
+      Math.cos(ang) * orR,
+      orY + Math.sin(T*0.38+orPhase)*0.14,
+      Math.sin(ang) * orR,
+    );
+    sat.rotation.y = T * 0.75 * spd;
+    sat.rotation.x = Math.sin(T*0.50+orPhase) * 0.38;
+    sat.scale.setScalar(1.0 + amp * 0.16);
+  }
+
+  // ---- FILL / RIM LIGHTS follow mode ----
+  fillLight.color.lerpColors(C.primary,  cfg.core, modeT * 0.55);
+  rimLight.color.lerpColors(C.cyan,      cfg.rim,  modeT * 0.60);
+
+  // ---- BLOOM: restrained (Gleb principle: suggest, don't saturate) ----
+  bloomPass.strength += (cfg.bloom + amp*0.28 - bloomPass.strength) * Math.min(1, dt*4.0);
+
+  // ---- SHADER TIME (for scan line drift) ----
+  vigPass.uniforms.uTime.value = T;
+
+  // ---- CAMERA: gentle drift ----
+  camera.position.x = Math.sin(T * 0.085) * 0.14;
+  camera.position.y = 0.10 + Math.sin(T * 0.130) * 0.07;
+  camera.lookAt(0, 0, 0);
+
+  composer.render();
+}
+
+animate();
+
+// ================================================================
+// PERFORMANCE GUARD: downgrade quality on low-end devices
+// ================================================================
+let frameCount = 0;
+let lastFpsCheck = performance.now();
+
+function fpsGuard() {
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFpsCheck > 3000) {
+    const fps = (frameCount / (now - lastFpsCheck)) * 1000;
+    if (fps < 25) {
+      // Reduce pixel ratio on low-end
+      renderer.setPixelRatio(1.0);
+      bloomPass.resolution.set(W0 * 0.5, H0 * 0.5);
+    }
+    frameCount = 0;
+    lastFpsCheck = now;
+  }
+  requestAnimationFrame(fpsGuard);
+}
+fpsGuard();
+
+</script>
+</body>
+</html>

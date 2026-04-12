@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>N8AO Glass Avatar - Training Session Apr 01</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #040608; overflow: hidden; font-family: system-ui; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #info {
+    position: fixed; bottom: 20px; left: 20px;
+    color: rgba(255,255,255,0.3); font-size: 12px;
+    pointer-events: none; z-index: 10;
+  }
+</style>
+</head>
+<body>
+<div id="info">N8AO Glass Avatar | Screen-Space Ambient Occlusion | Training Apr 01 2026</div>
+
+<!-- Three.js r170 CDN -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/",
+    "n8ao": "https://unpkg.com/n8ao@latest/dist/N8AO.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { N8AOPass } from 'n8ao';
+
+// ============================================================
+// CONSTANTS
+// ============================================================
+const PUREBRAIN_BLUE   = new THREE.Color(0x2a93c1);
+const PUREBRAIN_ORANGE = new THREE.Color(0xf1420b);
+const BG_COLOR         = new THREE.Color(0x040608);
+
+// Prime frequencies for organic animation (non-integer avoids phase lock)
+const PHI = 1.618033988749895;
+const FREQ_A = 0.317;  // slow base
+const FREQ_B = 0.513;  // medium
+const FREQ_C = 0.829;  // fast accent
+
+// ============================================================
+// SCENE SETUP
+// ============================================================
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = BG_COLOR;
+
+const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0.3, 4.2);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.04;
+controls.enablePan = false;
+controls.minDistance = 2.5;
+controls.maxDistance = 7;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.3;
+
+// ============================================================
+// SPRING MOUSE TRACKING
+// ============================================================
+const mouse = { x: 0, y: 0 };
+const smoothMouse = { x: 0, y: 0 };
+const SPRING_K = 0.04;
+
+window.addEventListener('mousemove', (e) => {
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+});
+
+function updateSpringMouse() {
+  smoothMouse.x += (mouse.x - smoothMouse.x) * SPRING_K;
+  smoothMouse.y += (mouse.y - smoothMouse.y) * SPRING_K;
+}
+
+// ============================================================
+// PROCEDURAL HDRI (PMREM)
+// ============================================================
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+pmremGenerator.compileEquirectangularShader();
+
+function createProceduralEnvMap() {
+  // Generate a gradient environment for reflections
+  const size = 256;
+  const data = new Float32Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4;
+      const nx = x / size;
+      const ny = y / size;
+      // Dark studio with top highlight (blue) and warm bottom fill (orange)
+      const topLight = Math.pow(Math.max(0, 1 - ny * 2), 3);
+      const bottomFill = Math.pow(Math.max(0, ny * 2 - 1), 2) * 0.15;
+      const sideFill = Math.pow(Math.sin(nx * Math.PI), 4) * 0.1;
+
+      data[i]     = 0.02 + topLight * 0.4 + bottomFill * 0.9 + sideFill * 0.1; // R
+      data[i + 1] = 0.02 + topLight * 0.6 + bottomFill * 0.15 + sideFill * 0.2; // G
+      data[i + 2] = 0.04 + topLight * 1.0 + bottomFill * 0.05 + sideFill * 0.5; // B
+      data[i + 3] = 1.0;
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.FloatType);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.needsUpdate = true;
+  return pmremGenerator.fromEquirectangular(tex).texture;
+}
+
+const envMap = createProceduralEnvMap();
+scene.environment = envMap;
+
+// ============================================================
+// GLASS MATERIALS
+// ============================================================
+
+// Outer shell: thin, high IOR glass with blue tint
+const outerGlassMat = new THREE.MeshPhysicalMaterial({
+  color: new THREE.Color(0x88ccff),
+  metalness: 0.0,
+  roughness: 0.02,
+  transmission: 0.95,
+  thickness: 0.6,
+  ior: 1.5,
+  iridescence: 0.3,
+  iridescenceIOR: 1.3,
+  iridescenceThicknessRange: [100, 400],
+  envMap: envMap,
+  envMapIntensity: 1.5,
+  transparent: true,
+  opacity: 1,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+});
+
+// Inner shell: deeper blue, higher IOR
+const innerGlassMat = new THREE.MeshPhysicalMaterial({
+  color: PUREBRAIN_BLUE.clone(),
+  metalness: 0.0,
+  roughness: 0.05,
+  transmission: 0.9,
+  thickness: 1.0,
+  ior: 1.7,
+  iridescence: 0.5,
+  iridescenceIOR: 1.5,
+  iridescenceThicknessRange: [200, 600],
+  envMap: envMap,
+  envMapIntensity: 1.2,
+  transparent: true,
+  opacity: 1,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+});
+
+// Core: emissive energy center
+const coreMat = new THREE.MeshStandardMaterial({
+  color: PUREBRAIN_BLUE.clone(),
+  emissive: PUREBRAIN_BLUE.clone(),
+  emissiveIntensity: 2.5,
+  metalness: 0.8,
+  roughness: 0.3,
+});
+
+// Accent ring: orange glow
+const accentMat = new THREE.MeshStandardMaterial({
+  color: PUREBRAIN_ORANGE.clone(),
+  emissive: PUREBRAIN_ORANGE.clone(),
+  emissiveIntensity: 3.0,
+  metalness: 0.5,
+  roughness: 0.4,
+});
+
+// Floor for AO contact shadows
+const floorMat = new THREE.MeshStandardMaterial({
+  color: new THREE.Color(0x080a0e),
+  metalness: 0.1,
+  roughness: 0.95,
+});
+
+// ============================================================
+// GEOMETRY
+// ============================================================
+
+// Outer glass sphere (128 segments for transmission quality)
+const outerSphere = new THREE.Mesh(
+  new THREE.SphereGeometry(1.2, 128, 128),
+  outerGlassMat
+);
+scene.add(outerSphere);
+
+// Inner glass sphere
+const innerSphere = new THREE.Mesh(
+  new THREE.SphereGeometry(0.85, 96, 96),
+  innerGlassMat
+);
+scene.add(innerSphere);
+
+// Core orb (small, emissive)
+const coreOrb = new THREE.Mesh(
+  new THREE.SphereGeometry(0.25, 64, 64),
+  coreMat
+);
+scene.add(coreOrb);
+
+// Orange accent torus
+const accentRing = new THREE.Mesh(
+  new THREE.TorusGeometry(0.5, 0.02, 32, 128),
+  accentMat
+);
+accentRing.rotation.x = Math.PI * 0.5;
+scene.add(accentRing);
+
+// Second accent ring (thinner, tilted)
+const accentRing2 = new THREE.Mesh(
+  new THREE.TorusGeometry(0.7, 0.012, 24, 128),
+  accentMat.clone()
+);
+accentRing2.rotation.x = Math.PI * 0.35;
+accentRing2.rotation.z = Math.PI * 0.15;
+scene.add(accentRing2);
+
+// Floor plane for N8AO contact shadows
+const floor = new THREE.Mesh(
+  new THREE.PlaneGeometry(20, 20),
+  floorMat
+);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = -1.8;
+floor.receiveShadow = true;
+scene.add(floor);
+
+// Small floating particles around the orb (for AO depth context)
+const particleGroup = new THREE.Group();
+const particleGeo = new THREE.SphereGeometry(0.03, 16, 16);
+const particleMat = new THREE.MeshStandardMaterial({
+  color: PUREBRAIN_BLUE.clone(),
+  emissive: PUREBRAIN_BLUE.clone(),
+  emissiveIntensity: 1.5,
+  metalness: 0.5,
+  roughness: 0.5,
+});
+
+for (let i = 0; i < 30; i++) {
+  const p = new THREE.Mesh(particleGeo, particleMat);
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.random() * Math.PI;
+  const r = 1.5 + Math.random() * 0.8;
+  p.position.set(
+    r * Math.sin(phi) * Math.cos(theta),
+    r * Math.cos(phi),
+    r * Math.sin(phi) * Math.sin(theta)
+  );
+  p.userData.orbit = { theta, phi, r, speed: 0.1 + Math.random() * 0.2 };
+  particleGroup.add(p);
+}
+scene.add(particleGroup);
+
+// ============================================================
+// LIGHTING (supplement to PMREM)
+// ============================================================
+const keyLight = new THREE.DirectionalLight(0xffffff, 0.8);
+keyLight.position.set(3, 5, 2);
+scene.add(keyLight);
+
+const fillLight = new THREE.DirectionalLight(0x2a93c1, 0.3);
+fillLight.position.set(-3, 2, -2);
+scene.add(fillLight);
+
+const rimLight = new THREE.PointLight(0xf1420b, 0.5, 10);
+rimLight.position.set(-2, -1, 3);
+scene.add(rimLight);
+
+// ============================================================
+// POSTPROCESSING: N8AO + Bloom
+// ============================================================
+const composer = new EffectComposer(renderer);
+
+// N8AO pass (replaces RenderPass -- it renders the scene internally)
+const n8aoPass = new N8AOPass(scene, camera, window.innerWidth, window.innerHeight);
+
+// N8AO configuration for contact shadows and depth darkening
+n8aoPass.configuration.aoRadius = 2.0;          // World-unit radius of AO sampling
+n8aoPass.configuration.distanceFalloff = 1.0;    // How quickly AO fades with distance
+n8aoPass.configuration.intensity = 3.0;           // pow(ao, intensity) -- 3 = noticeable but not harsh
+n8aoPass.configuration.color = new THREE.Color(0x000510); // Very dark blue-black AO color (not pure black)
+n8aoPass.configuration.halfRes = false;           // Full resolution for quality
+n8aoPass.configuration.screenSpaceRadius = false; // World-space radius for consistent look
+n8aoPass.configuration.gammaCorrection = true;
+
+composer.addPass(n8aoPass);
+
+// Bloom pass (conservative Gleb-level: high threshold, low intensity)
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.5,   // intensity (conservative)
+  0.4,   // radius
+  0.88   // threshold (high -- only bright emissives bloom)
+);
+composer.addPass(bloomPass);
+
+// Film grain + vignette shader pass
+const filmGrainShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    time: { value: 0 },
+    grainIntensity: { value: 0.04 },
+    vignetteIntensity: { value: 0.35 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float time;
+    uniform float grainIntensity;
+    uniform float vignetteIntensity;
+    varying vec2 vUv;
+
+    // Hash function for grain
+    float hash(vec2 p) {
+      vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+      p3 += dot(p3, p3.yzx + 33.33);
+      return fract((p3.x + p3.y) * p3.z);
+    }
+
+    void main() {
+      vec4 color = texture2D(tDiffuse, vUv);
+
+      // Film grain
+      float grain = hash(vUv * 1000.0 + time * 100.0) - 0.5;
+      color.rgb += grain * grainIntensity;
+
+      // Vignette
+      vec2 center = vUv - 0.5;
+      float vignette = 1.0 - dot(center, center) * vignetteIntensity * 2.0;
+      vignette = clamp(vignette, 0.0, 1.0);
+      vignette = smoothstep(0.0, 1.0, vignette);
+      color.rgb *= vignette;
+
+      gl_FragColor = color;
+    }
+  `
+};
+const filmGrainPass = new ShaderPass(filmGrainShader);
+composer.addPass(filmGrainPass);
+
+// ============================================================
+// ANIMATION LOOP
+// ============================================================
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  const dt = clock.getDelta();
+
+  updateSpringMouse();
+  controls.update();
+
+  // === IOR Animation (prime frequencies, smooth sine) ===
+  outerGlassMat.ior = 1.5 + Math.sin(t * FREQ_A * Math.PI * 2) * 0.15;
+  innerGlassMat.ior = 1.7 + Math.sin(t * FREQ_B * Math.PI * 2) * 0.2;
+
+  // === Iridescence animation ===
+  outerGlassMat.iridescenceIOR = 1.3 + Math.sin(t * FREQ_C * Math.PI * 2) * 0.15;
+  innerGlassMat.iridescenceIOR = 1.5 + Math.cos(t * FREQ_A * PHI * Math.PI * 2) * 0.2;
+
+  // === Shell rotations (different axes, prime speeds) ===
+  outerSphere.rotation.y = t * 0.08;
+  outerSphere.rotation.x = Math.sin(t * FREQ_A) * 0.1 + smoothMouse.y * 0.15;
+  outerSphere.rotation.z = smoothMouse.x * 0.1;
+
+  innerSphere.rotation.y = -t * 0.13;
+  innerSphere.rotation.x = Math.sin(t * FREQ_B) * 0.15 + smoothMouse.y * 0.1;
+
+  // === Core pulse ===
+  const coreScale = 1.0 + Math.sin(t * FREQ_C * Math.PI * 2) * 0.08;
+  coreOrb.scale.setScalar(coreScale);
+  coreMat.emissiveIntensity = 2.5 + Math.sin(t * FREQ_B * Math.PI * 2) * 1.0;
+
+  // === Accent rings rotation ===
+  accentRing.rotation.z = t * 0.2;
+  accentRing2.rotation.y = t * 0.15;
+  accentRing2.rotation.z = Math.PI * 0.15 + Math.sin(t * FREQ_A) * 0.1;
+
+  // === Floating particles orbit ===
+  particleGroup.children.forEach((p) => {
+    const o = p.userData.orbit;
+    o.theta += o.speed * 0.01;
+    p.position.set(
+      o.r * Math.sin(o.phi) * Math.cos(o.theta),
+      o.r * Math.cos(o.phi) + Math.sin(t * FREQ_B + o.theta) * 0.1,
+      o.r * Math.sin(o.phi) * Math.sin(o.theta)
+    );
+  });
+
+  // === N8AO dynamic radius based on camera distance ===
+  const camDist = camera.position.length();
+  n8aoPass.configuration.aoRadius = Math.max(0.5, 2.0 * (4.0 / camDist));
+
+  // === Film grain time update ===
+  filmGrainPass.uniforms.time.value = t;
+
+  // === Render ===
+  composer.render();
+}
+
+animate();
+
+// ============================================================
+// RESIZE HANDLER
+// ============================================================
+window.addEventListener('resize', () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+});
+</script>
+</body>
+</html>

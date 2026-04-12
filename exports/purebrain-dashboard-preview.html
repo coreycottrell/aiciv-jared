@@ -1,0 +1,1830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PureBrain — Your AI Command Center</title>
+  <style>
+    /* =====================================================
+       RESET & BASE
+    ===================================================== */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --pb-blue: #2a93c1;
+      --pb-blue-light: #3db8f5;
+      --pb-blue-dark: #1a6a8f;
+      --pb-orange: #f1420b;
+      --pb-orange-light: #ff6a3d;
+      --pb-bg: #0d1117;
+      --pb-surface: #141c26;
+      --pb-surface-2: #1a2535;
+      --pb-surface-3: #1f2d40;
+      --pb-border: rgba(42, 147, 193, 0.18);
+      --pb-border-hover: rgba(42, 147, 193, 0.45);
+      --pb-text: #e6edf3;
+      --pb-text-muted: #7d8fa3;
+      --pb-text-dim: #4a5a6e;
+      --pb-radius: 12px;
+      --pb-radius-sm: 8px;
+      --pb-radius-lg: 16px;
+      --pb-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      --pb-glow-blue: 0 0 20px rgba(42, 147, 193, 0.25);
+      --pb-glow-orange: 0 0 20px rgba(241, 66, 11, 0.25);
+      --transition: 0.22s ease;
+    }
+
+    html {
+      font-family: -apple-system, 'Inter', 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--pb-text);
+      background: var(--pb-bg);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* =====================================================
+       SECTION WRAPPER
+    ===================================================== */
+    .dp-section {
+      width: 100%;
+      padding: 72px 24px 80px;
+      background: linear-gradient(180deg, #080d14 0%, #0d1117 40%, #0a0f18 100%);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Ambient glow blobs */
+    .dp-section::before {
+      content: '';
+      position: absolute;
+      width: 600px;
+      height: 400px;
+      background: radial-gradient(ellipse, rgba(42, 147, 193, 0.06) 0%, transparent 70%);
+      top: -80px;
+      left: -100px;
+      pointer-events: none;
+    }
+    .dp-section::after {
+      content: '';
+      position: absolute;
+      width: 500px;
+      height: 350px;
+      background: radial-gradient(ellipse, rgba(241, 66, 11, 0.05) 0%, transparent 70%);
+      bottom: 0;
+      right: -80px;
+      pointer-events: none;
+    }
+
+    /* =====================================================
+       SECTION HEADER
+    ===================================================== */
+    .dp-header {
+      text-align: center;
+      max-width: 640px;
+      margin: 0 auto 48px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .dp-eyebrow {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--pb-blue);
+      background: rgba(42, 147, 193, 0.1);
+      border: 1px solid rgba(42, 147, 193, 0.25);
+      border-radius: 20px;
+      padding: 4px 14px;
+      margin-bottom: 16px;
+    }
+
+    .dp-title {
+      font-size: clamp(26px, 4vw, 38px);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #fff;
+      margin-bottom: 14px;
+      line-height: 1.2;
+    }
+
+    .dp-subtitle {
+      font-size: 16px;
+      color: var(--pb-text-muted);
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    /* =====================================================
+       MOCKUP WRAPPER
+    ===================================================== */
+    .dp-mockup-wrapper {
+      max-width: 1100px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 2;
+    }
+
+    /* =====================================================
+       BROWSER CHROME
+    ===================================================== */
+    .dp-browser-chrome {
+      background: linear-gradient(180deg, #1c2535 0%, #18202e 100%);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-bottom: none;
+      border-radius: var(--pb-radius-lg) var(--pb-radius-lg) 0 0;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .dp-browser-dots {
+      display: flex;
+      gap: 7px;
+      flex-shrink: 0;
+    }
+
+    .dp-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .dp-dot--red    { background: #ff5f57; box-shadow: 0 0 6px rgba(255,95,87,0.5); }
+    .dp-dot--yellow { background: #febc2e; box-shadow: 0 0 6px rgba(254,188,46,0.4); }
+    .dp-dot--green  { background: #28c840; box-shadow: 0 0 6px rgba(40,200,64,0.4); }
+
+    .dp-browser-bar {
+      flex: 1;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px;
+      padding: 5px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      max-width: 340px;
+    }
+
+    .dp-browser-bar::before {
+      content: '';
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #28c840;
+      flex-shrink: 0;
+    }
+
+    .dp-browser-url {
+      font-size: 12px;
+      color: var(--pb-text-muted);
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+
+    /* Lock icon after URL */
+    .dp-browser-bar::after {
+      content: '🔒';
+      font-size: 10px;
+      margin-left: auto;
+      opacity: 0.5;
+    }
+
+    /* =====================================================
+       DASHBOARD LAYOUT
+    ===================================================== */
+    .dp-dashboard {
+      display: flex;
+      background: var(--pb-surface);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-top: none;
+      border-radius: 0 0 var(--pb-radius-lg) var(--pb-radius-lg);
+      overflow: hidden;
+      box-shadow: var(--pb-shadow), 0 0 0 1px rgba(42, 147, 193, 0.06);
+      min-height: 480px;
+    }
+
+    /* =====================================================
+       SIDEBAR
+    ===================================================== */
+    .dp-sidebar {
+      width: 64px;
+      background: linear-gradient(180deg, #111822 0%, #0e1520 100%);
+      border-right: 1px solid rgba(255,255,255,0.06);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 0;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .dp-sidebar-logo {
+      width: 38px;
+      height: 38px;
+      background: linear-gradient(135deg, #1a2e3e, #0d1a27);
+      border: 1px solid rgba(42, 147, 193, 0.3);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 12px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      position: relative;
+      box-shadow: 0 2px 12px rgba(42, 147, 193, 0.15);
+    }
+
+    /* PureBrain logo: PUREBR(blue) + AI(orange) + N(blue) */
+    .dp-sidebar-logo::after {
+      content: 'PB';
+      font-size: 11px;
+      font-weight: 900;
+      background: linear-gradient(90deg, var(--pb-blue) 0%, var(--pb-blue) 60%, var(--pb-orange) 60%, var(--pb-orange) 80%, var(--pb-blue) 80%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -0.02em;
+    }
+
+    .dp-sidebar-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      width: 100%;
+      align-items: center;
+    }
+
+    .dp-nav-item {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      border: none;
+      background: transparent;
+      color: var(--pb-text-dim);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background var(--transition), color var(--transition), box-shadow var(--transition);
+      position: relative;
+    }
+
+    .dp-nav-item:hover {
+      background: rgba(42, 147, 193, 0.1);
+      color: var(--pb-blue-light);
+    }
+
+    .dp-nav-item--active {
+      background: rgba(42, 147, 193, 0.15);
+      color: var(--pb-blue);
+      box-shadow: 0 0 0 1px rgba(42, 147, 193, 0.25);
+    }
+
+    /* Active indicator dot */
+    .dp-nav-item--active::before {
+      content: '';
+      position: absolute;
+      left: -1px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 20px;
+      background: var(--pb-blue);
+      border-radius: 0 3px 3px 0;
+      box-shadow: 0 0 8px rgba(42, 147, 193, 0.6);
+    }
+
+    .dp-nav-icon {
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    /* Nav tooltip labels */
+    .dp-nav-item[aria-label]::after {
+      content: attr(aria-label);
+      position: absolute;
+      left: calc(100% + 8px);
+      top: 50%;
+      transform: translateY(-50%);
+      background: #1a2535;
+      border: 1px solid var(--pb-border);
+      color: var(--pb-text);
+      font-size: 11px;
+      padding: 4px 9px;
+      border-radius: 6px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--transition);
+      z-index: 100;
+    }
+    .dp-nav-item:hover::after {
+      opacity: 1;
+    }
+
+    /* Settings nav at bottom */
+    .dp-nav-item:last-child {
+      margin-top: auto;
+    }
+
+    /* =====================================================
+       MAIN CONTENT AREA
+    ===================================================== */
+    .dp-main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 220px;
+      grid-template-rows: 1fr auto;
+      gap: 0;
+      overflow: hidden;
+    }
+
+    /* =====================================================
+       FEATURE PANELS (shared glass styles)
+    ===================================================== */
+    .dp-feature {
+      position: relative;
+      border: 1px solid var(--pb-border);
+      background: linear-gradient(145deg, rgba(26,37,53,0.9) 0%, rgba(18,26,38,0.95) 100%);
+      transition: border-color var(--transition), box-shadow var(--transition);
+      cursor: default;
+      overflow: visible;
+    }
+
+    .dp-feature:hover {
+      border-color: var(--pb-border-hover);
+      box-shadow: inset 0 0 30px rgba(42, 147, 193, 0.04), 0 0 20px rgba(42, 147, 193, 0.08);
+      z-index: 10;
+    }
+
+    /* Feature label badge */
+    .dp-feature-label {
+      position: absolute;
+      top: 12px;
+      left: 14px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--pb-text-dim);
+      z-index: 2;
+    }
+
+    /* =====================================================
+       TOOLTIP SYSTEM
+    ===================================================== */
+    .dp-tooltip {
+      position: absolute;
+      z-index: 200;
+      width: 240px;
+      background: linear-gradient(145deg, #1a2d42, #0f1e2e);
+      border: 1px solid rgba(42, 147, 193, 0.35);
+      border-radius: var(--pb-radius);
+      box-shadow: 0 16px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(42, 147, 193, 0.1), 0 0 30px rgba(42, 147, 193, 0.12);
+      padding: 0;
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(6px) scale(0.97);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      overflow: hidden;
+    }
+
+    /* Tooltip positioning variants */
+    .dp-tooltip {
+      /* Default: bottom of element */
+      top: calc(100% + 12px);
+      left: 50%;
+      transform: translateX(-50%) translateY(6px) scale(0.97);
+    }
+
+    .dp-tooltip--left {
+      top: 50%;
+      left: auto;
+      right: calc(100% + 12px);
+      transform: translateY(-50%) translateX(6px) scale(0.97);
+    }
+
+    .dp-tooltip--top {
+      top: auto;
+      bottom: calc(100% + 12px);
+      left: 50%;
+      transform: translateX(-50%) translateY(-6px) scale(0.97);
+    }
+
+    /* Show on hover OR focus */
+    .dp-feature:hover .dp-tooltip,
+    .dp-feature:focus-within .dp-tooltip,
+    .dp-feature:focus .dp-tooltip {
+      opacity: 1;
+    }
+
+    .dp-feature:hover .dp-tooltip {
+      transform: translateX(-50%) translateY(0) scale(1);
+    }
+    .dp-feature:hover .dp-tooltip--left {
+      transform: translateY(-50%) translateX(0) scale(1);
+    }
+    .dp-feature:hover .dp-tooltip--top {
+      transform: translateX(-50%) translateY(0) scale(1);
+    }
+
+    /* Blue accent bar at top */
+    .dp-tooltip-accent {
+      height: 3px;
+      background: linear-gradient(90deg, var(--pb-blue) 0%, var(--pb-blue-light) 60%, transparent 100%);
+    }
+
+    .dp-tooltip-content {
+      padding: 14px 16px 16px;
+    }
+
+    .dp-tooltip-title {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 7px;
+    }
+
+    .dp-tooltip-text {
+      font-size: 12px;
+      line-height: 1.55;
+      color: var(--pb-text-muted);
+    }
+
+    /* =====================================================
+       CHAT INTERFACE (col 1, row 1)
+    ===================================================== */
+    .dp-feature--chat {
+      grid-column: 1;
+      grid-row: 1;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--pb-border);
+      border-bottom: 1px solid var(--pb-border);
+      min-height: 280px;
+    }
+
+    .dp-chat-messages {
+      flex: 1;
+      padding: 40px 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow: hidden;
+    }
+
+    .dp-msg {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .dp-msg--user {
+      flex-direction: row-reverse;
+    }
+
+    .dp-msg-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--pb-blue-dark), var(--pb-blue));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(42, 147, 193, 0.3);
+    }
+
+    .dp-msg-bubble {
+      background: var(--pb-surface-3);
+      border: 1px solid var(--pb-border);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--pb-text);
+      max-width: 82%;
+    }
+
+    .dp-msg--user .dp-msg-bubble {
+      background: rgba(42, 147, 193, 0.12);
+      border-color: rgba(42, 147, 193, 0.25);
+      color: var(--pb-text);
+    }
+
+    /* Pulsing dot for "typing" on last AI message */
+    .dp-msg--ai:last-child .dp-msg-bubble::after {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--pb-blue);
+      margin-left: 4px;
+      vertical-align: middle;
+      animation: dp-pulse 1.4s ease-in-out infinite;
+    }
+
+    @keyframes dp-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    /* Memory recall badge inside chat */
+    .dp-memory-recall-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(42, 147, 193, 0.1);
+      border: 1px solid rgba(42, 147, 193, 0.25);
+      border-radius: 20px;
+      font-size: 10px;
+      color: var(--pb-blue-light);
+      padding: 3px 9px;
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+
+    .dp-memory-recall-badge::before {
+      content: '●';
+      font-size: 7px;
+      animation: dp-pulse 2s ease-in-out infinite;
+    }
+
+    .dp-chat-input {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-top: 1px solid var(--pb-border);
+      background: rgba(10, 16, 24, 0.5);
+    }
+
+    .dp-chat-input-bar {
+      flex: 1;
+      background: var(--pb-surface-3);
+      border: 1px solid var(--pb-border);
+      border-radius: 8px;
+      padding: 7px 12px;
+      font-size: 12px;
+      color: var(--pb-text-dim);
+      cursor: text;
+    }
+
+    .dp-chat-send {
+      width: 30px;
+      height: 30px;
+      background: var(--pb-blue);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: #fff;
+      cursor: pointer;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(42, 147, 193, 0.35);
+      transition: background var(--transition), transform var(--transition);
+    }
+    .dp-chat-send:hover {
+      background: var(--pb-blue-light);
+      transform: scale(1.05);
+    }
+
+    /* =====================================================
+       RIGHT COLUMN
+    ===================================================== */
+    .dp-right-col {
+      grid-column: 2;
+      grid-row: 1 / 3;
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid var(--pb-border);
+    }
+
+    /* =====================================================
+       MEMORY PANEL
+    ===================================================== */
+    .dp-feature--memory {
+      flex: 1;
+      border-bottom: 1px solid var(--pb-border);
+      padding: 40px 14px 14px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .dp-memory-items {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .dp-memory-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 7px 10px;
+      background: rgba(42, 147, 193, 0.05);
+      border: 1px solid rgba(42, 147, 193, 0.1);
+      border-radius: 7px;
+      transition: border-color var(--transition), background var(--transition);
+    }
+
+    .dp-memory-item:hover {
+      border-color: rgba(42, 147, 193, 0.25);
+      background: rgba(42, 147, 193, 0.08);
+    }
+
+    .dp-memory-item--faded {
+      opacity: 0.55;
+    }
+
+    .dp-memory-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--pb-blue);
+      flex-shrink: 0;
+      margin-top: 4px;
+      box-shadow: 0 0 6px rgba(42, 147, 193, 0.5);
+    }
+
+    .dp-memory-text {
+      font-size: 11px;
+      color: var(--pb-text-muted);
+      line-height: 1.4;
+    }
+
+    /* Memory count badge */
+    .dp-memory-count {
+      margin-top: 10px;
+      font-size: 10px;
+      color: var(--pb-text-dim);
+      text-align: right;
+      padding-right: 2px;
+    }
+
+    .dp-memory-count span {
+      color: var(--pb-blue);
+      font-weight: 600;
+    }
+
+    /* =====================================================
+       TASK QUEUE
+    ===================================================== */
+    .dp-feature--tasks {
+      flex: 1;
+      padding: 40px 14px 14px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .dp-tasks {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .dp-task {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 7px;
+      border: 1px solid transparent;
+      transition: border-color var(--transition);
+    }
+
+    .dp-task--running {
+      background: rgba(40, 200, 64, 0.06);
+      border-color: rgba(40, 200, 64, 0.15);
+    }
+
+    .dp-task--pending {
+      background: rgba(255, 255, 255, 0.03);
+      border-color: rgba(255, 255, 255, 0.07);
+    }
+
+    .dp-task--done {
+      background: rgba(42, 147, 193, 0.05);
+      border-color: rgba(42, 147, 193, 0.1);
+    }
+
+    .dp-task-status {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      flex-shrink: 0;
+    }
+
+    .dp-task-status--running {
+      color: #28c840;
+      background: rgba(40, 200, 64, 0.15);
+      animation: dp-spin-slow 3s linear infinite;
+    }
+
+    @keyframes dp-spin-slow {
+      0% { box-shadow: 0 0 0 0 rgba(40, 200, 64, 0.4); }
+      50% { box-shadow: 0 0 8px 2px rgba(40, 200, 64, 0.2); }
+      100% { box-shadow: 0 0 0 0 rgba(40, 200, 64, 0.4); }
+    }
+
+    .dp-task-status--pending {
+      color: var(--pb-text-dim);
+      background: rgba(255,255,255,0.05);
+    }
+
+    .dp-task-status--done {
+      color: var(--pb-blue);
+      background: rgba(42, 147, 193, 0.15);
+    }
+
+    .dp-task-name {
+      flex: 1;
+      font-size: 11px;
+      color: var(--pb-text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .dp-task--running .dp-task-name {
+      color: var(--pb-text);
+    }
+
+    .dp-task--done .dp-task-name {
+      color: var(--pb-text-dim);
+      text-decoration: line-through;
+      text-decoration-color: rgba(42, 147, 193, 0.4);
+    }
+
+    .dp-task-time {
+      font-size: 10px;
+      color: var(--pb-text-dim);
+      flex-shrink: 0;
+    }
+
+    .dp-task--running .dp-task-time {
+      color: #28c840;
+      font-weight: 600;
+    }
+
+    /* =====================================================
+       BOTTOM ROW
+    ===================================================== */
+    .dp-bottom-row {
+      grid-column: 1;
+      grid-row: 2;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-top: 1px solid var(--pb-border);
+    }
+
+    /* =====================================================
+       INSIGHTS PANEL
+    ===================================================== */
+    .dp-feature--insights {
+      border-right: 1px solid var(--pb-border);
+      padding: 36px 16px 16px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .dp-insights {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex: 1;
+      flex-wrap: wrap;
+    }
+
+    .dp-insight-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1;
+      min-width: 60px;
+    }
+
+    .dp-insight-num {
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.03em;
+      line-height: 1;
+    }
+
+    .dp-insight-num--up {
+      color: #28c840;
+      font-size: 18px;
+    }
+
+    .dp-insight-label {
+      font-size: 10px;
+      color: var(--pb-text-dim);
+      text-align: center;
+      margin-top: 3px;
+      line-height: 1.3;
+    }
+
+    .dp-insight-divider {
+      width: 1px;
+      height: 40px;
+      background: var(--pb-border);
+      flex-shrink: 0;
+    }
+
+    .dp-insight-bar-group {
+      flex: 2;
+      min-width: 80px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .dp-insight-bar-label {
+      font-size: 10px;
+      color: var(--pb-text-dim);
+    }
+
+    .dp-insight-bar-track {
+      height: 6px;
+      background: rgba(255,255,255,0.07);
+      border-radius: 3px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .dp-insight-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--pb-blue), var(--pb-blue-light));
+      border-radius: 3px;
+      position: relative;
+      box-shadow: 0 0 8px rgba(42, 147, 193, 0.4);
+      animation: dp-bar-grow 1.2s ease-out forwards;
+    }
+
+    @keyframes dp-bar-grow {
+      from { width: 0 !important; }
+      to { /* width set inline */ }
+    }
+
+    .dp-insight-pct {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--pb-blue-light);
+      text-align: right;
+    }
+
+    /* Trend sparkline */
+    .dp-insight-trend {
+      width: 100%;
+      margin-top: 8px;
+    }
+
+    .dp-insight-trend-line {
+      width: 100%;
+      height: 24px;
+      overflow: visible;
+    }
+
+    /* =====================================================
+       SETTINGS PANEL
+    ===================================================== */
+    .dp-feature--settings {
+      padding: 36px 16px 16px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .dp-settings-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .dp-settings-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 10px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 7px;
+    }
+
+    .dp-settings-key {
+      font-size: 11px;
+      color: var(--pb-text-muted);
+    }
+
+    .dp-settings-val {
+      display: flex;
+      align-items: center;
+    }
+
+    .dp-settings-val--tag {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--pb-blue-light);
+      background: rgba(42, 147, 193, 0.1);
+      border: 1px solid rgba(42, 147, 193, 0.2);
+      border-radius: 5px;
+      padding: 2px 7px;
+    }
+
+    /* Toggle switch */
+    .dp-toggle {
+      width: 30px;
+      height: 17px;
+      border-radius: 9px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.12);
+      position: relative;
+      display: inline-block;
+      transition: background var(--transition);
+    }
+
+    .dp-toggle::after {
+      content: '';
+      position: absolute;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: #fff;
+      top: 1px;
+      left: 1px;
+      transition: transform var(--transition), background var(--transition);
+    }
+
+    .dp-toggle--on {
+      background: var(--pb-blue);
+      border-color: var(--pb-blue);
+      box-shadow: 0 0 8px rgba(42, 147, 193, 0.4);
+    }
+
+    .dp-toggle--on::after {
+      transform: translateX(13px);
+      background: #fff;
+    }
+
+    /* =====================================================
+       MOBILE ACCORDION CARDS
+    ===================================================== */
+    .dp-mobile-cards {
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 520px;
+      margin: 0 auto;
+    }
+
+    .dp-mobile-card {
+      background: var(--pb-surface);
+      border: 1px solid var(--pb-border);
+      border-radius: var(--pb-radius);
+      overflow: hidden;
+      transition: border-color var(--transition);
+    }
+
+    .dp-mobile-card:hover {
+      border-color: var(--pb-border-hover);
+    }
+
+    .dp-mobile-card-header {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      background: transparent;
+      border: none;
+      color: var(--pb-text);
+      cursor: pointer;
+      text-align: left;
+      gap: 12px;
+      transition: background var(--transition);
+    }
+
+    .dp-mobile-card-header:hover {
+      background: rgba(42, 147, 193, 0.04);
+    }
+
+    .dp-mobile-card-header[aria-expanded="true"] {
+      background: rgba(42, 147, 193, 0.06);
+      border-bottom: 1px solid var(--pb-border);
+    }
+
+    .dp-mobile-card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--pb-text);
+    }
+
+    .dp-mobile-card-arrow {
+      font-size: 18px;
+      color: var(--pb-blue);
+      transition: transform 0.2s ease;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+
+    .dp-mobile-card-header[aria-expanded="true"] .dp-mobile-card-arrow {
+      transform: rotate(180deg);
+    }
+
+    .dp-mobile-card-body {
+      padding: 0 20px;
+      font-size: 13px;
+      color: var(--pb-text-muted);
+      line-height: 1.6;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease, padding 0.3s ease;
+    }
+
+    .dp-mobile-card-body:not([hidden]) {
+      padding: 14px 20px 18px;
+      max-height: 200px;
+    }
+
+    /* Icons for mobile cards */
+    .dp-mobile-card-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: rgba(42, 147, 193, 0.1);
+      border: 1px solid rgba(42, 147, 193, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    /* =====================================================
+       RESPONSIVE BREAKPOINTS
+    ===================================================== */
+    @media (max-width: 900px) {
+      .dp-main {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto;
+      }
+
+      .dp-right-col {
+        grid-column: 1;
+        grid-row: 2;
+        border-left: none;
+        border-top: 1px solid var(--pb-border);
+        flex-direction: row;
+      }
+
+      .dp-feature--memory,
+      .dp-feature--tasks {
+        flex: 1;
+        border-bottom: none;
+      }
+
+      .dp-feature--memory {
+        border-right: 1px solid var(--pb-border);
+      }
+
+      .dp-bottom-row {
+        grid-column: 1;
+        grid-row: 3;
+      }
+
+      .dp-dashboard {
+        min-height: auto;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .dp-mockup-wrapper {
+        display: none;
+      }
+
+      .dp-mobile-cards {
+        display: flex;
+      }
+
+      .dp-section {
+        padding: 48px 16px 56px;
+      }
+
+      .dp-header {
+        margin-bottom: 32px;
+      }
+    }
+
+    /* =====================================================
+       STATUS BAR (top of main)
+    ===================================================== */
+    .dp-statusbar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 32px;
+      background: linear-gradient(90deg, rgba(10,16,24,0.95) 0%, rgba(13,19,30,0.9) 100%);
+      border-bottom: 1px solid var(--pb-border);
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      gap: 10px;
+      z-index: 5;
+    }
+
+    .dp-statusbar-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--pb-text-muted);
+      flex: 1;
+    }
+
+    .dp-statusbar-badge {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      color: #28c840;
+      background: rgba(40, 200, 64, 0.1);
+      border: 1px solid rgba(40, 200, 64, 0.2);
+      border-radius: 20px;
+      padding: 2px 8px;
+    }
+
+    .dp-statusbar-badge::before {
+      content: '●';
+      font-size: 6px;
+      animation: dp-pulse 2s ease-in-out infinite;
+    }
+
+    /* =====================================================
+       SPARKLINE SVG
+    ===================================================== */
+    .dp-sparkline {
+      fill: none;
+      stroke: var(--pb-blue);
+      stroke-width: 1.5;
+      filter: drop-shadow(0 0 4px rgba(42, 147, 193, 0.5));
+    }
+
+    .dp-sparkline-fill {
+      fill: url(#sparkGradient);
+      stroke: none;
+    }
+
+    /* =====================================================
+       FOCUS OUTLINE ACCESSIBILITY
+    ===================================================== */
+    .dp-feature:focus-visible {
+      outline: 2px solid var(--pb-blue);
+      outline-offset: -2px;
+    }
+
+    .dp-nav-item:focus-visible {
+      outline: 2px solid var(--pb-blue);
+      outline-offset: 2px;
+    }
+
+    /* =====================================================
+       SUBTLE GRID LINES ON MAIN DASHBOARD
+    ===================================================== */
+    .dp-feature--chat::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(42,147,193,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(42,147,193,0.025) 1px, transparent 1px);
+      background-size: 32px 32px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .dp-feature--chat:hover::before {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ===================================================
+       SECTION
+  ==================================================== -->
+  <section class="dp-section" id="dashboard-preview">
+
+    <!-- Header -->
+    <div class="dp-header">
+      <p class="dp-eyebrow">What You Get</p>
+      <h2 class="dp-title">Your AI Command Center</h2>
+      <p class="dp-subtitle">
+        Everything you need to manage, monitor, and grow your personal AI&mdash;all in one place.
+      </p>
+    </div>
+
+    <!-- Dashboard Mockup (desktop only) -->
+    <div class="dp-mockup-wrapper">
+
+      <!-- Browser Chrome -->
+      <div class="dp-browser-chrome">
+        <div class="dp-browser-dots">
+          <span class="dp-dot dp-dot--red"></span>
+          <span class="dp-dot dp-dot--yellow"></span>
+          <span class="dp-dot dp-dot--green"></span>
+        </div>
+        <div class="dp-browser-bar">
+          <span class="dp-browser-url">app.purebrain.ai/dashboard</span>
+        </div>
+      </div>
+
+      <!-- Dashboard Layout -->
+      <div class="dp-dashboard">
+
+        <!-- Sidebar -->
+        <aside class="dp-sidebar" role="navigation" aria-label="Dashboard navigation">
+          <div class="dp-sidebar-logo" role="img" aria-label="PureBrain logo"></div>
+          <nav class="dp-sidebar-nav">
+            <button class="dp-nav-item dp-nav-item--active" aria-label="Chat" aria-current="page">
+              <span class="dp-nav-icon" aria-hidden="true">
+                <!-- Chat bubble SVG -->
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+              </span>
+            </button>
+            <button class="dp-nav-item" aria-label="Memory">
+              <span class="dp-nav-icon" aria-hidden="true">
+                <!-- Brain/memory SVG -->
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+                </svg>
+              </span>
+            </button>
+            <button class="dp-nav-item" aria-label="Tasks">
+              <span class="dp-nav-icon" aria-hidden="true">
+                <!-- Tasks SVG -->
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M9 11l3 3L22 4"/>
+                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                </svg>
+              </span>
+            </button>
+            <button class="dp-nav-item" aria-label="Insights">
+              <span class="dp-nav-icon" aria-hidden="true">
+                <!-- Chart SVG -->
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
+              </span>
+            </button>
+            <button class="dp-nav-item" aria-label="Settings" style="margin-top: auto;">
+              <span class="dp-nav-icon" aria-hidden="true">
+                <!-- Settings SVG -->
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+              </span>
+            </button>
+          </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="dp-main" role="main">
+
+          <!-- ============================================
+               CHAT INTERFACE
+          ============================================= -->
+          <div
+            class="dp-feature dp-feature--chat"
+            tabindex="0"
+            role="button"
+            aria-describedby="tooltip-chat"
+            aria-label="Chat Interface - hover to learn more"
+          >
+            <div class="dp-statusbar">
+              <span class="dp-statusbar-title">Chat &mdash; Session #47</span>
+              <span class="dp-statusbar-badge">Memory Active</span>
+            </div>
+
+            <div class="dp-feature-label">Chat Interface</div>
+
+            <div class="dp-chat-messages">
+              <div class="dp-memory-recall-badge">Recalling 3 memories from previous session</div>
+
+              <div class="dp-msg dp-msg--ai">
+                <div class="dp-msg-avatar" aria-hidden="true">
+                  <!-- Small PureBrain icon representation -->
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="12 2 19 6 19 14 12 18 5 14 5 6"/>
+                  </svg>
+                </div>
+                <div class="dp-msg-bubble">
+                  Good morning. Based on yesterday's session, should I continue the market research for Series A?
+                </div>
+              </div>
+
+              <div class="dp-msg dp-msg--user">
+                <div class="dp-msg-bubble">Yes&mdash;and pull in what we discussed last Tuesday about the competitor angle.</div>
+              </div>
+
+              <div class="dp-msg dp-msg--ai">
+                <div class="dp-msg-avatar" aria-hidden="true">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="12 2 19 6 19 14 12 18 5 14 5 6"/>
+                  </svg>
+                </div>
+                <div class="dp-msg-bubble">
+                  On it. I remember you flagged Notion and Linear as the ones to watch. Running a full analysis now
+                </div>
+              </div>
+            </div>
+
+            <div class="dp-chat-input">
+              <div class="dp-chat-input-bar" aria-hidden="true">Type a message&hellip;</div>
+              <div class="dp-chat-send" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                  <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
+                </svg>
+              </div>
+            </div>
+
+            <!-- Tooltip -->
+            <div class="dp-tooltip" id="tooltip-chat" role="tooltip">
+              <div class="dp-tooltip-accent"></div>
+              <div class="dp-tooltip-content">
+                <strong class="dp-tooltip-title">Never repeat yourself again</strong>
+                <p class="dp-tooltip-text">Your AI remembers every conversation, decision, and preference. Pick up exactly where you left off&mdash;even weeks later. No re-explaining. No lost context.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right column -->
+          <div class="dp-right-col">
+
+            <!-- ==========================================
+                 MEMORY PANEL
+            =========================================== -->
+            <div
+              class="dp-feature dp-feature--memory"
+              tabindex="0"
+              role="button"
+              aria-describedby="tooltip-memory"
+              aria-label="Memory Panel - hover to learn more"
+            >
+              <div class="dp-feature-label">Memory Panel</div>
+
+              <div class="dp-memory-items">
+                <div class="dp-memory-item">
+                  <span class="dp-memory-dot" aria-hidden="true"></span>
+                  <span class="dp-memory-text">Prefers bullet-point summaries</span>
+                </div>
+                <div class="dp-memory-item">
+                  <span class="dp-memory-dot" aria-hidden="true"></span>
+                  <span class="dp-memory-text">EST timezone, London team</span>
+                </div>
+                <div class="dp-memory-item">
+                  <span class="dp-memory-dot" aria-hidden="true"></span>
+                  <span class="dp-memory-text">Q1 goal: 3x lead pipeline</span>
+                </div>
+                <div class="dp-memory-item dp-memory-item--faded">
+                  <span class="dp-memory-dot" aria-hidden="true"></span>
+                  <span class="dp-memory-text">Weekly review: Fridays 3pm</span>
+                </div>
+              </div>
+
+              <div class="dp-memory-count"><span>247</span> memories stored</div>
+
+              <!-- Tooltip -->
+              <div class="dp-tooltip dp-tooltip--left" id="tooltip-memory" role="tooltip">
+                <div class="dp-tooltip-accent"></div>
+                <div class="dp-tooltip-content">
+                  <strong class="dp-tooltip-title">You stay in full control</strong>
+                  <p class="dp-tooltip-text">See exactly what your AI has learned about you. Review, edit, or remove any memory at any time. Total transparency&mdash;no black box.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- ==========================================
+                 TASK QUEUE
+            =========================================== -->
+            <div
+              class="dp-feature dp-feature--tasks"
+              tabindex="0"
+              role="button"
+              aria-describedby="tooltip-tasks"
+              aria-label="Task Queue - hover to learn more"
+            >
+              <div class="dp-feature-label">Task Queue</div>
+
+              <div class="dp-tasks">
+                <div class="dp-task dp-task--running">
+                  <span class="dp-task-status dp-task-status--running" aria-label="Running">
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  </span>
+                  <span class="dp-task-name">Researching SaaS pricing benchmarks</span>
+                  <span class="dp-task-time">2m</span>
+                </div>
+                <div class="dp-task dp-task--pending">
+                  <span class="dp-task-status dp-task-status--pending" aria-label="Queued">
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+                  </span>
+                  <span class="dp-task-name">Draft outreach email sequence</span>
+                  <span class="dp-task-time">queued</span>
+                </div>
+                <div class="dp-task dp-task--done">
+                  <span class="dp-task-status dp-task-status--done" aria-label="Done">
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  </span>
+                  <span class="dp-task-name">Summarize last 3 board meetings</span>
+                  <span class="dp-task-time">done</span>
+                </div>
+              </div>
+
+              <!-- Tooltip -->
+              <div class="dp-tooltip dp-tooltip--left" id="tooltip-tasks" role="tooltip">
+                <div class="dp-tooltip-accent"></div>
+                <div class="dp-tooltip-content">
+                  <strong class="dp-tooltip-title">Work gets done while you sleep</strong>
+                  <p class="dp-tooltip-text">Assign multi-step tasks and walk away. Your AI works autonomously in the background, delivering results without babysitting.</p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+          <!-- /.dp-right-col -->
+
+          <!-- Bottom row -->
+          <div class="dp-bottom-row">
+
+            <!-- ==========================================
+                 LEARNING INSIGHTS
+            =========================================== -->
+            <div
+              class="dp-feature dp-feature--insights"
+              tabindex="0"
+              role="button"
+              aria-describedby="tooltip-insights"
+              aria-label="Learning Insights - hover to learn more"
+            >
+              <div class="dp-feature-label">Learning Insights</div>
+
+              <div class="dp-insights">
+                <div class="dp-insight-stat">
+                  <span class="dp-insight-num">247</span>
+                  <span class="dp-insight-label">Memories stored</span>
+                </div>
+
+                <div class="dp-insight-divider" aria-hidden="true"></div>
+
+                <div class="dp-insight-bar-group">
+                  <div class="dp-insight-bar-label">Accuracy this week</div>
+                  <div class="dp-insight-bar-track" role="progressbar" aria-valuenow="82" aria-valuemin="0" aria-valuemax="100" aria-label="82% accuracy">
+                    <div class="dp-insight-bar-fill" style="width: 82%"></div>
+                  </div>
+                  <span class="dp-insight-pct">82%</span>
+                </div>
+
+                <div class="dp-insight-divider" aria-hidden="true"></div>
+
+                <div class="dp-insight-stat">
+                  <span class="dp-insight-num dp-insight-num--up">+12%</span>
+                  <span class="dp-insight-label">Better than last week</span>
+                </div>
+              </div>
+
+              <!-- Sparkline trend -->
+              <div class="dp-insight-trend" aria-hidden="true">
+                <svg class="dp-insight-trend-line" viewBox="0 0 160 28" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="sparkGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#2a93c1" stop-opacity="0.3"/>
+                      <stop offset="100%" stop-color="#2a93c1" stop-opacity="0"/>
+                    </linearGradient>
+                  </defs>
+                  <path class="dp-sparkline-fill" d="M0 24 L20 22 L40 20 L60 18 L80 15 L100 12 L120 10 L140 6 L160 4 L160 28 L0 28 Z"/>
+                  <path class="dp-sparkline" d="M0 24 L20 22 L40 20 L60 18 L80 15 L100 12 L120 10 L140 6 L160 4"/>
+                </svg>
+              </div>
+
+              <!-- Tooltip -->
+              <div class="dp-tooltip dp-tooltip--top" id="tooltip-insights" role="tooltip">
+                <div class="dp-tooltip-accent"></div>
+                <div class="dp-tooltip-content">
+                  <strong class="dp-tooltip-title">It gets smarter every day</strong>
+                  <p class="dp-tooltip-text">Watch your AI improve in real time. Every session makes it more accurate, more tuned to your style, and more valuable than yesterday.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- ==========================================
+                 SETTINGS
+            =========================================== -->
+            <div
+              class="dp-feature dp-feature--settings"
+              tabindex="0"
+              role="button"
+              aria-describedby="tooltip-settings"
+              aria-label="Settings Panel - hover to learn more"
+            >
+              <div class="dp-feature-label">Personalization</div>
+
+              <div class="dp-settings-rows">
+                <div class="dp-settings-row">
+                  <span class="dp-settings-key">Personality</span>
+                  <span class="dp-settings-val dp-settings-val--tag">Direct &amp; concise</span>
+                </div>
+                <div class="dp-settings-row">
+                  <span class="dp-settings-key">Tone</span>
+                  <span class="dp-settings-val dp-settings-val--tag">Professional</span>
+                </div>
+                <div class="dp-settings-row">
+                  <span class="dp-settings-key">Proactive nudges</span>
+                  <span class="dp-settings-val">
+                    <span class="dp-toggle dp-toggle--on" role="switch" aria-checked="true" aria-label="Proactive nudges enabled"></span>
+                  </span>
+                </div>
+              </div>
+
+              <!-- Tooltip -->
+              <div class="dp-tooltip dp-tooltip--top" id="tooltip-settings" role="tooltip">
+                <div class="dp-tooltip-accent"></div>
+                <div class="dp-tooltip-content">
+                  <strong class="dp-tooltip-title">Truly yours&mdash;not a generic chatbot</strong>
+                  <p class="dp-tooltip-text">Set exactly how your AI thinks, speaks, and proactively helps. This is a partner built around you, not a one-size-fits-all tool.</p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+          <!-- /.dp-bottom-row -->
+
+        </main>
+      </div>
+      <!-- /.dp-dashboard -->
+
+    </div>
+    <!-- /.dp-mockup-wrapper -->
+
+    <!-- Mobile accordion cards -->
+    <div class="dp-mobile-cards" aria-label="Dashboard feature overview">
+
+      <div class="dp-mobile-card">
+        <button class="dp-mobile-card-header" aria-expanded="false" aria-controls="mc-chat">
+          <span class="dp-mobile-card-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2a93c1" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </span>
+          <span class="dp-mobile-card-title">Chat Interface</span>
+          <span class="dp-mobile-card-arrow" aria-hidden="true">&#8964;</span>
+        </button>
+        <div class="dp-mobile-card-body" id="mc-chat" hidden>
+          Your AI remembers every conversation. No more re-explaining context&mdash;pick up exactly where you left off, even weeks later. No lost context. No wasted time.
+        </div>
+      </div>
+
+      <div class="dp-mobile-card">
+        <button class="dp-mobile-card-header" aria-expanded="false" aria-controls="mc-memory">
+          <span class="dp-mobile-card-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2a93c1" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+          </span>
+          <span class="dp-mobile-card-title">Memory Panel</span>
+          <span class="dp-mobile-card-arrow" aria-hidden="true">&#8964;</span>
+        </button>
+        <div class="dp-mobile-card-body" id="mc-memory" hidden>
+          See exactly what your AI has learned about you. Review, edit, or remove any memory at any time. Total transparency&mdash;you stay in full control, always.
+        </div>
+      </div>
+
+      <div class="dp-mobile-card">
+        <button class="dp-mobile-card-header" aria-expanded="false" aria-controls="mc-tasks">
+          <span class="dp-mobile-card-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2a93c1" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          </span>
+          <span class="dp-mobile-card-title">Task Queue</span>
+          <span class="dp-mobile-card-arrow" aria-hidden="true">&#8964;</span>
+        </button>
+        <div class="dp-mobile-card-body" id="mc-tasks" hidden>
+          Assign multi-step tasks and walk away. Your AI works autonomously in the background, delivering results without you staying glued to the screen.
+        </div>
+      </div>
+
+      <div class="dp-mobile-card">
+        <button class="dp-mobile-card-header" aria-expanded="false" aria-controls="mc-insights">
+          <span class="dp-mobile-card-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2a93c1" stroke-width="2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </span>
+          <span class="dp-mobile-card-title">Learning Insights</span>
+          <span class="dp-mobile-card-arrow" aria-hidden="true">&#8964;</span>
+        </button>
+        <div class="dp-mobile-card-body" id="mc-insights" hidden>
+          Watch your AI improve in real time. Every session makes it more accurate, more tuned to your style, and more valuable than it was yesterday.
+        </div>
+      </div>
+
+      <div class="dp-mobile-card">
+        <button class="dp-mobile-card-header" aria-expanded="false" aria-controls="mc-settings">
+          <span class="dp-mobile-card-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2a93c1" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </span>
+          <span class="dp-mobile-card-title">Personalization</span>
+          <span class="dp-mobile-card-arrow" aria-hidden="true">&#8964;</span>
+        </button>
+        <div class="dp-mobile-card-body" id="mc-settings" hidden>
+          Set exactly how your AI thinks, speaks, and proactively helps you. This is a partner built around you&mdash;not a one-size-fits-all generic chatbot.
+        </div>
+      </div>
+
+    </div>
+    <!-- /.dp-mobile-cards -->
+
+  </section>
+
+  <script>
+    (function () {
+      'use strict';
+
+      /* ====================================================
+         MOBILE ACCORDION
+      ==================================================== */
+      var cards = document.querySelectorAll('.dp-mobile-card');
+
+      cards.forEach(function (card) {
+        var btn = card.querySelector('.dp-mobile-card-header');
+        var body = card.querySelector('.dp-mobile-card-body');
+
+        if (!btn || !body) return;
+
+        btn.addEventListener('click', function () {
+          var isOpen = btn.getAttribute('aria-expanded') === 'true';
+
+          // Close all others
+          cards.forEach(function (c) {
+            var b = c.querySelector('.dp-mobile-card-header');
+            var bd = c.querySelector('.dp-mobile-card-body');
+            if (b && bd) {
+              b.setAttribute('aria-expanded', 'false');
+              bd.setAttribute('hidden', '');
+            }
+          });
+
+          // Toggle this one
+          if (!isOpen) {
+            btn.setAttribute('aria-expanded', 'true');
+            body.removeAttribute('hidden');
+          }
+        });
+      });
+
+      /* ====================================================
+         KEYBOARD NAVIGATION FOR FEATURE PANELS
+      ==================================================== */
+      var features = document.querySelectorAll('.dp-feature');
+
+      features.forEach(function (f) {
+        f.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            // Visual feedback: briefly highlight
+            f.style.transition = 'box-shadow 0.15s ease';
+            f.style.boxShadow = '0 0 0 2px #2a93c1, inset 0 0 30px rgba(42,147,193,0.08)';
+            setTimeout(function () {
+              f.style.boxShadow = '';
+            }, 300);
+          }
+        });
+      });
+
+      /* ====================================================
+         SIDEBAR NAV ACTIVE STATE
+      ==================================================== */
+      var navItems = document.querySelectorAll('.dp-nav-item');
+
+      navItems.forEach(function (item) {
+        item.addEventListener('click', function () {
+          navItems.forEach(function (i) {
+            i.classList.remove('dp-nav-item--active');
+            i.removeAttribute('aria-current');
+          });
+          item.classList.add('dp-nav-item--active');
+          item.setAttribute('aria-current', 'page');
+        });
+      });
+
+      /* ====================================================
+         ANIMATED INSIGHT BAR ON SCROLL INTO VIEW
+      ==================================================== */
+      var barFill = document.querySelector('.dp-insight-bar-fill');
+
+      if (barFill && 'IntersectionObserver' in window) {
+        var observer = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting) {
+              barFill.style.animation = 'none';
+              // Trigger reflow to restart animation
+              void barFill.offsetWidth;
+              barFill.style.animation = 'dp-bar-grow 1.4s ease-out forwards';
+              observer.disconnect();
+            }
+          });
+        }, { threshold: 0.3 });
+
+        observer.observe(barFill);
+      }
+
+      /* ====================================================
+         TASK PULSE ANIMATION (running task)
+      ==================================================== */
+      var runningTask = document.querySelector('.dp-task--running');
+
+      if (runningTask) {
+        var timer = parseInt(runningTask.querySelector('.dp-task-time').textContent, 10) || 2;
+
+        setInterval(function () {
+          timer++;
+          var timeEl = runningTask.querySelector('.dp-task-time');
+          if (timeEl) {
+            timeEl.textContent = timer + 'm';
+          }
+        }, 60000); // Update every real minute (demo purposes)
+      }
+
+      /* ====================================================
+         MEMORY COUNT COUNTER ANIMATION
+      ==================================================== */
+      function animateCounter(el, target, duration) {
+        var start = 0;
+        var startTime = null;
+
+        function step(timestamp) {
+          if (!startTime) startTime = timestamp;
+          var progress = Math.min((timestamp - startTime) / duration, 1);
+          var eased = 1 - Math.pow(1 - progress, 3);
+          el.textContent = Math.round(start + (target - start) * eased);
+          if (progress < 1) requestAnimationFrame(step);
+        }
+
+        requestAnimationFrame(step);
+      }
+
+      var memCount = document.querySelector('.dp-memory-count span');
+
+      if (memCount && 'IntersectionObserver' in window) {
+        var countObserver = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting) {
+              animateCounter(memCount, 247, 1200);
+              countObserver.disconnect();
+            }
+          });
+        }, { threshold: 0.5 });
+
+        countObserver.observe(memCount);
+      }
+
+      /* ====================================================
+         INSIGHT NUMBER ANIMATION
+      ==================================================== */
+      var insightNum = document.querySelector('.dp-insight-num:not(.dp-insight-num--up)');
+
+      if (insightNum && 'IntersectionObserver' in window) {
+        var numObserver = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting) {
+              animateCounter(insightNum, 247, 1000);
+              numObserver.disconnect();
+            }
+          });
+        }, { threshold: 0.5 });
+
+        numObserver.observe(insightNum);
+      }
+
+    }());
+  </script>
+
+</body>
+</html>

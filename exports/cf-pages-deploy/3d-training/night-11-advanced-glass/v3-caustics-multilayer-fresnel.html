@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 11 V3 — Animated Caustics + Multi-Layer Fresnel Glass</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #060606; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #info {
+    position: fixed; bottom: 20px; left: 20px; z-index: 10;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+    color: rgba(255,255,255,0.5); font-size: 12px; line-height: 1.6;
+  }
+  #info strong { color: rgba(42,147,193,0.8); }
+</style>
+</head>
+<body>
+<div id="info">
+  <strong>Night 11 V3</strong> — Animated Caustics + Multi-Layer Fresnel<br>
+  Voronoi caustics projected on glass surface + 3-layer nested refraction<br>
+  Move mouse to shift light direction
+</div>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050508);
+
+const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0.5, 6);
+
+// ── Caustics Render Target ──
+// Render animated Voronoi caustics to a texture, then project onto glass surfaces
+const causticsRT = new THREE.WebGLRenderTarget(512, 512, {
+  format: THREE.RGBAFormat,
+  minFilter: THREE.LinearFilter,
+  magFilter: THREE.LinearFilter
+});
+const causticsScene = new THREE.Scene();
+const causticsCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+const causticsQuad = new THREE.Mesh(
+  new THREE.PlaneGeometry(2, 2),
+  new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uLightDir: { value: new THREE.Vector2(0.0, 0.0) },
+      uColor1: { value: new THREE.Color(0x2a93c1) },
+      uColor2: { value: new THREE.Color(0xf1420b) }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = vec4(position.xy, 0.0, 1.0);
+      }
+    `,
+    fragmentShader: `
+      varying vec2 vUv;
+      uniform float uTime;
+      uniform vec2 uLightDir;
+      uniform vec3 uColor1;
+      uniform vec3 uColor2;
+
+      // Hash for Voronoi cell centers
+      vec2 hash2(vec2 p) {
+        p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+        return fract(sin(p) * 43758.5453);
+      }
+
+      // Animated Voronoi caustics (3-scale blend with golden ratio)
+      float causticLayer(vec2 p, float t, float scale, float seed) {
+        p *= scale;
+
+        // Wave deformation for organic movement
+        p.x += sin(p.y * 3.1 + t * 0.9 + seed) * 0.15;
+        p.y += cos(p.x * 2.7 + t * 0.7 + seed * 1.3) * 0.15;
+
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+
+        float minD = 8.0;
+        float secondD = 8.0;
+
+        for (int y = -1; y <= 1; y++) {
+          for (int x = -1; x <= 1; x++) {
+            vec2 neighbor = vec2(float(x), float(y));
+            vec2 cellCenter = hash2(i + neighbor);
+
+            // Animate cell centers
+            cellCenter = 0.5 + 0.4 * sin(t * 0.6 + 6.28 * cellCenter + seed);
+
+            float d = length(f - neighbor - cellCenter);
+            if (d < minD) {
+              secondD = minD;
+              minD = d;
+            } else if (d < secondD) {
+              secondD = d;
+            }
+          }
+        }
+
+        // Caustic = bright at cell edges (F2 - F1 Voronoi)
+        float edge = secondD - minD;
+        float caustic = 1.0 - smoothstep(0.02, 0.15, edge);
+        return pow(caustic, 1.8);
+      }
+
+      void main() {
+        vec2 uv = vUv + uLightDir * 0.1;
+        float t = uTime;
+
+        // Three scales with golden ratio (1.618) relationship
+        float c1 = causticLayer(uv, t, 4.0, 0.0);
+        float c2 = causticLayer(uv, t * 0.8, 4.0 * 1.618, 3.14);
+        float c3 = causticLayer(uv, t * 0.6, 4.0 * 0.618, 7.28);
+
+        // Blend: primary + golden + inverse-golden
+        float caustic = c1 * 0.5 + c2 * 0.3 + c3 * 0.2;
+
+        // Color: blue main, orange only at hottest points
+        vec3 color = uColor1 * caustic * 1.8;
+        color += uColor2 * pow(caustic, 3.0) * 0.5; // orange at peaks only
+
+        gl_FragColor = vec4(color, caustic);
+      }
+    `
+  })
+);
+causticsScene.add(causticsQuad);
+
+// ── Multi-Layer Fresnel Glass Orb ──
+// Gap #4: Three nested shells with different IOR, each contributing Fresnel reflections
+// The visual effect is depth -- you see through multiple glass layers
+
+const fresnelGlassVert = `
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  varying vec3 vWorldPos;
+  varying vec2 vUv;
+  varying vec3 vReflect;
+  varying vec3 vRefractR;
+  varying vec3 vRefractG;
+  varying vec3 vRefractB;
+  uniform float uIor;
+  uniform float uDispersion;
+  uniform float uTime;
+
+  void main() {
+    vUv = uv;
+    vec4 worldPos = modelMatrix * vec4(position, 1.0);
+    vWorldPos = worldPos.xyz;
+    vNormal = normalize(normalMatrix * normal);
+    vViewDir = normalize(cameraPosition - worldPos.xyz);
+
+    // Compute reflection + per-channel refraction in vertex shader
+    // (cheaper than fragment, acceptable quality for smooth geometry)
+    vec3 I = -vViewDir;
+    vReflect = reflect(I, vNormal);
+
+    float iorR = uIor - uDispersion;
+    float iorG = uIor;
+    float iorB = uIor + uDispersion;
+
+    vRefractR = refract(I, vNormal, 1.0 / iorR);
+    vRefractG = refract(I, vNormal, 1.0 / iorG);
+    vRefractB = refract(I, vNormal, 1.0 / iorB);
+
+    gl_Position = projectionMatrix * viewMatrix * worldPos;
+  }
+`;
+
+const fresnelGlassFrag = `
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  varying vec3 vWorldPos;
+  varying vec2 vUv;
+  varying vec3 vReflect;
+  varying vec3 vRefractR;
+  varying vec3 vRefractG;
+  varying vec3 vRefractB;
+  uniform float uTime;
+  uniform float uIor;
+  uniform float uFresnelBias;
+  uniform float uFresnelScale;
+  uniform float uFresnelPower;
+  uniform vec3 uTint;
+  uniform float uOpacity;
+  uniform sampler2D uCausticsMap;
+  uniform float uCausticsIntensity;
+  uniform samplerCube uEnvMap;
+
+  void main() {
+    vec3 N = normalize(vNormal);
+    vec3 V = normalize(vViewDir);
+    float NdotV = max(dot(N, V), 0.0);
+
+    // Schlick Fresnel with configurable bias/scale/power
+    float fresnel = uFresnelBias + uFresnelScale * pow(1.0 - NdotV, uFresnelPower);
+    fresnel = clamp(fresnel, 0.0, 1.0);
+
+    // Per-channel refracted environment sampling
+    float envR = textureCube(uEnvMap, vRefractR).r;
+    float envG = textureCube(uEnvMap, vRefractG).g;
+    float envB = textureCube(uEnvMap, vRefractB).b;
+    vec3 refractedColor = vec3(envR, envG, envB) * uTint;
+
+    // Reflected environment
+    vec3 reflectedColor = textureCube(uEnvMap, vReflect).rgb;
+
+    // Fresnel blend: more reflection at grazing, more refraction head-on
+    vec3 glassColor = mix(refractedColor, reflectedColor, fresnel);
+
+    // Animated caustics projected onto surface via UV mapping
+    vec2 causticUV = vUv * 1.5 + vec2(uTime * 0.03, uTime * 0.02);
+    vec4 caustic = texture2D(uCausticsMap, causticUV);
+    glassColor += caustic.rgb * uCausticsIntensity * (1.0 - fresnel);
+
+    // Edge emission (Gleb signature)
+    float edge = pow(1.0 - NdotV, 4.0);
+    glassColor += uTint * edge * 0.5;
+
+    // Interior depth darkening at center
+    float depthDarken = smoothstep(0.0, 0.5, NdotV) * 0.3 + 0.7;
+    glassColor *= depthDarken;
+
+    gl_FragColor = vec4(glassColor, uOpacity + fresnel * (1.0 - uOpacity));
+  }
+`;
+
+// ── Cube Camera for Environment ──
+const cubeRT = new THREE.WebGLCubeRenderTarget(256, {
+  format: THREE.RGBAFormat,
+  generateMipmaps: true,
+  minFilter: THREE.LinearMipmapLinearFilter
+});
+const cubeCamera = new THREE.CubeCamera(0.1, 100, cubeRT);
+scene.add(cubeCamera);
+
+// ── Background: Emissive objects to refract and reflect ──
+const bgGroup = new THREE.Group();
+scene.add(bgGroup);
+
+// Scattered light sources
+for (let i = 0; i < 15; i++) {
+  const theta = (i / 15) * Math.PI * 2;
+  const phi = Math.random() * Math.PI;
+  const r = 4 + Math.random() * 2;
+  const geo = new THREE.SphereGeometry(0.08 + Math.random() * 0.12, 16, 16);
+  const isOrange = Math.random() < 0.3;
+  const mat = new THREE.MeshStandardMaterial({
+    color: isOrange ? 0xf1420b : 0x2a93c1,
+    emissive: isOrange ? 0xf1420b : 0x2a93c1,
+    emissiveIntensity: 2.5
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(
+    r * Math.sin(phi) * Math.cos(theta),
+    r * Math.sin(phi) * Math.sin(theta),
+    r * Math.cos(phi)
+  );
+  bgGroup.add(mesh);
+}
+
+// Glowing rings
+for (let i = 0; i < 4; i++) {
+  const geo = new THREE.TorusGeometry(2.5 + i * 0.5, 0.015, 12, 64);
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x2a93c1,
+    emissive: 0x2a93c1,
+    emissiveIntensity: 1.5 + i * 0.3
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = Math.PI * 0.4 + i * 0.15;
+  mesh.rotation.z = i * 0.3;
+  bgGroup.add(mesh);
+}
+
+// ── Three Nested Glass Shells ──
+// Layer 1: Outer (IOR 1.4, blue tint, high dispersion)
+// Layer 2: Middle (IOR 1.55, subtle tint, medium dispersion)
+// Layer 3: Inner (IOR 1.7, orange tint, low dispersion)
+
+function createGlassShell(radius, segments, ior, dispersion, tint, opacity, causticsIntensity) {
+  const geo = new THREE.SphereGeometry(radius, segments, segments);
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: fresnelGlassVert,
+    fragmentShader: fresnelGlassFrag,
+    uniforms: {
+      uTime: { value: 0 },
+      uIor: { value: ior },
+      uDispersion: { value: dispersion },
+      uFresnelBias: { value: 0.02 },
+      uFresnelScale: { value: 1.0 },
+      uFresnelPower: { value: 3.0 },
+      uTint: { value: new THREE.Color(tint) },
+      uOpacity: { value: opacity },
+      uCausticsMap: { value: causticsRT.texture },
+      uCausticsIntensity: { value: causticsIntensity },
+      uEnvMap: { value: cubeRT.texture }
+    },
+    transparent: true,
+    depthWrite: false,
+    side: THREE.FrontSide
+  });
+  return new THREE.Mesh(geo, mat);
+}
+
+// Outer shell -- large, subtle, maximum dispersion rainbow
+const outerShell = createGlassShell(1.5, 128, 1.40, 0.08, 0x6EB8D9, 0.25, 0.4);
+scene.add(outerShell);
+
+// Middle shell -- medium, balanced
+const midShell = createGlassShell(1.1, 96, 1.55, 0.05, 0x2a93c1, 0.35, 0.6);
+scene.add(midShell);
+
+// Inner shell -- small, dense, orange-hot
+const innerShell = createGlassShell(0.7, 64, 1.70, 0.03, 0xf1420b, 0.5, 0.8);
+scene.add(innerShell);
+
+// Emissive core
+const coreGeo = new THREE.IcosahedronGeometry(0.25, 3);
+const coreMat = new THREE.MeshStandardMaterial({
+  color: 0xffffff,
+  emissive: 0xf1420b,
+  emissiveIntensity: 4.0,
+  roughness: 0.1
+});
+const core = new THREE.Mesh(coreGeo, coreMat);
+scene.add(core);
+
+// ── Caustics Receiver Plane (below the orb) ──
+const receiverGeo = new THREE.PlaneGeometry(6, 6);
+const receiverMat = new THREE.MeshStandardMaterial({
+  color: 0x111122,
+  roughness: 0.8,
+  metalness: 0.1
+});
+const receiver = new THREE.Mesh(receiverGeo, receiverMat);
+receiver.rotation.x = -Math.PI / 2;
+receiver.position.y = -2.2;
+scene.add(receiver);
+
+// Caustics projection on receiver
+const causticsDecal = new THREE.Mesh(
+  new THREE.PlaneGeometry(4, 4),
+  new THREE.MeshBasicMaterial({
+    map: causticsRT.texture,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    opacity: 0.6
+  })
+);
+causticsDecal.rotation.x = -Math.PI / 2;
+causticsDecal.position.y = -2.18;
+scene.add(causticsDecal);
+
+// ── Lighting ──
+const keyLight = new THREE.PointLight(0xffffff, 10, 20);
+keyLight.position.set(3, 4, 4);
+scene.add(keyLight);
+
+const fillLight = new THREE.PointLight(0x2a93c1, 6, 15);
+fillLight.position.set(-3, 1, 3);
+scene.add(fillLight);
+
+const rimLight = new THREE.PointLight(0xf1420b, 5, 15);
+rimLight.position.set(0, -2, -4);
+scene.add(rimLight);
+
+const ambient = new THREE.AmbientLight(0x0a0a15, 0.4);
+scene.add(ambient);
+
+// ── Postprocessing ──
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.7, 0.35, 0.85
+);
+composer.addPass(bloomPass);
+
+// Post-process chromatic aberration
+const caPost = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uIntensity: { value: 0.004 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uIntensity;
+    varying vec2 vUv;
+    void main() {
+      vec2 d = (vUv - 0.5) * length(vUv - 0.5) * uIntensity;
+      float r = texture2D(tDiffuse, vUv + d).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vUv - d).b;
+      gl_FragColor = vec4(r, g, b, 1.0);
+    }
+  `
+};
+composer.addPass(new ShaderPass(caPost));
+
+// Film grain pass
+const grainPass = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uTime: { value: 0 },
+    uAmount: { value: 0.04 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uTime;
+    uniform float uAmount;
+    varying vec2 vUv;
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    void main() {
+      vec4 color = texture2D(tDiffuse, vUv);
+      float grain = hash(vUv * 1000.0 + uTime * 100.0) * uAmount;
+      color.rgb += grain - uAmount * 0.5;
+      gl_FragColor = color;
+    }
+  `
+};
+composer.addPass(new ShaderPass(grainPass));
+
+// ── Mouse ──
+const mouse = { x: 0, y: 0 };
+document.addEventListener('mousemove', (e) => {
+  mouse.x = (e.clientX / window.innerWidth - 0.5) * 2;
+  mouse.y = (e.clientY / window.innerHeight - 0.5) * 2;
+});
+
+// ── Animation ──
+const clock = new THREE.Clock();
+const shellGroup = [outerShell, midShell, innerShell];
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // ── Update caustics texture ──
+  causticsQuad.material.uniforms.uTime.value = t;
+  causticsQuad.material.uniforms.uLightDir.value.set(mouse.x * 0.5, mouse.y * 0.5);
+  renderer.setRenderTarget(causticsRT);
+  renderer.render(causticsScene, causticsCam);
+  renderer.setRenderTarget(null);
+
+  // ── Update env map ──
+  shellGroup.forEach(s => s.visible = false);
+  core.visible = false;
+  cubeCamera.position.set(0, 0, 0);
+  cubeCamera.update(renderer, scene);
+  shellGroup.forEach(s => s.visible = true);
+  core.visible = true;
+
+  // ── Update shell uniforms ──
+  shellGroup.forEach(shell => {
+    shell.material.uniforms.uTime.value = t;
+    shell.material.uniforms.uEnvMap.value = cubeRT.texture;
+  });
+
+  grainPass.uniforms.uTime.value = t;
+
+  // ── Animate shells ──
+  // Each shell rotates at a different rate -- creates parallax depth
+  outerShell.rotation.y = t * 0.05;
+  outerShell.rotation.x = Math.sin(t * 0.07) * 0.08;
+
+  midShell.rotation.y = -t * 0.08;
+  midShell.rotation.z = Math.cos(t * 0.06) * 0.1;
+
+  innerShell.rotation.y = t * 0.12;
+  innerShell.rotation.x = Math.sin(t * 0.1) * 0.12;
+
+  // Core pulse
+  const pulse = 1.0 + Math.sin(t * 1.2) * 0.15;
+  core.scale.setScalar(pulse);
+  coreMat.emissiveIntensity = 3.0 + Math.sin(t * 0.8) * 1.5;
+
+  // Background drift
+  bgGroup.rotation.y = t * 0.02;
+
+  // Camera
+  camera.position.x += (mouse.x * 1.2 - camera.position.x) * 0.025;
+  camera.position.y += (-mouse.y * 0.6 + 0.5 - camera.position.y) * 0.025;
+  camera.lookAt(0, 0, 0);
+
+  composer.render();
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

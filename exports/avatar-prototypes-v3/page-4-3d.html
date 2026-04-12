@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aether Avatars — 3D Collection</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #080a12;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    overflow-x: hidden;
+    padding: 40px 20px;
+  }
+
+  .page-header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  .page-header h1 {
+    font-size: 28px;
+    font-weight: 300;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.9);
+    margin-bottom: 8px;
+  }
+
+  .page-header .subtitle {
+    font-size: 13px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(42,147,193,0.7);
+  }
+
+  .avatar-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    max-width: 640px;
+    width: 100%;
+  }
+
+  .avatar-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .canvas-wrapper {
+    position: relative;
+    width: 250px;
+    height: 250px;
+    border-radius: 16px;
+    overflow: hidden;
+    cursor: none;
+    background: #060810;
+    box-shadow:
+      0 0 0 1px rgba(42,147,193,0.08),
+      0 8px 32px rgba(0,0,0,0.6),
+      0 2px 8px rgba(0,0,0,0.4);
+    transition: box-shadow 0.4s ease;
+  }
+
+  .canvas-wrapper:hover {
+    box-shadow:
+      0 0 0 1px rgba(42,147,193,0.2),
+      0 12px 48px rgba(0,0,0,0.7),
+      0 0 40px rgba(42,147,193,0.08);
+  }
+
+  .canvas-wrapper canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  .avatar-label {
+    font-size: 11px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.4);
+    text-align: center;
+  }
+
+  .avatar-label span {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    color: rgba(255,255,255,0.75);
+    margin-bottom: 3px;
+  }
+
+  /* Custom cursor dot */
+  .cursor-dot {
+    position: fixed;
+    width: 6px;
+    height: 6px;
+    background: rgba(42,147,193,0.8);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: opacity 0.2s;
+    mix-blend-mode: screen;
+  }
+</style>
+</head>
+<body>
+
+<div class="cursor-dot" id="cursorDot"></div>
+
+<div class="page-header">
+  <h1>Aether Avatars</h1>
+  <div class="subtitle">3D Collection &nbsp;/&nbsp; WebGL Rendered</div>
+</div>
+
+<div class="avatar-grid">
+
+  <div class="avatar-cell">
+    <div class="canvas-wrapper" id="wrapper-glass-brain">
+      <canvas id="canvas-glass-brain"></canvas>
+    </div>
+    <div class="avatar-label">
+      <span>Glass Brain</span>
+      Neural Transmission
+    </div>
+  </div>
+
+  <div class="avatar-cell">
+    <div class="canvas-wrapper" id="wrapper-prism">
+      <canvas id="canvas-prism"></canvas>
+    </div>
+    <div class="avatar-label">
+      <span>Holographic Prism</span>
+      Spectral Geometry
+    </div>
+  </div>
+
+  <div class="avatar-cell">
+    <div class="canvas-wrapper" id="wrapper-liquid-metal">
+      <canvas id="canvas-liquid-metal"></canvas>
+    </div>
+    <div class="avatar-label">
+      <span>Liquid Metal Orb</span>
+      Morphic Surface
+    </div>
+  </div>
+
+  <div class="avatar-cell">
+    <div class="canvas-wrapper" id="wrapper-neural">
+      <canvas id="canvas-neural"></canvas>
+    </div>
+    <div class="avatar-label">
+      <span>Neural Constellation</span>
+      3D Network
+    </div>
+  </div>
+
+</div>
+
+<!-- Three.js r128 from CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+// ============================================================
+// GLOBAL MOUSE TRACKING
+// ============================================================
+const mouse = { x: 0, y: 0, nx: 0, ny: 0 };
+const hoveredCanvas = { id: null };
+
+document.addEventListener('mousemove', (e) => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+  document.getElementById('cursorDot').style.left = e.clientX + 'px';
+  document.getElementById('cursorDot').style.top = e.clientY + 'px';
+});
+
+function getCanvasNormalizedMouse(canvas) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    nx: ((mouse.x - rect.left) / rect.width) * 2 - 1,
+    ny: -((mouse.y - rect.top) / rect.height) * 2 + 1,
+    inside: mouse.x >= rect.left && mouse.x <= rect.right && mouse.y >= rect.top && mouse.y <= rect.bottom
+  };
+}
+
+// ============================================================
+// GLSL SHADER UTILITIES
+// ============================================================
+const noiseGLSL = `
+vec3 mod289(vec3 x) { return x - floor(x * (1.0/289.0)) * 289.0; }
+vec4 mod289(vec4 x) { return x - floor(x * (1.0/289.0)) * 289.0; }
+vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+float snoise(vec3 v) {
+  const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+  const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+  vec3 i  = floor(v + dot(v, C.yyy));
+  vec3 x0 = v -   i + dot(i, C.xxx);
+  vec3 g  = step(x0.yzx, x0.xyz);
+  vec3 l  = 1.0 - g;
+  vec3 i1 = min(g.xyz, l.zxy);
+  vec3 i2 = max(g.xyz, l.zxy);
+  vec3 x1 = x0 - i1 + C.xxx;
+  vec3 x2 = x0 - i2 + C.yyy;
+  vec3 x3 = x0 - D.yyy;
+  i = mod289(i);
+  vec4 p = permute(permute(permute(
+    i.z + vec4(0.0, i1.z, i2.z, 1.0))
+    + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+    + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+  float n_ = 0.142857142857;
+  vec3 ns = n_ * D.wyz - D.xzx;
+  vec4 j  = p - 49.0 * floor(p * ns.z * ns.z);
+  vec4 x_ = floor(j * ns.z);
+  vec4 y_ = floor(j - 7.0 * x_);
+  vec4 x  = x_ *ns.x + ns.yyyy;
+  vec4 y  = y_ *ns.x + ns.yyyy;
+  vec4 h  = 1.0 - abs(x) - abs(y);
+  vec4 b0 = vec4(x.xy, y.xy);
+  vec4 b1 = vec4(x.zw, y.zw);
+  vec4 s0 = floor(b0)*2.0 + 1.0;
+  vec4 s1 = floor(b1)*2.0 + 1.0;
+  vec4 sh = -step(h, vec4(0.0));
+  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+  vec3 p0 = vec3(a0.xy, h.x);
+  vec3 p1 = vec3(a0.zw, h.y);
+  vec3 p2 = vec3(a1.xy, h.z);
+  vec3 p3 = vec3(a1.zw, h.w);
+  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+  p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+  m = m * m;
+  return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+}
+`;
+
+// ============================================================
+// AVATAR 1: GLASS BRAIN
+// True glass sphere with internal neural network + Fresnel rim
+// ============================================================
+(function initGlassBrain() {
+  const canvas = document.getElementById('canvas-glass-brain');
+  const wrapper = document.getElementById('wrapper-glass-brain');
+  const W = 500, H = 500; // render at 2x, display at 250px
+  canvas.width = W; canvas.height = H;
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(1);
+  renderer.shadowMap.enabled = false;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x060810);
+
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+  camera.position.set(0, 0, 4.0);
+
+  // --- Outer glass shell with custom Fresnel shader ---
+  const glassVert = `
+    varying vec3 vNormal;
+    varying vec3 vViewPos;
+    varying vec3 vWorldPos;
+    void main() {
+      vNormal = normalize(normalMatrix * normal);
+      vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+      vViewPos = -mvPos.xyz;
+      vWorldPos = (modelMatrix * vec4(position,1.0)).xyz;
+      gl_Position = projectionMatrix * mvPos;
+    }
+  `;
+  const glassFrag = `
+    uniform float uTime;
+    uniform float uHover;
+    varying vec3 vNormal;
+    varying vec3 vViewPos;
+    varying vec3 vWorldPos;
+
+    void main() {
+      vec3 N = normalize(vNormal);
+      vec3 V = normalize(vViewPos);
+      float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.5);
+
+      // Base glass color — PureBrain blue tint
+      vec3 glassColor = vec3(0.165, 0.576, 0.757);
+      vec3 rimColor = mix(vec3(0.165, 0.576, 0.757), vec3(0.945, 0.255, 0.043), uHover);
+
+      // Animated IOR shimmer
+      float iorShimmer = sin(vWorldPos.x * 4.0 + uTime * 0.8) * 0.5 + 0.5;
+      iorShimmer *= sin(vWorldPos.y * 3.5 + uTime * 0.6) * 0.5 + 0.5;
+
+      vec3 col = mix(glassColor * 0.08, rimColor, fresnel);
+      col += glassColor * iorShimmer * 0.04;
+
+      // Specular highlight
+      vec3 lightDir = normalize(vec3(1.2, 1.5, 2.0));
+      vec3 H = normalize(V + lightDir);
+      float spec = pow(max(dot(N, H), 0.0), 120.0);
+      col += vec3(0.6, 0.85, 1.0) * spec * 0.8;
+
+      float alpha = mix(0.08, 0.85, fresnel) + iorShimmer * 0.03;
+      gl_FragColor = vec4(col, alpha);
+    }
+  `;
+
+  const glassMat = new THREE.ShaderMaterial({
+    vertexShader: glassVert,
+    fragmentShader: glassFrag,
+    uniforms: {
+      uTime: { value: 0 },
+      uHover: { value: 0 }
+    },
+    transparent: true,
+    depthWrite: false,
+    side: THREE.FrontSide,
+    blending: THREE.AdditiveBlending
+  });
+
+  const sphere = new THREE.Mesh(new THREE.SphereGeometry(1.1, 96, 96), glassMat);
+  scene.add(sphere);
+
+  // Glass backface (inside shell)
+  const glassBackMat = glassMat.clone();
+  glassBackMat.side = THREE.BackSide;
+  glassBackMat.uniforms = {
+    uTime: glassMat.uniforms.uTime,
+    uHover: glassMat.uniforms.uHover
+  };
+  const sphereBack = new THREE.Mesh(new THREE.SphereGeometry(1.1, 96, 96), glassBackMat);
+  scene.add(sphereBack);
+
+  // --- Internal neural network lines ---
+  const neuralGroup = new THREE.Group();
+  scene.add(neuralGroup);
+
+  const nodeVert = `
+    attribute float aPhase;
+    uniform float uTime;
+    uniform float uHover;
+    varying float vBrightness;
+    void main() {
+      float pulse = sin(uTime * 1.4 + aPhase) * 0.5 + 0.5;
+      vBrightness = pulse;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = mix(3.0, 7.0, pulse) * (1.0 + uHover * 0.6);
+    }
+  `;
+  const nodeFrag = `
+    uniform float uHover;
+    varying float vBrightness;
+    void main() {
+      vec2 uv = gl_PointCoord - 0.5;
+      float d = length(uv);
+      if (d > 0.5) discard;
+      float alpha = (1.0 - d * 2.0) * vBrightness;
+      vec3 col = mix(vec3(0.165, 0.576, 0.757), vec3(0.945, 0.255, 0.043), uHover * 0.5);
+      gl_FragColor = vec4(col, alpha * 0.9);
+    }
+  `;
+
+  // Generate nodes inside the sphere
+  const nodeCount = 28;
+  const nodePositions = [];
+  const nodeGeo = new THREE.BufferGeometry();
+  const positions = [];
+  const phases = [];
+
+  for (let i = 0; i < nodeCount; i++) {
+    // Random points inside sphere (not just on surface)
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    const r = 0.3 + Math.random() * 0.65;
+    const x = r * Math.sin(phi) * Math.cos(theta);
+    const y = r * Math.sin(phi) * Math.sin(theta);
+    const z = r * Math.cos(phi);
+    nodePositions.push(new THREE.Vector3(x, y, z));
+    positions.push(x, y, z);
+    phases.push(Math.random() * Math.PI * 2);
+  }
+
+  nodeGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  nodeGeo.setAttribute('aPhase', new THREE.Float32BufferAttribute(phases, 1));
+
+  const nodeMat = new THREE.ShaderMaterial({
+    vertexShader: nodeVert,
+    fragmentShader: nodeFrag,
+    uniforms: { uTime: { value: 0 }, uHover: { value: 0 } },
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+
+  const nodePoints = new THREE.Points(nodeGeo, nodeMat);
+  neuralGroup.add(nodePoints);
+
+  // Neural connections between nearby nodes
+  const lineMat = new THREE.LineBasicMaterial({
+    color: 0x2a93c1,
+    transparent: true,
+    opacity: 0.18,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+
+  for (let i = 0; i < nodeCount; i++) {
+    for (let j = i + 1; j < nodeCount; j++) {
+      const dist = nodePositions[i].distanceTo(nodePositions[j]);
+      if (dist < 0.55) {
+        const geo = new THREE.BufferGeometry().setFromPoints([nodePositions[i], nodePositions[j]]);
+        neuralGroup.add(new THREE.Line(geo, lineMat));
+      }
+    }
+  }
+
+  // Traveling light pulse along one path
+  const pulseGeo = new THREE.BufferGeometry();
+  const pulseMat = new THREE.PointsMaterial({
+    color: 0xf1420b,
+    size: 0.06,
+    transparent: true,
+    opacity: 0.9,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  // Pick a path of connected nodes
+  const pulsePath = nodePositions.filter((_, i) => i % 4 === 0);
+  const pulsePoints = new THREE.Points(pulseGeo, pulseMat);
+  neuralGroup.add(pulsePoints);
+
+  // Ambient glow sphere inside
+  const glowGeo = new THREE.SphereGeometry(0.5, 32, 32);
+  const glowMat = new THREE.MeshBasicMaterial({
+    color: 0x1144aa,
+    transparent: true,
+    opacity: 0.06,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  neuralGroup.add(new THREE.Mesh(glowGeo, glowMat));
+
+  // Rim light sphere
+  const rimGeo = new THREE.SphereGeometry(1.15, 64, 64);
+  const rimVert = `
+    varying vec3 vNormal;
+    varying vec3 vViewPos;
+    void main() {
+      vNormal = normalize(normalMatrix * normal);
+      vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+      vViewPos = -mvPos.xyz;
+      gl_Position = projectionMatrix * mvPos;
+    }
+  `;
+  const rimFrag = `
+    uniform float uTime;
+    uniform float uHover;
+    varying vec3 vNormal;
+    varying vec3 vViewPos;
+    void main() {
+      vec3 N = normalize(vNormal);
+      vec3 V = normalize(vViewPos);
+      float fresnel = pow(1.0 - max(dot(N,V), 0.0), 4.0);
+      vec3 col = mix(vec3(0.165, 0.576, 0.757), vec3(0.945, 0.255, 0.043), uHover);
+      float breathe = sin(uTime * 1.1) * 0.15 + 0.85;
+      gl_FragColor = vec4(col, fresnel * 0.35 * breathe);
+    }
+  `;
+  const rimMat = new THREE.ShaderMaterial({
+    vertexShader: rimVert,
+    fragmentShader: rimFrag,
+    uniforms: { uTime: { value: 0 }, uHover: { value: 0 } },
+    transparent: true,
+    depthWrite: false,
+    side: THREE.BackSide,
+    blending: THREE.AdditiveBlending
+  });
+  scene.add(new THREE.Mesh(rimGeo, rimMat));
+
+  // Collect all uniforms that need uTime/uHover
+  const avatar1Uniforms = [
+    glassMat.uniforms, glassBackMat.uniforms,
+    nodeMat.uniforms, rimMat.uniforms
+  ];
+
+  let hoverVal = 0;
+  let rotX = 0, rotY = 0;
+  let targetRotX = 0, targetRotY = 0;
+
+  function animate1(time) {
+    requestAnimationFrame(animate1);
+    const t = time * 0.001;
+    const m = getCanvasNormalizedMouse(canvas);
+
+    if (m.inside) {
+      hoverVal = Math.min(1, hoverVal + 0.04);
+      targetRotX = m.ny * 0.6;
+      targetRotY = m.nx * 0.6;
+    } else {
+      hoverVal = Math.max(0, hoverVal - 0.02);
+      targetRotX = 0;
+      targetRotY = 0;
+    }
+
+    rotX += (targetRotX - rotX) * 0.08;
+    rotY += (targetRotY - rotY) * 0.08;
+
+    const baseSpeed = 0.18 + hoverVal * 0.35;
+    sphere.rotation.y = t * baseSpeed + rotY;
+    sphere.rotation.x = rotX * 0.5;
+    sphereBack.rotation.y = sphere.rotation.y;
+    sphereBack.rotation.x = sphere.rotation.x;
+    neuralGroup.rotation.y = t * 0.12 + rotY * 0.7;
+    neuralGroup.rotation.x = rotX * 0.4;
+
+    // Traveling pulse
+    const pathIdx = (t * 0.5) % (pulsePath.length - 1);
+    const a = Math.floor(pathIdx), b = Math.ceil(pathIdx) % pulsePath.length;
+    const frac = pathIdx - a;
+    if (pulsePath[a] && pulsePath[b]) {
+      const pPos = new THREE.Vector3().lerpVectors(pulsePath[a], pulsePath[b], frac);
+      pulseGeo.setAttribute('position', new THREE.Float32BufferAttribute([pPos.x, pPos.y, pPos.z], 3));
+      pulseGeo.attributes.position.needsUpdate = true;
+    }
+
+    for (const u of avatar1Uniforms) {
+      u.uTime.value = t;
+      u.uHover.value = hoverVal;
+    }
+
+    renderer.render(scene, camera);
+  }
+  requestAnimationFrame(animate1);
+})();
+
+// ============================================================
+// AVATAR 2: HOLOGRAPHIC PRISM (Icosahedron)
+// Wireframe + solid blend, rainbow holographic surface, orbiting particles
+// ============================================================
+(function initHoloPrism() {
+  const canvas = document.getElementById('canvas-prism');
+  const W = 500, H = 500;
+  canvas.width = W; canvas.height = H;
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(1);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x060810);
+
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+  camera.position.set(0, 0, 4.5);
+
+  const icoGeo = new THREE.IcosahedronGeometry(1.1, 1);
+
+  // Holographic surface — rainbow shift by face normal angle + time
+  const holoVert = `
+    varying vec3 vNormal;
+    varying vec3 vViewPos;
+    varying vec3 vWorldPos;
+    varying vec2 vUv;
+    void main() {
+      vNormal = normalize(normalMatrix * normal);
+      vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+      vViewPos = -mvPos.xyz;
+      vWorldPos = (modelMatrix * vec4(position,1.0)).xyz;
+      vUv = uv;
+      gl_Position = projectionMatrix * mvPos;
+    }
+  `;
+  const holoFrag = `
+    uniform float uTime;
+    uniform float uHover;
+    varying vec3 vNormal;
+    varying vec3 vViewPos;
+    varying vec3 vWorldPos;
+
+    vec3 hsv2rgb(vec3 c) {
+      vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+      vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+      return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+    }
+
+    void main() {
+      vec3 N = normalize(vNormal);
+      vec3 V = normalize(vViewPos);
+      float fresnel = pow(1.0 - max(dot(N, V), 0.0), 2.0);
+
+      // Holographic rainbow — shifts with viewing angle + time
+      float hue = fract(dot(N, vec3(0.5, 0.3, 0.7)) * 0.8 + uTime * 0.07 + fresnel * 0.6);
+      // Blend toward PureBrain blue when not hovering
+      float pbHue = 0.57; // blue
+      float finalHue = mix(pbHue + sin(uTime * 0.3) * 0.05, hue, 0.4 + uHover * 0.5);
+      float sat = 0.85 + fresnel * 0.15;
+      float val = 0.3 + fresnel * 0.6;
+
+      vec3 col = hsv2rgb(vec3(finalHue, sat, val));
+
+      // Specular
+      vec3 lightDir = normalize(vec3(1.0, 2.0, 2.5));
+      vec3 H = normalize(V + lightDir);
+      float spec = pow(max(dot(N, H), 0.0), 60.0);
+      col += vec3(0.9, 0.95, 1.0) * spec * 0.6;
+
+      float alpha = mix(0.25, 0.85, fresnel) + 0.1;
+      gl_FragColor = vec4(col, alpha);
+    }
+  `;
+
+  const holoMat = new THREE.ShaderMaterial({
+    vertexShader: holoVert,
+    fragmentShader: holoFrag,
+    uniforms: { uTime: { value: 0 }, uHover: { value: 0 } },
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending
+  });
+
+  const icoMesh = new THREE.Mesh(icoGeo, holoMat);
+  scene.add(icoMesh);
+
+  // Wireframe overlay
+  const wireVert = `
+    void main() {
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `;
+  const wireFrag = `
+    uniform float uTime;
+    uniform float uHover;
+    void main() {
+      float alpha = 0.28 + uHover * 0.3;
+      vec3 col = mix(vec3(0.165, 0.576, 0.757), vec3(0.945, 0.255, 0.043), uHover * 0.4);
+      gl_FragColor = vec4(col, alpha);
+    }
+  `;
+  const wireMat = new THREE.ShaderMaterial({
+    vertexShader: wireVert,
+    fragmentShader: wireFrag,
+    uniforms: { uTime: { value: 0 }, uHover: { value: 0 } },
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    wireframe: true
+  });
+
+  const wireIco = new THREE.Mesh(icoGeo, wireMat);
+  scene.add(wireIco);
+
+  // Orbiting particles around the icosahedron
+  const orbitCount = 60;
+  const orbitGeo = new THREE.BufferGeometry();
+  const orbitPos = new Float32Array(orbitCount * 3);
+  const orbitPhase = new Float32Array(orbitCount);
+  const orbitRadius = new Float32Array(orbitCount);
+  const orbitInclination = new Float32Array(orbitCount);
+
+  for (let i = 0; i < orbitCount; i++) {
+    orbitPhase[i] = (i / orbitCount) * Math.PI * 2;
+    orbitRadius[i] = 1.5 + Math.random() * 0.7;
+    orbitInclination[i] = Math.random() * Math.PI;
+  }
+  orbitGeo.setAttribute('position', new THREE.BufferAttribute(orbitPos, 3));
+
+  const orbitVert2 = `
+    attribute float aSize;
+    void main() {
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = 2.5;
+    }
+  `;
+  const orbitFrag2 = `
+    uniform float uHover;
+    void main() {
+      vec2 uv = gl_PointCoord - 0.5;
+      float d = length(uv);
+      if (d > 0.5) discard;
+      float alpha = (1.0 - d * 2.0) * (0.5 + uHover * 0.4);
+      vec3 col = mix(vec3(0.165, 0.576, 0.757), vec3(0.945, 0.255, 0.043), uHover * 0.5);
+      gl_FragColor = vec4(col, alpha);
+    }
+  `;
+
+  const orbitMat = new THREE.ShaderMaterial({
+    vertexShader: orbitVert2,
+    fragmentShader: orbitFrag2,
+    uniforms: { uTime: { value: 0 }, uHover: { value: 0 } },
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+
+  const orbitPoints = new THREE.Points(orbitGeo, orbitMat);
+  scene.add(orbitPoints);
+
+  // Background particle cloud (depth-of-field blur effect via size)
+  const bgCount = 80;
+  const bgGeo = new THREE.BufferGeometry();
+  const bgPos = [];
+  for (let i = 0; i < bgCount; i++) {
+    bgPos.push((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 4 - 1);
+  }
+  bgGeo.setAttribute('position', new THREE.Float32BufferAttribute(bgPos, 3));
+  const bgMat = new THREE.PointsMaterial({
+    color: 0x2a93c1, size: 0.025, transparent: true, opacity: 0.2,
+    blending: THREE.AdditiveBlending, depthWrite: false
+  });
+  scene.add(new THREE.Points(bgGeo, bgMat));
+
+  let hoverVal = 0;
+  let rotX = 0, rotY = 0;
+  let targetRotX = 0, targetRotY = 0;
+
+  function animate2(time) {
+    requestAnimationFrame(animate2);
+    const t = time * 0.001;
+    const m = getCanvasNormalizedMouse(canvas);
+
+    if (m.inside) {
+      hoverVal = Math.min(1, hoverVal + 0.04);
+      targetRotX = m.ny * 0.5;
+      targetRotY = m.nx * 0.5;
+    } else {
+      hoverVal = Math.max(0, hoverVal - 0.025);
+      targetRotX = 0;
+      targetRotY = 0;
+    }
+
+    rotX += (targetRotX - rotX) * 0.07;
+    rotY += (targetRotY - rotY) * 0.07;
+
+    icoMesh.rotation.y = t * 0.3 + rotY;
+    icoMesh.rotation.x = t * 0.15 + rotX;
+    icoMesh.rotation.z = t * 0.08;
+    wireIco.rotation.copy(icoMesh.rotation);
+
+    // Update orbiting particles
+    const speed = 0.4 + hoverVal * 0.5;
+    const orbitPosArr = orbitGeo.attributes.position.array;
+    for (let i = 0; i < orbitCount; i++) {
+      const angle = orbitPhase[i] + t * speed * (0.6 + i * 0.006);
+      const inc = orbitInclination[i];
+      const r = orbitRadius[i];
+      orbitPosArr[i * 3]     = r * Math.cos(angle) * Math.sin(inc);
+      orbitPosArr[i * 3 + 1] = r * Math.cos(inc) * 0.7;
+      orbitPosArr[i * 3 + 2] = r * Math.sin(angle) * Math.sin(inc);
+    }
+    orbitGeo.attributes.position.needsUpdate = true;
+
+    holoMat.uniforms.uTime.value = t;
+    holoMat.uniforms.uHover.value = hoverVal;
+    wireMat.uniforms.uTime.value = t;
+    wireMat.uniforms.uHover.value = hoverVal;
+    orbitMat.uniforms.uHover.value = hoverVal;
+
+    renderer.render(scene, camera);
+  }
+  requestAnimationFrame(animate2);
+})();
+
+// ============================================================
+// AVATAR 3: LIQUID METAL ORB
+// Morphing metallic sphere with noise-driven vertex displacement
+// Environment reflections, specular highlights, organic flow
+// ============================================================
+(function initLiquidMetal() {
+  const canvas = document.getElementById('canvas-liquid-metal');
+  const W = 500, H = 500;
+  canvas.width = W; canvas.height = H;
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(1);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.4;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x060810);
+
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+  camera.position.set(0, 0, 3.8);
+
+  // Liquid metal vertex displacement shader
+  const metalVert = `
+    ${noiseGLSL}
+    uniform float uTime;
+    uniform float uHover;
+    varying vec3 vNormal;
+    varying vec3 vViewPos;
+    varying vec3 vWorldPos;
+    varying float vDisplace;
+
+    void main() {
+      vec3 pos = position;
+      vec3 n = normalize(pos);
+
+      // Multi-octave noise displacement (T-1000 morph)
+      float speed = 0.5 + uHover * 0.8;
+      float d1 = snoise(n * 2.2 + uTime * speed * 0.4) * 0.18;
+      float d2 = snoise(n * 4.5 + uTime * speed * 0.7) * 0.08;
+      float d3 = snoise(n * 9.0 + uTime * speed * 1.1) * 0.03;
+      float displace = d1 + d2 + d3;
+      vDisplace = displace;
+
+      pos += n * displace;
+      vWorldPos = (modelMatrix * vec4(pos, 1.0)).xyz;
+
+      // Recompute normal for shading
+      vec3 tangent = normalize(cross(n, vec3(0.0, 1.0, 0.0001)));
+      vec3 bitangent = normalize(cross(n, tangent));
+      float eps = 0.02;
+      vec3 n2 = n + tangent * eps;
+      vec3 n3 = n + bitangent * eps;
+      float d2a = snoise(n2 * 2.2 + uTime * speed * 0.4) * 0.18 + snoise(n2 * 4.5 + uTime * speed * 0.7) * 0.08;
+      float d3a = snoise(n3 * 2.2 + uTime * speed * 0.4) * 0.18 + snoise(n3 * 4.5 + uTime * speed * 0.7) * 0.08;
+      vec3 p2 = (n + tangent * eps) * (1.0 + d2a);
+      vec3 p3 = (n + bitangent * eps) * (1.0 + d3a);
+      vec3 newNormal = normalize(cross(p2 - pos, p3 - pos));
+      vNormal = normalize(normalMatrix * newNormal);
+
+      vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+      vViewPos = -mvPos.xyz;
+      gl_Position = projectionMatrix * mvPos;
+    }
+  `;
+
+  const metalFrag = `
+    uniform float uTime;
+    uniform float uHover;
+    varying vec3 vNormal;
+    varying vec3 vViewPos;
+    varying vec3 vWorldPos;
+    varying float vDisplace;
+
+    void main() {
+      vec3 N = normalize(vNormal);
+      vec3 V = normalize(vViewPos);
+      vec3 R = reflect(-V, N);
+
+      // Environment map simulation — gradient sky/ground
+      float envY = R.y * 0.5 + 0.5;
+      vec3 envTop = vec3(0.05, 0.12, 0.22);
+      vec3 envBot = vec3(0.02, 0.04, 0.08);
+      vec3 envColor = mix(envBot, envTop, envY);
+
+      // PureBrain blue/orange light sources
+      vec3 blueLight = vec3(0.165, 0.576, 0.757);
+      vec3 orangeLight = vec3(0.945, 0.255, 0.043);
+
+      vec3 lightDir1 = normalize(vec3(-1.5, 1.0, 2.0)); // blue
+      vec3 lightDir2 = normalize(vec3(2.0, -0.5, 1.5)); // orange
+
+      float diff1 = max(dot(N, lightDir1), 0.0);
+      float diff2 = max(dot(N, lightDir2), 0.0) * uHover;
+
+      vec3 H1 = normalize(V + lightDir1);
+      vec3 H2 = normalize(V + lightDir2);
+      float spec1 = pow(max(dot(N, H1), 0.0), 80.0);
+      float spec2 = pow(max(dot(N, H2), 0.0), 80.0) * uHover;
+
+      // Metallic reflectance
+      float metalness = 0.95;
+      vec3 baseColor = vec3(0.12, 0.13, 0.16);
+
+      // Fresnel for reflections
+      float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+
+      vec3 col = baseColor;
+      col += envColor * metalness * (0.4 + fresnel * 0.5);
+      col += blueLight * diff1 * 0.35;
+      col += orangeLight * diff2 * 0.5;
+      col += blueLight * spec1 * 0.9;
+      col += orangeLight * spec2 * 1.2;
+
+      // Displacement-based color variation (mercury shimmer)
+      float shimmer = (vDisplace + 0.3) / 0.6;
+      col += vec3(0.165, 0.576, 0.757) * shimmer * 0.12;
+
+      // Rim glow
+      col += mix(blueLight, orangeLight, uHover * 0.6) * fresnel * 0.4;
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `;
+
+  const metalMat = new THREE.ShaderMaterial({
+    vertexShader: metalVert,
+    fragmentShader: metalFrag,
+    uniforms: { uTime: { value: 0 }, uHover: { value: 0 } }
+  });
+
+  const metalSphere = new THREE.Mesh(new THREE.SphereGeometry(1.05, 128, 128), metalMat);
+  scene.add(metalSphere);
+
+  // Blue fill light
+  const blueLight = new THREE.PointLight(0x2a93c1, 2.0, 8);
+  blueLight.position.set(-2, 1.5, 2);
+  scene.add(blueLight);
+
+  const orangeLight2 = new THREE.PointLight(0xf1420b, 0, 8);
+  orangeLight2.position.set(2, -1, 2);
+  scene.add(orangeLight2);
+
+  // Reflection plane (floor)
+  const floorGeo = new THREE.PlaneGeometry(6, 6);
+  const floorMat = new THREE.MeshBasicMaterial({
+    color: 0x0a0d1a, transparent: true, opacity: 0.0
+  });
+  const floor = new THREE.Mesh(floorGeo, floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -1.4;
+  scene.add(floor);
+
+  let hoverVal = 0;
+  let rotX = 0, rotY = 0;
+  let targetRotX = 0, targetRotY = 0;
+
+  function animate3(time) {
+    requestAnimationFrame(animate3);
+    const t = time * 0.001;
+    const m = getCanvasNormalizedMouse(canvas);
+
+    if (m.inside) {
+      hoverVal = Math.min(1, hoverVal + 0.04);
+      targetRotX = m.ny * 0.3;
+      targetRotY = m.nx * 0.3;
+      orangeLight2.intensity = hoverVal * 2.5;
+    } else {
+      hoverVal = Math.max(0, hoverVal - 0.025);
+      targetRotX = 0;
+      targetRotY = 0;
+      orangeLight2.intensity = hoverVal * 2.5;
+    }
+
+    rotX += (targetRotX - rotX) * 0.06;
+    rotY += (targetRotY - rotY) * 0.06;
+
+    // Slow idle rotation — morphing handles the visual interest
+    metalSphere.rotation.y = t * 0.15 + rotY;
+    metalSphere.rotation.x = rotX * 0.5;
+
+    metalMat.uniforms.uTime.value = t;
+    metalMat.uniforms.uHover.value = hoverVal;
+
+    renderer.render(scene, camera);
+  }
+  requestAnimationFrame(animate3);
+})();
+
+// ============================================================
+// AVATAR 4: NEURAL CONSTELLATION 3D
+// 3D network of nodes + connections, data-flow particles, true perspective
+// ============================================================
+(function initNeuralConst() {
+  const canvas = document.getElementById('canvas-neural');
+  const W = 500, H = 500;
+  canvas.width = W; canvas.height = H;
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(1);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x060810);
+
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+  camera.position.set(0, 0, 4.0);
+
+  // Node generation — true 3D positions
+  const NODE_COUNT = 32;
+  const nodePositions = [];
+  const nodePhases = [];
+  const nodeSizes = [];
+
+  for (let i = 0; i < NODE_COUNT; i++) {
+    // Organic 3D distribution — weighted toward center
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    const r = Math.pow(Math.random(), 0.5) * 1.6;
+    const x = r * Math.sin(phi) * Math.cos(theta);
+    const y = r * Math.sin(phi) * Math.sin(theta);
+    const z = r * Math.cos(phi);
+    nodePositions.push(new THREE.Vector3(x, y, z));
+    nodePhases.push(Math.random() * Math.PI * 2);
+    nodeSizes.push(0.04 + Math.random() * 0.06); // varies by importance
+  }
+
+  // Node spheres — actual 3D meshes for true perspective depth
+  const nodeGroup = new THREE.Group();
+  scene.add(nodeGroup);
+
+  const nodeMeshes = [];
+  const nodeBaseColors = [];
+  const nodeGlowMeshes = [];
+
+  const nodeVert = `
+    varying vec3 vNormal;
+    varying vec3 vViewPos;
+    void main() {
+      vNormal = normalize(normalMatrix * normal);
+      vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+      vViewPos = -mvPos.xyz;
+      gl_Position = projectionMatrix * mvPos;
+    }
+  `;
+  const nodeFrag = `
+    uniform vec3 uColor;
+    uniform float uBrightness;
+    varying vec3 vNormal;
+    varying vec3 vViewPos;
+    void main() {
+      vec3 N = normalize(vNormal);
+      vec3 V = normalize(vViewPos);
+      float fresnel = pow(1.0 - max(dot(N,V), 0.0), 2.0);
+      vec3 col = uColor * uBrightness;
+      col += vec3(0.8, 0.9, 1.0) * fresnel * 0.4 * uBrightness;
+      gl_FragColor = vec4(col, 0.85 + fresnel * 0.15);
+    }
+  `;
+
+  for (let i = 0; i < NODE_COUNT; i++) {
+    const mat = new THREE.ShaderMaterial({
+      vertexShader: nodeVert,
+      fragmentShader: nodeFrag,
+      uniforms: {
+        uColor: { value: new THREE.Color(0x2a93c1) },
+        uBrightness: { value: 0.7 }
+      },
+      transparent: true,
+      depthWrite: true
+    });
+
+    const size = nodeSizes[i];
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, 12, 12), mat);
+    mesh.position.copy(nodePositions[i]);
+    nodeGroup.add(mesh);
+    nodeMeshes.push(mesh);
+    nodeBaseColors.push(new THREE.Color(0x2a93c1));
+
+    // Glow sprite around each node
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: 0x2a93c1, transparent: true, opacity: 0.12,
+      blending: THREE.AdditiveBlending, depthWrite: false
+    });
+    const glowMesh = new THREE.Mesh(new THREE.SphereGeometry(size * 2.5, 8, 8), glowMat);
+    glowMesh.position.copy(nodePositions[i]);
+    nodeGroup.add(glowMesh);
+    nodeGlowMeshes.push(glowMesh);
+  }
+
+  // Connections between nearby nodes
+  const CONNECTION_DIST = 0.85;
+  const connections = []; // [{from, to, lineMesh, glowMat}]
+  const connectionGroup = new THREE.Group();
+  scene.add(connectionGroup);
+
+  for (let i = 0; i < NODE_COUNT; i++) {
+    for (let j = i + 1; j < NODE_COUNT; j++) {
+      const dist = nodePositions[i].distanceTo(nodePositions[j]);
+      if (dist < CONNECTION_DIST) {
+        const geo = new THREE.BufferGeometry().setFromPoints([nodePositions[i], nodePositions[j]]);
+        const mat = new THREE.LineBasicMaterial({
+          color: 0x2a93c1,
+          transparent: true,
+          opacity: 0.12,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false
+        });
+        const line = new THREE.Line(geo, mat);
+        connectionGroup.add(line);
+        connections.push({ from: i, to: j, mat, dist });
+      }
+    }
+  }
+
+  // Data-flow particles — travel along connections
+  const PULSE_COUNT = 12;
+  const pulseGroup = new THREE.Group();
+  scene.add(pulseGroup);
+
+  const pulseMeshes = [];
+  const pulseStates = [];
+
+  for (let i = 0; i < PULSE_COUNT; i++) {
+    const connIdx = Math.floor(Math.random() * connections.length);
+    const pulseMat = new THREE.MeshBasicMaterial({
+      color: i % 3 === 0 ? 0xf1420b : 0x2a93c1,
+      transparent: true, opacity: 0.95,
+      blending: THREE.AdditiveBlending, depthWrite: false
+    });
+    const pulseMesh = new THREE.Mesh(new THREE.SphereGeometry(0.028, 6, 6), pulseMat);
+    pulseGroup.add(pulseMesh);
+    pulseMeshes.push(pulseMesh);
+    pulseStates.push({
+      connIdx,
+      t: Math.random(),
+      speed: 0.3 + Math.random() * 0.4,
+      color: i % 3 === 0 ? 0xf1420b : 0x2a93c1
+    });
+  }
+
+  let hoverVal = 0;
+  let rotX = 0, rotY = 0;
+  let targetRotX = 0, targetRotY = 0;
+  let mouseWorld = new THREE.Vector3(0, 0, 0);
+
+  const raycaster = new THREE.Raycaster();
+  const mouseVec = new THREE.Vector2();
+
+  function animate4(time) {
+    requestAnimationFrame(animate4);
+    const t = time * 0.001;
+    const m = getCanvasNormalizedMouse(canvas);
+
+    if (m.inside) {
+      hoverVal = Math.min(1, hoverVal + 0.035);
+      targetRotX = m.ny * 0.45;
+      targetRotY = m.nx * 0.45;
+    } else {
+      hoverVal = Math.max(0, hoverVal - 0.02);
+      targetRotX = 0;
+      targetRotY = 0;
+    }
+
+    rotX += (targetRotX - rotX) * 0.06;
+    rotY += (targetRotY - rotY) * 0.06;
+
+    const rotSpeed = 0.12 + hoverVal * 0.12;
+    nodeGroup.rotation.y = t * rotSpeed + rotY;
+    nodeGroup.rotation.x = t * 0.05 + rotX;
+    connectionGroup.rotation.copy(nodeGroup.rotation);
+    pulseGroup.rotation.copy(nodeGroup.rotation);
+
+    // Animate nodes — pulse brightness + size
+    for (let i = 0; i < NODE_COUNT; i++) {
+      const phase = nodePhases[i];
+      const pulse = Math.sin(t * 1.8 + phase) * 0.5 + 0.5;
+
+      // Distance from mouse for hover brightening
+      const worldPos = nodePositions[i].clone().applyMatrix4(nodeGroup.matrixWorld);
+      const screenX = (worldPos.x / worldPos.z + 1) * 0.5; // rough screen projection
+      const distFromMouse = m.inside
+        ? Math.sqrt((m.nx - (worldPos.x / 1.5)) ** 2 + (m.ny - (worldPos.y / 1.5)) ** 2)
+        : 99;
+      const proximity = Math.max(0, 1 - distFromMouse * 2.5) * hoverVal;
+
+      const brightness = 0.5 + pulse * 0.4 + proximity * 0.6;
+      nodeMeshes[i].material.uniforms.uBrightness.value = brightness;
+
+      // Color shift on hover proximity
+      if (proximity > 0.1) {
+        nodeMeshes[i].material.uniforms.uColor.value.set(0xf1420b);
+      } else {
+        nodeMeshes[i].material.uniforms.uColor.value.set(0x2a93c1);
+      }
+
+      // Glow pulse
+      nodeGlowMeshes[i].material.opacity = 0.08 + pulse * 0.15 + proximity * 0.25;
+      const glowScale = 1.0 + pulse * 0.3 + proximity * 0.5;
+      nodeGlowMeshes[i].scale.setScalar(glowScale);
+    }
+
+    // Animate connections — brightness by node activity
+    for (const conn of connections) {
+      const b1 = nodeMeshes[conn.from].material.uniforms.uBrightness.value;
+      const b2 = nodeMeshes[conn.to].material.uniforms.uBrightness.value;
+      conn.mat.opacity = Math.min(b1, b2) * 0.18;
+    }
+
+    // Animate data pulses
+    const pulseSpeed = 1.0 + hoverVal * 1.0;
+    for (let i = 0; i < PULSE_COUNT; i++) {
+      const state = pulseStates[i];
+      state.t += state.speed * 0.016 * pulseSpeed;
+      if (state.t > 1) {
+        state.t = 0;
+        // Pick a new connection
+        state.connIdx = Math.floor(Math.random() * connections.length);
+      }
+      const conn = connections[state.connIdx];
+      if (conn) {
+        const fromPos = nodePositions[conn.from];
+        const toPos = nodePositions[conn.to];
+        const pos = new THREE.Vector3().lerpVectors(fromPos, toPos, state.t);
+        pulseMeshes[i].position.copy(pos);
+        pulseMeshes[i].material.opacity = Math.sin(state.t * Math.PI) * 0.9;
+      }
+    }
+
+    renderer.render(scene, camera);
+  }
+  requestAnimationFrame(animate4);
+})();
+
+// Custom cursor tracking
+document.addEventListener('mouseenter', () => {
+  document.getElementById('cursorDot').style.opacity = '1';
+});
+document.addEventListener('mouseleave', () => {
+  document.getElementById('cursorDot').style.opacity = '0';
+});
+</script>
+</body>
+</html>

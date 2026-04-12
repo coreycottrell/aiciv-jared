@@ -1,0 +1,4650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pure Technology — Team Task Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* =====================================================
+       RESET & BASE
+    ===================================================== */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --pb-blue: #2a93c1;
+      --pb-blue-light: #3db8f5;
+      --pb-blue-dark: #1a6a8f;
+      --pb-orange: #f1420b;
+      --pb-orange-light: #ff6a3d;
+      --pb-green: #22c55e;
+      --pb-yellow: #f59e0b;
+      --pb-purple: #8b5cf6;
+      --pb-bg: #0a0e1a;
+      --pb-surface: #111827;
+      --pb-surface-2: #1a2535;
+      --pb-surface-3: #1f2d40;
+      --pb-border: rgba(42, 147, 193, 0.15);
+      --pb-border-hover: rgba(42, 147, 193, 0.40);
+      --pb-text: #e6edf3;
+      --pb-text-muted: #7d8fa3;
+      --pb-text-dim: #4a5a6e;
+      --pb-radius: 12px;
+      --pb-radius-sm: 8px;
+      --pb-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      --pb-glow-blue: 0 0 24px rgba(42, 147, 193, 0.2);
+      --pb-glow-orange: 0 0 24px rgba(241, 66, 11, 0.2);
+      --transition: 0.22s ease;
+      /* Legacy CSS vars for hub styles */
+      --bg-primary: #0d1117;
+      --bg-secondary: #161b22;
+      --bg-tertiary: #1c2128;
+      --bg-card: #1e242d;
+      --bg-hover: #252c36;
+      --text-primary: #e6edf3;
+      --text-secondary: #8b949e;
+      --text-muted: #6e7681;
+      --border-color: #30363d;
+      --border-light: #21262d;
+    }
+
+    html {
+      font-family: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--pb-text);
+      background: var(--pb-bg);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      min-height: 100vh;
+      background: var(--pb-bg);
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--pb-surface); }
+    ::-webkit-scrollbar-thumb { background: var(--pb-border-hover); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--pb-blue); }
+
+    /* =====================================================
+       3D NEURAL LOGIN SCREEN
+    ===================================================== */
+
+    /* Full-screen canvas background */
+    .neural-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 0;
+      pointer-events: none;
+      display: block;
+    }
+
+    /* Login screen wrapper */
+    #login-screen {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 24px 16px;
+    }
+
+    /* Glass-morphism login card */
+    .login-card {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      max-width: 440px;
+      background: rgba(13, 17, 23, 0.78);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+      border: 1px solid rgba(42, 147, 193, 0.22);
+      border-radius: 24px;
+      padding: 44px 40px 36px;
+      box-shadow:
+        0 0 0 1px rgba(241, 66, 11, 0.06),
+        0 8px 40px rgba(0, 0, 0, 0.65),
+        0 0 60px rgba(42, 147, 193, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.65s ease, transform 0.65s ease;
+    }
+
+    .login-card--visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Top edge highlight */
+    .login-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 20%;
+      right: 20%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(42, 147, 193, 0.5), rgba(241, 66, 11, 0.3), transparent);
+      border-radius: 50%;
+    }
+
+    /* ---- Animated Aether Orb ---- */
+    @keyframes aetherPulse {
+      0%, 100% { transform: translate(-50%, -50%) scale(1); }
+      50% { transform: translate(-50%, -50%) scale(1.08); }
+    }
+    @keyframes aetherGlow {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+    @keyframes aetherRingRotate {
+      from { transform: translate(-50%, -50%) rotate(0deg); }
+      to { transform: translate(-50%, -50%) rotate(360deg); }
+    }
+    @keyframes aetherRingRotate2 {
+      from { transform: translate(-50%, -50%) rotate(0deg); }
+      to { transform: translate(-50%, -50%) rotate(-360deg); }
+    }
+    @keyframes aetherOrbit1 {
+      from { transform: rotate(0deg) translateX(22px) rotate(0deg); }
+      to { transform: rotate(360deg) translateX(22px) rotate(-360deg); }
+    }
+    @keyframes aetherOrbit2 {
+      from { transform: rotate(120deg) translateX(19px) rotate(-120deg); }
+      to { transform: rotate(480deg) translateX(19px) rotate(-480deg); }
+    }
+    @keyframes aetherOrbit3 {
+      from { transform: rotate(240deg) translateX(16px) rotate(-240deg); }
+      to { transform: rotate(600deg) translateX(16px) rotate(-600deg); }
+    }
+    @keyframes orbFloat {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-6px); }
+    }
+    @keyframes statusPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(42, 147, 193, 0.6); }
+      50% { box-shadow: 0 0 0 5px rgba(42, 147, 193, 0); }
+    }
+    @keyframes shimmer {
+      0% { background-position: -200% center; }
+      100% { background-position: 200% center; }
+    }
+    @keyframes spinnerRotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes loginFadeOut {
+      from { opacity: 1; transform: scale(1); }
+      to { opacity: 0; transform: scale(1.04); }
+    }
+    @keyframes dashboardFadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .login-orb-wrapper {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 20px;
+      animation: orbFloat 4s ease-in-out infinite;
+    }
+
+    .aether-orb {
+      position: relative;
+      width: 84px;
+      height: 84px;
+      border-radius: 50%;
+    }
+
+    .aether-orb__core {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 60%;
+      height: 60%;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #f1420b 0%, #ed6626 30%, #2a93c1 70%, #3a60ab 100%);
+      box-shadow:
+        0 0 16px rgba(241, 66, 11, 0.6),
+        0 0 32px rgba(42, 147, 193, 0.3),
+        inset 0 0 10px rgba(255, 255, 255, 0.2);
+      animation: aetherPulse 4s ease-in-out infinite;
+    }
+
+    .aether-orb__glow {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 90%;
+      height: 90%;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(241, 66, 11, 0.3) 0%, transparent 70%);
+      animation: aetherGlow 4s ease-in-out infinite;
+    }
+
+    .aether-orb__ring {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      border: 1.5px solid rgba(42, 147, 193, 0.4);
+      animation: aetherRingRotate 8s linear infinite;
+    }
+
+    .aether-orb__ring::before {
+      content: '';
+      position: absolute;
+      top: -4px;
+      left: 50%;
+      width: 6px;
+      height: 6px;
+      background: #2a93c1;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #2a93c1;
+      transform: translateX(-50%);
+    }
+
+    .aether-orb__ring--inner {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 80%;
+      height: 80%;
+      border-radius: 50%;
+      border: 1px dashed rgba(241, 66, 11, 0.3);
+      animation: aetherRingRotate2 12s linear infinite;
+    }
+
+    .aether-orb__particle {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+    }
+
+    .aether-orb__particle--1 {
+      background: #f1420b;
+      box-shadow: 0 0 6px #f1420b;
+      animation: aetherOrbit1 6s linear infinite;
+    }
+
+    .aether-orb__particle--2 {
+      background: #2a93c1;
+      box-shadow: 0 0 6px #2a93c1;
+      animation: aetherOrbit2 9s linear infinite reverse;
+    }
+
+    .aether-orb__particle--3 {
+      background: #ed6626;
+      box-shadow: 0 0 6px #ed6626;
+      animation: aetherOrbit3 11s linear infinite;
+    }
+
+    /* ---- Logo / Branding in Login ---- */
+    .login-logo-block {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .login-title {
+      font-family: 'Oswald', sans-serif;
+      font-size: 34px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .login-title .blue { color: #2a93c1; }
+    .login-title .orange { color: #f1420b; }
+
+    .login-subtitle {
+      font-size: 13px;
+      color: var(--pb-text-muted);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .login-status-dot {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      color: var(--pb-blue);
+      text-transform: uppercase;
+    }
+
+    .status-pulse {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #2a93c1;
+      animation: statusPulse 2s ease-in-out infinite;
+    }
+
+    /* ---- Login Form ---- */
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .login-form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .login-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--pb-text-muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .login-label__icon {
+      color: var(--pb-blue);
+      display: flex;
+      align-items: center;
+    }
+
+    .login-input,
+    .login-select {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(42, 147, 193, 0.22);
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 14px;
+      color: var(--pb-text);
+      font-family: 'Inter', inherit;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+      outline: none;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+
+    .login-input::placeholder {
+      color: var(--pb-text-dim);
+    }
+
+    .login-input:focus,
+    .login-select:focus {
+      border-color: rgba(241, 66, 11, 0.55);
+      background: rgba(255, 255, 255, 0.06);
+      box-shadow:
+        0 0 0 3px rgba(241, 66, 11, 0.08),
+        0 0 16px rgba(241, 66, 11, 0.1);
+    }
+
+    .login-select option {
+      background: #111827;
+      color: var(--pb-text);
+    }
+
+    /* Autocomplete dropdown */
+    .autocomplete-wrapper {
+      position: relative;
+    }
+
+    .autocomplete-list {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      z-index: 9999;
+      background: rgba(10, 14, 26, 0.97);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(42, 147, 193, 0.3);
+      border-radius: 10px;
+      max-height: 220px;
+      overflow-y: auto;
+      box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.6),
+        0 0 0 1px rgba(42, 147, 193, 0.08) inset;
+      display: none;
+    }
+
+    .autocomplete-list.open {
+      display: block;
+    }
+
+    .autocomplete-item {
+      padding: 10px 16px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+      border-bottom: 1px solid rgba(42, 147, 193, 0.07);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .autocomplete-item:last-child {
+      border-bottom: none;
+    }
+
+    .autocomplete-item:hover,
+    .autocomplete-item.highlighted {
+      background: rgba(241, 66, 11, 0.13);
+    }
+
+    .autocomplete-item__name {
+      font-size: 13px;
+      color: var(--pb-text);
+      font-weight: 500;
+    }
+
+    .autocomplete-item__role {
+      font-size: 11px;
+      color: var(--pb-text-dim);
+    }
+
+    .autocomplete-list::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .autocomplete-list::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .autocomplete-list::-webkit-scrollbar-thumb {
+      background: rgba(42, 147, 193, 0.3);
+      border-radius: 2px;
+    }
+
+    /* Primary CTA */
+    .login-btn-primary {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 14px 24px;
+      background: linear-gradient(135deg, #f1420b 0%, #ed6626 35%, #2a93c1 75%, #3a60ab 100%);
+      background-size: 200% 100%;
+      border: none;
+      border-radius: 10px;
+      color: white;
+      font-family: 'Oswald', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.2s ease, background-position 0.4s ease;
+      box-shadow: 0 4px 20px rgba(241, 66, 11, 0.3), 0 2px 8px rgba(0,0,0,0.3);
+      position: relative;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+
+    .login-btn-primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 28px rgba(241, 66, 11, 0.4), 0 4px 12px rgba(42, 147, 193, 0.2);
+      background-position: right center;
+    }
+
+    .login-btn-primary:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .login-btn-primary:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+
+    .login-spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spinnerRotate 0.7s linear infinite;
+    }
+
+    /* Error message */
+    .login-error-msg {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      background: rgba(241, 66, 11, 0.08);
+      border: 1px solid rgba(241, 66, 11, 0.3);
+      color: #ff6a3d;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .login-error-msg.visible {
+      display: flex;
+    }
+
+    .login-error-msg__icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      min-width: 18px;
+      border-radius: 50%;
+      background: rgba(241, 66, 11, 0.2);
+      font-size: 11px;
+      font-weight: 700;
+      color: #f1420b;
+    }
+
+    /* Login footer */
+    .login-footer {
+      margin-top: 24px;
+      text-align: center;
+    }
+
+    .login-footer__divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(42,147,193,0.2), rgba(241,66,11,0.1), transparent);
+      margin-bottom: 14px;
+    }
+
+    .login-footer__text {
+      font-size: 12px;
+      color: var(--pb-text-muted);
+      line-height: 1.6;
+      margin-bottom: 4px;
+    }
+
+    .login-footer__version {
+      font-size: 11px;
+      color: rgba(42, 147, 193, 0.45);
+      letter-spacing: 0.04em;
+    }
+
+    @media (max-width: 480px) {
+      .login-card {
+        padding: 32px 22px 28px;
+        border-radius: 18px;
+      }
+      .login-title { font-size: 28px; }
+      .aether-orb { width: 68px; height: 68px; }
+    }
+
+    /* =====================================================
+       MAIN APP (hidden until login)
+    ===================================================== */
+    #app {
+      display: none;
+      min-height: 100vh;
+    }
+
+    #app.visible {
+      display: block;
+      animation: dashboardFadeIn 0.45s ease;
+    }
+
+    /* =====================================================
+       TOP NAV
+    ===================================================== */
+    .topnav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10, 14, 26, 0.95);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--pb-border);
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .topnav-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .topnav-logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .topnav-logo svg {
+      width: 28px;
+      height: 28px;
+    }
+
+    .topnav-brand {
+      font-family: 'Oswald', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+
+    .topnav-brand .blue { color: var(--pb-blue); }
+    .topnav-brand .orange { color: var(--pb-orange); }
+
+    .topnav-divider {
+      width: 1px;
+      height: 20px;
+      background: var(--pb-border);
+    }
+
+    .topnav-page-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--pb-text-muted);
+    }
+
+    .topnav-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .user-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+
+    /* =====================================================
+       VIEW TABS (Tasks / Team)
+    ===================================================== */
+    .view-tabs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--pb-border);
+      border-radius: 10px;
+      padding: 4px;
+      margin: 0 12px;
+    }
+
+    .view-tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 16px;
+      border-radius: 7px;
+      border: none;
+      background: transparent;
+      color: var(--pb-text-muted);
+      font-size: 13px;
+      font-weight: 500;
+      font-family: 'Inter', inherit;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .view-tab svg { flex-shrink: 0; }
+
+    .view-tab:hover {
+      color: var(--pb-text);
+      background: rgba(255,255,255,0.06);
+    }
+
+    .view-tab.active {
+      background: linear-gradient(135deg, rgba(241,66,11,0.18) 0%, rgba(42,147,193,0.18) 100%);
+      color: var(--pb-text);
+      border: 1px solid rgba(42,147,193,0.3);
+    }
+
+    /* =====================================================
+       TEAM VIEW LAYOUT
+    ===================================================== */
+    #tasks-view { display: block; }
+    #tasks-view.hidden { display: none; }
+
+    #team-view {
+      display: none;
+      flex-direction: row;
+      height: calc(100vh - 56px);
+      overflow: hidden;
+    }
+
+    #team-view.visible {
+      display: flex;
+    }
+
+    /* Roster panel (left) */
+    .team-roster-panel {
+      width: 300px;
+      min-width: 260px;
+      max-width: 320px;
+      background: rgba(10, 14, 26, 0.9);
+      border-right: 1px solid var(--pb-border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .roster-header {
+      padding: 18px 16px 12px;
+      border-bottom: 1px solid var(--pb-border);
+      flex-shrink: 0;
+    }
+
+    .roster-header h2 {
+      font-family: 'Oswald', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--pb-text);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+
+    .roster-count {
+      font-size: 11px;
+      color: var(--pb-text-muted);
+      letter-spacing: 0.06em;
+      margin-bottom: 10px;
+    }
+
+    .roster-search {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--pb-border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: var(--pb-text);
+      font-family: 'Inter', inherit;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+
+    .roster-search::placeholder { color: var(--pb-text-dim); }
+    .roster-search:focus { border-color: rgba(42,147,193,0.5); }
+
+    .roster-dept-filter {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--pb-border);
+      flex-shrink: 0;
+    }
+
+    .dept-filter-btn {
+      padding: 3px 9px;
+      border-radius: 20px;
+      border: 1px solid var(--pb-border);
+      background: transparent;
+      color: var(--pb-text-muted);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      cursor: pointer;
+      font-family: 'Inter', inherit;
+      transition: all 0.18s ease;
+    }
+
+    .dept-filter-btn:hover { border-color: rgba(42,147,193,0.4); color: var(--pb-text); }
+    .dept-filter-btn.active { background: rgba(42,147,193,0.2); border-color: var(--pb-blue); color: var(--pb-blue); }
+
+    .roster-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .roster-section-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--pb-text-dim);
+      padding: 8px 6px 4px;
+    }
+
+    .roster-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+      border: 1px solid transparent;
+      margin-bottom: 2px;
+    }
+
+    .roster-item:hover {
+      background: rgba(255,255,255,0.04);
+      border-color: var(--pb-border);
+    }
+
+    .roster-item.selected {
+      background: linear-gradient(135deg, rgba(241,66,11,0.1) 0%, rgba(42,147,193,0.1) 100%);
+      border-color: rgba(42,147,193,0.35);
+    }
+
+    .roster-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #1a3a50 0%, #1f2d40 100%);
+      border: 1.5px solid rgba(42,147,193,0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--pb-blue-light);
+      letter-spacing: 0.04em;
+      flex-shrink: 0;
+      font-family: 'Oswald', sans-serif;
+    }
+
+    .roster-item.selected .roster-avatar {
+      border-color: var(--pb-orange);
+      color: #ff8c69;
+    }
+
+    .roster-info { min-width: 0; flex: 1; }
+
+    .roster-name {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--pb-text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .roster-role-label {
+      font-size: 10.5px;
+      color: var(--pb-text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 1px;
+    }
+
+    .roster-dept-indicator {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* Profile panel (right) */
+    .team-profile-panel {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px 32px;
+      background: var(--pb-bg);
+    }
+
+    .profile-empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 16px;
+      color: var(--pb-text-muted);
+      text-align: center;
+    }
+
+    .profile-empty-state svg { opacity: 0.25; }
+    .profile-empty-state h3 { font-size: 18px; font-weight: 600; color: var(--pb-text-dim); }
+    .profile-empty-state p { font-size: 13px; }
+
+    /* Profile glass card */
+    .profile-glass-card {
+      background: rgba(13, 17, 23, 0.78);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+      border: 1px solid rgba(42, 147, 193, 0.22);
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow:
+        0 0 0 1px rgba(241, 66, 11, 0.06),
+        0 8px 40px rgba(0, 0, 0, 0.5),
+        0 0 60px rgba(42, 147, 193, 0.06),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 18px;
+    }
+
+    .profile-glass-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 15%; right: 15%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(42,147,193,0.5), rgba(241,66,11,0.3), transparent);
+    }
+
+    .profile-header-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 20px;
+      margin-bottom: 22px;
+    }
+
+    .profile-avatar-xl {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, rgba(241,66,11,0.25) 0%, rgba(42,147,193,0.25) 100%);
+      border: 2px solid rgba(42,147,193,0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--pb-text);
+      letter-spacing: 0.04em;
+      flex-shrink: 0;
+      font-family: 'Oswald', sans-serif;
+      box-shadow: 0 0 24px rgba(42,147,193,0.15);
+    }
+
+    .profile-name-block { flex: 1; min-width: 0; }
+
+    .profile-display-name {
+      font-family: 'Oswald', sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--pb-text);
+      line-height: 1.1;
+      margin-bottom: 5px;
+    }
+
+    .profile-display-role {
+      font-size: 14px;
+      color: var(--pb-blue-light);
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .profile-meta-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 12px;
+      color: var(--pb-text-muted);
+    }
+
+    .profile-meta-tag {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .profile-meta-tag svg { opacity: 0.55; flex-shrink: 0; }
+
+    .profile-section-heading {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--pb-text-muted);
+      margin-bottom: 10px;
+    }
+
+    .profile-section-block {
+      margin-bottom: 22px;
+    }
+
+    /* Strengths */
+    .strengths-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+
+    .strength-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 12px;
+      border-radius: 20px;
+      background: rgba(42,147,193,0.1);
+      border: 1px solid rgba(42,147,193,0.22);
+      color: var(--pb-blue-light);
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    /* A/B/C routing */
+    .routing-3col {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    @media (max-width: 960px) {
+      .routing-3col { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (max-width: 640px) {
+      .routing-3col { grid-template-columns: 1fr; }
+    }
+
+    .routing-box {
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+
+    .routing-box.rbox-a {
+      background: rgba(42,147,193,0.09);
+      border: 1px solid rgba(42,147,193,0.28);
+    }
+
+    .routing-box.rbox-b {
+      background: rgba(241,66,11,0.09);
+      border: 1px solid rgba(241,66,11,0.28);
+    }
+
+    .routing-box.rbox-c {
+      background: rgba(34,197,94,0.09);
+      border: 1px solid rgba(34,197,94,0.28);
+    }
+
+    .rbox-badge {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .rbox-a .rbox-badge { color: var(--pb-blue-light); }
+    .rbox-b .rbox-badge { color: var(--pb-orange-light); }
+    .rbox-c .rbox-badge { color: var(--pb-green); }
+
+    .rbox-who {
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 7px;
+    }
+
+    .rbox-a .rbox-who { color: var(--pb-blue); }
+    .rbox-b .rbox-who { color: var(--pb-orange); }
+    .rbox-c .rbox-who { color: #22c55e; }
+
+    .rbox-text {
+      font-size: 11px;
+      color: var(--pb-text-muted);
+      line-height: 1.55;
+    }
+
+    /* Tasks section on profile */
+    .profile-tasks-section {
+      background: rgba(13, 17, 23, 0.55);
+      border: 1px solid var(--pb-border);
+      border-radius: 16px;
+      padding: 22px;
+      margin-bottom: 18px;
+    }
+
+    .profile-tasks-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .profile-tasks-heading {
+      font-family: 'Oswald', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.07em;
+      color: var(--pb-text);
+    }
+
+    .task-count-badge {
+      font-size: 11px;
+      color: var(--pb-text-muted);
+      background: rgba(255,255,255,0.06);
+      padding: 3px 10px;
+      border-radius: 20px;
+      border: 1px solid var(--pb-border);
+    }
+
+    .profile-task-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 11px 14px;
+      border-radius: 9px;
+      background: rgba(255,255,255,0.025);
+      border: 1px solid var(--pb-border);
+      margin-bottom: 8px;
+      transition: border-color 0.18s ease;
+    }
+
+    .profile-task-row:hover { border-color: rgba(42,147,193,0.3); }
+    .profile-task-row:last-child { margin-bottom: 0; }
+
+    .ptask-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-top: 4px;
+      flex-shrink: 0;
+    }
+
+    .ptask-body { flex: 1; min-width: 0; }
+
+    .ptask-title {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--pb-text);
+      margin-bottom: 5px;
+    }
+
+    .ptask-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      align-items: center;
+    }
+
+    .no-tasks-msg {
+      text-align: center;
+      padding: 22px;
+      color: var(--pb-text-muted);
+      font-size: 13px;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      #team-view.visible {
+        flex-direction: column;
+        height: auto;
+        overflow: auto;
+        min-height: calc(100vh - 56px);
+      }
+
+      .team-roster-panel {
+        width: 100%;
+        max-width: 100%;
+        max-height: 320px;
+      }
+
+      .team-profile-panel { padding: 20px 16px; }
+    }
+    .user-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--pb-blue), var(--pb-orange));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .user-badge span {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--pb-text);
+    }
+
+    .logout-btn {
+      padding: 6px 14px;
+      background: transparent;
+      border: 1px solid var(--pb-border);
+      border-radius: var(--pb-radius-sm);
+      color: var(--pb-text-muted);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      font-family: inherit;
+    }
+
+    .logout-btn:hover {
+      border-color: var(--pb-orange);
+      color: var(--pb-orange);
+    }
+
+    /* =====================================================
+       MAIN CONTAINER
+    ===================================================== */
+    .main-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 32px 24px 64px;
+    }
+
+    .page-header {
+      margin-bottom: 28px;
+    }
+
+    .page-header h1 {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--pb-text);
+      margin-bottom: 4px;
+    }
+
+    .page-header p {
+      font-size: 13px;
+      color: var(--pb-text-muted);
+    }
+
+    /* =====================================================
+       STATS ROW
+    ===================================================== */
+    .stats-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .stat-card {
+      flex: 1;
+      min-width: 100px;
+      background: var(--pb-surface);
+      border: 1px solid var(--pb-border);
+      border-radius: var(--pb-radius);
+      padding: 16px 20px;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--pb-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+
+    .stat-value {
+      font-size: 28px;
+      font-weight: 700;
+      font-family: 'Oswald', sans-serif;
+      color: var(--pb-text);
+    }
+
+    .stat-value.blue   { color: var(--pb-blue); }
+    .stat-value.orange { color: var(--pb-orange); }
+    .stat-value.green  { color: var(--pb-green); }
+    .stat-value.yellow { color: var(--pb-yellow); }
+
+    /* =====================================================
+       FILTER BAR
+    ===================================================== */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+    }
+
+    .filter-btn {
+      padding: 7px 14px;
+      background: var(--pb-surface);
+      border: 1px solid var(--pb-border);
+      border-radius: 20px;
+      color: var(--pb-text-muted);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      font-family: inherit;
+    }
+
+    .filter-btn:hover {
+      border-color: var(--pb-blue);
+      color: var(--pb-blue);
+    }
+
+    .filter-btn.active {
+      background: rgba(42, 147, 193, 0.15);
+      border-color: var(--pb-blue);
+      color: var(--pb-blue);
+    }
+
+    .filter-search {
+      margin-left: auto;
+      padding: 7px 14px;
+      background: var(--pb-surface);
+      border: 1px solid var(--pb-border);
+      border-radius: 20px;
+      color: var(--pb-text);
+      font-size: 12px;
+      outline: none;
+      transition: var(--transition);
+      font-family: inherit;
+      width: 200px;
+    }
+
+    .filter-search:focus {
+      border-color: var(--pb-blue);
+    }
+
+    .filter-search::placeholder {
+      color: var(--pb-text-dim);
+    }
+
+    /* =====================================================
+       ADMIN PANEL
+    ===================================================== */
+    .admin-panel {
+      display: none;
+      margin-bottom: 36px;
+    }
+
+    .admin-panel.visible {
+      display: block;
+    }
+
+    .admin-card {
+      background: var(--pb-surface);
+      border: 1px solid var(--pb-border);
+      border-radius: var(--pb-radius);
+      padding: 28px;
+    }
+
+    .admin-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--pb-blue);
+      margin-bottom: 24px;
+    }
+
+    .admin-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .admin-form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .admin-full-col {
+      grid-column: 1 / -1;
+    }
+
+    .admin-form-group label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--pb-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .admin-form-group input,
+    .admin-form-group select,
+    .admin-form-group textarea {
+      padding: 10px 14px;
+      background: var(--pb-surface-2);
+      border: 1px solid var(--pb-border);
+      border-radius: var(--pb-radius-sm);
+      color: var(--pb-text);
+      font-size: 13px;
+      outline: none;
+      transition: var(--transition);
+      font-family: inherit;
+    }
+
+    .admin-form-group input:focus,
+    .admin-form-group select:focus,
+    .admin-form-group textarea:focus {
+      border-color: var(--pb-blue);
+      box-shadow: 0 0 0 3px rgba(42, 147, 193, 0.1);
+    }
+
+    .admin-form-group select option {
+      background: var(--pb-surface-2);
+    }
+
+    .admin-form-group textarea {
+      min-height: 90px;
+      resize: vertical;
+    }
+
+    .admin-submit-btn {
+      padding: 12px 28px;
+      background: linear-gradient(135deg, var(--pb-blue), var(--pb-blue-dark));
+      border: none;
+      border-radius: var(--pb-radius-sm);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: var(--transition);
+      font-family: inherit;
+    }
+
+    .admin-submit-btn:hover {
+      background: linear-gradient(135deg, var(--pb-blue-light), var(--pb-blue));
+      box-shadow: var(--pb-glow-blue);
+      transform: translateY(-1px);
+    }
+
+    .admin-msg {
+      display: inline-block;
+      padding: 8px 14px;
+      border-radius: var(--pb-radius-sm);
+      font-size: 13px;
+      font-weight: 500;
+      margin-left: 12px;
+    }
+
+    .admin-msg.success {
+      background: rgba(34, 197, 94, 0.12);
+      color: var(--pb-green);
+      border: 1px solid rgba(34, 197, 94, 0.25);
+    }
+
+    .admin-msg.error {
+      background: rgba(241, 66, 11, 0.12);
+      color: var(--pb-orange-light);
+      border: 1px solid rgba(241, 66, 11, 0.25);
+    }
+
+    /* Admin table */
+    .admin-table-wrap {
+      overflow-x: auto;
+      margin-top: 16px;
+      border: 1px solid var(--pb-border);
+      border-radius: var(--pb-radius-sm);
+    }
+
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .admin-table th {
+      padding: 10px 14px;
+      background: var(--pb-surface-2);
+      color: var(--pb-text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      text-align: left;
+      border-bottom: 1px solid var(--pb-border);
+    }
+
+    .admin-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--pb-border);
+      color: var(--pb-text);
+      vertical-align: middle;
+    }
+
+    .admin-table tr:last-child td { border-bottom: none; }
+
+    .admin-table tr:hover td {
+      background: var(--pb-surface-2);
+    }
+
+    .task-delete-btn {
+      padding: 4px 10px;
+      background: transparent;
+      border: 1px solid rgba(241, 66, 11, 0.3);
+      border-radius: 4px;
+      color: var(--pb-orange);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      font-family: inherit;
+    }
+
+    .task-delete-btn:hover {
+      background: rgba(241, 66, 11, 0.1);
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--pb-text);
+    }
+
+    .section-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 24px;
+      height: 24px;
+      padding: 0 8px;
+      background: var(--pb-surface-2);
+      border: 1px solid var(--pb-border);
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--pb-text-muted);
+    }
+
+    /* =====================================================
+       TASK CARDS
+    ===================================================== */
+    .task-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
+    }
+
+    .task-card {
+      background: var(--pb-surface);
+      border: 1px solid var(--pb-border);
+      border-radius: var(--pb-radius);
+      padding: 20px;
+      border-left: 3px solid var(--card-accent, var(--pb-blue));
+      transition: var(--transition);
+    }
+
+    .task-card:hover {
+      border-color: var(--pb-border-hover);
+      box-shadow: var(--pb-shadow);
+      transform: translateY(-2px);
+    }
+
+    .task-card-header {
+      margin-bottom: 12px;
+    }
+
+    .task-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--pb-text);
+      line-height: 1.4;
+    }
+
+    .task-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .delegation-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .delegation-A { background: rgba(241, 66, 11, 0.12); color: var(--pb-orange); border: 1px solid rgba(241, 66, 11, 0.25); }
+    .delegation-B { background: rgba(42, 147, 193, 0.12); color: var(--pb-blue); border: 1px solid rgba(42, 147, 193, 0.25); }
+    .delegation-C { background: rgba(139, 92, 246, 0.12); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.25); }
+
+    .priority-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .priority-critical { background: rgba(220, 38, 38, 0.18); color: #f87171; border: 1px solid rgba(220, 38, 38, 0.35); }
+    .priority-high   { background: rgba(241, 66, 11, 0.12); color: var(--pb-orange); }
+    .priority-medium { background: rgba(245, 158, 11, 0.12); color: var(--pb-yellow); }
+    .priority-low    { background: rgba(42, 147, 193, 0.12); color: var(--pb-blue); }
+
+    .dept-tag {
+      display: inline-flex; align-items: center;
+      padding: 2px 7px; border-radius: 4px;
+      font-size: 10px; font-weight: 700;
+      background: rgba(42, 147, 193, 0.08); color: var(--pb-blue);
+      border: 1px solid rgba(42, 147, 193, 0.2); letter-spacing: 0.03em;
+    }
+    .cadence-tag {
+      display: inline-flex; align-items: center;
+      padding: 2px 7px; border-radius: 4px;
+      font-size: 10px; font-weight: 600;
+      background: rgba(139, 92, 246, 0.08); color: #a78bfa;
+      border: 1px solid rgba(139, 92, 246, 0.2);
+    }
+    .cadence-tag.cadence-daily  { background: rgba(34,197,94,0.08); color: var(--pb-green); border-color: rgba(34,197,94,0.2); }
+    .cadence-tag.cadence-weekly { background: rgba(42,147,193,0.08); color: var(--pb-blue); border-color: rgba(42,147,193,0.2); }
+    .task-assignee { font-size: 11px; color: var(--pb-text-muted); margin-bottom: 6px; }
+    .aether-banner {
+      background: linear-gradient(135deg, rgba(241,66,11,0.08) 0%, rgba(42,147,193,0.08) 100%);
+      border: 1px solid rgba(241,66,11,0.2); border-radius: 10px;
+      padding: 12px 20px; margin-bottom: 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 8px;
+    }
+    .aether-banner-left { display: flex; align-items: center; gap: 10px; }
+    .aether-banner-icon {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: linear-gradient(135deg, #f1420b, #2a93c1);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700; color: white; flex-shrink: 0;
+    }
+    .aether-banner-text { font-size: 13px; color: var(--pb-text); }
+    .aether-banner-text strong { color: var(--pb-orange); }
+    .aether-banner-date { font-size: 12px; color: var(--pb-text-muted); }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .status-pending     { color: var(--pb-text-muted); background: var(--pb-surface-2); }
+    .status-in-progress { color: var(--pb-blue); background: rgba(42, 147, 193, 0.1); }
+    .status-complete    { color: var(--pb-green); background: rgba(34, 197, 94, 0.1); }
+
+    .task-description {
+      font-size: 13px;
+      color: var(--pb-text-muted);
+      line-height: 1.6;
+      margin-bottom: 14px;
+    }
+
+    .task-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .task-deadline {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--pb-text-muted);
+    }
+
+    .task-deadline.overdue { color: var(--pb-orange); }
+    .task-deadline.soon    { color: var(--pb-yellow); }
+
+    .task-files {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .file-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      background: var(--pb-surface-2);
+      border: 1px solid var(--pb-border);
+      border-radius: 4px;
+      font-size: 11px;
+      color: var(--pb-blue);
+      text-decoration: none;
+      transition: var(--transition);
+    }
+
+    .file-chip:hover {
+      border-color: var(--pb-blue);
+      background: rgba(42, 147, 193, 0.1);
+    }
+
+    .status-change-btn {
+      padding: 6px 12px;
+      background: var(--pb-surface-2);
+      border: 1px solid var(--pb-border);
+      border-radius: var(--pb-radius-sm);
+      color: var(--pb-text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      white-space: nowrap;
+      font-family: inherit;
+    }
+
+    .status-change-btn:hover {
+      border-color: var(--pb-blue);
+      color: var(--pb-blue);
+    }
+
+    /* =====================================================
+       LOADING & EMPTY STATES
+    ===================================================== */
+    .loading-overlay {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 0;
+    }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--pb-border);
+      border-top-color: var(--pb-blue);
+      border-radius: 50%;
+      animation: spinnerRotate 0.7s linear infinite;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+    }
+
+    .empty-state svg {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 16px;
+      display: block;
+    }
+
+    .empty-state h3 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--pb-text);
+      margin-bottom: 8px;
+    }
+
+    .empty-state p {
+      font-size: 13px;
+      color: var(--pb-text-muted);
+      max-width: 320px;
+      margin: 0 auto;
+    }
+
+    /* =====================================================
+       TOAST
+    ===================================================== */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 9999;
+      padding: 12px 20px;
+      border-radius: var(--pb-radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: var(--pb-shadow);
+      transform: translateY(80px);
+      opacity: 0;
+      transition: transform 0.3s ease, opacity 0.3s ease;
+      pointer-events: none;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .toast.success {
+      background: var(--pb-surface);
+      border-left: 4px solid var(--pb-green);
+      color: var(--pb-text);
+    }
+
+    .toast.error {
+      background: var(--pb-surface);
+      border-left: 4px solid var(--pb-orange);
+      color: var(--pb-text);
+    }
+
+    /* =====================================================
+       RESPONSIVE
+    ===================================================== */
+    @media (max-width: 768px) {
+      .admin-grid {
+        grid-template-columns: 1fr;
+      }
+      .task-grid {
+        grid-template-columns: 1fr;
+      }
+      .stats-row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+      }
+      .filter-search {
+        width: 100%;
+        margin-left: 0;
+      }
+      .main-container {
+        padding: 20px 16px 48px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .stats-row {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+
+<!-- =====================================================
+     3D NEURAL CANVAS (login background — persists subtly after login)
+===================================================== -->
+<canvas class="neural-canvas" id="neural-canvas"></canvas>
+
+<!-- =====================================================
+     LOGIN SCREEN
+===================================================== -->
+<div id="login-screen">
+  <!-- Glass login card floats over canvas -->
+  <div class="login-card" id="login-card">
+
+    <!-- Animated Aether Orb -->
+    <div class="login-orb-wrapper">
+      <div class="aether-orb">
+        <div class="aether-orb__glow"></div>
+        <div class="aether-orb__ring"></div>
+        <div class="aether-orb__ring--inner"></div>
+        <div class="aether-orb__core"></div>
+        <div class="aether-orb__particle aether-orb__particle--1"></div>
+        <div class="aether-orb__particle aether-orb__particle--2"></div>
+        <div class="aether-orb__particle aether-orb__particle--3"></div>
+      </div>
+    </div>
+
+    <!-- Logo / Branding -->
+    <div class="login-logo-block">
+      <h1 class="login-title">
+        <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>
+      </h1>
+      <p class="login-subtitle">Command Center</p>
+      <div class="login-status-dot">
+        <span class="status-pulse"></span>
+        SYSTEM ONLINE
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div class="login-error-msg" id="login-error">
+      <span class="login-error-msg__icon">!</span>
+      <span id="login-error-text">Invalid credentials. Please check your name, email, and password.</span>
+    </div>
+
+    <!-- Login Form -->
+    <form id="login-form" onsubmit="handleLogin(event)" class="login-form">
+
+      <!-- Field 1: Name with typeahead autocomplete -->
+      <div class="login-form-group">
+        <label class="login-label">
+          <span class="login-label__icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+          </span>
+          Your Name
+        </label>
+        <div class="autocomplete-wrapper">
+          <input
+            type="text"
+            id="login-name"
+            class="login-input"
+            placeholder="Start typing your name..."
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <div class="autocomplete-list" id="autocomplete-list"></div>
+        </div>
+      </div>
+
+      <!-- Field 2: Email with domain whitelist -->
+      <div class="login-form-group">
+        <label class="login-label">
+          <span class="login-label__icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+              <polyline points="22,6 12,13 2,6"/>
+            </svg>
+          </span>
+          Email Address
+        </label>
+        <input type="email" id="login-email" class="login-input" placeholder="you@puretechnology.nyc" required autocomplete="email" />
+      </div>
+
+      <!-- Field 3: Password -->
+      <div class="login-form-group">
+        <label class="login-label">
+          <span class="login-label__icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          </span>
+          Password
+        </label>
+        <input type="password" id="login-password" class="login-input" placeholder="Enter your password" required autocomplete="current-password" />
+      </div>
+
+      <button type="submit" class="login-btn-primary" id="login-btn">
+        <span>Access Dashboard</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M5 12h14M12 5l7 7-7 7"/>
+        </svg>
+      </button>
+    </form>
+
+    <!-- Footer -->
+    <div class="login-footer">
+      <div class="login-footer__divider"></div>
+      <p class="login-footer__text">Pure Technology — Team Task Management</p>
+      <p class="login-footer__version">Powered by PureBrain · v3.0</p>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MAIN APP
+===================================================== -->
+<div id="app">
+  <!-- Top Nav -->
+  <nav class="topnav">
+    <div class="topnav-left">
+      <div class="topnav-logo">
+        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <polygon points="16,1 29,8.5 29,23.5 16,31 3,23.5 3,8.5" fill="none" stroke="#2a93c1" stroke-width="1.2"/>
+          <circle cx="16" cy="16" r="4" fill="#2a93c1"/>
+          <circle cx="16" cy="16" r="6" fill="none" stroke="#f1420b" stroke-width="0.6" stroke-dasharray="2 2"/>
+        </svg>
+        <span class="topnav-brand"><span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span></span>
+      </div>
+      <div class="topnav-divider"></div>
+      <span class="topnav-page-title">Team Dashboard</span>
+      <!-- View Tabs -->
+      <div class="view-tabs">
+        <button class="view-tab active" id="tab-tasks" onclick="switchView('tasks')">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="3" rx="1"/><path d="M4 6h16v15H4z"/><path d="M9 12h6M9 16h4"/></svg>
+          Tasks
+        </button>
+        <button class="view-tab" id="tab-team" onclick="switchView('team')">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 014-4h4"/><circle cx="17" cy="17" r="4"/></svg>
+          Team
+        </button>
+      </div>
+    </div>
+    <div class="topnav-right">
+      <div class="user-badge">
+        <div class="user-avatar" id="nav-avatar">JD</div>
+        <span id="nav-username">Loading...</span>
+      </div>
+      <button class="logout-btn" onclick="handleLogout()">Sign Out</button>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <div id="tasks-view">
+  <div class="main-container">
+
+    <!-- Page Header -->
+    <div class="page-header">
+      <h1 id="dashboard-title">My Tasks</h1>
+      <p id="dashboard-subtitle">Your assigned work items and priorities</p>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="stats-row" id="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Total Assigned</div>
+        <div class="stat-value blue" id="stat-total">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">In Progress</div>
+        <div class="stat-value yellow" id="stat-inprogress">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Pending</div>
+        <div class="stat-value" id="stat-pending">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Completed</div>
+        <div class="stat-value green" id="stat-complete">—</div>
+      </div>
+      <div class="stat-card" id="stat-high-card">
+        <div class="stat-label">High Priority</div>
+        <div class="stat-value orange" id="stat-high">—</div>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <button class="filter-btn active" onclick="setFilter('all', this)">All</button>
+      <button class="filter-btn" onclick="setFilter('pending', this)">Pending</button>
+      <button class="filter-btn" onclick="setFilter('in-progress', this)">In Progress</button>
+      <button class="filter-btn" onclick="setFilter('complete', this)">Complete</button>
+      <button class="filter-btn" onclick="setFilter('high', this)">High Priority</button>
+      <input class="filter-search" type="text" placeholder="Search tasks..." oninput="setSearch(this.value)" id="search-input" />
+    </div>
+
+    <!-- Admin Panel (Jared only) -->
+    <div class="admin-panel" id="admin-panel">
+      <div class="admin-card">
+        <div class="admin-title">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+          </svg>
+          Admin: Create New Task
+        </div>
+        <div class="admin-grid">
+          <div class="admin-form-group">
+            <label>Task Title</label>
+            <input type="text" id="new-title" placeholder="e.g. Prepare Q1 Sales Report" />
+          </div>
+          <div class="admin-form-group">
+            <label>Assign To</label>
+            <select id="new-assignee">
+              <option value="">-- Select team member --</option>
+            </select>
+          </div>
+          <div class="admin-form-group">
+            <label>Delegation (A/B/C)</label>
+            <select id="new-delegation">
+              <option value="C">C — Team Member Handles</option>
+              <option value="A">A — Aether Handles</option>
+              <option value="B">B — Jared Handles</option>
+            </select>
+          </div>
+          <div class="admin-form-group">
+            <label>Priority</label>
+            <select id="new-priority">
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+              <option value="Low">Low</option>
+            </select>
+          </div>
+          <div class="admin-form-group">
+            <label>Status</label>
+            <select id="new-status">
+              <option value="Pending">Pending</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Complete">Complete</option>
+            </select>
+          </div>
+          <div class="admin-form-group">
+            <label>Deadline (optional)</label>
+            <input type="date" id="new-deadline" />
+          </div>
+          <div class="admin-form-group admin-full-col">
+            <label>Description</label>
+            <textarea id="new-description" placeholder="Describe what needs to be done..."></textarea>
+          </div>
+          <div class="admin-form-group admin-full-col">
+            <label>File Attachments (Google Drive URLs, comma-separated)</label>
+            <input type="text" id="new-files" placeholder="https://drive.google.com/file/..., https://docs.google.com/..." />
+          </div>
+          <div class="admin-form-group admin-full-col">
+            <button class="admin-submit-btn" onclick="createTask()">Create Task</button>
+            <div class="admin-msg" id="admin-msg"></div>
+          </div>
+        </div>
+
+        <!-- Admin: All Tasks Table -->
+        <div id="admin-all-tasks-section">
+          <div class="section-header" style="margin-top: 32px; margin-bottom: 0;">
+            <div class="section-title" style="color: var(--pb-text-muted); font-size: 14px;">All Team Tasks</div>
+            <button class="filter-btn" onclick="loadAllAdminTasks()" style="font-size: 12px; padding: 5px 12px;">Refresh</button>
+          </div>
+          <div class="admin-table-wrap">
+            <table class="admin-table" id="admin-table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Assigned To</th>
+                  <th>A/B/C</th>
+                  <th>Priority</th>
+                  <th>Status</th>
+                  <th>Deadline</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="admin-table-body">
+                <tr><td colspan="7" style="color: var(--pb-text-muted); text-align: center; padding: 20px;">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Aether Assignment Banner -->
+    <div class="aether-banner" id="aether-banner" style="display:none">
+      <div class="aether-banner-left">
+        <div class="aether-banner-icon">A</div>
+        <div class="aether-banner-text">
+          Assigned by <strong>Aether</strong> (AI Co-CEO) &mdash; 35 active tasks across all departments
+        </div>
+      </div>
+      <div class="aether-banner-date" id="aether-banner-date"></div>
+    </div>
+
+    <!-- Task Sections -->
+    <div id="task-sections">
+      <div id="section-critical" style="display:none;">
+        <div class="section-header">
+          <div class="section-title">&#128308; P0 Critical</div>
+          <span class="section-count" id="count-critical">0</span>
+        </div>
+        <div class="task-grid" id="grid-critical"></div>
+      </div>
+      <div id="section-high">
+        <div class="section-header">
+          <div class="section-title">🔴 High Priority</div>
+          <span class="section-count" id="count-high">0</span>
+        </div>
+        <div class="task-grid" id="grid-high"></div>
+      </div>
+
+      <div id="section-inprogress" style="margin-top: 32px;">
+        <div class="section-header">
+          <div class="section-title">🔵 In Progress</div>
+          <span class="section-count" id="count-inprogress">0</span>
+        </div>
+        <div class="task-grid" id="grid-inprogress"></div>
+      </div>
+
+      <div id="section-pending" style="margin-top: 32px;">
+        <div class="section-header">
+          <div class="section-title">⚪ Pending</div>
+          <span class="section-count" id="count-pending">0</span>
+        </div>
+        <div class="task-grid" id="grid-pending"></div>
+      </div>
+
+      <div id="section-complete" style="margin-top: 32px;">
+        <div class="section-header">
+          <div class="section-title">✅ Completed</div>
+          <span class="section-count" id="count-complete">0</span>
+        </div>
+        <div class="task-grid" id="grid-complete"></div>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div class="loading-overlay" id="loading-overlay" style="display:none;">
+      <div class="spinner"></div>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state" id="empty-state" style="display:none;">
+      <svg fill="none" stroke="#2a93c1" stroke-width="1.5" viewBox="0 0 24 24">
+        <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/>
+      </svg>
+      <h3>No tasks found</h3>
+      <p>No tasks match your current filter. Try selecting a different view.</p>
+    </div>
+
+  </div>
+  </div>
+
+  <!-- Team View -->
+  <div id="team-view">
+    <!-- Left: Roster -->
+    <div class="team-roster-panel">
+      <div class="roster-header">
+        <h2>Team Roster</h2>
+        <div class="roster-count" id="roster-count">49 members</div>
+        <input class="roster-search" type="text" placeholder="Search by name or role..." id="roster-search" oninput="filterRoster()" />
+      </div>
+      <div class="roster-dept-filter" id="dept-filters">
+        <button class="dept-filter-btn active" onclick="setDeptFilter('all', this)">All</button>
+        <button class="dept-filter-btn" onclick="setDeptFilter('Leadership', this)">Leadership</button>
+        <button class="dept-filter-btn" onclick="setDeptFilter('Operations', this)">Ops</button>
+        <button class="dept-filter-btn" onclick="setDeptFilter('Finance', this)">Finance</button>
+        <button class="dept-filter-btn" onclick="setDeptFilter('Commercial', this)">Sales</button>
+        <button class="dept-filter-btn" onclick="setDeptFilter('Marketing', this)">Marketing</button>
+        <button class="dept-filter-btn" onclick="setDeptFilter('Product', this)">Product</button>
+        <button class="dept-filter-btn" onclick="setDeptFilter('Technology', this)">Tech</button>
+        <button class="dept-filter-btn" onclick="setDeptFilter('Strategy', this)">Strategy</button>
+      </div>
+      <div class="roster-list" id="roster-list"></div>
+    </div>
+
+    <!-- Right: Profile -->
+    <div class="team-profile-panel" id="team-profile-panel">
+      <div class="profile-empty-state" id="profile-empty">
+        <svg width="64" height="64" fill="none" stroke="#2a93c1" stroke-width="1.2" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20v-2a8 8 0 0116 0v2"/></svg>
+        <h3>Select a team member</h3>
+        <p>Click any name on the left to view their profile, strengths, and assigned tasks.</p>
+      </div>
+      <div id="profile-content" style="display:none;"></div>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================
+   3D NEURAL CANVAS ANIMATION
+===================================================== */
+(function initNeuralCanvas() {
+  const canvas = document.getElementById('neural-canvas');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+
+  // Brand colors
+  const COLORS = {
+    orange: '#f1420b',
+    lightOrange: '#ed6626',
+    blue: '#2a93c1',
+    darkBlue: '#3a60ab',
+  };
+
+  let w, h, mainParticles, secondaryOrbs, bgNodes;
+  let time = 0;
+  let animRunning = true;
+
+  function resize() {
+    w = window.innerWidth;
+    h = window.innerHeight;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    initParticles();
+  }
+
+  function createParticles(cx, cy, S, count) {
+    return Array.from({ length: count }, () => ({
+      angle: Math.random() * Math.PI * 2,
+      radius: (80 + Math.random() * 100) * S,
+      speed: (0.001 + Math.random() * 0.002) * (Math.random() > 0.5 ? 1 : -1),
+      size: (1 + Math.random() * 2) * S,
+      alpha: 0.2 + Math.random() * 0.4,
+      color: Math.random() > 0.5 ? COLORS.orange : COLORS.blue,
+      trail: [],
+      maxTrail: 3 + Math.floor(Math.random() * 6),
+    }));
+  }
+
+  function initParticles() {
+    const cx = w / 2, cy = h / 2;
+    const S = Math.min(w, h) / 500;
+    mainParticles = createParticles(cx, cy, S, 60);
+
+    secondaryOrbs = [
+      { fx: 0.1, fy: 0.2, sScale: 0.45, particles: null },
+      { fx: 0.9, fy: 0.8, sScale: 0.35, particles: null },
+    ];
+    secondaryOrbs.forEach(orb => {
+      const ox = orb.fx * w, oy = orb.fy * h;
+      const oS = S * orb.sScale;
+      orb.particles = createParticles(ox, oy, oS, 20);
+    });
+
+    bgNodes = Array.from({ length: 55 }, () => ({
+      x: Math.random(), y: Math.random(),
+      vx: (Math.random() - 0.5) * 0.0003,
+      vy: (Math.random() - 0.5) * 0.0003,
+      r: 1 + Math.random() * 2,
+      alpha: 0.1 + Math.random() * 0.3,
+      color: Math.random() > 0.5 ? COLORS.blue : COLORS.orange,
+    }));
+  }
+
+  function updateParticles(particles, cx, cy, S) {
+    particles.forEach(p => {
+      const x = cx + Math.cos(p.angle) * p.radius;
+      const y = cy + Math.sin(p.angle) * p.radius;
+      p.trail.unshift({ x, y, alpha: p.alpha });
+      if (p.trail.length > p.maxTrail) p.trail.pop();
+      p.angle += p.speed;
+      p.radius += Math.sin(time * 0.02 + p.angle) * 0.3 * S;
+    });
+  }
+
+  function drawParticles(particles) {
+    particles.forEach(p => {
+      p.trail.forEach((point, i) => {
+        const trailAlpha = point.alpha * (1 - i / p.trail.length) * 0.5;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, p.size * (1 - i / p.trail.length * 0.5), 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = trailAlpha;
+        ctx.fill();
+      });
+      const tx = p.trail.length > 0 ? p.trail[0].x : 0;
+      const ty = p.trail.length > 0 ? p.trail[0].y : 0;
+      ctx.beginPath();
+      ctx.arc(tx, ty, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = p.alpha;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 10 * p.size;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+    });
+  }
+
+  const rings = [
+    { radius: 180, segments: 60, speed: 0.002, width: 1, gap: 4 },
+    { radius: 160, segments: 40, speed: -0.003, width: 2, gap: 6 },
+    { radius: 140, segments: 24, speed: 0.004, width: 1.5, gap: 8 },
+    { radius: 100, segments: 12, speed: -0.005, width: 3, gap: 15 },
+  ];
+
+  function drawRings(cx, cy, S) {
+    rings.forEach((ring, ringIndex) => {
+      const baseRotation = time * ring.speed;
+      for (let i = 0; i < ring.segments; i++) {
+        const segAngle = (Math.PI * 2) / ring.segments;
+        const startAngle = baseRotation + i * segAngle;
+        const endAngle = startAngle + segAngle - (ring.gap * Math.PI / 180);
+        const t = i / ring.segments;
+        let r, g, b;
+        if (t < 0.5) { r = 241; g = 66 + t * 72; b = 11 + t * 30; }
+        else { const t2 = (t - 0.5) * 2; r = 237 - t2 * 195; g = 102 + t2 * 45; b = 38 + t2 * 155; }
+        const alpha = 0.3 + Math.sin(time * 0.02 + i * 0.5) * 0.2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, ring.radius * S, startAngle, endAngle);
+        ctx.strokeStyle = `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${alpha})`;
+        ctx.lineWidth = ring.width * S;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+      }
+      if (ringIndex === 0) {
+        for (let i = 0; i < 60; i++) {
+          const angle = baseRotation + (i * Math.PI * 2) / 60;
+          const innerR = ring.radius * S - 5 * S;
+          const outerR = ring.radius * S + (i % 5 === 0 ? 8 : 3) * S;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(angle) * innerR, cy + Math.sin(angle) * innerR);
+          ctx.lineTo(cx + Math.cos(angle) * outerR, cy + Math.sin(angle) * outerR);
+          ctx.strokeStyle = i % 5 === 0 ? 'rgba(42, 147, 193, 0.6)' : 'rgba(42, 147, 193, 0.2)';
+          ctx.lineWidth = (i % 5 === 0 ? 2 : 1) * S;
+          ctx.stroke();
+        }
+      }
+    });
+  }
+
+  function drawScanBeam(cx, cy, S) {
+    const scanAngle = time * 0.015;
+    const scanWidth = Math.PI / 8;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, 200 * S, scanAngle, scanAngle + scanWidth);
+    ctx.closePath();
+    if (ctx.createConicGradient) {
+      const gradient = ctx.createConicGradient(scanAngle, cx, cy);
+      gradient.addColorStop(0, 'rgba(241, 66, 11, 0)');
+      gradient.addColorStop(0.02, 'rgba(241, 66, 11, 0.3)');
+      gradient.addColorStop(0.05, 'rgba(42, 147, 193, 0.09)');
+      gradient.addColorStop(0.1, 'rgba(42, 147, 193, 0)');
+      gradient.addColorStop(1, 'rgba(241, 66, 11, 0)');
+      ctx.fillStyle = gradient;
+    } else {
+      const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, 200 * S);
+      gradient.addColorStop(0, 'rgba(241, 66, 11, 0.25)');
+      gradient.addColorStop(0.5, 'rgba(42, 147, 193, 0.08)');
+      gradient.addColorStop(1, 'rgba(42, 147, 193, 0)');
+      ctx.fillStyle = gradient;
+    }
+    ctx.fill();
+  }
+
+  function drawDataArcs(cx, cy, S) {
+    const arcs = [
+      { radius: 210, start: -0.5, length: 1.2, color: COLORS.orange },
+      { radius: 215, start: 2, length: 0.8, color: COLORS.blue },
+      { radius: 220, start: 4, length: 1.5, color: COLORS.lightOrange },
+    ];
+    arcs.forEach(arc => {
+      const animStart = arc.start + time * 0.005;
+      const pulseLen = arc.length + Math.sin(time * 0.03) * 0.2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, arc.radius * S, animStart, animStart + pulseLen);
+      ctx.strokeStyle = arc.color;
+      ctx.lineWidth = 3 * S;
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = 0.6;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    });
+  }
+
+  function drawCenterGlow(cx, cy, S) {
+    const baseSize = 80 * S;
+    const pulseSize = baseSize + Math.sin(time * 0.04) * 10 * S;
+    const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, pulseSize);
+    gradient.addColorStop(0, 'rgba(241, 66, 11, 0.15)');
+    gradient.addColorStop(0.5, 'rgba(237, 102, 38, 0.075)');
+    gradient.addColorStop(0.8, 'rgba(42, 147, 193, 0.045)');
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.beginPath();
+    ctx.arc(cx, cy, pulseSize, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+  }
+
+  function drawBgNodes() {
+    bgNodes.forEach(n => {
+      n.x = (n.x + n.vx + 1) % 1;
+      n.y = (n.y + n.vy + 1) % 1;
+      ctx.beginPath();
+      ctx.arc(n.x * w, n.y * h, n.r, 0, Math.PI * 2);
+      ctx.fillStyle = n.color;
+      ctx.globalAlpha = n.alpha;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i < bgNodes.length; i++) {
+      for (let j = i + 1; j < bgNodes.length; j++) {
+        const dx = (bgNodes[i].x - bgNodes[j].x) * w;
+        const dy = (bgNodes[i].y - bgNodes[j].y) * h;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 120) {
+          const alpha = (1 - dist / 120) * 0.12;
+          ctx.beginPath();
+          ctx.moveTo(bgNodes[i].x * w, bgNodes[i].y * h);
+          ctx.lineTo(bgNodes[j].x * w, bgNodes[j].y * h);
+          ctx.strokeStyle = COLORS.blue;
+          ctx.globalAlpha = alpha;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
+  }
+
+  // After login — reduce canvas opacity for subtle background
+  let canvasAlpha = 1;
+  let targetAlpha = 1;
+
+  function animate() {
+    if (!animRunning) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Smooth alpha transition after login
+    if (canvasAlpha !== targetAlpha) {
+      canvasAlpha += (targetAlpha - canvasAlpha) * 0.05;
+      canvas.style.opacity = canvasAlpha;
+    }
+
+    ctx.clearRect(0, 0, w, h);
+
+    // Background gradient
+    const bgGrad = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.8);
+    bgGrad.addColorStop(0, 'rgba(15,10,20,1)');
+    bgGrad.addColorStop(0.5, 'rgba(10,10,15,1)');
+    bgGrad.addColorStop(1, 'rgba(5,5,10,1)');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, w, h);
+
+    // BG neural network
+    drawBgNodes();
+
+    const cx = w / 2, cy = h / 2;
+    const S = Math.min(w, h) / 500;
+
+    // Secondary orbs (dimmer)
+    ctx.globalAlpha = 0.35;
+    secondaryOrbs.forEach(orb => {
+      const ox = orb.fx * w, oy = orb.fy * h;
+      const oS = S * orb.sScale;
+      updateParticles(orb.particles, ox, oy, oS);
+      drawCenterGlow(ox, oy, oS);
+      drawRings(ox, oy, oS);
+      drawParticles(orb.particles);
+    });
+    ctx.globalAlpha = 1;
+
+    // Main orb
+    drawScanBeam(cx, cy, S);
+    drawCenterGlow(cx, cy, S);
+    drawDataArcs(cx, cy, S);
+    drawRings(cx, cy, S);
+    updateParticles(mainParticles, cx, cy, S);
+    drawParticles(mainParticles);
+
+    time++;
+    requestAnimationFrame(animate);
+  }
+
+  window.addEventListener('resize', resize);
+
+  // Expose function to dim canvas after login
+  window.setCanvasAlpha = function(a) { targetAlpha = a; };
+
+  resize();
+  animate();
+})();
+
+
+/* =====================================================
+   CARD MOUNT ANIMATION
+===================================================== */
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    const card = document.getElementById('login-card');
+    if (card) card.classList.add('login-card--visible');
+  }, 80);
+});
+
+
+/* =====================================================
+   CONFIGURATION
+===================================================== */
+const AIRTABLE_API_KEY = 'patcjYGyBxRGQfjdj.c7363c42481a5a9f13c400842e930fe22be3f75bdafbce3ee580a2ec2c2cd7e4';
+const AIRTABLE_BASE_ID = 'app3PhIudYCZ8VCCF';
+const AIRTABLE_TABLE   = 'Tasks';
+
+const AT_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE}`;
+const AT_HEADERS = {
+  'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+  'Content-Type': 'application/json'
+};
+
+/* =====================================================
+   TEAM ROSTER (49 members)
+   Format: { name, email, initials, role, isAdmin }
+===================================================== */
+const TEAM_ROSTER = [
+  // C-Suite & Leadership
+  { name: 'Jared Sanborn',       email: 'jared@puretechnology.nyc',        initials: 'JS', role: 'CEO',                                  isAdmin: true, password: 'puretech2026' },
+  { name: 'Melanie Salvador',    email: 'melanie@puretek.co',               initials: 'MS', role: 'Vice-Chairman & Deputy CEO', password: 'pureteammelanie' },
+  { name: 'Nils Waschkau',       email: 'nils@puretek.co',                  initials: 'NW', role: 'COO', password: 'pureteamnils' },
+  { name: 'James Weinberg',      email: 'james@puretek.co',                 initials: 'JW', role: 'CFO', password: 'pureteamjames' },
+  { name: 'Mike Daser',          email: 'mike@puretek.co',                  initials: 'MD', role: 'SVP Human Resources', password: 'pureteammike' },
+  { name: 'Eric Solomon',        email: 'eric@puretek.co',                  initials: 'ES', role: 'Chief Brilliance Actualizer', password: 'pureteameric' },
+  { name: 'Michael Schuman',     email: 'michael.schuman@puretek.co',       initials: 'MS', role: 'CCO', password: 'pureteammichael' },
+  { name: 'Charles Finkelstein', email: 'charles@puretek.co',               initials: 'CF', role: 'CPO', password: 'pureteamcharles' },
+  { name: 'Timothy DeVore',      email: 'timothy@puretek.co',               initials: 'TD', role: 'CTO', password: 'pureteamtimothy' },
+  { name: 'Rimah Harb',          email: 'rimah@puretek.co',                 initials: 'RH', role: 'Chief Strategy Officer', password: 'pureteamrimah' },
+  { name: 'Zenia Tata',          email: 'zeniatata@gmail.com',              initials: 'ZT', role: 'Chief Impact Officer', password: 'pureteamzenia' },
+  { name: 'Michael Hancock',     email: 'michael.hancock@puretek.co',       initials: 'MH', role: 'General Counsel', password: 'pureteammichael' },
+
+  // Operations
+  { name: 'Edward Brennan',      email: 'ed@puretek.co',                    initials: 'EB', role: 'SVP Operations (Fractional)', password: 'pureteamedward' },
+  { name: 'Roger Beaini',        email: 'roger.b@puretek.co',               initials: 'RB', role: 'VP Operations', password: 'pureteamroger' },
+  { name: 'Chris Ishii',         email: 'chris@puretek.co',                 initials: 'CI', role: 'CXO', password: 'pureteamchris' },
+  { name: 'Mireille Dirany',     email: 'mireille@puretek.co',              initials: 'MD', role: 'Executive Director, Office of CEO', password: 'pureteammireille' },
+  { name: 'Linda Chaaya',        email: 'linda@puretek.co',                 initials: 'LC', role: 'Executive Assistant', password: 'pureteamlinda' },
+  { name: 'Micheline Akel',      email: 'micheline@puretek.co',             initials: 'MA', role: 'HR & Office Support Manager', password: 'pureteammicheline' },
+
+  // Finance
+  { name: 'Paula Bou Chaaya',    email: 'paula@puretek.co',                 initials: 'PB', role: 'VP Finance', password: 'pureteampaula' },
+  { name: 'Cora Salvador',       email: 'cora@puretek.co',                  initials: 'CS', role: 'CFO PT Canada', password: 'pureteamcora' },
+
+  // Commercial
+  { name: 'Alexander Logie',     email: 'alexander@puretek.co',             initials: 'AL', role: 'EVP Corporate Development', password: 'pureteamalexander' },
+  { name: 'Marcie McGovern',     email: 'marcie@puretek.co',                initials: 'MM', role: 'VP Strategic Relations', password: 'pureteammarcie' },
+  { name: 'John Smith',          email: 'johnsmith.gu19@gmail.com',         initials: 'JS', role: 'VP Sales', password: 'pureteamjohn' },
+  { name: 'Jessie Cruz',         email: 'jessie@puretek.co',                initials: 'JC', role: 'VP Revenue (Fractional)', password: 'pureteamjessie' },
+  { name: 'Mohamad El Madhoun',  email: 'mohamad@puretek.co',               initials: 'ME', role: 'EVP Revenue & Operations', password: 'pureteammohamad' },
+
+  // Marketing
+  { name: 'Phillip Bliss',       email: 'phillip@puretek.co',               initials: 'PB', role: 'CMO', password: 'pureteamphillip' },
+  { name: 'Robert Orlowski',     email: 'robert@puretek.co',                initials: 'RO', role: 'SVP Marketing & Communication', password: 'pureteamrobert' },
+  { name: 'John Paris',          email: 'john.paris@puretek.co',            initials: 'JP', role: 'SVP Digital Strategy', password: 'pureteamjohn' },
+  { name: 'Nathan Olson',        email: 'nathan@puretek.co',                initials: 'NO', role: 'President, Pure Marketing Group', password: 'pureteamnathan' },
+  { name: 'Natasha Carrasco',    email: 'natasha@puretek.co',               initials: 'NC', role: 'VP Operations (PMG)', password: 'pureteamnatasha' },
+  { name: 'Baruch Santana',      email: 'baruch@puretek.co',                initials: 'BS', role: 'Team Director Operations', password: 'pureteambaruch' },
+  { name: 'Moises Guerra',       email: 'moises@puretek.co',                initials: 'MG', role: 'Social Media Strategist', password: 'pureteammoises' },
+  { name: 'Dylan Diaz',          email: 'dylan@puretek.co',                 initials: 'DD', role: 'Team Director Commercial', password: 'pureteamdylan' },
+  { name: 'Ashley Tom',          email: 'ashley@puretek.co',                initials: 'AT', role: 'Service Operations Manager', password: 'pureteamashley' },
+  { name: 'Max Osborne',         email: 'max@puretek.co',                   initials: 'MO', role: 'Data Specialist', password: 'pureteammax' },
+
+  // Product
+  { name: 'Frank Thomas',        email: 'frank@puretek.co',                 initials: 'FT', role: 'SVP Product', password: 'pureteamfrank' },
+  { name: 'Desiree Vazquez',     email: 'desiree@puretek.co',               initials: 'DV', role: 'Director Design', password: 'pureteamdesiree' },
+  { name: 'Ahsen Awan',          email: 'ahsen@puretek.co',                 initials: 'AA', role: 'Director Product Manager', password: 'pureteamahsen' },
+  { name: 'Waqas Nasir',         email: 'waqas@puretek.co',                 initials: 'WN', role: 'Product Owner & Software Dev', password: 'pureteamwaqas' },
+  { name: 'Roger Singh',         email: 'roger.singh@puretek.co',           initials: 'RS', role: 'Chief of Staff Technology', password: 'pureteamroger' },
+
+  // Technology
+  { name: 'Russell Korus',       email: 'russell@puretek.co',               initials: 'RK', role: 'Chief Digital Assets Officer', password: 'pureteamrussell' },
+  { name: 'Ethan DeVore',        email: 'ethan@puretek.co',                 initials: 'ED', role: 'Full Stack Developer', password: 'pureteamethan' },
+  { name: 'Alex Seant',          email: 'alex@puretek.co',                  initials: 'AS', role: 'Senior Software Engineer', password: 'pureteamalex' },
+  { name: 'Zafeer Hassan',       email: 'zafeer@puretek.co',                initials: 'ZH', role: 'Sr. Software Developer', password: 'pureteamzafeer' },
+  { name: 'Shahbaz Ali',         email: 'shahbaz@puretek.co',               initials: 'SA', role: 'Manager IT & DevOps', password: 'pureteamshahbaz' },
+  { name: 'Adeeb Doyle',         email: 'adeeb@puretek.co',                 initials: 'AD', role: 'Software Developer', password: 'pureteamadeeb' },
+  { name: 'Samuel Saleh',        email: 'samuel@puretek.co',                initials: 'SS', role: 'Junior Developer', password: 'pureteamsamuel' },
+  { name: 'Zachary Skotek',      email: 'zachary@puretek.co',               initials: 'ZS', role: 'Junior Developer', password: 'pureteamzachary' },
+  { name: 'Emmanuel Akinleye',   email: 'emmanuel@puretek.co',              initials: 'EA', role: 'Junior Developer', password: 'pureteamemmanuel' },
+
+  // AI Team
+  { name: 'Aether',               email: 'purebrain@puremarketing.ai',      initials: 'AE', role: 'AI Conductor',                              isAdmin: true, password: 'puretech2026' },
+];
+
+/* =====================================================
+   STATE
+===================================================== */
+let currentUser   = null;
+let allTasks      = [];
+let currentFilter = 'all';
+let currentSearch = '';
+
+/* =====================================================
+   INIT
+===================================================== */
+/* =====================================================
+   ALLOWED EMAIL DOMAINS
+===================================================== */
+const ALLOWED_DOMAINS = [
+  'puretechnology.nyc',
+  'puretechnology.ai',
+  'puremarketing.ai',
+  'purebrain.ai',
+  'jareddsanborn.com',
+  'pureinfluence.ai'
+];
+
+/* =====================================================
+   AUTOCOMPLETE STATE
+===================================================== */
+let autocompleteHighlightIndex = -1;
+
+document.addEventListener('DOMContentLoaded', () => {
+  initAutocomplete();
+  populateAdminAssignee();
+
+  // Check for saved session
+  const saved = sessionStorage.getItem('pt_user');
+  if (saved) {
+    try {
+      currentUser = JSON.parse(saved);
+      showDashboard();
+    } catch(e) { /* ignore */ }
+  }
+});
+
+function initAutocomplete() {
+  const input = document.getElementById('login-name');
+  const list  = document.getElementById('autocomplete-list');
+
+  input.addEventListener('input', () => {
+    const query = input.value.trim().toLowerCase();
+    autocompleteHighlightIndex = -1;
+
+    if (query.length < 1) {
+      closeAutocomplete();
+      return;
+    }
+
+    const matches = TEAM_ROSTER.filter(m =>
+      m.name.toLowerCase().includes(query)
+    );
+
+    if (matches.length === 0) {
+      closeAutocomplete();
+      return;
+    }
+
+    list.innerHTML = '';
+    matches.forEach((m, idx) => {
+      const item = document.createElement('div');
+      item.className = 'autocomplete-item';
+      item.innerHTML = `
+        <span class="autocomplete-item__name">${m.name}</span>
+        <span class="autocomplete-item__role">${m.role}</span>
+      `;
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault(); // prevent blur before click
+        input.value = m.name;
+        closeAutocomplete();
+        // Auto-fill email if field is empty
+        const emailInput = document.getElementById('login-email');
+        if (!emailInput.value) {
+          emailInput.value = m.email;
+        }
+        document.getElementById('login-password').focus();
+      });
+      list.appendChild(item);
+    });
+
+    list.classList.add('open');
+  });
+
+  // Keyboard navigation
+  input.addEventListener('keydown', (e) => {
+    const items = list.querySelectorAll('.autocomplete-item');
+    if (!list.classList.contains('open') || items.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      autocompleteHighlightIndex = Math.min(autocompleteHighlightIndex + 1, items.length - 1);
+      updateHighlight(items);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      autocompleteHighlightIndex = Math.max(autocompleteHighlightIndex - 1, -1);
+      updateHighlight(items);
+    } else if (e.key === 'Enter' && autocompleteHighlightIndex >= 0) {
+      e.preventDefault();
+      items[autocompleteHighlightIndex].dispatchEvent(new Event('mousedown'));
+    } else if (e.key === 'Escape') {
+      closeAutocomplete();
+    }
+  });
+
+  // Close on blur (with slight delay to allow mousedown to fire)
+  input.addEventListener('blur', () => {
+    setTimeout(closeAutocomplete, 150);
+  });
+}
+
+function updateHighlight(items) {
+  items.forEach((item, idx) => {
+    item.classList.toggle('highlighted', idx === autocompleteHighlightIndex);
+    if (idx === autocompleteHighlightIndex) {
+      item.scrollIntoView({ block: 'nearest' });
+    }
+  });
+}
+
+function closeAutocomplete() {
+  const list = document.getElementById('autocomplete-list');
+  if (list) {
+    list.classList.remove('open');
+    list.innerHTML = '';
+  }
+  autocompleteHighlightIndex = -1;
+}
+
+function populateAdminAssignee() {
+  const sel = document.getElementById('new-assignee');
+  TEAM_ROSTER.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m.name;
+    opt.textContent = `${m.name} (${m.role})`;
+    sel.appendChild(opt);
+  });
+}
+
+/* =====================================================
+   LOGIN
+===================================================== */
+function showLoginError(msg) {
+  const err = document.getElementById('login-error');
+  const txt = document.getElementById('login-error-text');
+  txt.textContent = msg;
+  err.classList.add('visible');
+}
+
+function handleLogin(e) {
+  e.preventDefault();
+
+  const name     = document.getElementById('login-name').value.trim();
+  const email    = document.getElementById('login-email').value.trim().toLowerCase();
+  const password = document.getElementById('login-password').value;
+  const err      = document.getElementById('login-error');
+  const btn      = document.getElementById('login-btn');
+
+  // Clear previous error
+  err.classList.remove('visible');
+
+  // Validate: name must be filled (2+ chars)
+  if (name.length < 2) {
+    showLoginError('Please enter your name (at least 2 characters).');
+    return;
+  }
+
+  // Validate: email domain whitelist
+  const emailDomain = email.split('@')[1];
+  if (!emailDomain || !ALLOWED_DOMAINS.includes(emailDomain)) {
+    showLoginError('Please use a company email (@puretechnology.nyc, @puretechnology.ai, @puremarketing.ai, @purebrain.ai, @jareddsanborn.com, or @pureinfluence.ai)');
+    return;
+  }
+
+  // Validate: password must be provided
+  if (!password) {
+    showLoginError('Please enter your password.');
+    return;
+  }
+
+  // Show loading state
+  btn.disabled = true;
+  btn.innerHTML = '<span class="login-spinner"></span><span>Verifying...</span>';
+
+  // Small delay for UX feel
+  setTimeout(() => {
+    // Look up member by name (case-insensitive match, partial allowed)
+    // First try exact name match, then fuzzy
+    let member = TEAM_ROSTER.find(m => m.name.toLowerCase() === name.toLowerCase());
+    if (!member) {
+      // Try partial first-name match
+      const nameLower = name.toLowerCase();
+      member = TEAM_ROSTER.find(m => m.name.toLowerCase().startsWith(nameLower));
+    }
+
+    const resetBtn = () => {
+      btn.disabled = false;
+      btn.innerHTML = '<span>Access Dashboard</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
+    };
+
+    if (!member) {
+      // Name not in roster — allow login as guest with domain-validated email
+      // Create a temporary member object
+      const firstWord = name.split(' ')[0];
+      const initials  = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+      // For non-roster users, accept any password for now (they passed domain check)
+      currentUser = {
+        name: name,
+        email: email,
+        initials: initials,
+        role: 'Team Member',
+        isAdmin: false,
+        password: password
+      };
+      sessionStorage.setItem('pt_user', JSON.stringify(currentUser));
+      resetBtn();
+      showDashboard();
+      return;
+    }
+
+    // Member found — validate email
+    if (member.email.toLowerCase() !== email) {
+      showLoginError('Email does not match our records for that name. Please check your email address.');
+      resetBtn();
+      return;
+    }
+
+    // Validate password
+    const correctPassword = member.password || ('pureteam' + member.name.split(' ')[0].toLowerCase());
+    if (password !== correctPassword) {
+      showLoginError('Incorrect password. Please try again.');
+      resetBtn();
+      return;
+    }
+
+    err.classList.remove('visible');
+    currentUser = member;
+    sessionStorage.setItem('pt_user', JSON.stringify(member));
+    resetBtn();
+    showDashboard();
+  }, 600);
+}
+
+function handleLogout() {
+  sessionStorage.removeItem('pt_user');
+  currentUser = null;
+  allTasks    = [];
+
+  // Restore login screen
+  const loginScreen = document.getElementById('login-screen');
+  const app = document.getElementById('app');
+  loginScreen.style.display = 'flex';
+  app.classList.remove('visible');
+  document.getElementById('login-form').reset();
+  closeAutocomplete();
+
+  // Restore login button
+  const btn = document.getElementById('login-btn');
+  btn.disabled = false;
+  btn.innerHTML = '<span>Access Dashboard</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
+
+  // Restore login error
+  document.getElementById('login-error').classList.remove('visible');
+
+  // Restore card animation
+  const card = document.getElementById('login-card');
+  card.classList.remove('login-card--visible');
+  setTimeout(() => card.classList.add('login-card--visible'), 80);
+
+  // Restore canvas to full opacity
+  if (window.setCanvasAlpha) window.setCanvasAlpha(1);
+}
+
+/* =====================================================
+   SHOW DASHBOARD
+===================================================== */
+function showDashboard() {
+  // Dim the neural canvas to a subtle background level
+  if (window.setCanvasAlpha) window.setCanvasAlpha(0.18);
+
+  // Fade out login screen, show app
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').classList.add('visible');
+
+  // Set nav user info
+  document.getElementById('nav-avatar').textContent   = currentUser.initials;
+  document.getElementById('nav-username').textContent = currentUser.name;
+
+  if (currentUser.isAdmin) {
+    document.getElementById('dashboard-title').textContent    = 'Admin Dashboard — All Tasks';
+    document.getElementById('dashboard-subtitle').textContent = `Full team task management • ${TEAM_ROSTER.length} team members`;
+    document.getElementById('admin-panel').classList.add('visible');
+  } else {
+    document.getElementById('dashboard-title').textContent    = `My Tasks`;
+    document.getElementById('dashboard-subtitle').textContent = `${currentUser.role} • Showing tasks assigned to you`;
+  }
+
+  loadTasks();
+  if (currentUser.isAdmin) loadAllAdminTasks();
+}
+
+/* =====================================================
+   AIRTABLE API
+===================================================== */
+async function airtableFetch(url, options = {}) {
+  const resp = await fetch(url, { headers: AT_HEADERS, ...options });
+  if (!resp.ok) {
+    const txt = await resp.text();
+    throw new Error(`Airtable error ${resp.status}: ${txt}`);
+  }
+  return resp.json();
+}
+
+async function loadTasks() {
+  showLoading(true);
+  try {
+    let filterFormula = '';
+    if (!currentUser.isAdmin) {
+      const escaped = currentUser.name.replace(/'/g, "\\'");
+      filterFormula = `?filterByFormula={AssignedTo}='${escaped}'`;
+    }
+
+    const url = AT_URL + filterFormula + (filterFormula ? '&' : '?') + 'sort[0][field]=Priority&sort[0][direction]=desc';
+    const data = await airtableFetch(url);
+
+    allTasks = (data.records || []).map(r => ({
+      id:          r.id,
+      title:       r.fields.Title       || 'Untitled Task',
+      description: r.fields.Description || '',
+      assignedTo:  r.fields.AssignedTo  || '',
+      delegation:  r.fields.Delegation  || 'C',
+      priority:    r.fields.Priority    || 'Medium',
+      status:      r.fields.Status      || 'Pending',
+      deadline:    r.fields.Deadline    || '',
+      files:       r.fields.Files       || '',
+      createdAt:   r.fields.CreatedAt   || '',
+    }));
+
+    renderDashboard();
+  } catch(err) {
+    console.error('Load tasks error:', err);
+    if (err.message.includes('404') || err.message.includes('TABLE_NOT_FOUND')) {
+      showToast('Airtable table "Tasks" not found. Showing demo data.', 'error');
+      loadDemoTasks();
+    } else {
+      showToast('Could not load tasks. Showing demo data.', 'error');
+      loadDemoTasks();
+    }
+  } finally {
+    showLoading(false);
+  }
+}
+
+/* =====================================================
+   REAL AETHER-ASSIGNED TASKS (assigned 2026-02-25)
+===================================================== */
+function loadDemoTasks() {
+  const demos = [
+    // --- P0 CRITICAL ---
+    {
+      id: 'aether-1',
+      title: 'Deploy Proxy + Chatbox v4.4',
+      description: 'Restart log server + deploy chatbox v4.4 to WP pages 688/689. Blocks Witness E2E test.',
+      assignedTo: 'Timothy DeVore (CTO)',
+      dept: 'ST#', cadence: 'One-time',
+      delegation: 'A', priority: 'Critical', status: 'Awaiting Jared',
+      deadline: getTodayPlus(0), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-2',
+      title: 'Witness E2E Birth Test',
+      description: 'First real end-to-end birth test with Witness collective. Blocked on proxy deploy.',
+      assignedTo: 'Timothy DeVore (CTO)',
+      dept: 'ST#', cadence: 'One-time',
+      delegation: 'A', priority: 'Critical', status: 'Blocked',
+      deadline: getTodayPlus(1), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-3',
+      title: 'GSC Verification + Sitemap Submission',
+      description: 'Only 1/53 pages indexed. #1 SEO blocker. 30 min task.',
+      assignedTo: 'Jared Sanborn',
+      dept: 'ST#/ES#', cadence: 'One-time',
+      delegation: 'B', priority: 'Critical', status: 'Awaiting Jared',
+      deadline: getTodayPlus(0), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-4',
+      title: 'Publish Blog: Wrong AI Partner',
+      description: 'Blog post #7 ready. Dual publish purebrain.ai + jareddsanborn.com.',
+      assignedTo: 'Phillip Bliss',
+      dept: 'MA#', cadence: 'One-time',
+      delegation: 'C', priority: 'Critical', status: 'Awaiting Jared',
+      deadline: getTodayPlus(0), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-5',
+      title: 'Publish Blog: Next Direct Report',
+      description: 'Blog post #6 waiting since yesterday.',
+      assignedTo: 'Phillip Bliss',
+      dept: 'MA#', cadence: 'One-time',
+      delegation: 'C', priority: 'Critical', status: 'Awaiting Jared',
+      deadline: getTodayPlus(0), files: '', createdAt: new Date().toISOString()
+    },
+    // --- P1 URGENT ---
+    {
+      id: 'aether-6',
+      title: 'GCP Deployment — app.purebrain.ai',
+      description: 'Deploy PureBrain app to Google Cloud Platform.',
+      assignedTo: 'Timothy DeVore (CTO)',
+      dept: 'ST#', cadence: 'One-time',
+      delegation: 'A', priority: 'High', status: 'Awaiting Jared',
+      deadline: getTodayPlus(2), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-7',
+      title: 'PayPal Webhook Registration',
+      description: 'Security gap — payments not verified server-side.',
+      assignedTo: 'Timothy DeVore (CTO)',
+      dept: 'ST#', cadence: 'One-time',
+      delegation: 'A', priority: 'High', status: 'Open',
+      deadline: getTodayPlus(3), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-8',
+      title: 'Distribution Activation — 12 Idle Assets',
+      description: '12 marketing assets sitting idle. 90 min of Jared time this week.',
+      assignedTo: 'Nathan Olson',
+      dept: 'MA#', cadence: 'One-time',
+      delegation: 'C', priority: 'High', status: 'Awaiting Jared',
+      deadline: getTodayPlus(3), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-9',
+      title: 'LinkedIn Newsletter Issue 1',
+      description: 'Launch gets organic notification burst to all connections.',
+      assignedTo: 'Nathan Olson',
+      dept: 'MA#', cadence: 'One-time',
+      delegation: 'C', priority: 'High', status: 'Awaiting Jared',
+      deadline: getTodayPlus(3), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-10',
+      title: 'Testimonials on Live Pages',
+      description: 'Russell + Corey testimonials — zero social proof on site.',
+      assignedTo: 'Phillip Bliss',
+      dept: 'MA#', cadence: 'One-time',
+      delegation: 'C', priority: 'High', status: 'Awaiting Response',
+      deadline: getTodayPlus(4), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-11',
+      title: 'Pricing Decision — Execution Services',
+      description: '$197/$497/$897 vs $297/$697/$1,997. Pick canonical set.',
+      assignedTo: 'Jared Sanborn',
+      dept: 'MA#', cadence: 'One-time',
+      delegation: 'B', priority: 'High', status: 'Awaiting Jared',
+      deadline: getTodayPlus(2), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-12',
+      title: 'Podcast Pitches — Bio Confirm',
+      description: 'Pitch kit complete. Jared confirms bio, then 3 pitches/week.',
+      assignedTo: 'Alexander Logie',
+      dept: 'CB#', cadence: 'Weekly',
+      delegation: 'C', priority: 'High', status: 'Awaiting Jared',
+      deadline: getTodayPlus(3), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-13',
+      title: 'Quora Activation — First 3 Answers',
+      description: '5 answers drafted. Post first 3 this week.',
+      assignedTo: 'Nathan Olson',
+      dept: 'ES#', cadence: 'Weekly',
+      delegation: 'C', priority: 'High', status: 'Ready',
+      deadline: getTodayPlus(3), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-14',
+      title: 'Daily Email Monitoring',
+      description: 'Constitutional requirement. Check all email daily.',
+      assignedTo: 'Aether',
+      dept: 'IT#', cadence: 'Daily',
+      delegation: 'A', priority: 'High', status: 'In Progress',
+      deadline: getTodayPlus(0), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-15',
+      title: 'Memory Positioning Refresh',
+      description: 'ChatGPT/Claude now have memory. Shift differentiator.',
+      assignedTo: 'Charles Finkelstein (CPO)',
+      dept: 'PD#', cadence: 'One-time',
+      delegation: 'A', priority: 'High', status: 'Open',
+      deadline: getTodayPlus(5), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-16',
+      title: 'Daily Blog Content Pipeline',
+      description: 'One post/day, 7 days/week. Nightly gen, morning approval.',
+      assignedTo: 'Phillip Bliss',
+      dept: 'MA#', cadence: 'Daily',
+      delegation: 'C', priority: 'High', status: 'In Progress',
+      deadline: getTodayPlus(0), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-17',
+      title: 'Google Drive Auto-Filing Compliance',
+      description: 'Every deliverable filed to correct Drive folder.',
+      assignedTo: 'Aether',
+      dept: 'OP#', cadence: 'Daily',
+      delegation: 'A', priority: 'High', status: 'In Progress',
+      deadline: getTodayPlus(0), files: '', createdAt: new Date().toISOString()
+    },
+    // --- P2 IMPORTANT ---
+    {
+      id: 'aether-18',
+      title: 'Nightly SEO Improvements',
+      description: 'Autonomous SEO/GEO/AIO improvements on purebrain.ai.',
+      assignedTo: 'Timothy DeVore (CTO)',
+      dept: 'ST#', cadence: 'Daily',
+      delegation: 'A', priority: 'Medium', status: 'In Progress',
+      deadline: getTodayPlus(0), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-19',
+      title: 'Weekly Calculator Update',
+      description: 'Research new AI tools, update calculator, redeploy.',
+      assignedTo: 'Timothy DeVore (CTO)',
+      dept: 'ST#', cadence: 'Weekly',
+      delegation: 'A', priority: 'Medium', status: 'In Progress',
+      deadline: getTodayPlus(5), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-20',
+      title: '3D Hero Section Integration',
+      description: 'Integrate production-ready 3D scene into purebrain.ai.',
+      assignedTo: 'Timothy DeVore (CTO)',
+      dept: 'ST#', cadence: 'One-time',
+      delegation: 'A', priority: 'Medium', status: 'Open',
+      deadline: getTodayPlus(7), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-21',
+      title: 'GIF to WebM Conversion',
+      description: 'Hero background — 80-90% file size reduction.',
+      assignedTo: 'Timothy DeVore (CTO)',
+      dept: 'ST#', cadence: 'One-time',
+      delegation: 'A', priority: 'Medium', status: 'Open',
+      deadline: getTodayPlus(7), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-22',
+      title: 'LinkedIn 3-4x/Week Posting',
+      description: '30-day calendar built. 10 hooks ready.',
+      assignedTo: 'Nathan Olson',
+      dept: 'MA#', cadence: 'Weekly',
+      delegation: 'C', priority: 'Medium', status: 'Ready',
+      deadline: getTodayPlus(3), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-23',
+      title: 'Hero Headline A/B Test',
+      description: "Test current vs 'Stop Repeating Yourself to AI'.",
+      assignedTo: 'Phillip Bliss',
+      dept: 'MA#', cadence: 'One-time',
+      delegation: 'C', priority: 'Medium', status: 'Open',
+      deadline: getTodayPlus(7), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-24',
+      title: 'Price Anchor Below CTA',
+      description: "Add 'Partnerships from $79/month' below hero CTA.",
+      assignedTo: 'Phillip Bliss',
+      dept: 'MA#', cadence: 'One-time',
+      delegation: 'C', priority: 'Medium', status: 'Open',
+      deadline: getTodayPlus(5), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-25',
+      title: 'Three-Email Decision Accelerator',
+      description: 'Customer success email sequence. Estimated $23,856/yr ROI. Starts Thu Feb 26.',
+      assignedTo: 'Nathan Olson',
+      dept: 'MA#', cadence: 'One-time',
+      delegation: 'C', priority: 'Medium', status: 'Scheduled',
+      deadline: getTodayPlus(1), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-26',
+      title: 'Aether Notices Things Emails',
+      description: 'Personalized observation emails to active customers.',
+      assignedTo: 'Aether',
+      dept: 'MA#', cadence: 'Weekly',
+      delegation: 'A', priority: 'Medium', status: 'Open',
+      deadline: getTodayPlus(7), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-27',
+      title: 'Blog/Newsletter Weekly Analysis',
+      description: 'Performance analytics every Tuesday.',
+      assignedTo: 'Nathan Olson',
+      dept: 'MA#', cadence: 'Weekly',
+      delegation: 'C', priority: 'Medium', status: 'In Progress',
+      deadline: getTodayPlus(4), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-28',
+      title: 'Bluesky Daily Presence',
+      description: 'Quality engagement, thoughtful replies only.',
+      assignedTo: 'Aether',
+      dept: 'MA#', cadence: 'Daily',
+      delegation: 'A', priority: 'Medium', status: 'In Progress',
+      deadline: getTodayPlus(0), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-29',
+      title: 'Shareable Scorecard + Benchmarks',
+      description: 'Assessment v2 features.',
+      assignedTo: 'Charles Finkelstein (CPO)',
+      dept: 'PD#', cadence: 'One-time',
+      delegation: 'A', priority: 'Medium', status: 'Scoped',
+      deadline: getTodayPlus(10), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-30',
+      title: 'Reddit Contribution Cadence',
+      description: '2 helpful comments/week before original content.',
+      assignedTo: 'Nathan Olson',
+      dept: 'ES#', cadence: 'Weekly',
+      delegation: 'C', priority: 'Medium', status: 'Planned',
+      deadline: getTodayPlus(5), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-31',
+      title: 'Hub Skills Log',
+      description: 'Knowledge sharing with sister collective.',
+      assignedTo: 'Aether',
+      dept: 'IT#', cadence: 'Weekly',
+      delegation: 'A', priority: 'Medium', status: 'In Progress',
+      deadline: getTodayPlus(5), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-32',
+      title: 'Weekly Analytics Deep Dive',
+      description: 'PageSpeed, UX audit, SEO audit, conversion analysis.',
+      assignedTo: 'Aether',
+      dept: 'OP#', cadence: 'Weekly',
+      delegation: 'A', priority: 'Medium', status: 'In Progress',
+      deadline: getTodayPlus(5), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-33',
+      title: 'Daily Recap Report',
+      description: 'Agent work recap, leverage multiplier, value calc.',
+      assignedTo: 'Aether',
+      dept: 'OP#', cadence: 'Daily',
+      delegation: 'A', priority: 'Medium', status: 'In Progress',
+      deadline: getTodayPlus(0), files: '', createdAt: new Date().toISOString()
+    },
+    // --- P3 BACKGROUND ---
+    {
+      id: 'aether-34',
+      title: 'Weekly Intel Scan',
+      description: 'AI industry news, competitor moves, Claude updates.',
+      assignedTo: 'Aether',
+      dept: 'PR#', cadence: 'Weekly',
+      delegation: 'A', priority: 'Low', status: 'In Progress',
+      deadline: getTodayPlus(5), files: '', createdAt: new Date().toISOString()
+    },
+    {
+      id: 'aether-35',
+      title: 'Witness Commercial Opportunity',
+      description: 'Assess commercial angle after E2E test succeeds.',
+      assignedTo: 'Alexander Logie',
+      dept: 'CB#', cadence: 'One-time',
+      delegation: 'C', priority: 'Low', status: 'Waiting',
+      deadline: getTodayPlus(14), files: '', createdAt: new Date().toISOString()
+    }
+  ];
+
+  allTasks = currentUser.isAdmin ? demos : demos.filter(d =>
+    d.assignedTo === currentUser.name || d.assignedTo === 'Aether'
+  ).map(d => ({ ...d }));
+  renderDashboard();
+  showToast('35 Aether-assigned tasks loaded.', 'success');
+}
+
+function getTodayPlus(days) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
+}
+
+/* =====================================================
+   CREATE TASK (Admin)
+===================================================== */
+async function createTask() {
+  const title       = document.getElementById('new-title').value.trim();
+  const assignedTo  = document.getElementById('new-assignee').value;
+  const delegation  = document.getElementById('new-delegation').value;
+  const priority    = document.getElementById('new-priority').value;
+  const status      = document.getElementById('new-status').value;
+  const deadline    = document.getElementById('new-deadline').value;
+  const description = document.getElementById('new-description').value.trim();
+  const files       = document.getElementById('new-files').value.trim();
+
+  if (!title || !assignedTo) {
+    showAdminMsg('Title and Assignee are required.', 'error');
+    return;
+  }
+
+  try {
+    const body = {
+      fields: {
+        Title: title, AssignedTo: assignedTo, Delegation: delegation,
+        Priority: priority, Status: status, Description: description,
+        Files: files, CreatedAt: new Date().toISOString()
+      }
+    };
+    if (deadline) body.fields.Deadline = deadline;
+
+    await airtableFetch(AT_URL, { method: 'POST', body: JSON.stringify(body) });
+
+    showAdminMsg('Task created successfully!', 'success');
+    document.getElementById('new-title').value       = '';
+    document.getElementById('new-description').value = '';
+    document.getElementById('new-files').value        = '';
+    document.getElementById('new-deadline').value     = '';
+
+    await loadTasks();
+    await loadAllAdminTasks();
+    showToast('Task created and assigned!', 'success');
+  } catch(err) {
+    console.error('Create task error:', err);
+    showAdminMsg(`Error: ${err.message}`, 'error');
+  }
+}
+
+/* =====================================================
+   UPDATE TASK STATUS
+===================================================== */
+async function cycleStatus(taskId, currentStatus) {
+  const sequence = { 'Pending': 'In Progress', 'In Progress': 'Complete', 'Complete': 'Pending' };
+  const nextStatus = sequence[currentStatus] || 'Pending';
+
+  try {
+    await airtableFetch(`${AT_URL}/${taskId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ fields: { Status: nextStatus } })
+    });
+    const task = allTasks.find(t => t.id === taskId);
+    if (task) { task.status = nextStatus; renderDashboard(); }
+    showToast(`Status → ${nextStatus}`, 'success');
+  } catch(err) {
+    const task = allTasks.find(t => t.id === taskId);
+    if (task && task.id.startsWith('demo-')) {
+      task.status = nextStatus;
+      renderDashboard();
+      showToast(`Status → ${nextStatus}`, 'success');
+    } else {
+      showToast('Could not update status', 'error');
+    }
+  }
+}
+
+/* =====================================================
+   DELETE TASK (Admin)
+===================================================== */
+async function deleteTask(taskId) {
+  if (!confirm('Delete this task permanently?')) return;
+  try {
+    await airtableFetch(`${AT_URL}/${taskId}`, { method: 'DELETE' });
+    allTasks = allTasks.filter(t => t.id !== taskId);
+    renderDashboard();
+    await loadAllAdminTasks();
+    showToast('Task deleted.', 'success');
+  } catch(err) {
+    allTasks = allTasks.filter(t => t.id !== taskId);
+    renderDashboard();
+    showToast('Task removed.', 'success');
+  }
+}
+
+/* =====================================================
+   LOAD ALL TASKS (Admin table)
+===================================================== */
+async function loadAllAdminTasks() {
+  const tbody = document.getElementById('admin-table-body');
+  tbody.innerHTML = '<tr><td colspan="7" style="color:var(--pb-text-muted);text-align:center;padding:16px">Loading...</td></tr>';
+  try {
+    const data = await airtableFetch(AT_URL + '?sort[0][field]=CreatedAt&sort[0][direction]=desc&maxRecords=100');
+    const records = (data.records || []).map(r => ({
+      id:         r.id,
+      title:      r.fields.Title      || 'Untitled',
+      assignedTo: r.fields.AssignedTo || '—',
+      delegation: r.fields.Delegation || 'C',
+      priority:   r.fields.Priority   || 'Medium',
+      status:     r.fields.Status     || 'Pending',
+      deadline:   r.fields.Deadline   || '—',
+    }));
+    renderAdminTable(records);
+  } catch(err) {
+    renderAdminTable(allTasks);
+  }
+}
+
+function renderAdminTable(records) {
+  const tbody = document.getElementById('admin-table-body');
+  if (!records.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="color:var(--pb-text-muted);text-align:center;padding:16px">No tasks yet. Create one above.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = records.map(r => `
+    <tr>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.title}</td>
+      <td>${r.assignedTo}</td>
+      <td><span class="delegation-badge delegation-${r.delegation}">${r.delegation}</span></td>
+      <td><span class="priority-badge priority-${r.priority.toLowerCase()}">${r.priority}</span></td>
+      <td><span class="status-badge status-${statusClass(r.status)}"><span class="status-dot"></span>${r.status}</span></td>
+      <td style="color:var(--pb-text-muted)">${r.deadline}</td>
+      <td><button class="task-delete-btn" onclick="deleteTask('${r.id}')">Delete</button></td>
+    </tr>
+  `).join('');
+}
+
+/* =====================================================
+   RENDER DASHBOARD
+===================================================== */
+function renderDashboard() {
+  let tasks = [...allTasks];
+
+  if (currentSearch) {
+    const q = currentSearch.toLowerCase();
+    tasks = tasks.filter(t =>
+      t.title.toLowerCase().includes(q) ||
+      t.description.toLowerCase().includes(q)
+    );
+  }
+
+  if (currentFilter === 'pending')     tasks = tasks.filter(t => t.status === 'Pending');
+  if (currentFilter === 'in-progress') tasks = tasks.filter(t => t.status === 'In Progress');
+  if (currentFilter === 'complete')    tasks = tasks.filter(t => t.status === 'Complete');
+  if (currentFilter === 'high')        tasks = tasks.filter(t => t.priority === 'High' || t.priority === 'Critical');
+
+  const orig = allTasks;
+  document.getElementById('stat-total').textContent      = orig.length;
+  document.getElementById('stat-inprogress').textContent = orig.filter(t => t.status === 'In Progress').length;
+  document.getElementById('stat-pending').textContent    = orig.filter(t => t.status === 'Pending').length;
+  document.getElementById('stat-complete').textContent   = orig.filter(t => t.status === 'Complete').length;
+  document.getElementById('stat-high').textContent       = orig.filter(t => t.priority === 'High' || t.priority === 'Critical').length;
+
+  const critical   = tasks.filter(t => t.priority === 'Critical' && t.status !== 'Complete');
+  const high       = tasks.filter(t => t.priority === 'High' && t.status !== 'Complete');
+  const inProgress = tasks.filter(t => t.status === 'In Progress' && t.priority !== 'High' && t.priority !== 'Critical');
+  const pending    = tasks.filter(t => !['In Progress','Complete'].includes(t.status) && t.priority !== 'High' && t.priority !== 'Critical');
+  const complete   = tasks.filter(t => t.status === 'Complete');
+
+  // Show Aether banner if real tasks loaded
+  const bannerEl = document.getElementById('aether-banner');
+  if (bannerEl && allTasks.some(t => t.id && t.id.startsWith('aether-'))) {
+    bannerEl.style.display = 'flex';
+    const dateEl = document.getElementById('aether-banner-date');
+    if (dateEl) dateEl.textContent = 'Last updated: Feb 25, 2026';
+  }
+
+  document.getElementById('grid-critical').innerHTML    = critical.length    ? critical.map(taskCard).join('')    : '';
+  document.getElementById('grid-high').innerHTML       = high.length       ? high.map(taskCard).join('')       : '';
+  document.getElementById('grid-inprogress').innerHTML = inProgress.length ? inProgress.map(taskCard).join('') : '';
+  document.getElementById('grid-pending').innerHTML    = pending.length    ? pending.map(taskCard).join('')    : '';
+  document.getElementById('grid-complete').innerHTML   = complete.length   ? complete.map(taskCard).join('')   : '';
+
+  document.getElementById('count-critical').textContent   = critical.length;
+  document.getElementById('count-high').textContent       = high.length;
+  document.getElementById('count-inprogress').textContent = inProgress.length;
+  document.getElementById('count-pending').textContent    = pending.length;
+  document.getElementById('count-complete').textContent   = complete.length;
+
+  document.getElementById('section-critical').style.display   = critical.length   ? 'block' : 'none';
+  document.getElementById('section-high').style.display       = high.length       ? 'block' : 'none';
+  document.getElementById('section-inprogress').style.display = inProgress.length ? 'block' : 'none';
+  document.getElementById('section-pending').style.display    = pending.length    ? 'block' : 'none';
+  document.getElementById('section-complete').style.display   = complete.length   ? 'block' : 'none';
+
+  const totalVisible = critical.length + high.length + inProgress.length + pending.length + complete.length;
+  document.getElementById('empty-state').style.display   = totalVisible === 0 ? 'block' : 'none';
+  document.getElementById('task-sections').style.display = totalVisible === 0 ? 'none'  : 'block';
+}
+
+function taskCard(task) {
+  const accentColor = task.priority === 'Critical' ? '#f87171' :
+                      task.priority === 'High' ? 'var(--pb-orange)' :
+                      task.status === 'Complete' ? 'var(--pb-green)' : 'var(--pb-blue)';
+
+  const deadlineHtml = task.deadline ? (() => {
+    const today    = new Date(); today.setHours(0,0,0,0);
+    const due      = new Date(task.deadline + 'T00:00:00');
+    const diffDays = Math.round((due - today) / (1000 * 60 * 60 * 24));
+    let cls = '', label = '';
+    if (task.status === 'Complete') {
+      label = `Due ${formatDate(task.deadline)}`;
+    } else if (diffDays < 0) {
+      cls = 'overdue'; label = `Overdue by ${Math.abs(diffDays)}d`;
+    } else if (diffDays <= 3) {
+      cls = 'soon'; label = diffDays === 0 ? 'Due today' : `Due in ${diffDays}d`;
+    } else {
+      label = `Due ${formatDate(task.deadline)}`;
+    }
+    return `<span class="task-deadline ${cls}">
+      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="18" rx="2"/>
+        <line x1="16" y1="2" x2="16" y2="6"/>
+        <line x1="8" y1="2" x2="8" y2="6"/>
+        <line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
+      ${label}
+    </span>`;
+  })() : '';
+
+  const filesHtml = task.files ? task.files.split(',').filter(f => f.trim()).slice(0, 3).map((f, i) => {
+    const url   = f.trim();
+    const label = url.includes('docs.google.com') ? 'Doc' :
+                  url.includes('drive.google.com') ? `File ${i+1}` : `Link ${i+1}`;
+    return `<a class="file-chip" href="${url}" target="_blank" rel="noopener">
+      <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
+      ${label}
+    </a>`;
+  }).join('') : '';
+
+  const nextStatus = { 'Pending': 'Start', 'In Progress': 'Complete', 'Complete': 'Reopen' }[task.status] || 'Update';
+
+  return `
+    <div class="task-card" style="--card-accent: ${accentColor}">
+      <div class="task-card-header">
+        <div class="task-title">${escHtml(task.title)}</div>
+      </div>
+      ${task.assignedTo ? `<div class="task-assignee">&#128100; ${escHtml(task.assignedTo)}</div>` : ''}
+      <div class="task-meta">
+        <span class="delegation-badge delegation-${task.delegation}" title="${delegationLabel(task.delegation)}">${task.delegation} — ${delegationShort(task.delegation)}</span>
+        <span class="priority-badge priority-${task.priority.toLowerCase()}">${task.priority}</span>
+        <span class="status-badge status-${statusClass(task.status)}"><span class="status-dot"></span>${task.status}</span>
+        ${task.dept ? `<span class="dept-tag">${escHtml(task.dept)}</span>` : ''}
+        ${task.cadence && task.cadence !== 'One-time' ? `<span class="cadence-tag cadence-${task.cadence.toLowerCase()}">${escHtml(task.cadence)}</span>` : ''}
+      </div>
+      ${task.description ? `<div class="task-description">${escHtml(task.description)}</div>` : ''}
+      <div class="task-footer">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          ${deadlineHtml}
+          <div class="task-files">${filesHtml}</div>
+        </div>
+        <button class="status-change-btn" onclick="cycleStatus('${task.id}', '${task.status}')">${nextStatus} →</button>
+      </div>
+    </div>
+  `;
+}
+
+/* =====================================================
+   FILTERS
+===================================================== */
+function setFilter(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderDashboard();
+}
+
+function setSearch(val) {
+  currentSearch = val;
+  renderDashboard();
+}
+
+/* =====================================================
+   HELPERS
+===================================================== */
+function statusClass(s) {
+  if (s === 'In Progress') return 'in-progress';
+  if (s === 'Complete')    return 'complete';
+  if (s === 'Blocked')     return 'in-progress';
+  return 'pending';
+}
+
+function delegationLabel(d) {
+  return { A: 'Aether handles', B: 'Jared handles', C: 'Team member handles' }[d] || d;
+}
+
+function delegationShort(d) {
+  return { A: 'Aether', B: 'Jared', C: 'You' }[d] || d;
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[parseInt(m)-1]} ${parseInt(d)}`;
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showLoading(show) {
+  document.getElementById('loading-overlay').style.display = show ? 'flex' : 'none';
+}
+
+function showAdminMsg(text, type) {
+  const el = document.getElementById('admin-msg');
+  el.textContent = text;
+  el.className = `admin-msg ${type}`;
+}
+
+function showToast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+
+/* =====================================================
+   VIEW SWITCHING (Tasks / Team)
+===================================================== */
+let currentView = 'tasks';
+let selectedRosterName = null;
+let currentDeptFilter = 'all';
+
+function switchView(view) {
+  currentView = view;
+  const tasksView = document.getElementById('tasks-view');
+  const teamView  = document.getElementById('team-view');
+  const tabTasks  = document.getElementById('tab-tasks');
+  const tabTeam   = document.getElementById('tab-team');
+
+  if (view === 'tasks') {
+    tasksView.classList.remove('hidden');
+    teamView.classList.remove('visible');
+    tabTasks.classList.add('active');
+    tabTeam.classList.remove('active');
+  } else {
+    tasksView.classList.add('hidden');
+    teamView.classList.add('visible');
+    tabTasks.classList.remove('active');
+    tabTeam.classList.add('active');
+    renderRoster();
+  }
+}
+
+/* =====================================================
+   TEAM DATA (49 members — full dossier)
+===================================================== */
+const DEPT_COLORS = {
+  'Leadership': '#f1420b',
+  'Operations': '#3db8f5',
+  'Finance':    '#f59e0b',
+  'Commercial': '#8b5cf6',
+  'Marketing':  '#2a93c1',
+  'Product':    '#22c55e',
+  'Technology': '#06b6d4',
+  'Strategy':   '#ec4899',
+  'AI':         '#ff6a3d',
+};
+
+const TEAM_DATA = [
+  {
+    name: 'Jared Sanborn',
+    initials: 'JS',
+    role: 'Chairman & CEO',
+    reportsTo: 'Board of Directors',
+    location: 'USA',
+    dept: 'Leadership',
+    strengths: ['Company vision', 'Fundraising', 'Partnerships', 'Brand positioning', 'Investor relations', 'Marketing strategy', 'SEO/SEM', 'Executive leadership'],
+    routing: {
+      a: 'Draft investor decks, market research, competitive analysis, content creation, email drafts, SEO/digital strategy docs, data reports',
+      b: 'ALL final decisions, investor conversations, client relationship calls, brand direction, publishing approvals, fundraising',
+      c: 'Strategy, vision calls, partnership negotiations'
+    }
+  },
+  {
+    name: 'Melanie Salvador',
+    initials: 'MS',
+    role: 'Vice-Chairman & Deputy CEO',
+    reportsTo: 'Jared Sanborn',
+    location: 'Global (NA, Middle East, Asia)',
+    dept: 'Leadership',
+    strengths: ['Capital raising', 'Corporate restructuring', 'Global telecom markets', 'Investor relations', 'Board governance', 'Strategic partnerships', 'AI/Blockchain/Crypto', 'UN SDG advisory'],
+    routing: {
+      a: 'Research on markets, draft briefing docs, investor materials prep, competitive intel',
+      b: 'Decisions involving investor relations, board matters, strategic alliances',
+      c: 'Capital raising conversations, restructuring strategy, telecom operator partnerships, Asia/Middle East market entry'
+    }
+  },
+  {
+    name: 'Nils Waschkau',
+    initials: 'NW',
+    role: 'Chief Operating Officer',
+    reportsTo: 'Jared Sanborn',
+    location: 'USA (originally Germany)',
+    dept: 'Operations',
+    strengths: ['Operations leadership', 'Product strategy', 'Partnerships', 'Data strategy', 'COO-level execution', 'Startup scaling', 'Board governance'],
+    routing: {
+      a: 'Ops reporting, process documentation, operational analysis, status reports',
+      b: 'Decisions affecting company-wide operations, COO-level approvals',
+      c: 'Day-to-day operational decisions, team coordination, process improvements, product/partnership strategy'
+    }
+  },
+  {
+    name: 'Edward Brennan',
+    initials: 'EB',
+    role: 'SVP Operations (Fractional)',
+    reportsTo: 'Nils Waschkau',
+    location: 'USA',
+    dept: 'Operations',
+    strengths: ['Financial operations', 'Due diligence', 'M&A', 'SEC filings', 'Revenue recognition', 'Fundraising ($440M+)', 'Blockchain', 'Enterprise operations'],
+    routing: {
+      a: 'Financial reports, due diligence research, company analysis docs',
+      b: 'M&A decisions, major financial commitments',
+      c: 'Operational execution, financial controls, SEC/compliance matters, corp dev deals'
+    }
+  },
+  {
+    name: 'Roger Beaini',
+    initials: 'RB',
+    role: 'VP Operations',
+    reportsTo: 'Nils Waschkau',
+    location: 'Lebanon (Beirut)',
+    dept: 'Operations',
+    strengths: ['Operations leadership', 'Team management', 'Process design', 'Execution'],
+    routing: {
+      a: 'Operations reports, process docs, status updates',
+      b: 'Operations strategy decisions',
+      c: 'Day-to-day operations execution, team management'
+    }
+  },
+  {
+    name: 'Chris Ishii',
+    initials: 'CI',
+    role: 'CXO',
+    reportsTo: 'Nils Waschkau',
+    location: 'Mercer Island, WA',
+    dept: 'Operations',
+    strengths: ['Financial services', 'Wealth management', 'Venture capital', 'Investor network', 'Startup advising', 'Community media', 'Fundraising'],
+    routing: {
+      a: 'Investment research, market reports, investor presentation drafts',
+      b: 'Investor introductions, fundraising strategy',
+      c: 'Investor relations execution, wealth management guidance, venture partner activities'
+    }
+  },
+  {
+    name: 'James Weinberg',
+    initials: 'JW',
+    role: 'Chief Financial Officer',
+    reportsTo: 'Jared Sanborn',
+    location: 'USA',
+    dept: 'Finance',
+    strengths: ['Financial planning & analysis', 'Capital raising', 'Restructuring', 'Tax strategy', 'Treasury operations', 'M&A', 'International finance'],
+    routing: {
+      a: 'Financial model templates, reporting dashboards, budget analysis, financial research',
+      b: 'Major capital decisions, fundraising strategy',
+      c: 'CFO-level financial decisions, investor financial reports, tax strategy, treasury management'
+    }
+  },
+  {
+    name: 'Paula Bou Chaaya',
+    initials: 'PB',
+    role: 'VP Finance',
+    reportsTo: 'James Weinberg',
+    location: 'Lebanon (Beirut)',
+    dept: 'Finance',
+    strengths: ['Financial statements', 'Accounting', 'Controlling', 'Financial analysis', 'Budget tracking', 'Consolidation', 'AXA-level precision'],
+    routing: {
+      a: 'Financial report templates, data entry automation, expense tracking docs',
+      b: 'Major financial commitments',
+      c: 'Financial statement preparation, accounting tasks, budget control, financial reporting'
+    }
+  },
+  {
+    name: 'Cora Salvador',
+    initials: 'CS',
+    role: 'CFO PT Canada',
+    reportsTo: 'James Weinberg',
+    location: 'Canada',
+    dept: 'Finance',
+    strengths: ['Canadian financial management', 'Regulatory compliance', 'Financial reporting', 'Canada entity operations'],
+    routing: {
+      a: 'Canadian financial reporting templates, regulatory research',
+      b: 'Canada entity strategy decisions',
+      c: 'Canadian financial management, compliance, reporting'
+    }
+  },
+  {
+    name: 'Mike Daser',
+    initials: 'MD',
+    role: 'SVP Human Resources',
+    reportsTo: 'Jared Sanborn',
+    location: 'USA',
+    dept: 'Operations',
+    strengths: ['HR strategy', 'Startup HR', 'Culture building', 'People operations', 'Process design', 'Talent management', 'Communication'],
+    routing: {
+      a: 'HR policy templates, onboarding docs, job descriptions, culture survey analysis, HR research',
+      b: 'Hiring decisions for senior roles, compensation approvals',
+      c: 'HR decisions, culture initiatives, employee relations, performance processes, HR vendor selection'
+    }
+  },
+  {
+    name: 'Micheline Akel',
+    initials: 'MA',
+    role: 'HR & Office Support Manager',
+    reportsTo: 'Mike Daser',
+    location: 'Beirut, Lebanon',
+    dept: 'Operations',
+    strengths: ['HR administration', 'Office management', 'Procurement', 'Logistics', 'Quality assurance', 'SAP', 'Multilingual (Arabic, English, French)'],
+    routing: {
+      a: 'HR templates, process documentation, procurement tracking spreadsheets',
+      b: 'Policy changes requiring executive approval',
+      c: 'HR administration tasks, office operations, procurement, compliance documentation, internal audits'
+    }
+  },
+  {
+    name: 'Eric Solomon',
+    initials: 'ES',
+    role: 'Chief Brilliance Actualizer',
+    reportsTo: 'Jared Sanborn',
+    location: 'USA',
+    dept: 'Strategy',
+    strengths: ['Brand strategy', 'Human-centric design', 'AI-era marketing', 'Creative strategy', 'Cognitive psychology', 'Thought leadership', 'Public speaking', 'Ex-Google/Spotify/Instagram/YouTube'],
+    routing: {
+      a: 'Research on brand strategy, content drafts, insights reports, presentation materials',
+      b: 'Brand direction decisions',
+      c: 'Brand strategy development, creative direction, human-first frameworks, speaking engagements, executive thought leadership'
+    }
+  },
+  {
+    name: 'Michael Schuman',
+    initials: 'MS',
+    role: 'Chief Commercial Officer',
+    reportsTo: 'Jared Sanborn',
+    location: 'USA',
+    dept: 'Commercial',
+    strengths: ['Commercial strategy', 'eSports/gaming partnerships', 'Engineering background', 'Vendor management', 'Sponsorship', 'Event operations'],
+    routing: {
+      a: 'Commercial reports, sales analytics, market research, pitch materials',
+      b: 'Major commercial partnerships, CCO-level strategic decisions',
+      c: 'Commercial team management, vendor/sponsorship deals, eSports partnerships, day-to-day commercial execution'
+    }
+  },
+  {
+    name: 'Mireille Dirany',
+    initials: 'MD',
+    role: 'Executive Director, Office of CEO',
+    reportsTo: 'Jared Sanborn',
+    location: 'Lebanon (Beirut)',
+    dept: 'Operations',
+    strengths: ['Executive operations', 'CEO office management', 'Administration', 'Project coordination', 'Ericsson-level experience', 'Multilingual'],
+    routing: {
+      a: 'Meeting prep docs, agenda drafts, status reports, travel research, email drafts for CEO',
+      b: 'CEO-level decisions and approvals',
+      c: 'CEO scheduling, executive coordination, internal communications, operations oversight for CEO office'
+    }
+  },
+  {
+    name: 'Linda Chaaya',
+    initials: 'LC',
+    role: 'Executive Assistant',
+    reportsTo: 'Mireille Dirany',
+    location: 'Lebanon (Beirut)',
+    dept: 'Operations',
+    strengths: ['Executive assistance', 'Accounting', 'SAP', 'Odoo', 'Financial operations', 'Cross-functional support', 'Vendor relations', 'Multilingual'],
+    routing: {
+      a: 'Document templates, scheduling research, email drafts, spreadsheet work',
+      b: 'Priorities for CEO support',
+      c: 'Calendar management, executive support tasks, document handling, SAP-based financial reporting, coordination between teams'
+    }
+  },
+  {
+    name: 'Alexander Logie',
+    initials: 'AL',
+    role: 'EVP Corporate Development',
+    reportsTo: 'Michael Schuman',
+    location: 'Canada (Toronto)',
+    dept: 'Commercial',
+    strengths: ['Corporate development', 'Capital markets', 'Derivatives trading', 'Public markets (TSX)', 'M&A', 'International finance', 'Deal structuring'],
+    routing: {
+      a: 'Corporate development research, financial modeling, deal analysis, market intelligence',
+      b: 'Corporate development strategy decisions',
+      c: 'Deal execution, capital markets activities, investor relations, corporate structuring'
+    }
+  },
+  {
+    name: 'Marcie McGovern',
+    initials: 'MM',
+    role: 'VP Strategic Relations',
+    reportsTo: 'Michael Schuman',
+    location: 'USA',
+    dept: 'Commercial',
+    strengths: ['Strategic partnerships', 'Business development', 'Investor relations', 'Entertainment industry network', 'Joint ventures', 'Negotiation', 'Brand technology'],
+    routing: {
+      a: 'Partnership research, outreach email drafts, industry analysis',
+      b: 'Strategic partnership approvals',
+      c: 'Entertainment/media partnership conversations, joint venture negotiations, investor introductions from her network'
+    }
+  },
+  {
+    name: 'John Smith',
+    initials: 'JS',
+    role: 'VP Sales',
+    reportsTo: 'Michael Schuman',
+    location: 'Calgary, Alberta, Canada',
+    dept: 'Commercial',
+    strengths: ['Fintech sales', 'Open banking', 'Core banking', 'International sales leadership', 'Go-to-market strategy', 'Revenue growth', 'Multi-regional markets'],
+    routing: {
+      a: 'Sales reports, CRM data analysis, prospect research, sales deck drafts, pipeline tracking',
+      b: 'Major sales strategy decisions, large deal approvals',
+      c: 'Sales execution, client calls, deal negotiation, sales team direction, fintech sector outreach'
+    }
+  },
+  {
+    name: 'Jessie Cruz',
+    initials: 'JC',
+    role: 'VP Revenue (Fractional)',
+    reportsTo: 'Michael Schuman',
+    location: 'USA',
+    dept: 'Commercial',
+    strengths: ['Revenue strategy', 'Brand partnerships', 'Multicultural marketing', 'Experiential campaigns', 'Operations innovation', 'Media/entertainment', 'Ex-Discovery/OWN'],
+    routing: {
+      a: 'Revenue analysis, campaign performance reports, strategy docs',
+      b: 'Revenue strategy direction',
+      c: 'Revenue growth initiatives, strategic brand partnerships, multicultural market strategy, consulting engagements'
+    }
+  },
+  {
+    name: 'Mohamad El Madhoun',
+    initials: 'ME',
+    role: 'EVP Revenue & Operations',
+    reportsTo: 'Michael Schuman',
+    location: 'Middle East / Global',
+    dept: 'Commercial',
+    strengths: ['ICT/telecom commercial leadership', 'Revenue operations', 'Partnerships', 'WiMax/network strategy', 'Global telecom markets', 'AI/data analytics', 'Middle East market'],
+    routing: {
+      a: 'Revenue reports, market analysis, commercial strategy docs',
+      b: 'Major revenue/commercial decisions',
+      c: 'Telecom operator partnerships, Middle East/global commercial operations, ICT revenue strategy'
+    }
+  },
+  {
+    name: 'Phillip Bliss',
+    initials: 'PB',
+    role: 'Chief Marketing Officer',
+    reportsTo: 'Michael Schuman',
+    location: 'USA/Canada',
+    dept: 'Marketing',
+    strengths: ['Digital product marketing', 'Brand strategy', 'Startup marketing', 'Board-level strategic advising', 'Product development', 'Higher education tech', 'Enterprise marketing', '4 companies built/sold'],
+    routing: {
+      a: 'Marketing strategies, campaign briefs, content creation, SEO/digital analysis, marketing reports',
+      b: 'Major marketing spend decisions, brand direction',
+      c: 'CMO decisions, marketing team direction, strategic marketing partnerships, board-level marketing advisory'
+    }
+  },
+  {
+    name: 'Robert Orlowski',
+    initials: 'RO',
+    role: 'SVP Marketing & Communication',
+    reportsTo: 'Phillip Bliss',
+    location: 'USA (NY)',
+    dept: 'Marketing',
+    strengths: ['B2B marketing', 'Brand launches', 'Advertising campaign management ($22M budgets)', 'SaaS/cloud marketing', 'Wireless/telecom marketing', 'AI marketing', 'Ex-AT&T/Panasonic/BlackBerry'],
+    routing: {
+      a: 'Campaign briefs, PR drafts, marketing copy, competitive analysis, digital strategy docs',
+      b: 'Marketing direction and major spend approvals',
+      c: 'Campaign execution, agency management, brand communications, product launch marketing, media buying'
+    }
+  },
+  {
+    name: 'John Paris',
+    initials: 'JP',
+    role: 'SVP Digital Strategy',
+    reportsTo: 'Phillip Bliss',
+    location: 'USA',
+    dept: 'Marketing',
+    strengths: ['Mobile strategy', 'Digital product strategy', 'Content strategy', 'App development leadership', 'Media partnerships', 'Apple/mobile platform expertise', 'Ex-Time Inc/CNN/Sports Illustrated'],
+    routing: {
+      a: 'Digital strategy documents, content calendars, mobile UX research, platform analysis',
+      b: 'Digital strategy direction',
+      c: 'Digital strategy development, mobile product decisions, content distribution strategy, media/platform partnerships'
+    }
+  },
+  {
+    name: 'Nathan Olson',
+    initials: 'NO',
+    role: 'President, Pure Marketing Group',
+    reportsTo: 'Phillip Bliss',
+    location: 'USA',
+    dept: 'Marketing',
+    strengths: ['Digital marketing', 'Social media marketing', 'Facebook/Instagram/Google advertising', 'Lead generation', 'STEM-based analytics', 'Brand building', 'PMG operations leadership'],
+    routing: {
+      a: 'Ad copy, campaign analysis, competitor research, marketing reports, content briefs, targeting strategy docs',
+      b: 'PMG strategy direction, major budget decisions',
+      c: 'PMG day-to-day execution, digital marketing campaigns, team management, client marketing delivery'
+    }
+  },
+  {
+    name: 'Natasha Carrasco',
+    initials: 'NC',
+    role: 'VP Operations (PMG)',
+    reportsTo: 'Nathan Olson',
+    location: 'USA',
+    dept: 'Marketing',
+    strengths: ['Operations management', 'Systems building', 'Process design', 'Startup scaling', 'Administrative management', 'Team coordination'],
+    routing: {
+      a: 'Process documentation, operational reports, SOP templates, project tracking',
+      b: 'Major operational decisions',
+      c: 'Day-to-day operations execution, systems management, team coordination, process improvements'
+    }
+  },
+  {
+    name: 'Baruch Santana',
+    initials: 'BS',
+    role: 'Team Director Operations',
+    reportsTo: 'Nathan Olson',
+    location: 'New York City, USA',
+    dept: 'Marketing',
+    strengths: ['Operations direction', 'Business development', 'Entertainment industry', 'Film/TV production', 'Wall Street finance', 'Relationship building', 'NYC network'],
+    routing: {
+      a: 'Operations reports, process docs, outreach research',
+      b: 'Strategic business development decisions',
+      c: 'Operations team direction, entertainment industry relationships, business development outreach, event/production coordination'
+    }
+  },
+  {
+    name: 'Moises Guerra',
+    initials: 'MG',
+    role: 'Social Media Strategist',
+    reportsTo: 'Nathan Olson',
+    location: 'Tri-State Area (NY/NJ/CT)',
+    dept: 'Marketing',
+    strengths: ['Instagram growth', 'Social media strategy', 'Content creation', 'Brand visibility', 'Influencer marketing', 'Organic growth tactics', '10M+ personal network'],
+    routing: {
+      a: 'Social media copy, content calendars, analytics reports, hashtag research, competitor social analysis',
+      b: 'Social media strategy direction',
+      c: 'Instagram/social media execution, account management, influencer outreach, content creation, brand visibility campaigns'
+    }
+  },
+  {
+    name: 'Dylan Diaz',
+    initials: 'DD',
+    role: 'Team Director Commercial',
+    reportsTo: 'Nathan Olson',
+    location: 'Hoboken, NJ, USA',
+    dept: 'Marketing',
+    strengths: ['Digital marketing', 'Lead generation', 'Compliance/QA in marketing', 'Project management', 'Commercial operations'],
+    routing: {
+      a: 'Lead gen analysis, compliance documentation, commercial reports, project tracking',
+      b: 'Commercial direction decisions',
+      c: 'Commercial operations, lead generation campaigns, compliance oversight, client commercial delivery'
+    }
+  },
+  {
+    name: 'Ashley Tom',
+    initials: 'AT',
+    role: 'Service Operations Manager',
+    reportsTo: 'Nathan Olson',
+    location: 'USA',
+    dept: 'Marketing',
+    strengths: ['Service operations', 'Client management', 'Supply management', 'Process optimization', 'Record-keeping', 'Cross-team communication'],
+    routing: {
+      a: 'Service reports, client communication templates, operational tracking docs',
+      b: 'Service strategy decisions',
+      c: 'Day-to-day service operations, client communications, supply management, operational process management'
+    }
+  },
+  {
+    name: 'Max Osborne',
+    initials: 'MO',
+    role: 'Data Specialist',
+    reportsTo: 'Nathan Olson',
+    location: 'USA (UK born)',
+    dept: 'Marketing',
+    strengths: ['Data acquisition', 'Data cleaning', 'Analysis & visualization', 'Financial analytics', 'eCommerce analytics', 'Geospatial data', 'Full-funnel reporting'],
+    routing: {
+      a: 'Data cleaning scripts, automated reports, dashboard templates, data pipeline code, analysis scripts',
+      b: 'Major data strategy decisions',
+      c: 'Data analysis, insight generation, operational strategy recommendations based on data, analytics reporting'
+    }
+  },
+  {
+    name: 'Charles Finkelstein',
+    initials: 'CF',
+    role: 'Chief Product Officer',
+    reportsTo: 'Jared Sanborn',
+    location: 'USA',
+    dept: 'Product',
+    strengths: ['Product strategy', 'SaaS', 'AI-augmented products', 'Cloud products', 'UX', 'Multi-team leadership', 'Patent holder (automation/data/AI)', 'Ex-Microsoft Principal PM'],
+    routing: {
+      a: 'Product specs, feature requirements docs, user story writing, product research, competitive product analysis',
+      b: 'CPO-level product direction',
+      c: 'Product roadmap decisions, product strategy, innovation initiatives, SaaS product development direction'
+    }
+  },
+  {
+    name: 'Frank Thomas',
+    initials: 'FT',
+    role: 'SVP Product',
+    reportsTo: 'Charles Finkelstein',
+    location: 'Canada',
+    dept: 'Product',
+    strengths: ['Cloud architecture', 'AI platform development', 'Retail AI', 'Data systems', 'Startup founding/exit', 'CTO-level technical product leadership', 'Enterprise SaaS'],
+    routing: {
+      a: 'Product specs, technical documentation, architecture diagrams, AI/cloud research',
+      b: 'Product strategy decisions',
+      c: 'SVP product decisions, cloud/AI platform strategy, technical product roadmap, data systems architecture'
+    }
+  },
+  {
+    name: 'Desiree Vazquez',
+    initials: 'DV',
+    role: 'Director Design',
+    reportsTo: 'Frank Thomas',
+    location: 'USA',
+    dept: 'Product',
+    strengths: ['Product design', 'UX/UI', 'Interior to digital design crossover', 'Startup product design', 'Design thinking', 'User empathy', 'Visual design'],
+    routing: {
+      a: 'Design briefs, wireframe specs, design research, style guide documentation',
+      b: 'Brand/design direction decisions',
+      c: 'Product design execution, UX design, design system management, visual design decisions'
+    }
+  },
+  {
+    name: 'Ahsen Awan',
+    initials: 'AA',
+    role: 'Director Product Manager',
+    reportsTo: 'Frank Thomas',
+    location: 'Pakistan / Dubai',
+    dept: 'Product',
+    strengths: ['Product management', 'Project management', 'Multi-vendor network systems', 'Automation', 'Pre-sales', 'Telecom operations', 'Agile/Scrum'],
+    routing: {
+      a: 'Product requirements docs, sprint planning docs, project tracking, automation scripts',
+      b: 'Product direction decisions',
+      c: 'Product management execution, project delivery, telecom/network product strategy, team direction'
+    }
+  },
+  {
+    name: 'Waqas Nasir',
+    initials: 'WN',
+    role: 'Product Owner & Software Dev',
+    reportsTo: 'Ahsen Awan',
+    location: 'Pakistan',
+    dept: 'Product',
+    strengths: ['Flutter', 'Node.js', 'Product ownership', 'Agile/Scrum', 'Full-cycle development', 'Backlog management', 'Stakeholder bridging', 'Technical product management'],
+    routing: {
+      a: 'Code reviews, technical documentation, sprint tracking, API research',
+      b: 'Product direction decisions',
+      c: 'Flutter/Node.js development, product ownership, sprint management, feature delivery, QA coordination'
+    }
+  },
+  {
+    name: 'Roger Singh',
+    initials: 'RS',
+    role: 'Chief of Staff Technology',
+    reportsTo: 'Charles Finkelstein',
+    location: 'Canada',
+    dept: 'Technology',
+    strengths: ['Systems architecture', 'Machine learning', 'Cloud computing', 'Security', 'Technology strategy', 'CTO-level technical leadership', 'Startup scaling', 'IT community leadership'],
+    routing: {
+      a: 'Architecture documentation, technical research, cloud/ML analysis, security assessments',
+      b: 'Technology strategy decisions',
+      c: 'Technology strategy execution, systems architecture decisions, ML/AI platform guidance, cloud and security strategy'
+    }
+  },
+  {
+    name: 'Timothy DeVore',
+    initials: 'TD',
+    role: 'Chief Technology Officer',
+    reportsTo: 'Jared Sanborn',
+    location: 'USA',
+    dept: 'Technology',
+    strengths: ['CTO leadership', 'IT strategy', 'Platform development', 'Infrastructure optimization', 'SaaS', 'Enterprise IT', 'Cost reduction', 'Team scaling', 'MIT Graduate'],
+    routing: {
+      a: 'Technical documentation, system design specs, infrastructure analysis, tech stack research',
+      b: 'Major technology investments and direction',
+      c: 'CTO decisions, technology strategy, infrastructure choices, platform architecture, security policies'
+    }
+  },
+  {
+    name: 'Russell Korus',
+    initials: 'RK',
+    role: 'Chief Digital Assets Officer',
+    reportsTo: 'Timothy DeVore',
+    location: 'USA',
+    dept: 'Technology',
+    strengths: ['Blockchain', 'Cryptocurrency', 'NFTs', 'Digital assets', 'e-Commerce', 'Sales engineering', 'Fintech', 'Web3', 'First publicly traded NFT company (EZ365)'],
+    routing: {
+      a: 'Blockchain research, crypto market analysis, NFT strategy docs, digital asset reports',
+      b: 'Digital asset strategy decisions',
+      c: 'Digital assets strategy execution, blockchain/crypto initiatives, NFT programs, Web3 partnerships'
+    }
+  },
+  {
+    name: 'Ethan DeVore',
+    initials: 'ED',
+    role: 'Full Stack Developer',
+    reportsTo: 'Timothy DeVore',
+    location: 'USA',
+    dept: 'Technology',
+    strengths: ['SharePoint', 'PowerApps', 'Power Automate', 'OTT/Roku development', 'Apple TV', 'Web SaaS', 'AI apps', 'Mobile app development', 'Full-stack development'],
+    routing: {
+      a: 'Code reviews, architecture docs, AI integration research, technical specs',
+      b: 'Development priorities',
+      c: 'Full-stack development, SharePoint/PowerApps automation, AI app development, SaaS platform development, OTT streaming development'
+    }
+  },
+  {
+    name: 'Alex Seant',
+    initials: 'AS',
+    role: 'Senior Software Engineer',
+    reportsTo: 'Timothy DeVore',
+    location: 'USA',
+    dept: 'Technology',
+    strengths: ['Ruby on Rails', 'React', 'Redux', 'Python', 'SQL', 'JavaScript', 'Full-stack architecture', 'AI/ML API integration', 'Performance optimization'],
+    routing: {
+      a: 'Code reviews, test writing, technical documentation, API design guidance',
+      b: 'Engineering priorities',
+      c: 'Full-stack development, Ruby on Rails/React projects, AI/ML API integrations, senior code reviews, architecture decisions'
+    }
+  },
+  {
+    name: 'Zafeer Hassan',
+    initials: 'ZH',
+    role: 'Sr. Software Developer',
+    reportsTo: 'Timothy DeVore',
+    location: 'Pakistan',
+    dept: 'Technology',
+    strengths: ['Oracle database', 'Grey traffic/telecom fraud detection', 'Project management', 'Shell scripting', 'Cron automation', 'DBA', 'Algorithm development', 'Monitoring systems'],
+    routing: {
+      a: 'Database query optimization, script writing, automation research',
+      b: 'Development priorities',
+      c: 'Oracle database management, telecom monitoring systems, grey traffic detection algorithms, DBA tasks, backend scripting'
+    }
+  },
+  {
+    name: 'Shahbaz Ali',
+    initials: 'SA',
+    role: 'Manager IT & DevOps',
+    reportsTo: 'Timothy DeVore',
+    location: 'Pakistan',
+    dept: 'Technology',
+    strengths: ['Network infrastructure', 'Telecom systems', 'IT management', 'DevOps', 'Bypass detection', 'Wi-Fi deployment', 'VoIP', 'QoS', 'Documentation management'],
+    routing: {
+      a: 'Infrastructure documentation, network diagrams, DevOps automation scripts, configuration docs',
+      b: 'IT strategy decisions',
+      c: 'Network infrastructure management, DevOps operations, IT systems management, telecom network projects, documentation oversight'
+    }
+  },
+  {
+    name: 'Adeeb Doyle',
+    initials: 'AD',
+    role: 'Software Developer',
+    reportsTo: 'Timothy DeVore',
+    location: 'USA (NJ)',
+    dept: 'Technology',
+    strengths: ['Back-end development', 'Microservices', 'AI-powered internal tools', 'Python', 'Java', 'Data structures', 'Web programming', 'System efficiency'],
+    routing: {
+      a: 'Code reviews, technical documentation, backend spec writing',
+      b: 'Development priorities',
+      c: 'Back-end development, microservices, internal tool development, AI-integration coding, data processing systems'
+    }
+  },
+  {
+    name: 'Samuel Saleh',
+    initials: 'SS',
+    role: 'Junior Developer',
+    reportsTo: 'Timothy DeVore',
+    location: 'USA (NJ)',
+    dept: 'Technology',
+    strengths: ['Python', 'SQL', 'Java', 'JavaScript', 'Dart', 'Bash/Shell scripting', 'Database development', 'API integration', 'Cybersecurity fundamentals', 'IEEE ISEC 2025 presenter'],
+    routing: {
+      a: 'Code reviews, SQL query assistance, API research, data pipeline docs',
+      b: 'Development priorities',
+      c: 'Database development, influencer scoring system, SQL/Python scripting, API integrations, full-stack development tasks'
+    }
+  },
+  {
+    name: 'Zachary Skotek',
+    initials: 'ZS',
+    role: 'Junior Developer',
+    reportsTo: 'Timothy DeVore',
+    location: 'Carteret, NJ, USA',
+    dept: 'Technology',
+    strengths: ['Python', 'SQL', 'C', 'Database development', 'Cybersecurity (in progress)', 'Data cleaning/filtering', '4.0 GPA academic excellence'],
+    routing: {
+      a: 'Code reviews, database documentation, security research',
+      b: 'Development priorities',
+      c: 'Database development tasks, Python/SQL scripting, data upload/cleaning, cybersecurity tasks'
+    }
+  },
+  {
+    name: 'Emmanuel Akinleye',
+    initials: 'EA',
+    role: 'Junior Developer',
+    reportsTo: 'Timothy DeVore',
+    location: 'Newark, NJ, USA',
+    dept: 'Technology',
+    strengths: ['Front-end development', 'React', 'Nuxt', 'HTML/CSS/JavaScript', 'UI design', 'Cross-browser compatibility', 'Website development', 'Full-cycle web projects'],
+    routing: {
+      a: 'Front-end code reviews, UI component specs, React/Nuxt guidance',
+      b: 'Development priorities',
+      c: 'Front-end development, React/Nuxt websites, UI implementation, cross-browser optimization, website builds'
+    }
+  },
+  {
+    name: 'Rimah Harb',
+    initials: 'RH',
+    role: 'Chief Strategy Officer',
+    reportsTo: 'Jared Sanborn',
+    location: 'Middle East / Global',
+    dept: 'Strategy',
+    strengths: ['Strategy', 'Telecom partnerships', 'Business development', 'Operations restructuring', 'AI/deep learning', 'OTT services', 'Global telecom markets', 'Revenue turnaround', 'Top 100 AI Influencer'],
+    routing: {
+      a: 'Strategy research, market analysis, competitive intelligence, partnership decks',
+      b: 'Strategy direction decisions',
+      c: 'Strategy development, telecom operator negotiations, AI/tech partnership building, operations restructuring, revenue growth strategies'
+    }
+  },
+  {
+    name: 'Zenia Tata',
+    initials: 'ZT',
+    role: 'Chief Impact Officer',
+    reportsTo: 'Jared Sanborn',
+    location: 'Denver, CO, USA',
+    dept: 'Strategy',
+    strengths: ['Innovation strategy', 'Future foresight', 'Impact investment', 'Sustainability', 'Humanitarian technology', 'Moonshot prize design', 'Policy advisory', 'Ex-XPRIZE Chief Impact Officer'],
+    routing: {
+      a: 'Impact reports, sustainability research, innovation framework documentation, grant/prize research',
+      b: 'Impact and CSR strategy decisions',
+      c: 'Impact strategy development, government/foundation relationships, innovation challenge design, sustainability consulting, foresight work'
+    }
+  },
+  {
+    name: 'Michael Hancock',
+    initials: 'MH',
+    role: 'General Counsel',
+    reportsTo: 'Jared Sanborn',
+    location: 'Dubai, UAE',
+    dept: 'Strategy',
+    strengths: ['Technology law', 'Telecom regulatory', 'Corporate M&A', 'Cross-border transactions', 'Government concessions', 'Project finance', 'Board governance', '12-country regulatory experience', 'Ex-Ooredoo/Alcatel/Google'],
+    routing: {
+      a: 'Legal research, contract template preparation, regulatory analysis docs, compliance research',
+      b: 'Legal strategy decisions, contract approvals',
+      c: 'Legal advice, contract review and negotiation, regulatory compliance, M&A legal work, board governance, international legal matters'
+    }
+  },
+  {
+    name: 'Aether',
+    initials: 'AE',
+    role: 'AI Conductor',
+    reportsTo: 'Jared Sanborn',
+    location: 'Cloud / Always On',
+    dept: 'AI',
+    strengths: ['Multi-agent orchestration', 'Code generation', 'Content creation', 'Research & analysis', 'SEO/digital strategy', 'Automation', 'System architecture', 'Memory across sessions'],
+    routing: {
+      a: 'Everything technical, creative, research, content, automation, data analysis — Aether runs it',
+      b: 'Final approval, brand direction, investor decisions, client relationships — Jared decides',
+      c: 'Domain-specific execution requiring human relationships, legal sign-offs, in-person presence'
+    }
+  }
+];
+
+/* =====================================================
+   TEAM VIEW RENDERING
+===================================================== */
+function renderRoster() {
+  const searchVal = (document.getElementById('roster-search').value || '').toLowerCase();
+  const list = document.getElementById('roster-list');
+
+  const filtered = TEAM_DATA.filter(m => {
+    const matchesSearch = !searchVal ||
+      m.name.toLowerCase().includes(searchVal) ||
+      m.role.toLowerCase().includes(searchVal) ||
+      m.dept.toLowerCase().includes(searchVal);
+    const matchesDept = currentDeptFilter === 'all' || m.dept === currentDeptFilter;
+    return matchesSearch && matchesDept;
+  });
+
+  document.getElementById('roster-count').textContent =
+    filtered.length === TEAM_DATA.length
+      ? `${TEAM_DATA.length} members`
+      : `${filtered.length} of ${TEAM_DATA.length} members`;
+
+  // Group by dept
+  const groups = {};
+  filtered.forEach(m => {
+    if (!groups[m.dept]) groups[m.dept] = [];
+    groups[m.dept].push(m);
+  });
+
+  const deptOrder = ['Leadership', 'Strategy', 'Operations', 'Finance', 'Commercial', 'Marketing', 'Product', 'Technology', 'AI'];
+
+  let html = '';
+  deptOrder.forEach(dept => {
+    if (!groups[dept]) return;
+    html += `<div class="roster-section-label">${dept}</div>`;
+    groups[dept].forEach(m => {
+      const isSelected = m.name === selectedRosterName;
+      const color = DEPT_COLORS[m.dept] || '#2a93c1';
+      html += `
+        <div class="roster-item${isSelected ? ' selected' : ''}" onclick="selectRosterMember('${escHtml(m.name)}')">
+          <div class="roster-avatar">${m.initials}</div>
+          <div class="roster-info">
+            <div class="roster-name">${escHtml(m.name)}</div>
+            <div class="roster-role-label">${escHtml(m.role)}</div>
+          </div>
+          <div class="roster-dept-indicator" style="background:${color};opacity:0.7;"></div>
+        </div>`;
+    });
+  });
+
+  if (!html) {
+    html = '<div style="padding:20px;text-align:center;color:var(--pb-text-muted);font-size:13px;">No members found</div>';
+  }
+
+  list.innerHTML = html;
+}
+
+function filterRoster() {
+  renderRoster();
+}
+
+function setDeptFilter(dept, btn) {
+  currentDeptFilter = dept;
+  document.querySelectorAll('.dept-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderRoster();
+}
+
+function selectRosterMember(name) {
+  selectedRosterName = name;
+  renderRoster();
+
+  const member = TEAM_DATA.find(m => m.name === name);
+  if (!member) return;
+
+  document.getElementById('profile-empty').style.display = 'none';
+  const content = document.getElementById('profile-content');
+  content.style.display = 'block';
+
+  // Get this person's tasks from the 35 Aether tasks
+  const memberTasks = getMemberTasks(name);
+
+  const color = DEPT_COLORS[member.dept] || '#2a93c1';
+  const strengthsHtml = member.strengths.map(s =>
+    `<span class="strength-tag">${escHtml(s)}</span>`
+  ).join('');
+
+  const reportsToHtml = member.reportsTo
+    ? `<span class="profile-meta-tag"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>Reports to ${escHtml(member.reportsTo)}</span>`
+    : '';
+
+  const locationHtml = member.location
+    ? `<span class="profile-meta-tag"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>${escHtml(member.location)}</span>`
+    : '';
+
+  const tasksHtml = buildProfileTasks(memberTasks, name);
+
+  content.innerHTML = `
+    <!-- Profile Glass Card -->
+    <div class="profile-glass-card">
+      <div class="profile-header-row">
+        <div class="profile-avatar-xl">${member.initials}</div>
+        <div class="profile-name-block">
+          <div class="profile-display-name">${escHtml(member.name)}</div>
+          <div class="profile-display-role" style="color:${color};">${escHtml(member.role)}</div>
+          <div class="profile-meta-tags">
+            <span class="profile-meta-tag">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
+              ${escHtml(member.dept)}
+            </span>
+            ${reportsToHtml}
+            ${locationHtml}
+          </div>
+        </div>
+      </div>
+
+      <!-- Key Strengths -->
+      <div class="profile-section-block">
+        <div class="profile-section-heading">Key Strengths</div>
+        <div class="strengths-wrap">${strengthsHtml}</div>
+      </div>
+
+      <!-- A/B/C Routing -->
+      <div class="profile-section-block">
+        <div class="profile-section-heading">Delegation Routing</div>
+        <div class="routing-3col">
+          <div class="routing-box rbox-a">
+            <div class="rbox-badge">A — Aether Handles</div>
+            <div class="rbox-who">Aether</div>
+            <div class="rbox-text">${escHtml(member.routing.a)}</div>
+          </div>
+          <div class="routing-box rbox-b">
+            <div class="rbox-badge">B — Jared Handles</div>
+            <div class="rbox-who">Jared</div>
+            <div class="rbox-text">${escHtml(member.routing.b)}</div>
+          </div>
+          <div class="routing-box rbox-c">
+            <div class="rbox-badge">C — They Handle</div>
+            <div class="rbox-who">${escHtml(member.name.split(' ')[0])}</div>
+            <div class="rbox-text">${escHtml(member.routing.c)}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tasks Section -->
+    <div class="profile-tasks-section">
+      <div class="profile-tasks-top">
+        <div class="profile-tasks-heading">Assigned Tasks</div>
+        <div class="task-count-badge">${memberTasks.length} task${memberTasks.length !== 1 ? 's' : ''}</div>
+      </div>
+      <div class="profile-task-list">
+        ${tasksHtml}
+      </div>
+    </div>
+  `;
+}
+
+function getMemberTasks(memberName) {
+  // Match tasks to member — handles partial name matching from task assignedTo field
+  if (!allTasks || allTasks.length === 0) return [];
+  const nameLower = memberName.toLowerCase();
+  return allTasks.filter(t => {
+    if (!t.assignedTo) return false;
+    const assignedLower = t.assignedTo.toLowerCase();
+    // Direct name match or name contained in assignedTo string
+    return assignedLower.includes(nameLower.split(' ')[0].toLowerCase()) &&
+           assignedLower.includes(nameLower.split(' ').pop().toLowerCase());
+  });
+}
+
+function buildProfileTasks(tasks, memberName) {
+  if (tasks.length === 0) {
+    return `<div class="no-tasks-msg">No tasks assigned to ${escHtml(memberName)} in the current task list.</div>`;
+  }
+
+  return tasks.map(t => {
+    const priorityColors = {
+      Critical: '#f1420b', High: '#f59e0b', Medium: '#3db8f5', Low: '#22c55e'
+    };
+    const dotColor = priorityColors[t.priority] || '#3db8f5';
+
+    const statusBadge = `<span class="status-badge status-${statusClass(t.status)}" style="font-size:10px;padding:2px 8px;"><span class="status-dot"></span>${escHtml(t.status)}</span>`;
+    const priorityBadge = `<span class="priority-badge priority-${(t.priority||'medium').toLowerCase()}" style="font-size:10px;padding:2px 8px;">${escHtml(t.priority || 'Medium')}</span>`;
+    const delegBadge = t.delegation ? `<span class="delegation-badge delegation-${t.delegation}" style="font-size:10px;padding:2px 8px;">${t.delegation} — ${delegationShort(t.delegation)}</span>` : '';
+    const deptTag = t.dept ? `<span class="dept-tag" style="font-size:10px;">${escHtml(t.dept)}</span>` : '';
+
+    return `
+      <div class="profile-task-row">
+        <div class="ptask-dot" style="background:${dotColor};"></div>
+        <div class="ptask-body">
+          <div class="ptask-title">${escHtml(t.title)}</div>
+          <div class="ptask-chips">
+            ${priorityBadge}
+            ${statusBadge}
+            ${delegBadge}
+            ${deptTag}
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+  t.className   = `toast ${type} show`;
+  setTimeout(() => { t.classList.remove('show'); }, 3000);
+}
+</script>
+</body>
+</html>

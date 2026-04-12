@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology — Empowering People Through AI</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --blue: #2a93c1;
+    --orange: #f1420b;
+    --bg: #080a12;
+    --text: rgba(255,255,255,0.9);
+    --muted: rgba(255,255,255,0.45);
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+    overflow-x: hidden;
+  }
+
+  /* ── Fixed 3D background ── */
+  #canvas-bg {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  /* ── Scrollable content on top ── */
+  #content {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── Sections ── */
+  .section {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 24px;
+  }
+
+  .inner {
+    max-width: 860px;
+    width: 100%;
+    text-align: center;
+    opacity: 0;
+    transform: translateY(36px);
+    transition: opacity 0.9s ease, transform 0.9s ease;
+  }
+
+  .inner.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ── Labels ── */
+  .label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 18px;
+  }
+
+  /* ── Headings ── */
+  h1 {
+    font-size: clamp(2.6rem, 7vw, 5.4rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    color: #fff;
+  }
+
+  h2 {
+    font-size: clamp(1.8rem, 4.5vw, 3.2rem);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 1.1;
+    color: #fff;
+    margin-bottom: 20px;
+  }
+
+  .hero-sub {
+    font-size: clamp(1rem, 2.5vw, 1.35rem);
+    color: var(--muted);
+    margin-top: 18px;
+    font-weight: 400;
+    letter-spacing: 0.01em;
+    line-height: 1.5;
+  }
+
+  .accent { color: var(--blue); }
+  .accent-orange { color: var(--orange); }
+
+  /* ── Divider line ── */
+  .divider {
+    width: 48px;
+    height: 2px;
+    background: linear-gradient(90deg, var(--blue), var(--orange));
+    margin: 28px auto;
+    border-radius: 2px;
+  }
+
+  /* ── Body copy ── */
+  p.copy {
+    font-size: clamp(0.95rem, 2vw, 1.1rem);
+    color: var(--muted);
+    line-height: 1.7;
+    max-width: 680px;
+    margin: 0 auto;
+  }
+
+  /* ── Product cards ── */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 18px;
+    margin-top: 44px;
+    text-align: left;
+  }
+
+  .card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 28px 24px;
+    backdrop-filter: blur(8px);
+    transition: border-color 0.3s ease, background 0.3s ease;
+  }
+
+  .card:hover {
+    border-color: rgba(42,147,193,0.35);
+    background: rgba(42,147,193,0.06);
+  }
+
+  .card-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--blue);
+    margin-bottom: 14px;
+  }
+
+  .card-dot.orange { background: var(--orange); }
+
+  .card h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 8px;
+    letter-spacing: -0.01em;
+  }
+
+  .card p {
+    font-size: 0.85rem;
+    color: var(--muted);
+    line-height: 1.55;
+  }
+
+  /* ── Brand list ── */
+  .brand-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 36px;
+  }
+
+  .brand-pill {
+    padding: 10px 20px;
+    border: 1px solid rgba(42,147,193,0.25);
+    border-radius: 100px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: rgba(255,255,255,0.6);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    transition: all 0.25s ease;
+  }
+
+  .brand-pill:hover {
+    border-color: var(--blue);
+    color: #fff;
+    background: rgba(42,147,193,0.1);
+  }
+
+  /* ── Hardware grid ── */
+  .hw-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 14px;
+    margin-top: 40px;
+  }
+
+  .hw-item {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 12px;
+    padding: 24px 16px;
+    text-align: center;
+    transition: border-color 0.3s ease;
+  }
+
+  .hw-item:hover {
+    border-color: rgba(241,66,11,0.4);
+  }
+
+  .hw-icon {
+    font-size: 1.8rem;
+    margin-bottom: 10px;
+    display: block;
+  }
+
+  .hw-item h4 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 5px;
+  }
+
+  .hw-item span {
+    font-size: 0.72rem;
+    color: var(--orange);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+
+  /* ── CTA ── */
+  .cta-btn {
+    display: inline-block;
+    margin-top: 36px;
+    padding: 16px 40px;
+    background: linear-gradient(135deg, var(--blue), #1d6e96);
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    border-radius: 100px;
+    text-decoration: none;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 0 32px rgba(42,147,193,0.3);
+  }
+
+  .cta-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 48px rgba(42,147,193,0.5);
+  }
+
+  /* ── Scroll indicator ── */
+  #scroll-hint {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    opacity: 1;
+    transition: opacity 0.5s ease;
+    pointer-events: none;
+  }
+
+  #scroll-hint span {
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.2);
+  }
+
+  #scroll-hint .arrow {
+    width: 1px;
+    height: 28px;
+    background: linear-gradient(180deg, rgba(42,147,193,0.5), transparent);
+    animation: scroll-pulse 1.8s ease-in-out infinite;
+  }
+
+  @keyframes scroll-pulse {
+    0%, 100% { opacity: 0.3; transform: scaleY(0.8); }
+    50% { opacity: 1; transform: scaleY(1); }
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 600px) {
+    .section { padding: 60px 18px; }
+    .cards { grid-template-columns: 1fr; }
+    .hw-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<!-- Fixed Three.js background -->
+<canvas id="canvas-bg"></canvas>
+
+<!-- Scroll indicator -->
+<div id="scroll-hint">
+  <span>Scroll</span>
+  <div class="arrow"></div>
+</div>
+
+<!-- Scrollable content -->
+<div id="content">
+
+  <!-- 1. Hero -->
+  <section class="section" id="s-hero">
+    <div class="inner">
+      <div class="label">Pure Technology</div>
+      <h1>Empowering People<br><span class="accent">Through AI</span></h1>
+      <p class="hero-sub">
+        We build AI systems that don't just assist people —<br>
+        they partner with them. Permanently.
+      </p>
+      <div class="divider"></div>
+    </div>
+  </section>
+
+  <!-- 2. Vision -->
+  <section class="section" id="s-vision">
+    <div class="inner">
+      <div class="label">Our Vision</div>
+      <h2>A Brighter World</h2>
+      <p class="copy">
+        We believe in a world where all people can actualize their brilliance.
+        Pure Technology exists to collapse the gap between human potential and human achievement —
+        using AI as the bridge.
+      </p>
+      <div class="divider"></div>
+      <p class="copy" style="margin-top: 0;">
+        Our mission is not to replace human work. It's to free humans
+        to do work that only humans can do — the creative, the relational, the visionary.
+      </p>
+    </div>
+  </section>
+
+  <!-- 3. Products -->
+  <section class="section" id="s-products">
+    <div class="inner">
+      <div class="label">Products</div>
+      <h2>The <span class="accent">Pure</span> Platform</h2>
+      <p class="copy">Three flagship AI products. One unified mission.</p>
+      <div class="cards">
+        <div class="card">
+          <div class="card-dot"></div>
+          <h3>PureBrain.ai</h3>
+          <p>Your AI business partner. Persistent memory, autonomous delegation, and real intelligence that grows with your organization.</p>
+        </div>
+        <div class="card">
+          <div class="card-dot orange"></div>
+          <h3>PureInfluence.ai</h3>
+          <p>AI-powered influence intelligence. Understand markets, competitors, and audiences at a depth no human team can match.</p>
+        </div>
+        <div class="card">
+          <div class="card-dot"></div>
+          <h3>PureMarketing.ai</h3>
+          <p>The marketing agency of the future. AI campaigns, content, and strategy — executed autonomously, measured precisely.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Divisions -->
+  <section class="section" id="s-divisions">
+    <div class="inner">
+      <div class="label">The Pure Family</div>
+      <h2>Seven <span class="accent-orange">Pure</span> Brands</h2>
+      <p class="copy">
+        Pure Technology is a civilization of brands — each purpose-built
+        to serve a specific dimension of human potential.
+      </p>
+      <div class="brand-list">
+        <div class="brand-pill">Pure Technology</div>
+        <div class="brand-pill">PureBrain</div>
+        <div class="brand-pill">Pure Influence</div>
+        <div class="brand-pill">Pure Marketing</div>
+        <div class="brand-pill">Pure Capital</div>
+        <div class="brand-pill">Pure Infrastructure</div>
+        <div class="brand-pill">Pure Digital Assets</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Hardware -->
+  <section class="section" id="s-hardware">
+    <div class="inner">
+      <div class="label">Hardware Roadmap</div>
+      <h2>AI in Every <span class="accent">Pocket</span></h2>
+      <p class="copy">
+        Software is the foundation. Hardware is the frontier.
+        Pure Technology is building AI-native devices for a world
+        where your AI goes everywhere you do.
+      </p>
+      <div class="hw-grid">
+        <div class="hw-item">
+          <span class="hw-icon">📱</span>
+          <h4>Pure Phone</h4>
+          <span>In Development</span>
+        </div>
+        <div class="hw-item">
+          <span class="hw-icon">⌚</span>
+          <h4>Pure Watch</h4>
+          <span>In Development</span>
+        </div>
+        <div class="hw-item">
+          <span class="hw-icon">👓</span>
+          <h4>Pure Glasses</h4>
+          <span>Roadmap 2027</span>
+        </div>
+        <div class="hw-item">
+          <span class="hw-icon">📺</span>
+          <h4>Pure TV</h4>
+          <span>Roadmap 2027</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. CTA -->
+  <section class="section" id="s-cta">
+    <div class="inner">
+      <div class="label">Join Us</div>
+      <h2>The Future Is<br><span class="accent">Already Here</span></h2>
+      <p class="copy">
+        Pure Technology is not a prediction. It's a present reality
+        being built, deployed, and lived every day.
+        The question is whether you're part of it.
+      </p>
+      <a href="https://purebrain.ai/#awakening" class="cta-btn">Get Started with PureBrain</a>
+    </div>
+  </section>
+
+</div><!-- /content -->
+
+<!-- Three.js r160 via CDN importmap — exact pattern from logo-3d-assembly.html -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer }  from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }      from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass }      from 'three/addons/postprocessing/OutputPass.js';
+
+// ─────────────────────────────────────────────────────────
+// RENDERER
+// ─────────────────────────────────────────────────────────
+
+const canvas   = document.getElementById('canvas-bg');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene  = new THREE.Scene();
+scene.background = new THREE.Color(0x080a12);
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 500);
+camera.position.set(0, 0, 28);
+
+// ─────────────────────────────────────────────────────────
+// POST-PROCESSING
+// ─────────────────────────────────────────────────────────
+
+const composer   = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloom = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.6,   // strength
+  0.5,   // radius
+  0.85   // threshold
+);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+// ─────────────────────────────────────────────────────────
+// PARTICLES — 3000 points, blue + orange mix
+// ─────────────────────────────────────────────────────────
+
+function buildParticles(count) {
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(count * 3);
+  const col = new Float32Array(count * 3);
+
+  const blue   = new THREE.Color('#2a93c1');
+  const orange = new THREE.Color('#f1420b');
+
+  for (let i = 0; i < count; i++) {
+    // Spread in a large cube around camera
+    pos[i * 3    ] = (Math.random() - 0.5) * 80;
+    pos[i * 3 + 1] = (Math.random() - 0.5) * 50;
+    pos[i * 3 + 2] = (Math.random() - 0.5) * 60 - 10;
+
+    // 80% blue, 20% orange
+    const c = Math.random() < 0.8 ? blue : orange;
+    // Vary brightness
+    const brightness = 0.3 + Math.random() * 0.7;
+    col[i * 3    ] = c.r * brightness;
+    col[i * 3 + 1] = c.g * brightness;
+    col[i * 3 + 2] = c.b * brightness;
+  }
+
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+
+  const mat = new THREE.PointsMaterial({
+    size: 0.12,
+    sizeAttenuation: true,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.75,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+
+  return new THREE.Points(geo, mat);
+}
+
+const particles = buildParticles(3000);
+scene.add(particles);
+
+// Store original particle positions for drift animation
+const particlePos  = particles.geometry.attributes.position;
+const origPos      = new Float32Array(particlePos.array);
+
+// ─────────────────────────────────────────────────────────
+// HEXAGON RINGS — LineLoop for maximum simplicity
+// ─────────────────────────────────────────────────────────
+
+function buildHexRing(radius, color, opacity) {
+  const pts = [];
+  for (let i = 0; i <= 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+    pts.push(new THREE.Vector3(Math.cos(a) * radius, Math.sin(a) * radius, 0));
+  }
+
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  const mat = new THREE.LineBasicMaterial({
+    color: new THREE.Color(color),
+    transparent: true,
+    opacity,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+
+  return new THREE.Line(geo, mat);
+}
+
+// 13 hex rings at various sizes, positions, depths
+const hexRings = [];
+
+const hexConfigs = [
+  { r: 4.0,  x:  0.0,  y:  0.0,  z: -5,  col: '#2a93c1', op: 0.35 },
+  { r: 2.5,  x:  5.0,  y:  2.0,  z: -8,  col: '#2a93c1', op: 0.25 },
+  { r: 3.2,  x: -6.0,  y: -1.5,  z: -12, col: '#1d6e96', op: 0.20 },
+  { r: 1.8,  x:  3.0,  y: -4.0,  z: -3,  col: '#f1420b', op: 0.20 },
+  { r: 5.5,  x: -4.0,  y:  5.0,  z: -18, col: '#2a93c1', op: 0.12 },
+  { r: 2.0,  x:  8.0,  y: -3.0,  z: -7,  col: '#2a93c1', op: 0.18 },
+  { r: 3.8,  x: -2.0,  y: -6.0,  z: -14, col: '#1d6e96', op: 0.15 },
+  { r: 1.4,  x: -7.0,  y:  3.5,  z: -4,  col: '#f1420b', op: 0.22 },
+  { r: 6.0,  x:  2.5,  y:  7.0,  z: -22, col: '#2a93c1', op: 0.08 },
+  { r: 2.8,  x: -5.5,  y: -5.0,  z: -9,  col: '#2a93c1', op: 0.22 },
+  { r: 1.6,  x:  6.5,  y:  4.0,  z: -6,  col: '#f1420b', op: 0.18 },
+  { r: 4.5,  x:  0.5,  y: -8.0,  z: -16, col: '#1d6e96', op: 0.13 },
+  { r: 2.2,  x: -9.0,  y:  1.0,  z: -11, col: '#2a93c1', op: 0.16 },
+];
+
+for (const cfg of hexConfigs) {
+  const ring = buildHexRing(cfg.r, cfg.col, cfg.op);
+  ring.position.set(cfg.x, cfg.y, cfg.z);
+  // Random initial rotation
+  ring.rotation.z = Math.random() * Math.PI;
+  scene.add(ring);
+  hexRings.push({ mesh: ring, rotSpeed: (Math.random() - 0.5) * 0.003, floatPhase: Math.random() * Math.PI * 2 });
+}
+
+// ─────────────────────────────────────────────────────────
+// SCROLL TRACKING
+// ─────────────────────────────────────────────────────────
+
+let scrollY     = 0;
+let targetCamZ  = 28;
+
+window.addEventListener('scroll', () => {
+  scrollY = window.scrollY;
+});
+
+// ─────────────────────────────────────────────────────────
+// INTERSECTION OBSERVER — section fade-in
+// ─────────────────────────────────────────────────────────
+
+const observer = new IntersectionObserver((entries) => {
+  for (const entry of entries) {
+    const inner = entry.target.querySelector('.inner');
+    if (!inner) continue;
+    if (entry.isIntersecting) {
+      inner.classList.add('visible');
+    }
+  }
+}, { threshold: 0.25 });
+
+document.querySelectorAll('.section').forEach(s => observer.observe(s));
+
+// Trigger hero immediately
+const heroInner = document.querySelector('#s-hero .inner');
+if (heroInner) setTimeout(() => heroInner.classList.add('visible'), 200);
+
+// ─────────────────────────────────────────────────────────
+// SCROLL HINT — hide after first scroll
+// ─────────────────────────────────────────────────────────
+
+const scrollHint = document.getElementById('scroll-hint');
+window.addEventListener('scroll', () => {
+  if (window.scrollY > 60) scrollHint.style.opacity = '0';
+}, { once: true });
+
+// ─────────────────────────────────────────────────────────
+// RENDER LOOP
+// ─────────────────────────────────────────────────────────
+
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const t  = clock.getElapsedTime();
+  const dt = clock.getDelta ? Math.min(0.05, clock.getDelta()) : 0.016;
+
+  // ── Camera Z parallax from scroll ──
+  // Each full viewport scroll moves camera 4 units deeper
+  const docH       = document.body.scrollHeight - window.innerHeight;
+  const scrollPct  = docH > 0 ? scrollY / docH : 0;
+  targetCamZ       = 28 - scrollPct * 18;  // travel from z=28 to z=10
+  camera.position.z += (targetCamZ - camera.position.z) * 0.06;
+
+  // Subtle camera drift
+  camera.position.x = Math.sin(t * 0.08) * 0.4;
+  camera.position.y = Math.cos(t * 0.06) * 0.25;
+  camera.lookAt(0, 0, 0);
+
+  // ── Particle drift ──
+  for (let i = 0; i < particlePos.count; i++) {
+    const ox = origPos[i * 3    ];
+    const oy = origPos[i * 3 + 1];
+    const oz = origPos[i * 3 + 2];
+
+    // Slow sine wave drift
+    particlePos.array[i * 3    ] = ox + Math.sin(t * 0.12 + i * 0.05) * 0.3;
+    particlePos.array[i * 3 + 1] = oy + Math.cos(t * 0.09 + i * 0.04) * 0.2;
+    particlePos.array[i * 3 + 2] = oz + Math.sin(t * 0.07 + i * 0.06) * 0.15;
+  }
+  particlePos.needsUpdate = true;
+
+  // ── Hex ring rotation + float ──
+  for (const hr of hexRings) {
+    hr.mesh.rotation.z += hr.rotSpeed;
+    hr.mesh.position.y += Math.sin(t * 0.4 + hr.floatPhase) * 0.002;
+  }
+
+  // ── Bloom pulse — very subtle ──
+  bloom.strength = 0.55 + Math.sin(t * 0.5) * 0.05;
+
+  composer.render();
+}
+
+animate();
+
+// ─────────────────────────────────────────────────────────
+// RESIZE
+// ─────────────────────────────────────────────────────────
+
+window.addEventListener('resize', () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+});
+
+</script>
+</body>
+</html>

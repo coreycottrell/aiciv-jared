@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 11 V1 — Chromatic Dispersion Glass Orb</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #060606; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #info {
+    position: fixed; bottom: 20px; left: 20px; z-index: 10;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+    color: rgba(255,255,255,0.5); font-size: 12px; line-height: 1.6;
+  }
+  #info strong { color: rgba(42,147,193,0.8); }
+</style>
+</head>
+<body>
+<div id="info">
+  <strong>Night 11 V1</strong> — Chromatic Dispersion Glass<br>
+  Per-channel IOR refraction + Schlick Fresnel + noise perturbation<br>
+  Move mouse to rotate view
+</div>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+// ── Scene Setup ──
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x060606);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0, 5.5);
+
+// ── Environment: Background objects to refract ──
+// Colored bands that will be visible through glass dispersion
+const bandGroup = new THREE.Group();
+scene.add(bandGroup);
+
+const bandColors = [
+  0x2a93c1, 0xf1420b, 0x2a93c1, 0x8844cc, 0xf1420b,
+  0x22cc88, 0x2a93c1, 0xf1420b, 0x6644ff, 0x2a93c1
+];
+for (let i = 0; i < 10; i++) {
+  const angle = (i / 10) * Math.PI * 2;
+  const r = 3.5;
+  const geo = new THREE.SphereGeometry(0.2 + Math.random() * 0.15, 32, 32);
+  const mat = new THREE.MeshStandardMaterial({
+    color: bandColors[i],
+    emissive: bandColors[i],
+    emissiveIntensity: 1.5,
+    roughness: 0.3,
+    metalness: 0.2
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(Math.cos(angle) * r, Math.sin(angle) * r, -2 + Math.random() * 2);
+  bandGroup.add(mesh);
+}
+
+// Rings of light for refraction content
+for (let i = 0; i < 3; i++) {
+  const geo = new THREE.TorusGeometry(2 + i * 0.8, 0.03, 16, 64);
+  const mat = new THREE.MeshStandardMaterial({
+    color: i === 0 ? 0x2a93c1 : i === 1 ? 0xf1420b : 0x8844cc,
+    emissive: i === 0 ? 0x2a93c1 : i === 1 ? 0xf1420b : 0x8844cc,
+    emissiveIntensity: 2.0,
+    roughness: 0.2
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = Math.PI * 0.3 + i * 0.2;
+  mesh.rotation.z = i * 0.4;
+  mesh.position.z = -3;
+  bandGroup.add(mesh);
+}
+
+// ── Chromatic Dispersion Glass Shader ──
+// Core technique: 3 separate refract() calls with different IOR per RGB channel
+// This creates the rainbow fringing that makes glass feel physically real
+
+const chromaticGlassVert = `
+  varying vec3 vNormal;
+  varying vec3 vWorldPos;
+  varying vec3 vViewDir;
+  varying vec2 vUv;
+  uniform float uTime;
+
+  // Simplex-like noise for surface perturbation
+  vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+  vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+  vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+  vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+  float snoise(vec3 v) {
+    const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+    const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+    vec3 i  = floor(v + dot(v, C.yyy));
+    vec3 x0 = v - i + dot(i, C.xxx);
+    vec3 g = step(x0.yzx, x0.xyz);
+    vec3 l = 1.0 - g;
+    vec3 i1 = min(g.xyz, l.zxy);
+    vec3 i2 = max(g.xyz, l.zxy);
+    vec3 x1 = x0 - i1 + C.xxx;
+    vec3 x2 = x0 - i2 + C.yyy;
+    vec3 x3 = x0 - D.yyy;
+    i = mod289(i);
+    vec4 p = permute(permute(permute(
+              i.z + vec4(0.0, i1.z, i2.z, 1.0))
+            + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+            + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+    float n_ = 0.142857142857;
+    vec3 ns = n_ * D.wyz - D.xzx;
+    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+    vec4 x_ = floor(j * ns.z);
+    vec4 y_ = floor(j - 7.0 * x_);
+    vec4 x = x_ * ns.x + ns.yyyy;
+    vec4 y = y_ * ns.x + ns.yyyy;
+    vec4 h = 1.0 - abs(x) - abs(y);
+    vec4 b0 = vec4(x.xy, y.xy);
+    vec4 b1 = vec4(x.zw, y.zw);
+    vec4 s0 = floor(b0)*2.0 + 1.0;
+    vec4 s1 = floor(b1)*2.0 + 1.0;
+    vec4 sh = -step(h, vec4(0.0));
+    vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+    vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+    vec3 p0 = vec3(a0.xy, h.x);
+    vec3 p1 = vec3(a0.zw, h.y);
+    vec3 p2 = vec3(a1.xy, h.z);
+    vec3 p3 = vec3(a1.zw, h.w);
+    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+    p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+    m = m * m;
+    return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+  }
+
+  void main() {
+    vUv = uv;
+
+    // Noise-based surface perturbation (gap #5)
+    float noiseScale = 2.5;
+    float noiseAmt = 0.06;
+    float t = uTime * 0.3;
+    vec3 noisePos = normal * noiseScale + vec3(t * 0.2, t * 0.15, t * 0.1);
+    float displacement = snoise(noisePos) * noiseAmt;
+
+    // Also compute perturbed normal via finite differences
+    float eps = 0.01;
+    float nx = snoise(noisePos + vec3(eps, 0.0, 0.0)) - snoise(noisePos - vec3(eps, 0.0, 0.0));
+    float ny = snoise(noisePos + vec3(0.0, eps, 0.0)) - snoise(noisePos - vec3(0.0, eps, 0.0));
+    float nz = snoise(noisePos + vec3(0.0, 0.0, eps)) - snoise(noisePos - vec3(0.0, 0.0, eps));
+    vec3 perturbedNormal = normalize(normal + vec3(nx, ny, nz) * noiseAmt * 5.0);
+
+    vec3 displaced = position + normal * displacement;
+    vec4 worldPos = modelMatrix * vec4(displaced, 1.0);
+    vWorldPos = worldPos.xyz;
+    vNormal = normalize(normalMatrix * perturbedNormal);
+    vViewDir = normalize(cameraPosition - worldPos.xyz);
+
+    gl_Position = projectionMatrix * viewMatrix * worldPos;
+  }
+`;
+
+const chromaticGlassFrag = `
+  varying vec3 vNormal;
+  varying vec3 vWorldPos;
+  varying vec3 vViewDir;
+  varying vec2 vUv;
+  uniform float uTime;
+  uniform samplerCube uEnvMap;
+  uniform float uIorR;  // Red channel IOR
+  uniform float uIorG;  // Green channel IOR
+  uniform float uIorB;  // Blue channel IOR
+  uniform float uFresnelPower;
+  uniform float uDispersionStrength;
+  uniform vec3 uTintColor;
+
+  // Schlick Fresnel approximation
+  float schlickFresnel(float cosTheta, float F0) {
+    return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+  }
+
+  void main() {
+    vec3 N = normalize(vNormal);
+    vec3 V = normalize(vViewDir);
+    float NdotV = max(dot(N, V), 0.0);
+
+    // ── Per-channel refraction (the core chromatic dispersion technique) ──
+    // Each color channel gets a different IOR, creating rainbow fringing
+    float ratioR = 1.0 / uIorR;  // Air -> Glass for red
+    float ratioG = 1.0 / uIorG;  // Air -> Glass for green
+    float ratioB = 1.0 / uIorB;  // Air -> Glass for blue
+
+    vec3 refractR = refract(-V, N, ratioR);
+    vec3 refractG = refract(-V, N, ratioG);
+    vec3 refractB = refract(-V, N, ratioB);
+
+    // Sample environment map separately for each channel
+    float r = textureCube(uEnvMap, refractR).r;
+    float g = textureCube(uEnvMap, refractG).g;
+    float b = textureCube(uEnvMap, refractB).b;
+    vec3 refractedColor = vec3(r, g, b);
+
+    // ── Fresnel reflection ──
+    float F0 = 0.04;  // Glass at normal incidence
+    float fresnel = schlickFresnel(NdotV, F0);
+
+    // Boost fresnel at grazing angles for more dramatic glass edge
+    fresnel = pow(fresnel, uFresnelPower);
+
+    // Reflected environment
+    vec3 reflectDir = reflect(-V, N);
+    vec3 reflectedColor = textureCube(uEnvMap, reflectDir).rgb;
+
+    // ── Multi-layer effect: inner glow ──
+    // Simulate light trapped inside glass scattering
+    float innerGlow = pow(1.0 - NdotV, 3.0) * 0.4;
+    vec3 glowColor = uTintColor * innerGlow;
+
+    // ── Edge emission (Gleb signature: edges glow) ──
+    float edgeEmit = pow(1.0 - NdotV, 4.0) * 0.6;
+    vec3 edgeColor = mix(uTintColor, vec3(1.0), 0.3) * edgeEmit;
+
+    // ── Animated internal caustic pattern ──
+    // Simulate caustics moving inside the glass
+    float causticsFreq = 8.0;
+    float causticsTime = uTime * 0.5;
+    float caustic1 = sin(vUv.x * causticsFreq + causticsTime) * sin(vUv.y * causticsFreq * 1.3 + causticsTime * 0.7);
+    float caustic2 = sin(vUv.x * causticsFreq * 1.618 - causticsTime * 0.8) * sin(vUv.y * causticsFreq * 0.7 - causticsTime);
+    float causticPattern = smoothstep(0.3, 0.9, (caustic1 + caustic2) * 0.5 + 0.5);
+    vec3 causticColor = uTintColor * causticPattern * 0.15 * (1.0 - NdotV);
+
+    // ── Combine layers ──
+    vec3 color = mix(refractedColor * uTintColor * 1.5, reflectedColor, fresnel);
+    color += glowColor;
+    color += edgeColor;
+    color += causticColor;
+
+    // Subtle dispersion-driven rainbow at edges
+    float dispersionEdge = pow(1.0 - NdotV, 6.0);
+    vec3 rainbow = vec3(
+      sin(vUv.y * 12.0 + uTime) * 0.5 + 0.5,
+      sin(vUv.y * 12.0 + uTime + 2.094) * 0.5 + 0.5,
+      sin(vUv.y * 12.0 + uTime + 4.189) * 0.5 + 0.5
+    );
+    color += rainbow * dispersionEdge * uDispersionStrength;
+
+    gl_FragColor = vec4(color, 0.85 + fresnel * 0.15);
+  }
+`;
+
+// ── Cube Camera for Environment ──
+const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(512, {
+  format: THREE.RGBAFormat,
+  generateMipmaps: true,
+  minFilter: THREE.LinearMipmapLinearFilter
+});
+const cubeCamera = new THREE.CubeCamera(0.1, 100, cubeRenderTarget);
+scene.add(cubeCamera);
+
+// ── Glass Orb ──
+const orbGeo = new THREE.SphereGeometry(1.3, 128, 128);
+const orbMat = new THREE.ShaderMaterial({
+  vertexShader: chromaticGlassVert,
+  fragmentShader: chromaticGlassFrag,
+  uniforms: {
+    uTime: { value: 0 },
+    uEnvMap: { value: cubeRenderTarget.texture },
+    uIorR: { value: 1.45 },   // Red refracts least
+    uIorG: { value: 1.50 },   // Green in middle
+    uIorB: { value: 1.55 },   // Blue refracts most (higher IOR = more bend)
+    uFresnelPower: { value: 0.6 },
+    uDispersionStrength: { value: 0.25 },
+    uTintColor: { value: new THREE.Color(0x2a93c1) }
+  },
+  transparent: true,
+  side: THREE.FrontSide,
+  depthWrite: false
+});
+const orb = new THREE.Mesh(orbGeo, orbMat);
+scene.add(orb);
+
+// Second inner sphere for multi-layer refraction (gap #4)
+const innerGeo = new THREE.SphereGeometry(0.85, 96, 96);
+const innerMat = new THREE.ShaderMaterial({
+  vertexShader: chromaticGlassVert,
+  fragmentShader: chromaticGlassFrag,
+  uniforms: {
+    uTime: { value: 0 },
+    uEnvMap: { value: cubeRenderTarget.texture },
+    uIorR: { value: 1.60 },  // Higher IOR for inner layer
+    uIorG: { value: 1.65 },
+    uIorB: { value: 1.70 },
+    uFresnelPower: { value: 0.4 },
+    uDispersionStrength: { value: 0.4 },
+    uTintColor: { value: new THREE.Color(0xf1420b) }
+  },
+  transparent: true,
+  side: THREE.FrontSide,
+  depthWrite: false
+});
+const innerOrb = new THREE.Mesh(innerGeo, innerMat);
+scene.add(innerOrb);
+
+// Small core emissive
+const coreGeo = new THREE.SphereGeometry(0.25, 32, 32);
+const coreMat = new THREE.MeshStandardMaterial({
+  color: 0x2a93c1,
+  emissive: 0x2a93c1,
+  emissiveIntensity: 3.0,
+  roughness: 0.1
+});
+const core = new THREE.Mesh(coreGeo, coreMat);
+scene.add(core);
+
+// ── Lighting ──
+const light1 = new THREE.PointLight(0x2a93c1, 15, 20);
+light1.position.set(3, 3, 3);
+scene.add(light1);
+
+const light2 = new THREE.PointLight(0xf1420b, 10, 20);
+light2.position.set(-3, -2, 4);
+scene.add(light2);
+
+const light3 = new THREE.PointLight(0x8844cc, 8, 15);
+light3.position.set(0, 4, -3);
+scene.add(light3);
+
+const ambient = new THREE.AmbientLight(0x111122, 0.3);
+scene.add(ambient);
+
+// ── Postprocessing ──
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.6, 0.4, 0.88
+);
+composer.addPass(bloomPass);
+
+// Chromatic aberration post-process pass
+const caShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uOffset: { value: new THREE.Vector2(0.003, 0.003) },
+    uTime: { value: 0 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform vec2 uOffset;
+    uniform float uTime;
+    varying vec2 vUv;
+    void main() {
+      vec2 center = vUv - 0.5;
+      float dist = length(center);
+      // Radial CA: stronger at edges (Gleb signature)
+      vec2 offset = center * dist * uOffset * (1.0 + sin(uTime * 0.3) * 0.2);
+      float r = texture2D(tDiffuse, vUv + offset).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vUv - offset).b;
+      gl_FragColor = vec4(r, g, b, 1.0);
+    }
+  `
+};
+const caPass = new ShaderPass(caShader);
+composer.addPass(caPass);
+
+// ── Mouse tracking ──
+const mouse = { x: 0, y: 0 };
+document.addEventListener('mousemove', (e) => {
+  mouse.x = (e.clientX / window.innerWidth - 0.5) * 2;
+  mouse.y = (e.clientY / window.innerHeight - 0.5) * 2;
+});
+
+// ── Animation Loop ──
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // Update uniforms
+  orbMat.uniforms.uTime.value = t;
+  innerMat.uniforms.uTime.value = t;
+  caShader.uniforms.uTime.value = t;
+
+  // Gentle orbit camera based on mouse
+  const targetX = mouse.x * 0.8;
+  const targetY = -mouse.y * 0.5;
+  camera.position.x += (targetX - camera.position.x) * 0.03;
+  camera.position.y += (targetY - camera.position.y) * 0.03;
+  camera.lookAt(0, 0, 0);
+
+  // Animate orb rotation (subtle)
+  orb.rotation.y = t * 0.15;
+  orb.rotation.x = Math.sin(t * 0.1) * 0.1;
+
+  innerOrb.rotation.y = -t * 0.2;
+  innerOrb.rotation.x = Math.cos(t * 0.12) * 0.15;
+
+  // Breathing scale on core
+  const breathe = 1.0 + Math.sin(t * 0.8) * 0.1;
+  core.scale.setScalar(breathe);
+
+  // Animate background elements
+  bandGroup.rotation.y = t * 0.05;
+  bandGroup.rotation.z = Math.sin(t * 0.08) * 0.1;
+
+  // Pulse dispersion strength subtly
+  orbMat.uniforms.uDispersionStrength.value = 0.2 + Math.sin(t * 0.4) * 0.1;
+
+  // Update cube camera (render env map for refraction)
+  orb.visible = false;
+  innerOrb.visible = false;
+  cubeCamera.position.copy(orb.position);
+  cubeCamera.update(renderer, scene);
+  orb.visible = true;
+  innerOrb.visible = true;
+
+  composer.render();
+}
+
+animate();
+
+// ── Resize ──
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

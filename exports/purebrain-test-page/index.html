@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Birth Certificate - PureBrain</title>
+
+  <!-- Certificate Generator Styles -->
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- Exit Intent Styles -->
+  <link rel="stylesheet" href="exit-intent.css">
+</head>
+<body>
+
+  <!-- Page Header -->
+  <header class="page-header">
+    <div class="logo">PureBrain.ai</div>
+    <h1>AI Birth Certificate</h1>
+    <p>Name your AI. Document the moment. Share with the world.</p>
+  </header>
+
+  <!-- Main App -->
+  <div class="app-container">
+
+    <!-- Form Panel -->
+    <div class="form-panel">
+      <h2>Create Your Certificate</h2>
+
+      <div class="form-group">
+        <label for="ai-name">AI Name</label>
+        <input
+          type="text"
+          id="ai-name"
+          placeholder="Atlas, Nova, Sage, Echo..."
+          maxlength="32"
+          autocomplete="off"
+        >
+        <span class="hint">The name you give this AI. Choose wisely.</span>
+      </div>
+
+      <div class="form-group">
+        <label for="user-name">Your Name</label>
+        <input
+          type="text"
+          id="user-name"
+          placeholder="Your full name"
+          maxlength="48"
+          autocomplete="off"
+        >
+      </div>
+
+      <div class="form-group">
+        <label for="tagline">Purpose / Tagline</label>
+        <textarea
+          id="tagline"
+          placeholder="What is this AI here to do?"
+          maxlength="120"
+        ></textarea>
+        <span class="hint">72 characters shown on certificate. Be specific.</span>
+      </div>
+
+      <button class="btn-generate" id="btn-generate">Generate Certificate</button>
+
+      <hr class="action-divider">
+
+      <div class="action-buttons">
+        <h3>Export & Share</h3>
+        <button class="btn-download" id="btn-download" disabled>
+          &#8595; Download PNG
+        </button>
+        <div class="share-row">
+          <button class="btn-share btn-twitter" id="btn-twitter" disabled>
+            &#x1D54F; Twitter / X
+          </button>
+          <button class="btn-share btn-linkedin" id="btn-linkedin" disabled>
+            in LinkedIn
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Preview Panel -->
+    <div class="preview-panel">
+      <h2>Preview</h2>
+      <div class="canvas-wrapper">
+        <canvas id="certificateCanvas"></canvas>
+      </div>
+      <p class="preview-note">1200 &times; 628px &mdash; optimized for social media</p>
+    </div>
+
+  </div>
+
+  <!-- Certificate Generator -->
+  <script src="certificate-generator.js"></script>
+
+  <!-- Exit Intent Popup -->
+  <script src="exit-intent.js"></script>
+
+  <!-- Page Controller -->
+  <script>
+    (function () {
+      'use strict';
+
+      var canvas = document.getElementById('certificateCanvas');
+      var btnGenerate = document.getElementById('btn-generate');
+      var btnDownload = document.getElementById('btn-download');
+      var btnTwitter = document.getElementById('btn-twitter');
+      var btnLinkedIn = document.getElementById('btn-linkedin');
+      var aiNameInput = document.getElementById('ai-name');
+      var userNameInput = document.getElementById('user-name');
+      var taglineInput = document.getElementById('tagline');
+
+      var currentData = null;
+
+      // ── Wire AI name input to exit intent ──────────────────────────────────
+      // Any time the user types an AI name, tell exit intent about it.
+      // This ensures the popup shows the correct name if they try to leave.
+      aiNameInput.addEventListener('input', function () {
+        var val = aiNameInput.value.trim();
+        if (val.length > 0) {
+          ExitIntent.setAiName(val);
+        }
+      });
+
+      // ── Generate button ─────────────────────────────────────────────────────
+      btnGenerate.addEventListener('click', function () {
+        var aiName = aiNameInput.value.trim();
+        var userName = userNameInput.value.trim();
+        var tagline = taglineInput.value.trim();
+
+        if (!aiName) {
+          aiNameInput.focus();
+          aiNameInput.style.borderColor = '#f1420b';
+          setTimeout(function () {
+            aiNameInput.style.borderColor = '';
+          }, 1500);
+          return;
+        }
+
+        currentData = { aiName: aiName, userName: userName, tagline: tagline };
+
+        // Render the certificate
+        renderCertificate(canvas, currentData);
+
+        // Unlock export buttons
+        btnDownload.disabled = false;
+        btnTwitter.disabled = false;
+        btnLinkedIn.disabled = false;
+
+        // Tell exit intent the name (in case not typed yet)
+        ExitIntent.setAiName(aiName);
+
+        // NOTE: Per spec, "Doesn't show if user has already interacted with naming"
+        // Uncomment the line below to suppress exit popup after generating a cert:
+        // ExitIntent.markNamed();
+      });
+
+      // ── Download ────────────────────────────────────────────────────────────
+      btnDownload.addEventListener('click', function () {
+        if (!currentData) return;
+        downloadCertificate(canvas, currentData.aiName);
+      });
+
+      // ── Twitter share ───────────────────────────────────────────────────────
+      btnTwitter.addEventListener('click', function () {
+        if (!currentData) return;
+        shareOnTwitter(currentData.aiName, currentData.userName);
+      });
+
+      // ── LinkedIn share ──────────────────────────────────────────────────────
+      btnLinkedIn.addEventListener('click', function () {
+        if (!currentData) return;
+        shareOnLinkedIn(currentData.aiName, currentData.userName, currentData.tagline);
+      });
+
+      // ── Render a placeholder certificate on load ────────────────────────────
+      renderCertificate(canvas, {
+        aiName: 'Atlas',
+        userName: 'Your Name',
+        tagline: 'Built to remember what matters most.'
+      });
+
+    }());
+  </script>
+
+</body>
+</html>

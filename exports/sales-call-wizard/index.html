@@ -1,0 +1,2310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PureBrain.ai — Live Call Wizard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+/* ========== RESET & BASE ========== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* PureBrain Brand Colors */
+  --accent: #2a93c1;           /* PT Blue */
+  --accent-glow: rgba(42, 147, 193, 0.3);
+  --accent-subtle: rgba(42, 147, 193, 0.1);
+  --cta: #f1420b;              /* PT Orange */
+  --cta-glow: rgba(241, 66, 11, 0.3);
+  --cta-subtle: rgba(241, 66, 11, 0.1);
+
+  /* Backgrounds */
+  --bg: #080a12;
+  --bg-surface: #0e1015;
+  --bg-card: #141820;
+  --bg-card-hover: #1a2028;
+  --bg-sidebar: #0b0d14;
+
+  /* Text */
+  --text: #e8eaf0;
+  --text-muted: #8892a4;
+  --text-dim: #50586a;
+
+  /* Status colors */
+  --green: #10b981;
+  --green-glow: rgba(16, 185, 129, 0.3);
+  --green-subtle: rgba(16, 185, 129, 0.08);
+  --orange: #f59e0b;
+  --red: #ef4444;
+  --blue: #3b82f6;
+  --cyan: #06b6d4;
+
+  /* Borders & Shadows */
+  --border: rgba(42, 147, 193, 0.12);
+  --border-strong: rgba(42, 147, 193, 0.25);
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.7);
+
+  /* Layout */
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-xs: 6px;
+  --sidebar-w: 280px;
+  --topbar-h: 56px;
+  --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html { font-size: 16px; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ========== TOP BAR ========== */
+.topbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: var(--topbar-h);
+  background: rgba(8, 10, 18, 0.90);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  z-index: 100;
+}
+
+.logo {
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: #fff;
+}
+.logo .logo-blue { color: #2a93c1; }
+.logo .logo-orange { color: #f1420b; }
+.logo .logo-dot { color: rgba(255,255,255,0.5); font-size: 1rem; }
+
+.timer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.timer-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  animation: pulse-dot 1.5s infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239,68,68,0.5); }
+  50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(239,68,68,0); }
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.step-counter {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.kbd-hint {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  background: rgba(255,255,255,0.05);
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.new-call-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: rgba(241,66,11,0.12);
+  color: var(--cta);
+  border: 1px solid rgba(241,66,11,0.3);
+  border-radius: var(--radius-xs);
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.new-call-btn:hover {
+  background: rgba(241,66,11,0.2);
+  transform: translateY(-1px);
+}
+
+/* ========== SIDEBAR ========== */
+.sidebar {
+  position: fixed;
+  top: var(--topbar-h);
+  left: 0;
+  bottom: 0;
+  width: var(--sidebar-w);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  padding: 24px 0;
+  overflow-y: auto;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  padding: 0 20px;
+  margin-bottom: 16px;
+}
+
+.sidebar-steps { flex: 1; }
+
+.sidebar-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 20px;
+  cursor: pointer;
+  transition: var(--transition);
+  position: relative;
+  border-left: 3px solid transparent;
+}
+.sidebar-step:hover {
+  background: rgba(42, 147, 193, 0.05);
+}
+
+.sidebar-step.active {
+  background: var(--accent-subtle);
+  border-left-color: var(--accent);
+}
+
+.sidebar-step.completed .step-indicator {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+
+.step-indicator {
+  width: 28px; height: 28px;
+  min-width: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border: 2px solid var(--text-dim);
+  color: var(--text-dim);
+  transition: var(--transition);
+  margin-top: 1px;
+}
+
+.sidebar-step.active .step-indicator {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.sidebar-step.upcoming .step-indicator {
+  opacity: 0.4;
+}
+
+.step-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  line-height: 1.4;
+  transition: var(--transition);
+}
+.sidebar-step.active .step-label {
+  color: #fff;
+  font-weight: 600;
+}
+.sidebar-step.completed .step-label {
+  color: var(--green);
+}
+.sidebar-step.upcoming .step-label {
+  opacity: 0.5;
+}
+
+.step-spin-tag {
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  margin-top: 2px;
+  opacity: 0.7;
+}
+.sidebar-step.active .step-spin-tag { opacity: 1; }
+.sidebar-step.upcoming .step-spin-tag { opacity: 0.3; }
+
+.sidebar-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* ========== MAIN CONTENT ========== */
+.main {
+  position: fixed;
+  top: var(--topbar-h);
+  left: var(--sidebar-w);
+  right: 0;
+  bottom: 0;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+.main::-webkit-scrollbar { width: 6px; }
+.main::-webkit-scrollbar-track { background: transparent; }
+.main::-webkit-scrollbar-thumb { background: rgba(42,147,193,0.2); border-radius: 3px; }
+.main::-webkit-scrollbar-thumb:hover { background: rgba(42,147,193,0.4); }
+
+.step-content {
+  display: none;
+  min-height: 100%;
+  padding: 48px 56px 120px;
+  animation: fadeSlideIn 0.4s ease;
+}
+.step-content.active { display: block; }
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ========== STEP HEADER ========== */
+.step-header {
+  margin-bottom: 40px;
+}
+.step-number {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.step-title {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -1px;
+  line-height: 1.2;
+  margin-bottom: 12px;
+}
+.step-spin-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-subtle);
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(42,147,193,0.2);
+}
+
+/* ========== CONTENT BLOCKS ========== */
+.section-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+  margin-top: 32px;
+}
+
+.talking-points {
+  list-style: none;
+  margin-bottom: 8px;
+}
+.talking-points li {
+  position: relative;
+  padding: 14px 20px 14px 44px;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+  transition: var(--transition);
+  background: transparent;
+}
+.talking-points li:hover {
+  background: rgba(255,255,255,0.03);
+}
+.talking-points li::before {
+  content: '';
+  position: absolute;
+  left: 16px;
+  top: 23px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+/* Hook text */
+.hook-text {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #fff;
+  padding: 20px 0;
+  line-height: 1.5;
+}
+
+/* Prospect Info Section */
+.prospect-info {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin: 24px 0;
+}
+.prospect-info .section-label { margin-top: 0; }
+.prospect-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.prospect-field label {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.prospect-field input {
+  width: 100%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  transition: var(--transition);
+}
+.prospect-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+.prospect-field.full-width { grid-column: 1 / -1; }
+
+/* Pricing Table */
+.pricing-table {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 20px 0;
+}
+.pricing-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 16px;
+  text-align: center;
+  transition: var(--transition);
+}
+.pricing-card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
+.pricing-card.featured { border-color: var(--accent); box-shadow: 0 0 20px var(--accent-glow); }
+.pricing-tier {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.pricing-price {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1;
+}
+.pricing-price span { font-size: 0.8rem; font-weight: 400; color: var(--text-muted); }
+.pricing-detail {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+  line-height: 1.4;
+}
+.pricing-detail .cost-line { display: block; margin-top: 4px; }
+.pricing-detail .our-cost { color: var(--green); font-weight: 600; }
+@media (max-width: 900px) { .pricing-table { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .pricing-table { grid-template-columns: 1fr; } .prospect-fields { grid-template-columns: 1fr; } }
+
+/* Note boxes */
+.note-box {
+  background: rgba(241, 66, 11, 0.05);
+  border: 1px solid rgba(241, 66, 11, 0.2);
+  border-left: 3px solid var(--cta);
+  border-radius: var(--radius-sm);
+  padding: 14px 18px;
+  margin: 16px 0;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: rgba(241,66,11,0.85);
+}
+.note-box strong {
+  font-weight: 700;
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--cta);
+}
+
+/* Action buttons */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: var(--transition);
+  border: none;
+  font-family: inherit;
+}
+
+.action-btn.primary {
+  background: var(--cta);
+  color: #fff;
+  box-shadow: 0 0 20px var(--cta-glow);
+}
+.action-btn.primary:hover {
+  background: #d93809;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 24px var(--cta-glow);
+}
+
+.action-btn.secondary {
+  background: rgba(42, 147, 193, 0.12);
+  color: var(--accent);
+  border: 1px solid rgba(42,147,193,0.3);
+}
+.action-btn.secondary:hover {
+  background: rgba(42, 147, 193, 0.2);
+  transform: translateY(-1px);
+}
+
+.action-btn.ghost {
+  background: rgba(255,255,255,0.05);
+  color: var(--text-muted);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+.action-btn.ghost:hover {
+  background: rgba(255,255,255,0.1);
+  color: var(--text);
+}
+
+.action-btn svg {
+  width: 16px; height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ========== PAYOFF REVEAL ========== */
+.payoff-list {
+  list-style: none;
+  counter-reset: payoff;
+}
+.payoff-list li {
+  padding: 18px 20px 18px 60px;
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+  position: relative;
+  opacity: 0;
+  transform: translateX(-20px);
+  transition: opacity 0.5s ease, transform 0.5s ease, border-color 0.3s ease;
+}
+.payoff-list li.revealed {
+  opacity: 1;
+  transform: translateX(0);
+  border-color: rgba(42,147,193,0.25);
+}
+.payoff-list li::before {
+  counter-increment: payoff;
+  content: counter(payoff);
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+.payoff-list li .payoff-icon {
+  color: var(--accent);
+  margin-right: 8px;
+  font-weight: 800;
+}
+
+.reveal-btn {
+  margin: 20px 0;
+  padding: 12px 24px;
+  background: rgba(42,147,193,0.15);
+  color: var(--accent);
+  border: 1px solid rgba(42,147,193,0.3);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.reveal-btn:hover {
+  background: rgba(42,147,193,0.25);
+  transform: translateY(-1px);
+}
+.reveal-btn.done {
+  opacity: 0.5;
+  cursor: default;
+  transform: none;
+}
+
+/* ========== COMMUNITY VISUAL ========== */
+.community-visual {
+  position: relative;
+  width: 100%;
+  height: 240px;
+  margin: 24px 0;
+  border-radius: var(--radius);
+  background: radial-gradient(ellipse at center, rgba(42,147,193,0.07) 0%, transparent 70%);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.node {
+  position: absolute;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+.node.orange { background: var(--cta); box-shadow: 0 0 12px var(--cta-glow); }
+.node.green { background: var(--green); box-shadow: 0 0 12px var(--green-glow); }
+.node.blue { background: var(--blue); box-shadow: 0 0 12px rgba(59,130,246,0.3); }
+.node.cyan { background: var(--cyan); box-shadow: 0 0 12px rgba(6,182,212,0.3); }
+.node.large { width: 20px; height: 20px; }
+
+.node-label {
+  position: absolute;
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+.connection-line {
+  position: absolute;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(42,147,193,0.35), rgba(16,185,129,0.25));
+  transform-origin: left center;
+}
+
+/* ========== CLOSE SECTION ========== */
+.urgency-card {
+  background: linear-gradient(135deg, var(--bg-card), rgba(42,147,193,0.06));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 28px;
+  margin: 20px 0;
+  position: relative;
+  overflow: hidden;
+}
+.urgency-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--cta));
+}
+
+.urgency-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.urgency-item:last-child { border-bottom: none; }
+
+.urgency-icon {
+  width: 36px; height: 36px;
+  min-width: 36px;
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+.urgency-item .urgency-text {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.urgency-item .urgency-text strong {
+  color: #fff;
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* ========== NOTES TEXTAREA ========== */
+.notes-section {
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+.notes-section label {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+.notes-section textarea {
+  width: 100%;
+  min-height: 90px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.88rem;
+  line-height: 1.7;
+  resize: vertical;
+  transition: var(--transition);
+}
+.notes-section textarea::placeholder { color: var(--text-dim); }
+.notes-section textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+.notes-autosave {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.notes-autosave.saved { color: var(--green); }
+
+/* ========== NAV BUTTONS ========== */
+.nav-buttons {
+  position: fixed;
+  bottom: 0;
+  left: var(--sidebar-w);
+  right: 0;
+  padding: 14px 56px;
+  background: rgba(8, 10, 18, 0.92);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 80;
+}
+
+.nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 22px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  border: none;
+}
+.nav-btn.prev {
+  background: rgba(255,255,255,0.06);
+  color: var(--text-muted);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+.nav-btn.prev:hover {
+  background: rgba(255,255,255,0.1);
+  color: var(--text);
+}
+.nav-btn.prev:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.nav-btn.next {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 16px var(--accent-glow);
+}
+.nav-btn.next:hover {
+  background: #2284ae;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px var(--accent-glow);
+}
+.nav-btn.finish {
+  background: var(--cta);
+  color: #fff;
+  box-shadow: 0 0 16px var(--cta-glow);
+}
+.nav-btn.finish:hover {
+  background: #d93809;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px var(--cta-glow);
+}
+
+.nav-btn svg {
+  width: 16px; height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.nav-progress {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+.nav-progress .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  transition: var(--transition);
+}
+.nav-progress .dot.completed { background: var(--green); }
+.nav-progress .dot.active {
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+  width: 26px;
+  border-radius: 4px;
+}
+
+/* ========== STEP 1: HOOK VISUAL ========== */
+.hook-visual {
+  margin: 32px 0;
+  text-align: center;
+  padding: 52px 32px;
+  background: radial-gradient(ellipse at center, rgba(42,147,193,0.07) 0%, transparent 70%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  position: relative;
+  overflow: hidden;
+}
+.hook-visual::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: conic-gradient(from 180deg, transparent, rgba(42,147,193,0.04), transparent, rgba(241,66,11,0.03), transparent);
+  animation: rotateGlow 14s linear infinite;
+}
+@keyframes rotateGlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.hook-lines { position: relative; z-index: 1; }
+.hook-line {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #fff;
+  margin: 18px 0;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+  letter-spacing: -0.5px;
+}
+.hook-line.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.hook-line .highlight {
+  background: linear-gradient(135deg, var(--accent), var(--cta));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ========== STEP 4: GRAPH VISUAL ========== */
+.graph-preview {
+  margin: 20px 0;
+  padding: 28px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-align: center;
+}
+.graph-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+  height: 150px;
+  margin: 20px 0;
+}
+.graph-bar {
+  width: 26px;
+  border-radius: 4px 4px 0 0;
+  transition: height 0.8s ease;
+  position: relative;
+}
+.graph-bar.with-ai {
+  background: linear-gradient(to top, var(--accent), #5bc0e8);
+}
+.graph-bar.without-ai {
+  background: rgba(255,255,255,0.08);
+}
+.graph-label {
+  font-size: 0.58rem;
+  color: var(--text-dim);
+  margin-top: 5px;
+  text-align: center;
+}
+.graph-legend {
+  display: flex;
+  justify-content: center;
+  gap: 28px;
+  margin-top: 16px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.legend-dot {
+  width: 10px; height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+/* ========== COMPARISON TABLE ========== */
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 20px 0;
+}
+.compare-card {
+  padding: 24px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+.compare-card.them {
+  background: rgba(239,68,68,0.04);
+  border-color: rgba(239,68,68,0.2);
+}
+.compare-card.us {
+  background: rgba(16,185,129,0.04);
+  border-color: rgba(16,185,129,0.25);
+}
+.compare-card h4 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+.compare-card.them h4 { color: var(--red); }
+.compare-card.us h4 { color: var(--green); }
+.compare-card ul { list-style: none; }
+.compare-card ul li {
+  padding: 7px 0 7px 22px;
+  position: relative;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.compare-card.them ul li::before {
+  content: '\2717';
+  position: absolute;
+  left: 0;
+  color: var(--red);
+  font-weight: 700;
+}
+.compare-card.us ul li::before {
+  content: '\2713';
+  position: absolute;
+  left: 0;
+  color: var(--green);
+  font-weight: 700;
+}
+
+/* ========== COMPLETE CALL MODAL ========== */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(8,10,18,0.85);
+  backdrop-filter: blur(12px);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.open {
+  display: flex;
+}
+.modal {
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 36px;
+  width: 520px;
+  max-width: 90vw;
+  position: relative;
+}
+.modal::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--cta));
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.modal h2 {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 8px;
+}
+.modal p {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+.modal-form label {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.modal-form input, .modal-form select {
+  width: 100%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+  transition: var(--transition);
+}
+.modal-form input:focus, .modal-form select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+.modal-form select option { background: var(--bg-card); }
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+.modal-submit {
+  flex: 1;
+  padding: 13px 24px;
+  background: var(--cta);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+  box-shadow: 0 0 20px var(--cta-glow);
+}
+.modal-submit:hover { background: #d93809; transform: translateY(-1px); }
+.modal-cancel {
+  padding: 13px 20px;
+  background: rgba(255,255,255,0.06);
+  color: var(--text-muted);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.modal-cancel:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+.submit-status {
+  margin-top: 12px;
+  font-size: 0.82rem;
+  text-align: center;
+  min-height: 20px;
+}
+.submit-status.success { color: var(--green); }
+.submit-status.error { color: var(--red); }
+.submit-status.loading { color: var(--accent); }
+
+/* ========== MOBILE ========== */
+@media (max-width: 900px) {
+  .sidebar { display: none; }
+  .main { left: 0; }
+  .nav-buttons { left: 0; padding: 12px 20px; }
+  .step-content { padding: 32px 20px 120px; }
+  .step-title { font-size: 1.6rem; }
+  .hook-line { font-size: 1.4rem; }
+  .compare-grid { grid-template-columns: 1fr; }
+  .kbd-hint { display: none; }
+}
+@media (max-width: 480px) {
+  .step-content { padding: 24px 16px 110px; }
+  .step-title { font-size: 1.3rem; }
+  .hook-line { font-size: 1.2rem; }
+  .topbar { padding: 0 12px; }
+  .logo { font-size: 1.1rem; }
+}
+
+/* ========== UTILITY ========== */
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin: 32px 0;
+}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="logo">
+    <span class="logo-blue">PUREBR</span><span class="logo-orange">AI</span><span class="logo-blue">N</span><span class="logo-dot">.ai</span>
+  </div>
+  <div class="topbar-right">
+    <div class="timer">
+      <div class="timer-dot"></div>
+      <span id="timerDisplay">00:00</span>
+    </div>
+    <div class="step-counter" id="stepCounter">Step 1 / 8</div>
+    <div class="kbd-hint">Arrow keys to navigate</div>
+    <button class="new-call-btn" onclick="newCall()">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+      New Call
+    </button>
+  </div>
+</div>
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sidebar-title">Live Call Wizard</div>
+  <div class="sidebar-steps" id="sidebarSteps"></div>
+  <div class="sidebar-footer">
+    SPIN Selling Framework<br>
+    PureBrain Sales Team
+  </div>
+</nav>
+
+<!-- MAIN CONTENT -->
+<div class="main" id="mainContent">
+
+  <!-- STEP 1: THE HOOK -->
+  <div class="step-content" id="step-1">
+    <div class="step-header">
+      <div class="step-number">Step 1 — Open Strong</div>
+      <div class="step-title">The Hook</div>
+    </div>
+
+    <div class="section-label">Say This</div>
+    <div class="hook-visual">
+      <div class="hook-lines">
+        <div class="hook-line" data-delay="0">"Do you have a <span class="highlight">business</span>?"</div>
+        <div class="hook-line" data-delay="500">"Want your business to make <span class="highlight">more money</span>?"</div>
+        <div class="hook-line" data-delay="1000">"Want to <span class="highlight">free up</span> some of your time?"</div>
+      </div>
+    </div>
+
+    <div class="note-box">
+      <strong>Presenter Note</strong>
+      Keep it simple. These three questions get a "yes" every time. Build momentum before showing anything. Pause between each line and let them answer.
+    </div>
+
+    <div class="section-label">Opening Talking Points</div>
+    <ul class="talking-points">
+      <li>Introduce yourself and thank them for their time</li>
+      <li>Set a clear agenda: "I'm going to walk you through exactly what PureBrain can do for your business in about 20-30 minutes"</li>
+      <li>Frame the call: "Feel free to stop me with questions at any point"</li>
+    </ul>
+
+    <div class="prospect-info">
+      <div class="section-label">Prospect Information</div>
+      <div class="prospect-fields">
+        <div class="prospect-field">
+          <label>Full Name</label>
+          <input type="text" id="prospect-name" placeholder="e.g. John Smith" oninput="saveProspectInfo()" />
+        </div>
+        <div class="prospect-field">
+          <label>Email Address</label>
+          <input type="email" id="prospect-email" placeholder="e.g. john@company.com" oninput="saveProspectInfo()" />
+        </div>
+        <div class="prospect-field">
+          <label>Company Name</label>
+          <input type="text" id="prospect-company-name" placeholder="e.g. Acme Corp" oninput="saveProspectInfo()" />
+        </div>
+        <div class="prospect-field">
+          <label>Role / Title</label>
+          <input type="text" id="prospect-role" placeholder="e.g. CEO, Founder, VP Marketing" oninput="saveProspectInfo()" />
+        </div>
+      </div>
+    </div>
+
+    <div class="notes-section">
+      <label>Call Notes — Step 1</label>
+      <textarea id="notes-1" placeholder="Initial reactions, vibe of the call, anything notable..."></textarea>
+      <div class="notes-autosave" id="save-status-1">Auto-saved</div>
+    </div>
+  </div>
+
+  <!-- STEP 2: DEEP RESEARCH -->
+  <div class="step-content" id="step-2">
+    <div class="step-header">
+      <div class="step-number">Step 2 — Rapport Building</div>
+      <div class="step-title">Show Them You Did Your Homework</div>
+      <div class="step-spin-label">SPIN: Building Rapport + Demonstrating Value</div>
+    </div>
+
+    <div class="section-label">Talking Points</div>
+    <ul class="talking-points">
+      <li>"We researched your business inside and out before this call."</li>
+      <li>"Here's a custom plan we built specifically for you — before you've paid us a dollar."</li>
+      <li>"This level of pre-work is what separates us from everyone else you've talked to."</li>
+      <li>"Everything I'm about to show you was built with YOUR business in mind."</li>
+    </ul>
+
+    <div class="section-label">Action — Share the Research Brief</div>
+    <div class="actions">
+      <a href="https://purebrain.ai/purebrain-x-hovr-ai-partnership-brief/" target="_blank" class="action-btn primary">
+        <svg><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        View Example Research Brief
+      </a>
+    </div>
+
+    <div class="note-box">
+      <strong>Presenter Note</strong>
+      Replace the example link above with the prospect-specific research doc you built before this call. Screen share the doc. Walk them through it section by section. Watch their face when they realize how much work you already did for them — for free.
+    </div>
+
+    <div class="notes-section">
+      <label>Call Notes — Step 2</label>
+      <textarea id="notes-2" placeholder="Their reaction to the research, key pain points uncovered, what surprised them..."></textarea>
+      <div class="notes-autosave" id="save-status-2">Auto-saved</div>
+    </div>
+  </div>
+
+  <!-- STEP 3: TOOL STACK CALCULATOR -->
+  <div class="step-content" id="step-3">
+    <div class="step-header">
+      <div class="step-number">Step 3 — Situation</div>
+      <div class="step-title">Uncover Their Current Situation</div>
+      <div class="step-spin-label">SPIN: Situation &rarr; Problem &rarr; Implication</div>
+    </div>
+
+    <div class="section-label">Talking Points</div>
+    <ul class="talking-points">
+      <li>"Let's look at what tools you're currently using."</li>
+      <li>"Most businesses are spending 3–5x more than they need to on disconnected AI tools."</li>
+      <li>"Every tool has a separate login, separate data silo, separate monthly bill."</li>
+      <li>"Let me show you something that will change how you look at your tool stack..."</li>
+    </ul>
+
+    <div class="section-label">SPIN Situation Questions — Ask These Live</div>
+    <ul class="talking-points">
+      <li>"What AI tools are you currently using, if any?"</li>
+      <li>"Are they talking to each other, or are they isolated?"</li>
+      <li>"How much are you spending monthly across all AI subscriptions?"</li>
+      <li>"Who on your team manages these tools?"</li>
+    </ul>
+
+    <div class="section-label">Action — Open the Calculator Together</div>
+    <div class="actions">
+      <a href="https://purebrain.ai/ai-tool-stack-calculator/" target="_blank" class="action-btn primary">
+        <svg><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Open AI Tool Stack Calculator
+      </a>
+    </div>
+
+    <div class="note-box">
+      <strong>Presenter Note</strong>
+      Do this WITH them live on screen share. Walk through their actual tools. Ask: "What are you using for email? For content? For data analysis?" Enter each one. Let the total cost shock land naturally. Don't explain the number — let them feel it.
+    </div>
+
+    <div class="notes-section">
+      <label>Call Notes — Step 3</label>
+      <textarea id="notes-3" placeholder="Tools they're using, monthly spend revealed, pain points with current stack, who owns the tools..."></textarea>
+      <div class="notes-autosave" id="save-status-3">Auto-saved</div>
+    </div>
+  </div>
+
+  <!-- STEP 4: INVESTOR INTELLIGENCE -->
+  <div class="step-content" id="step-4">
+    <div class="step-header">
+      <div class="step-number">Step 4 — Problem</div>
+      <div class="step-title">The AI Divide Is Real</div>
+      <div class="step-spin-label">SPIN: Situation &rarr; Problem &rarr; Implication</div>
+    </div>
+
+    <div class="section-label">Talking Points</div>
+    <ul class="talking-points">
+      <li>"Look at this data — companies adopting AI properly are pulling ahead exponentially."</li>
+      <li>"This isn't a nice-to-have anymore. This is do or die."</li>
+      <li>"The businesses that move NOW will be 10x ahead by next year."</li>
+      <li>"Let me show you who you'll be if you get in now vs. if you wait."</li>
+    </ul>
+
+    <div class="graph-preview">
+      <div style="font-size:0.7rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim);margin-bottom:12px;">The AI Adoption Gap — Revenue Index</div>
+      <div class="graph-bars" id="graphBars"></div>
+      <div class="graph-legend">
+        <span><span class="legend-dot" style="background:linear-gradient(to top,var(--accent),#5bc0e8)"></span>With PureBrain</span>
+        <span><span class="legend-dot" style="background:rgba(255,255,255,0.1)"></span>Without AI</span>
+      </div>
+    </div>
+
+    <div class="section-label">Action — Show the Live Intelligence</div>
+    <div class="actions">
+      <a href="https://purebrain.ai/investor-intelligence/" target="_blank" class="action-btn primary">
+        <svg><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Open Investor Intelligence
+      </a>
+    </div>
+
+    <div class="note-box">
+      <strong>Presenter Note</strong>
+      Show the interactive graph on purebrain.ai/investor-intelligence. Let the exponential divergence sink in. Stop talking. Pause. Let them sit with the data. Ask: "Which line do you want to be on?"
+    </div>
+
+    <div class="notes-section">
+      <label>Call Notes — Step 4</label>
+      <textarea id="notes-4" placeholder="Their reaction to the data, level of urgency they're feeling, questions they asked..."></textarea>
+      <div class="notes-autosave" id="save-status-4">Auto-saved</div>
+    </div>
+  </div>
+
+  <!-- STEP 5: THE COMPARISON -->
+  <div class="step-content" id="step-5">
+    <div class="step-header">
+      <div class="step-number">Step 5 — Implication</div>
+      <div class="step-title">Why Not Just Use ChatGPT?</div>
+      <div class="step-spin-label">SPIN: Implication — Why Generic AI Falls Short</div>
+    </div>
+
+    <div class="section-label">Talking Points</div>
+    <ul class="talking-points">
+      <li>"You might be thinking — can't I just use ChatGPT or Claude?"</li>
+      <li>"That's exactly the right question. Let me show you the difference."</li>
+      <li>"Every conversation with generic AI starts from zero. No memory. No team. No compounding intelligence."</li>
+      <li>"It's like hiring a brilliant employee who forgets everything every morning."</li>
+    </ul>
+
+    <div class="compare-grid">
+      <div class="compare-card them">
+        <h4>Generic AI (ChatGPT, Claude, etc.)</h4>
+        <ul>
+          <li>Every conversation starts from zero</li>
+          <li>No persistent memory</li>
+          <li>No team collaboration</li>
+          <li>No business context</li>
+          <li>No skill compounding</li>
+          <li>One-size-fits-all responses</li>
+          <li>No monetization built in</li>
+        </ul>
+      </div>
+      <div class="compare-card us">
+        <h4>PureBrain — Your AI Business Brain</h4>
+        <ul>
+          <li>Remembers everything, always</li>
+          <li>Persistent, growing memory</li>
+          <li>Full team orchestration</li>
+          <li>Deep business understanding</li>
+          <li>Skills compound over time</li>
+          <li>Custom-built for YOUR business</li>
+          <li>Monetization capabilities built in</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section-label">Actions</div>
+    <div class="actions">
+      <a href="https://purebrain.ai/compare/" target="_blank" class="action-btn primary">
+        <svg><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        See Full Comparison
+      </a>
+      <a href="https://purebrain.ai/why-purebrain/" target="_blank" class="action-btn secondary">
+        <svg><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        Why PureBrain?
+      </a>
+    </div>
+
+    <div class="notes-section">
+      <label>Call Notes — Step 5</label>
+      <textarea id="notes-5" placeholder="Their current AI usage, objections about existing tools, what resonated most..."></textarea>
+      <div class="notes-autosave" id="save-status-5">Auto-saved</div>
+    </div>
+  </div>
+
+  <!-- STEP 6: THE SOLUTION (PAYOFF) -->
+  <div class="step-content" id="step-6">
+    <div class="step-header">
+      <div class="step-number">Step 6 — Need-Payoff</div>
+      <div class="step-title">This Is PureBrain</div>
+      <div class="step-spin-label">SPIN: Need-Payoff — The Solution</div>
+    </div>
+
+    <div class="section-label">Reveal the Solution — One Feature at a Time</div>
+    <ul class="payoff-list" id="payoffList">
+      <li><span class="payoff-icon">+</span> Persistent memory that compounds over time — your AI gets smarter every day</li>
+      <li><span class="payoff-icon">+</span> Skills that get better the more you use them — compound intelligence, not just answers</li>
+      <li><span class="payoff-icon">+</span> Knowledge sharing across your entire organization — one brain, whole team</li>
+      <li><span class="payoff-icon">+</span> Full team orchestration — delegation, communication, and collaboration at scale</li>
+      <li><span class="payoff-icon">+</span> Monetization capabilities built in — your AI doesn't just help, it helps you earn</li>
+      <li><span class="payoff-icon">+</span> Industry reinvention — not just new tools, a completely new way of operating</li>
+    </ul>
+    <button class="reveal-btn" id="revealBtn" onclick="revealPayoff()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22V12m0 0V2m0 10l-4-4m4 4l4-4"/></svg>
+      Reveal Next Feature
+    </button>
+
+    <div class="note-box">
+      <strong>Presenter Note</strong>
+      THIS is the PAYOFF. Everything you showed them as a problem — PureBrain solves. Reveal each feature one at a time by clicking "Reveal Next Feature." Pause after each one. Ask: "Can you see how that would impact your business?" Show a live PureBrain portal or demo environment if available.
+    </div>
+
+    <div class="notes-section">
+      <label>Call Notes — Step 6</label>
+      <textarea id="notes-6" placeholder="Which features excited them most, questions they asked, specific use cases they mentioned..."></textarea>
+      <div class="notes-autosave" id="save-status-6">Auto-saved</div>
+    </div>
+  </div>
+
+  <!-- STEP 7: THE COMMUNITY -->
+  <div class="step-content" id="step-7">
+    <div class="step-header">
+      <div class="step-number">Step 7 — The Network</div>
+      <div class="step-title">You're Not Alone — Welcome to Brainiac</div>
+    </div>
+
+    <div class="section-label">Talking Points</div>
+    <ul class="talking-points">
+      <li>"PureBrain isn't just software — it's a network effect."</li>
+      <li>"Everyone in our Brainiac community is helping each other grow faster."</li>
+      <li>"Our AI supports you. WE support you. And so do 100+ other business owners."</li>
+      <li>"Every new member makes the ecosystem stronger for everyone."</li>
+      <li>"You're joining a community of forward-thinking businesses who are already ahead."</li>
+    </ul>
+
+    <div class="community-visual" id="communityVisual">
+      <!-- Rendered by JS -->
+    </div>
+
+    <div class="section-label">The Brainiac Network</div>
+    <ul class="talking-points">
+      <li>Monthly community calls — learn what's working across all industries</li>
+      <li>Private Slack group — direct access to the PureBrain team and other members</li>
+      <li>Shared playbooks — strategies that are actually working right now</li>
+    </ul>
+
+    <div class="note-box">
+      <strong>Presenter Note</strong>
+      Emphasize the human element. This is not just a software subscription — it's a community of people who are winning with AI. The network effect is real: the more businesses that join, the more shared intelligence, playbooks, and wins go back into the community.
+    </div>
+
+    <div class="notes-section">
+      <label>Call Notes — Step 7</label>
+      <textarea id="notes-7" placeholder="Their interest in community, who else in their network might benefit, networking connections..."></textarea>
+      <div class="notes-autosave" id="save-status-7">Auto-saved</div>
+    </div>
+  </div>
+
+  <!-- STEP 8: CLOSE -->
+  <div class="step-content" id="step-8">
+    <div class="step-header">
+      <div class="step-number">Step 8 — The Close</div>
+      <div class="step-title">Let's Get You Started</div>
+    </div>
+
+    <div class="section-label">Talking Points</div>
+    <ul class="talking-points">
+      <li>"We're only inviting people in our network right now — friends and family tier."</li>
+      <li>"The pricing we have today will not be available to the public."</li>
+      <li>"I'd love to walk you through the onboarding personally."</li>
+      <li>"And when you refer someone — you earn 5% of their subscription in perpetuity."</li>
+    </ul>
+
+    <div class="urgency-card">
+      <div class="urgency-item">
+        <div class="urgency-icon" style="background:rgba(42,147,193,0.15);color:var(--accent);">&#128274;</div>
+        <div class="urgency-text">
+          <strong>Exclusive Access</strong>
+          Friends and family network only. Not available to the public. You're in because of who you know.
+        </div>
+      </div>
+      <div class="urgency-item">
+        <div class="urgency-icon" style="background:rgba(241,66,11,0.15);color:var(--cta);">&#9200;</div>
+        <div class="urgency-text">
+          <strong>Limited Time Pricing</strong>
+          Early adopter rates locked in at signup. These rates disappear when we open publicly.
+        </div>
+      </div>
+      <div class="urgency-item">
+        <div class="urgency-icon" style="background:rgba(16,185,129,0.15);color:var(--green);">&#128176;</div>
+        <div class="urgency-text">
+          <strong>Referral Bonus — 5% in Perpetuity</strong>
+          For every account they recommend, you earn 5% of their monthly subscription. Every month. Forever.
+        </div>
+      </div>
+    </div>
+
+    <div class="section-label">Pricing to Share</div>
+    <div class="pricing-table" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="pricing-card">
+        <div class="pricing-tier">Awakened</div>
+        <div class="pricing-price">$149<span>/mo</span></div>
+        <div class="pricing-detail">
+          1 AI Brain + Core Tools
+          <span class="cost-line">Claude cost (Claude Max): $100/mo</span>
+          <span class="cost-line our-cost">Their actual spend: $249/mo</span>
+        </div>
+      </div>
+      <div class="pricing-card featured">
+        <div class="pricing-tier">Partnered</div>
+        <div class="pricing-price">$499<span>/mo</span></div>
+        <div class="pricing-detail">
+          3 AI Brains + Advanced Tools
+          <span class="cost-line">Claude cost (Claude Max): $200/mo</span>
+          <span class="cost-line our-cost">Their actual spend: $699/mo</span>
+        </div>
+      </div>
+      <div class="pricing-card">
+        <div class="pricing-tier">Unified</div>
+        <div class="pricing-price">$999<span>/mo</span></div>
+        <div class="pricing-detail">
+          Unlimited Brains + Full Suite
+          <span class="cost-line">Claude cost (Claude Max): $200/mo</span>
+          <span class="cost-line our-cost">Their actual spend: $1,199/mo</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-label">Actions</div>
+    <div class="actions">
+      <a href="https://purebrain.ai/pay-test-sandbox-2/" target="_blank" class="action-btn primary">
+        <svg><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        Send to Onboarding
+      </a>
+      <button class="action-btn ghost" onclick="openCompleteModal()">
+        <svg><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        Complete &amp; Save Call
+      </button>
+    </div>
+
+    <div class="note-box">
+      <strong>Presenter Note</strong>
+      This is the close. Be confident but not pushy. The entire wizard built to this moment. If they're ready — send the invitation link right now on the call. If they need time — schedule the follow-up before you hang up. Never leave without a next step.
+    </div>
+
+    <div class="notes-section">
+      <label>Call Notes — Step 8</label>
+      <textarea id="notes-8" placeholder="Outcome: closed / follow-up scheduled / objections to address. Next steps agreed upon..."></textarea>
+      <div class="notes-autosave" id="save-status-8">Auto-saved</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- NAV BUTTONS -->
+<div class="nav-buttons">
+  <button class="nav-btn prev" id="prevBtn" onclick="prevStep()">
+    <svg><polyline points="15 18 9 12 15 6"/></svg>
+    Previous
+  </button>
+  <div class="nav-progress" id="navProgress"></div>
+  <button class="nav-btn next" id="nextBtn" onclick="nextStep()">
+    Next Step
+    <svg><polyline points="9 18 15 12 9 6"/></svg>
+  </button>
+</div>
+
+<!-- COMPLETE CALL MODAL -->
+<div class="modal-overlay" id="completeModal">
+  <div class="modal">
+    <h2>Complete This Call</h2>
+    <p>Save the full call record — prospect info, notes from every step, and outcome. Data saves to Google Drive and syncs with the team.</p>
+    <div class="modal-form">
+      <label>Prospect Name</label>
+      <input type="text" id="prospectName" placeholder="e.g. John Smith" />
+      <label>Email</label>
+      <input type="email" id="prospectEmail" placeholder="e.g. john@company.com" />
+      <label>Company</label>
+      <input type="text" id="prospectCompany" placeholder="e.g. Acme Corp" />
+      <label>Call Outcome</label>
+      <select id="callOutcome">
+        <option value="">Select outcome...</option>
+        <option value="closed">Closed — They Signed Up</option>
+        <option value="followup">Follow-Up Scheduled</option>
+        <option value="thinking">Thinking It Over</option>
+        <option value="not-a-fit">Not a Fit</option>
+        <option value="no-show">No Show</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-submit" id="submitBtn" onclick="submitCallData()">Save Call Record</button>
+      <button class="modal-cancel" onclick="closeCompleteModal()">Cancel</button>
+    </div>
+    <div class="submit-status" id="submitStatus"></div>
+  </div>
+</div>
+
+<script>
+/* ========== CONFIG ========== */
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BITRIX24 INTEGRATION CONFIG
+// Set BITRIX_ENABLED = true and paste your webhook URL after following
+// the setup guide: exports/sales-call-wizard/bitrix-setup-guide.md
+// ─────────────────────────────────────────────────────────────────────────────
+const BITRIX_ENABLED = true; // Enabled 2026-03-05
+const BITRIX_WEBHOOK_URL = 'https://puremarketing.bitrix24.com/rest/1/d1azasrcgghsy27v/';
+// Example: 'https://puretechnology.bitrix24.com/rest/1/abc123xyz456'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GOOGLE DRIVE INTEGRATION CONFIG
+// The backend proxy (api.purebrain.ai) creates a Google Doc per call and
+// returns its URL, which is embedded into the Bitrix lead COMMENTS field.
+// ─────────────────────────────────────────────────────────────────────────────
+const GDRIVE_ENABLED = true; // Enabled 2026-03-05
+const GDRIVE_API_URL = 'https://api.purebrain.ai/api/create-sales-doc';
+const GDRIVE_SALES_FOLDER_ID = '1KetwS3uHPEKJZfwV5XQM1hsW6OOw9JqT'; // Sales Calls folder
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FALLBACK: PureBrain log API (always active as backup)
+// ─────────────────────────────────────────────────────────────────────────────
+const API_URL = 'https://api.purebrain.ai/api/log-conversation';
+
+/* Prospect info auto-save */
+function saveProspectInfo() {
+  const fields = ['prospect-name', 'prospect-email', 'prospect-company-name', 'prospect-role'];
+  fields.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) localStorage.setItem('pb-wizard-' + id, el.value);
+  });
+}
+function loadProspectInfo() {
+  const fields = ['prospect-name', 'prospect-email', 'prospect-company-name', 'prospect-role'];
+  fields.forEach(id => {
+    const el = document.getElementById(id);
+    const val = localStorage.getItem('pb-wizard-' + id);
+    if (el && val) el.value = val;
+  });
+  // Also pre-fill the modal fields from Step 1 info
+  const nameEl = document.getElementById('prospectName');
+  const emailEl = document.getElementById('prospectEmail');
+  const companyEl = document.getElementById('prospectCompany');
+  if (nameEl && !nameEl.value) nameEl.value = localStorage.getItem('pb-wizard-prospect-name') || '';
+  if (emailEl && !emailEl.value) emailEl.value = localStorage.getItem('pb-wizard-prospect-email') || '';
+  if (companyEl && !companyEl.value) companyEl.value = localStorage.getItem('pb-wizard-prospect-company-name') || '';
+}
+
+/* ========== STEP DATA ========== */
+const STEPS = [
+  { id: 1, title: 'The Hook',             spin: '' },
+  { id: 2, title: 'Deep Research',        spin: 'Rapport' },
+  { id: 3, title: 'Tool Stack Calculator', spin: 'Situation' },
+  { id: 4, title: 'Investor Intelligence', spin: 'Problem' },
+  { id: 5, title: 'The Comparison',       spin: 'Implication' },
+  { id: 6, title: 'The Solution',         spin: 'Need-Payoff' },
+  { id: 7, title: 'The Community',        spin: '' },
+  { id: 8, title: 'Close & Next Steps',   spin: '' }
+];
+
+let currentStep = 1;
+let completedSteps = new Set();
+let visitedSteps = new Set([1]);
+let payoffIndex = 0;
+
+/* ========== TIMER ========== */
+let callStartTime = Date.now();
+let timerInterval;
+
+function startTimer() {
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(updateTimer, 1000);
+  updateTimer();
+}
+
+function updateTimer() {
+  const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
+  const minutes = String(Math.floor(elapsed / 60)).padStart(2, '0');
+  const seconds = String(elapsed % 60).padStart(2, '0');
+  document.getElementById('timerDisplay').textContent = `${minutes}:${seconds}`;
+}
+
+function getTimerDisplay() {
+  return document.getElementById('timerDisplay').textContent;
+}
+
+/* ========== NEW CALL ========== */
+function newCall() {
+  if (!confirm('Start a new call? This will reset the timer and clear all session notes.')) return;
+
+  // Clear notes from UI
+  for (let i = 1; i <= 8; i++) {
+    const ta = document.getElementById(`notes-${i}`);
+    if (ta) ta.value = '';
+    localStorage.removeItem(`pb-wizard-notes-${i}`);
+  }
+  // Clear prospect info
+  ['prospect-name', 'prospect-email', 'prospect-company-name', 'prospect-role'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+    localStorage.removeItem('pb-wizard-' + id);
+  });
+
+  // Reset state
+  completedSteps = new Set();
+  visitedSteps = new Set([1]);
+  payoffIndex = 0;
+  callStartTime = Date.now();
+  startTimer();
+
+  // Reset payoff list
+  document.querySelectorAll('#payoffList li').forEach(li => li.classList.remove('revealed'));
+  const revealBtn = document.getElementById('revealBtn');
+  revealBtn.textContent = '';
+  revealBtn.classList.remove('done');
+  revealBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22V12m0 0V2m0 10l-4-4m4 4l4-4"/></svg> Reveal Next Feature';
+
+  // Reset community visual
+  const cv = document.getElementById('communityVisual');
+  if (cv) { cv.innerHTML = ''; delete cv.dataset.rendered; }
+
+  // Reset graph
+  const graphBars = document.getElementById('graphBars');
+  if (graphBars) { graphBars.innerHTML = ''; delete graphBars.dataset.rendered; }
+
+  goToStep(1, true);
+}
+
+/* ========== SIDEBAR ========== */
+function renderSidebar() {
+  const container = document.getElementById('sidebarSteps');
+  container.innerHTML = STEPS.map(s => {
+    let cls = 'sidebar-step';
+    if (s.id === currentStep) cls += ' active';
+    else if (completedSteps.has(s.id)) cls += ' completed';
+    else cls += ' upcoming';
+
+    const indicator = completedSteps.has(s.id)
+      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>'
+      : s.id;
+
+    const spinTag = s.spin ? `<div class="step-spin-tag">${s.spin}</div>` : '';
+
+    return `
+      <div class="${cls}" onclick="goToStep(${s.id})">
+        <div class="step-indicator">${indicator}</div>
+        <div>
+          <div class="step-label">${s.title}</div>
+          ${spinTag}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+/* ========== NAVIGATION ========== */
+function goToStep(n, forceReset) {
+  if (n < 1 || n > 8) return;
+
+  // Mark current step completed when moving forward
+  if (n > currentStep) {
+    completedSteps.add(currentStep);
+  }
+
+  currentStep = n;
+  visitedSteps.add(n);
+
+  // Show/hide content — CSS + inline style enforcement (belt and suspenders)
+  document.querySelectorAll('.step-content').forEach(el => {
+    el.classList.remove('active');
+    el.style.display = 'none';
+  });
+  const activeStep = document.getElementById(`step-${n}`);
+  activeStep.classList.add('active');
+  activeStep.style.display = 'block';
+
+  // Update sidebar
+  renderSidebar();
+
+  // Update counter
+  document.getElementById('stepCounter').textContent = `Step ${n} / 8`;
+
+  // Update nav buttons
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  prevBtn.disabled = n === 1;
+
+  if (n === 8) {
+    nextBtn.className = 'nav-btn finish';
+    nextBtn.innerHTML = `Complete Call <svg><polyline points="20 6 9 17 4 12"/></svg>`;
+  } else {
+    nextBtn.className = 'nav-btn next';
+    nextBtn.innerHTML = `Next Step <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>`;
+  }
+
+  // Update progress dots
+  renderProgressDots();
+
+  // Scroll main to top
+  document.getElementById('mainContent').scrollTop = 0;
+
+  // Trigger step-specific animations
+  if (n === 1) animateHookLines();
+  if (n === 4) animateGraph();
+  if (n === 6 && !forceReset) { /* payoffIndex stays where it was when returning */ }
+  if (n === 7) renderCommunity();
+}
+
+function nextStep() {
+  if (currentStep === 8) {
+    completedSteps.add(8);
+    renderSidebar();
+    renderProgressDots();
+    openCompleteModal();
+    return;
+  }
+  goToStep(currentStep + 1);
+}
+
+function prevStep() {
+  if (currentStep > 1) goToStep(currentStep - 1);
+}
+
+/* ========== PROGRESS DOTS ========== */
+function renderProgressDots() {
+  const container = document.getElementById('navProgress');
+  container.innerHTML = STEPS.map(s => {
+    let cls = 'dot';
+    if (s.id === currentStep) cls += ' active';
+    else if (completedSteps.has(s.id)) cls += ' completed';
+    return `<div class="${cls}"></div>`;
+  }).join('');
+}
+
+/* ========== KEYBOARD NAV ========== */
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); nextStep(); }
+  else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); prevStep(); }
+  else if (e.key >= '1' && e.key <= '8') { e.preventDefault(); goToStep(parseInt(e.key)); }
+  else if (e.key === ' ' && currentStep === 6) { e.preventDefault(); revealPayoff(); }
+});
+
+/* ========== STEP 1: HOOK ANIMATION ========== */
+function animateHookLines() {
+  const lines = document.querySelectorAll('#step-1 .hook-line');
+  lines.forEach(line => line.classList.remove('visible'));
+  lines.forEach((line, i) => {
+    const delay = parseInt(line.dataset.delay) || i * 500;
+    setTimeout(() => line.classList.add('visible'), delay + 200);
+  });
+}
+
+/* ========== STEP 4: GRAPH ANIMATION ========== */
+function animateGraph() {
+  const container = document.getElementById('graphBars');
+  if (container.dataset.rendered) return;
+  container.dataset.rendered = 'true';
+
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const withAI =   [20, 29, 40, 55, 68, 82, 92, 100, 112, 122, 135, 150];
+  const withoutAI = [20, 21, 22, 23, 23, 24, 24, 25, 25, 26, 26, 27];
+  const maxVal = 150;
+
+  let html = '';
+  months.forEach((m, i) => {
+    const hAI = (withAI[i] / maxVal) * 140;
+    const hNo = (withoutAI[i] / maxVal) * 140;
+    html += `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+        <div style="display:flex;align-items:flex-end;gap:2px;height:150px;">
+          <div class="graph-bar with-ai" style="height:0px;" data-h="${hAI}"></div>
+          <div class="graph-bar without-ai" style="height:0px;" data-h="${hNo}"></div>
+        </div>
+        <div class="graph-label">${m}</div>
+      </div>
+    `;
+  });
+  container.innerHTML = html;
+
+  setTimeout(() => {
+    container.querySelectorAll('.graph-bar').forEach(bar => {
+      bar.style.height = bar.dataset.h + 'px';
+    });
+  }, 100);
+}
+
+/* ========== STEP 6: PAYOFF REVEAL ========== */
+function revealPayoff() {
+  const items = document.querySelectorAll('#payoffList li');
+  const btn = document.getElementById('revealBtn');
+  if (payoffIndex < items.length) {
+    items[payoffIndex].classList.add('revealed');
+    payoffIndex++;
+    if (payoffIndex >= items.length) {
+      btn.textContent = 'All Features Revealed';
+      btn.classList.add('done');
+    } else {
+      btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22V12m0 0V2m0 10l-4-4m4 4l4-4"/></svg> Reveal Next Feature (${payoffIndex}/${items.length})`;
+    }
+  }
+}
+
+/* ========== STEP 7: COMMUNITY VISUAL ========== */
+function renderCommunity() {
+  const cv = document.getElementById('communityVisual');
+  if (cv.dataset.rendered) return;
+  cv.dataset.rendered = 'true';
+
+  const nodes = [
+    { x: '50%', y: '45%', cls: 'large', label: 'PureBrain', lx: '50%', ly: '72%' },
+    { x: '20%', y: '22%', cls: 'green', label: 'Client A', lx: '20%', ly: '12%' },
+    { x: '80%', y: '18%', cls: 'blue', label: 'Client B', lx: '80%', ly: '8%' },
+    { x: '12%', y: '65%', cls: 'cyan', label: 'Client C', lx: '12%', ly: '82%' },
+    { x: '78%', y: '68%', cls: 'orange', label: 'Client D', lx: '78%', ly: '84%' },
+    { x: '35%', y: '12%', cls: '', label: '', lx: '', ly: '' },
+    { x: '65%', y: '78%', cls: 'blue', label: '', lx: '', ly: '' },
+    { x: '92%', y: '42%', cls: '', label: 'Client E', lx: '94%', ly: '54%' },
+    { x: '6%',  y: '38%', cls: 'cyan', label: '', lx: '', ly: '' },
+    { x: '42%', y: '80%', cls: '', label: '', lx: '', ly: '' },
+    { x: '62%', y: '28%', cls: 'green', label: '', lx: '', ly: '' },
+    { x: '28%', y: '52%', cls: '', label: '', lx: '', ly: '' },
+  ];
+
+  let html = '';
+  const cx = 50, cy = 45;
+
+  nodes.slice(1).forEach(n => {
+    const nx = parseFloat(n.x);
+    const ny = parseFloat(n.y);
+    const dx = nx - cx;
+    const dy = ny - cy;
+    const len = Math.sqrt(dx*dx + dy*dy);
+    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+    html += `<div class="connection-line" style="left:${cx}%;top:${cy}%;width:${len}%;transform:rotate(${angle}deg);opacity:0.4;"></div>`;
+  });
+
+  nodes.forEach(n => {
+    html += `<div class="node ${n.cls}" style="left:${n.x};top:${n.y};transform:translate(-50%,-50%);"></div>`;
+    if (n.label) {
+      html += `<div class="node-label" style="left:${n.lx};top:${n.ly};transform:translateX(-50%);">${n.label}</div>`;
+    }
+  });
+
+  cv.innerHTML = html;
+
+  cv.querySelectorAll('.node').forEach((node, i) => {
+    node.style.animation = `pulse-dot 2s ${i * 0.25}s infinite`;
+  });
+}
+
+/* ========== NOTES PERSISTENCE ========== */
+let saveDebounce = {};
+
+function saveNotes() {
+  for (let i = 1; i <= 8; i++) {
+    const ta = document.getElementById(`notes-${i}`);
+    if (ta) localStorage.setItem(`pb-wizard-notes-${i}`, ta.value);
+  }
+}
+
+function loadNotes() {
+  for (let i = 1; i <= 8; i++) {
+    const ta = document.getElementById(`notes-${i}`);
+    const saved = localStorage.getItem(`pb-wizard-notes-${i}`);
+    if (ta && saved) ta.value = saved;
+  }
+}
+
+document.addEventListener('input', e => {
+  if (e.target.tagName === 'TEXTAREA') {
+    const stepNum = e.target.id.replace('notes-', '');
+    localStorage.setItem(`pb-wizard-notes-${stepNum}`, e.target.value);
+
+    // Show saving indicator
+    const statusEl = document.getElementById(`save-status-${stepNum}`);
+    if (statusEl) {
+      statusEl.textContent = 'Saving...';
+      statusEl.classList.remove('saved');
+
+      clearTimeout(saveDebounce[stepNum]);
+      saveDebounce[stepNum] = setTimeout(() => {
+        statusEl.textContent = 'Auto-saved';
+        statusEl.classList.add('saved');
+        setTimeout(() => statusEl.classList.remove('saved'), 2000);
+      }, 600);
+    }
+  }
+});
+
+/* ========== COMPLETE CALL MODAL ========== */
+function openCompleteModal() {
+  // Pre-fill modal from Step 1 prospect fields
+  const nameVal = document.getElementById('prospect-name');
+  const emailVal = document.getElementById('prospect-email');
+  const companyVal = document.getElementById('prospect-company-name');
+  if (nameVal && nameVal.value) document.getElementById('prospectName').value = nameVal.value;
+  if (emailVal && emailVal.value) document.getElementById('prospectEmail').value = emailVal.value;
+  if (companyVal && companyVal.value) document.getElementById('prospectCompany').value = companyVal.value;
+
+  document.getElementById('completeModal').classList.add('open');
+  document.getElementById('submitStatus').textContent = '';
+  document.getElementById('submitStatus').className = 'submit-status';
+}
+
+function closeCompleteModal() {
+  document.getElementById('completeModal').classList.remove('open');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BITRIX24 HELPER: Build the lead fields object from wizard data
+// ─────────────────────────────────────────────────────────────────────────────
+function buildBitrixLeadFields(data, googleDocUrl) {
+  // Map outcome to a readable status label
+  const outcomeLabels = {
+    'closed':    'CLOSED — Signed Up',
+    'followup':  'Follow-Up Scheduled',
+    'thinking':  'Thinking It Over',
+    'not-a-fit': 'Not a Fit',
+    'no-show':   'No Show',
+    'not-selected': 'Outcome Not Set'
+  };
+  const outcomeLabel = outcomeLabels[data.outcome] || data.outcome;
+
+  // Build the full notes block for Bitrix COMMENTS field
+  const stepLabels = [
+    '', // index 0 unused
+    'Step 1 — Opening & Prospect Info',
+    'Step 2 — Problem & Pain Discovery',
+    'Step 3 — Current State & Frustrations',
+    'Step 4 — Future Vision & Desired Outcome',
+    'Step 5 — The Pitch & Product Demo',
+    'Step 6 — Objection Handling',
+    'Step 7 — Building Urgency & Value',
+    'Step 8 — Pricing & Close'
+  ];
+
+  let notesBlock = `SALES CALL RECORD\n`;
+  notesBlock += `Date: ${new Date(data.timestamp).toLocaleString('en-US', { timeZone: 'America/New_York' })} ET\n`;
+  notesBlock += `Duration: ${data.duration}\n`;
+  notesBlock += `Outcome: ${outcomeLabel}\n`;
+  notesBlock += `Steps Visited: ${data.stepsVisited.join(', ')}\n\n`;
+
+  for (let i = 1; i <= 8; i++) {
+    const note = data['notes' + i];
+    if (note && note.trim()) {
+      notesBlock += `--- ${stepLabels[i]} ---\n${note.trim()}\n\n`;
+    }
+  }
+
+  if (googleDocUrl) {
+    notesBlock += `\nFULL CALL DOCUMENT:\n${googleDocUrl}\n`;
+  }
+
+  // Parse name into first/last
+  const nameParts = data.prospectName.trim().split(/\s+/);
+  const firstName = nameParts[0] || data.prospectName;
+  const lastName = nameParts.slice(1).join(' ') || '';
+
+  const fields = {
+    TITLE: `${data.prospectCompany} — Sales Call — ${new Date(data.timestamp).toLocaleDateString('en-US')}`,
+    NAME: firstName,
+    LAST_NAME: lastName,
+    COMPANY_TITLE: data.prospectCompany,
+    POST: data.prospectRole,
+    STATUS_ID: 'NEW',
+    SOURCE_ID: 'CALL',
+    COMMENTS: notesBlock,
+    OPENED: 'Y'
+  };
+
+  if (data.prospectEmail) {
+    fields.EMAIL = [{ VALUE: data.prospectEmail, VALUE_TYPE: 'WORK' }];
+  }
+
+  return fields;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BITRIX24: Create lead via webhook
+// ─────────────────────────────────────────────────────────────────────────────
+async function createBitrixLead(data, googleDocUrl) {
+  if (!BITRIX_ENABLED) return null;
+
+  const fields = buildBitrixLeadFields(data, googleDocUrl);
+  const url = BITRIX_WEBHOOK_URL.replace(/\/+$/, '') + '/crm.lead.add.json';
+
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields })
+  });
+
+  if (!resp.ok) {
+    console.warn('[Bitrix] Lead creation failed:', resp.status, await resp.text());
+    return null;
+  }
+
+  const result = await resp.json();
+  // result.result = the new lead ID
+  return result.result || null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GOOGLE DRIVE: Create a Google Doc per call via backend proxy
+// Returns the doc URL string, or null on failure
+// ─────────────────────────────────────────────────────────────────────────────
+async function createGoogleDoc(data) {
+  if (!GDRIVE_ENABLED) return null;
+
+  const stepLabels = [
+    '', 'Opening & Prospect Info', 'Problem & Pain Discovery',
+    'Current State & Frustrations', 'Future Vision & Desired Outcome',
+    'The Pitch & Product Demo', 'Objection Handling',
+    'Building Urgency & Value', 'Pricing & Close'
+  ];
+
+  const steps = [];
+  for (let i = 1; i <= 8; i++) {
+    if (data['notes' + i] && data['notes' + i].trim()) {
+      steps.push({ label: stepLabels[i], notes: data['notes' + i].trim() });
+    }
+  }
+
+  const docPayload = {
+    title: `${data.prospectCompany} — Sales Call — ${new Date(data.timestamp).toLocaleDateString('en-US')}`,
+    prospectName: data.prospectName,
+    prospectEmail: data.prospectEmail,
+    prospectCompany: data.prospectCompany,
+    prospectRole: data.prospectRole,
+    outcome: data.outcome,
+    duration: data.duration,
+    timestamp: data.timestamp,
+    stepsVisited: data.stepsVisited,
+    steps,
+    folderId: GDRIVE_SALES_FOLDER_ID
+  };
+
+  const resp = await fetch(GDRIVE_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(docPayload)
+  });
+
+  if (!resp.ok) {
+    console.warn('[GDrive] Doc creation failed:', resp.status);
+    return null;
+  }
+
+  const result = await resp.json();
+  return result.docUrl || null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN SAVE FUNCTION
+// Order: 1) Create Google Doc → 2) Create Bitrix Lead (with doc URL) → 3) Log to PureBrain API
+// ─────────────────────────────────────────────────────────────────────────────
+function submitCallData() {
+  const prospectName = document.getElementById('prospectName').value.trim() || 'Unknown';
+  const prospectEmail = document.getElementById('prospectEmail').value.trim() || '';
+  const prospectCompany = document.getElementById('prospectCompany').value.trim() || 'Unknown';
+  const prospectRole = document.getElementById('prospect-role') ? document.getElementById('prospect-role').value.trim() : '';
+  const outcome = document.getElementById('callOutcome').value || 'not-selected';
+
+  const statusEl = document.getElementById('submitStatus');
+  const submitBtn = document.getElementById('submitBtn');
+
+  // Build notes from all 8 steps
+  const notes = {};
+  for (let i = 1; i <= 8; i++) {
+    const ta = document.getElementById(`notes-${i}`);
+    notes['notes' + i] = ta ? ta.value : '';
+  }
+
+  const payload = {
+    type: 'sales-call-record',
+    timestamp: new Date().toISOString(),
+    duration: getTimerDisplay(),
+    prospectName,
+    prospectEmail,
+    prospectCompany,
+    prospectRole,
+    outcome,
+    stepsVisited: Array.from(visitedSteps).sort(),
+    ...notes
+  };
+
+  statusEl.textContent = 'Saving call record...';
+  statusEl.className = 'submit-status loading';
+  submitBtn.disabled = true;
+
+  // Save locally first as immediate backup
+  localStorage.setItem(`pb-call-record-${Date.now()}`, JSON.stringify(payload));
+
+  // Run the integration pipeline: Google Doc → Bitrix Lead → PureBrain log
+  (async () => {
+    let googleDocUrl = null;
+    let bitrixLeadId = null;
+    const steps = [];
+
+    // Step 1: Create Google Drive doc
+    if (GDRIVE_ENABLED) {
+      statusEl.textContent = 'Creating call document in Google Drive...';
+      try {
+        googleDocUrl = await createGoogleDoc(payload);
+        if (googleDocUrl) {
+          steps.push('Google Doc created');
+        } else {
+          steps.push('Google Doc: skipped (disabled or failed)');
+        }
+      } catch (e) {
+        console.warn('[GDrive] Error:', e);
+        steps.push('Google Doc: error — ' + e.message);
+      }
+    }
+
+    // Step 2: Create Bitrix lead (includes Google Doc URL if available)
+    if (BITRIX_ENABLED) {
+      statusEl.textContent = 'Creating CRM lead in Bitrix24...';
+      try {
+        bitrixLeadId = await createBitrixLead(payload, googleDocUrl);
+        if (bitrixLeadId) {
+          steps.push('Bitrix lead #' + bitrixLeadId + ' created');
+        } else {
+          steps.push('Bitrix: skipped (disabled or failed)');
+        }
+      } catch (e) {
+        console.warn('[Bitrix] Error:', e);
+        steps.push('Bitrix: error — ' + e.message);
+      }
+    }
+
+    // Step 3: Log to PureBrain API (always, as a canonical record)
+    statusEl.textContent = 'Logging call record...';
+    try {
+      const logPayload = { ...payload, bitrixLeadId, googleDocUrl };
+      await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(logPayload)
+      });
+      steps.push('PureBrain log saved');
+    } catch (e) {
+      console.warn('[PureBrain API] Error:', e);
+      steps.push('PureBrain log: saved locally only');
+    }
+
+    // Done — show summary
+    const hasIntegrations = BITRIX_ENABLED || GDRIVE_ENABLED;
+    if (hasIntegrations && (bitrixLeadId || googleDocUrl)) {
+      let msg = 'Call saved! ';
+      if (bitrixLeadId) msg += `Bitrix lead #${bitrixLeadId} created. `;
+      if (googleDocUrl) msg += 'Google Doc created.';
+      statusEl.textContent = msg.trim();
+    } else {
+      statusEl.textContent = 'Call record saved successfully!';
+    }
+    statusEl.className = 'submit-status success';
+    submitBtn.textContent = 'Saved!';
+
+    setTimeout(() => {
+      closeCompleteModal();
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Save Call Record';
+    }, 3000);
+  })();
+}
+
+/* ========== INIT ========== */
+startTimer();
+renderSidebar();
+renderProgressDots();
+loadNotes();
+loadProspectInfo();
+goToStep(1);
+</script>
+</body>
+</html>

@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gleb Night 16 - Froxel Volumetrics + Motion Vectors + Interactive Glass Spheres</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #080a12; overflow: hidden; font-family: 'Inter', sans-serif; }
+canvas { display: block; }
+#info {
+  position: fixed; top: 16px; left: 16px; color: rgba(255,255,255,0.5);
+  font-size: 11px; z-index: 10; pointer-events: none;
+}
+#perf {
+  position: fixed; top: 16px; right: 16px; color: rgba(255,255,255,0.4);
+  font-size: 10px; z-index: 10; pointer-events: none; text-align: right;
+}
+#variation-label {
+  position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%);
+  color: rgba(255,255,255,0.6); font-size: 13px; z-index: 10;
+  letter-spacing: 2px; text-transform: uppercase; pointer-events: none;
+}
+#nav {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 12px; z-index: 10;
+}
+#nav button {
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.7); padding: 8px 20px; border-radius: 6px;
+  cursor: pointer; font-size: 12px; letter-spacing: 1px; transition: all 0.3s;
+}
+#nav button:hover { background: rgba(42,147,193,0.2); border-color: rgba(42,147,193,0.5); }
+#nav button.active { background: rgba(42,147,193,0.3); border-color: #2a93c1; color: #fff; }
+#brand {
+  position: fixed; bottom: 8px; right: 16px; color: rgba(255,255,255,0.2);
+  font-size: 9px; z-index: 10; letter-spacing: 1px;
+}
+#tooltip {
+  position: fixed; display: none; background: rgba(8,10,18,0.85);
+  border: 1px solid rgba(42,147,193,0.4); border-radius: 8px;
+  padding: 10px 14px; color: rgba(255,255,255,0.8); font-size: 11px;
+  pointer-events: none; z-index: 20; backdrop-filter: blur(8px);
+  max-width: 200px; letter-spacing: 0.5px;
+}
+</style>
+</head>
+<body>
+<div id="info">NIGHT 16 | Gleb Mastery Training</div>
+<div id="perf">Loading...</div>
+<div id="variation-label">VARIATION 1: FROXEL VOLUMETRIC PRE-INTEGRATION</div>
+<div id="nav">
+  <button class="active" onclick="switchVariation(0)">V1: Froxel Vol</button>
+  <button onclick="switchVariation(1)">V2: Motion Vectors</button>
+  <button onclick="switchVariation(2)">V3: Interactive Spheres</button>
+</div>
+<div id="brand">AETHER | PUREBRAIN.AI | NIGHT 16</div>
+<div id="tooltip"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// ===== CONSTANTS =====
+const BRAND_BLUE = new THREE.Color(0x2a93c1);
+const BRAND_ORANGE = new THREE.Color(0xf1420b);
+const BG_COLOR = new THREE.Color(0x080a12);
+
+let currentVariation = 0;
+let scene, camera, renderer, composer;
+let clock = new THREE.Clock();
+let frameCount = 0;
+let prevCamMatrix = new THREE.Matrix4();
+let prevProjMatrix = new THREE.Matrix4();
+
+// Froxel data
+let froxelTexture, froxelData;
+const FROXEL_X = 64, FROXEL_Y = 64, FROXEL_Z = 32;
+
+// Motion vector targets
+let velocityTarget, prevDepthTarget;
+
+// Interactive spheres
+let interactiveSpheres = [];
+let raycaster = new THREE.Raycaster();
+let mouse = new THREE.Vector2();
+let hoveredSphere = null;
+
+// ===== GPU TIER DETECTION =====
+function detectGPUTier() {
+  const c = document.createElement('canvas');
+  const gl = c.getContext('webgl2') || c.getContext('webgl');
+  if (!gl) return { tier: 0, name: 'No WebGL' };
+  const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+  const name = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : 'Unknown';
+  let tier = 1;
+  if (/RTX|RX\s[67]|Apple\sM/i.test(name)) tier = 3;
+  else if (/GTX\s1[06-8]|Iris|Arc\sA/i.test(name)) tier = 2;
+  else if (/Mali|Adreno|PowerVR/i.test(name)) tier = 0;
+  return { tier, name };
+}
+
+const gpuInfo = detectGPUTier();
+
+// ===== FROXEL VOLUMETRIC SHADER (V1) =====
+const FroxelVolumetricShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uTime: { value: 0 },
+    uResolution: { value: new THREE.Vector2() },
+    uLightPos: { value: new THREE.Vector3(2, 3, 1) },
+    uLightColor: { value: BRAND_BLUE.clone() },
+    uFogDensity: { value: 0.15 },
+    uFogColor: { value: new THREE.Color(0x0a1628) },
+    uFrame: { value: 0 },
+    uCameraPos: { value: new THREE.Vector3() },
+    uCameraNear: { value: 0.1 },
+    uCameraFar: { value: 50 },
+    // Froxel LUT (pre-integrated scattering)
+    uFroxelLUT: { value: null },
+    uFroxelSize: { value: new THREE.Vector3(FROXEL_X, FROXEL_Y, FROXEL_Z) },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uTime;
+    uniform vec2 uResolution;
+    uniform vec3 uLightPos;
+    uniform vec3 uLightColor;
+    uniform float uFogDensity;
+    uniform vec3 uFogColor;
+    uniform int uFrame;
+    uniform vec3 uCameraPos;
+    uniform float uCameraNear;
+    uniform float uCameraFar;
+    uniform vec3 uFroxelSize;
+    varying vec2 vUv;
+
+    // Interleaved gradient noise (Night 15 proven)
+    float ign(vec2 pos) {
+      return fract(52.9829189 * fract(dot(pos, vec2(0.06711056, 0.00583715))));
+    }
+
+    // Polynomial phase function (Henyey-Greenstein approx)
+    float phaseHG(float cosTheta, float g) {
+      float g2 = g * g;
+      return (1.0 - g2) / (4.0 * 3.14159 * pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5));
+    }
+
+    // Froxel-aligned depth slice (exponential distribution)
+    float sliceToDepth(float slice, float near, float far, float numSlices) {
+      float t = slice / numSlices;
+      return near * pow(far / near, t);
+    }
+
+    // Frustum-aligned volume sampling (the froxel core)
+    vec3 froxelScattering(vec2 uv, vec3 rayDir) {
+      vec3 accumulated = vec3(0.0);
+      float transmittance = 1.0;
+
+      // 8-frame temporal jitter (Night 15 pattern)
+      float jitter = ign(gl_FragCoord.xy + float(uFrame % 8) * 13.37);
+
+      // March through froxel slices (front to back)
+      int numSteps = int(uFroxelSize.z);
+      for (int i = 0; i < 32; i++) {
+        if (i >= numSteps) break;
+
+        float sliceF = float(i) + jitter;
+        float depth = sliceToDepth(sliceF, uCameraNear, uCameraFar, uFroxelSize.z);
+        vec3 worldPos = uCameraPos + rayDir * depth;
+
+        // Density field: animated noise volumes
+        float density = uFogDensity;
+        density *= smoothstep(0.0, 3.0, depth); // fade near camera
+        density *= smoothstep(uCameraFar, uCameraFar * 0.5, depth); // fade far
+
+        // Animated turbulence
+        float turb = sin(worldPos.x * 0.5 + uTime * 0.3) *
+                     cos(worldPos.y * 0.7 + uTime * 0.2) *
+                     sin(worldPos.z * 0.4 + uTime * 0.15);
+        density *= (1.0 + turb * 0.4);
+
+        // Light contribution at this froxel
+        vec3 lightDir = normalize(uLightPos - worldPos);
+        float lightDist = length(uLightPos - worldPos);
+        float attenuation = 1.0 / (1.0 + lightDist * lightDist * 0.1);
+
+        // Phase function (forward scattering)
+        float cosAngle = dot(normalize(rayDir), lightDir);
+        float phase = phaseHG(cosAngle, 0.6);
+
+        // Slice thickness (exponential distribution means variable thickness)
+        float nextDepth = sliceToDepth(sliceF + 1.0, uCameraNear, uCameraFar, uFroxelSize.z);
+        float sliceThickness = nextDepth - depth;
+
+        // Beer-Lambert extinction
+        float extinction = density * sliceThickness;
+        float sliceTransmittance = exp(-extinction);
+
+        // In-scattered light (pre-integrated per froxel)
+        vec3 inscatter = uLightColor * attenuation * phase * density;
+
+        // Brand color gradient based on depth
+        float depthRatio = depth / uCameraFar;
+        vec3 fogTint = mix(
+          vec3(0.165, 0.576, 0.765), // blue
+          vec3(0.945, 0.259, 0.043), // orange
+          smoothstep(0.3, 0.8, depthRatio)
+        );
+        inscatter *= fogTint;
+
+        // Accumulate (front-to-back compositing)
+        accumulated += transmittance * inscatter * sliceThickness;
+        transmittance *= sliceTransmittance;
+
+        if (transmittance < 0.01) break; // early exit
+      }
+
+      return accumulated;
+    }
+
+    void main() {
+      vec4 baseColor = texture2D(tDiffuse, vUv);
+
+      // Reconstruct ray direction from UV
+      vec2 ndc = vUv * 2.0 - 1.0;
+      vec3 rayDir = normalize(vec3(ndc.x * 1.5, ndc.y, -1.0));
+
+      // Froxel volumetric scattering
+      vec3 volumetric = froxelScattering(vUv, rayDir);
+
+      // Composite: scene + volumetric fog
+      vec3 result = baseColor.rgb + volumetric * 1.2;
+
+      // Subtle vignette
+      float vignette = 1.0 - smoothstep(0.4, 1.4, length(ndc * 0.7));
+      result *= mix(0.7, 1.0, vignette);
+
+      gl_FragColor = vec4(result, 1.0);
+    }
+  `
+};
+
+// ===== MOTION VECTOR SHADER (V2) =====
+const MotionVectorShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    tPrevFrame: { value: null },
+    tVelocity: { value: null },
+    uResolution: { value: new THREE.Vector2() },
+    uBlendFactor: { value: 0.9 },
+    uMotionScale: { value: 1.0 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform sampler2D tPrevFrame;
+    uniform sampler2D tVelocity;
+    uniform vec2 uResolution;
+    uniform float uBlendFactor;
+    uniform float uMotionScale;
+    varying vec2 vUv;
+
+    void main() {
+      vec4 current = texture2D(tDiffuse, vUv);
+      vec2 velocity = texture2D(tVelocity, vUv).rg;
+
+      // Reprojected UV from motion vectors
+      vec2 reprojUV = vUv - velocity * uMotionScale;
+
+      // Clamp to screen bounds
+      reprojUV = clamp(reprojUV, vec2(0.001), vec2(0.999));
+
+      vec4 history = texture2D(tPrevFrame, reprojUV);
+
+      // Neighborhood clamping (3x3) to prevent ghosting
+      vec2 texel = 1.0 / uResolution;
+      vec3 minColor = current.rgb;
+      vec3 maxColor = current.rgb;
+      for (int x = -1; x <= 1; x++) {
+        for (int y = -1; y <= 1; y++) {
+          vec3 s = texture2D(tDiffuse, vUv + vec2(float(x), float(y)) * texel).rgb;
+          minColor = min(minColor, s);
+          maxColor = max(maxColor, s);
+        }
+      }
+
+      // Clamp history to neighborhood (anti-ghosting)
+      vec3 clampedHistory = clamp(history.rgb, minColor - 0.05, maxColor + 0.05);
+
+      // Confidence-weighted blend (higher velocity = less history trust)
+      float velocityMag = length(velocity) * 100.0;
+      float confidence = 1.0 / (1.0 + velocityMag * 2.0);
+      float blend = mix(0.5, uBlendFactor, confidence);
+
+      vec3 result = mix(current.rgb, clampedHistory, blend);
+
+      gl_FragColor = vec4(result, 1.0);
+    }
+  `
+};
+
+// ===== VELOCITY BUFFER MATERIAL =====
+const VelocityMaterial = new THREE.ShaderMaterial({
+  uniforms: {
+    uPrevModelViewProj: { value: new THREE.Matrix4() },
+    uCurrModelViewProj: { value: new THREE.Matrix4() },
+  },
+  vertexShader: `
+    uniform mat4 uPrevModelViewProj;
+    uniform mat4 uCurrModelViewProj;
+    varying vec4 vCurrPos;
+    varying vec4 vPrevPos;
+    void main() {
+      vCurrPos = uCurrModelViewProj * vec4(position, 1.0);
+      vPrevPos = uPrevModelViewProj * vec4(position, 1.0);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    varying vec4 vCurrPos;
+    varying vec4 vPrevPos;
+    void main() {
+      vec2 currNDC = vCurrPos.xy / vCurrPos.w;
+      vec2 prevNDC = vPrevPos.xy / vPrevPos.w;
+      vec2 velocity = (currNDC - prevNDC) * 0.5; // NDC to UV scale
+      gl_FragColor = vec4(velocity, 0.0, 1.0);
+    }
+  `
+});
+
+// ===== SCENE SETUP =====
+function init() {
+  // Renderer
+  renderer = new THREE.WebGLRenderer({ antialias: gpuInfo.tier >= 2, alpha: false });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, gpuInfo.tier >= 3 ? 2 : 1.5));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  document.body.appendChild(renderer.domElement);
+
+  // Scene
+  scene = new THREE.Scene();
+  scene.background = BG_COLOR;
+  scene.fog = new THREE.FogExp2(0x080a12, 0.04);
+
+  // Camera
+  camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 50);
+  camera.position.set(0, 0.5, 6);
+  camera.lookAt(0, 0, 0);
+
+  // Velocity render target
+  velocityTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+    type: THREE.HalfFloatType,
+    format: THREE.RGBAFormat,
+    minFilter: THREE.NearestFilter,
+    magFilter: THREE.NearestFilter,
+  });
+
+  // Previous frame buffer (for temporal reprojection)
+  prevDepthTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+    type: THREE.HalfFloatType,
+    format: THREE.RGBAFormat,
+  });
+
+  // ===== GLASS MATERIALS (Gleb signature) =====
+  const glassMaterial = new THREE.MeshPhysicalMaterial({
+    color: 0x88ccee,
+    metalness: 0.0,
+    roughness: 0.05,
+    transmission: 0.92,
+    thickness: 1.5,
+    ior: 1.45,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.05,
+    envMapIntensity: 1.5,
+    transparent: true,
+    opacity: 0.85,
+  });
+
+  const orangeGlass = glassMaterial.clone();
+  orangeGlass.color.set(0xf1420b);
+  orangeGlass.attenuationColor = new THREE.Color(0xf1420b);
+  orangeGlass.attenuationDistance = 2.0;
+
+  const blueGlass = glassMaterial.clone();
+  blueGlass.color.set(0x2a93c1);
+  blueGlass.attenuationColor = new THREE.Color(0x2a93c1);
+  blueGlass.attenuationDistance = 2.0;
+
+  // ===== CENTER PIECE: Hexagonal glass cluster =====
+  const hexGeom = new THREE.CylinderGeometry(0.8, 0.8, 0.15, 6);
+  const centerHex = new THREE.Mesh(hexGeom, glassMaterial);
+  centerHex.rotation.x = Math.PI / 2;
+  scene.add(centerHex);
+
+  // Inner sphere (Gleb's signature nested glass)
+  const innerSphere = new THREE.Mesh(
+    new THREE.SphereGeometry(0.5, 64, 64),
+    blueGlass
+  );
+  scene.add(innerSphere);
+
+  // ===== INTERACTIVE GLASS SPHERES (V3 - Gleb "Spheres UI Interaction" direction) =====
+  const spherePositions = [
+    { pos: new THREE.Vector3(-2.2, 0.8, 0), label: 'ANALYTICS', color: 0x2a93c1 },
+    { pos: new THREE.Vector3(-1.5, -1.0, 0.5), label: 'NEURAL FEED', color: 0x1a7fa8 },
+    { pos: new THREE.Vector3(2.2, 0.8, 0), label: 'SETTINGS', color: 0xf1420b },
+    { pos: new THREE.Vector3(1.5, -1.0, 0.5), label: 'CREATOR AI', color: 0xd4380b },
+    { pos: new THREE.Vector3(0, 1.8, -0.5), label: 'COMMAND CENTER', color: 0x5a3fd4 },
+  ];
+
+  spherePositions.forEach(({ pos, label, color }) => {
+    const mat = glassMaterial.clone();
+    mat.color.set(color);
+    mat.attenuationColor = new THREE.Color(color);
+    mat.attenuationDistance = 1.5;
+
+    const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.35, 48, 48), mat);
+    sphere.position.copy(pos);
+    sphere.userData = {
+      label,
+      basePos: pos.clone(),
+      hovered: false,
+      scale: 1.0,
+      targetScale: 1.0,
+      glowIntensity: 0,
+    };
+    scene.add(sphere);
+    interactiveSpheres.push(sphere);
+
+    // Inner glow core
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(color).multiplyScalar(2),
+      transparent: true,
+      opacity: 0.3,
+    });
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(0.15, 32, 32), glowMat);
+    sphere.add(glow);
+    sphere.userData.glowMesh = glow;
+  });
+
+  // ===== FLOATING PARTICLES (Gleb ambient detail) =====
+  const particleCount = 200;
+  const particleGeom = new THREE.BufferGeometry();
+  const positions = new Float32Array(particleCount * 3);
+  const particleSizes = new Float32Array(particleCount);
+  for (let i = 0; i < particleCount; i++) {
+    positions[i * 3] = (Math.random() - 0.5) * 10;
+    positions[i * 3 + 1] = (Math.random() - 0.5) * 6;
+    positions[i * 3 + 2] = (Math.random() - 0.5) * 8;
+    particleSizes[i] = Math.random() * 3 + 1;
+  }
+  particleGeom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  particleGeom.setAttribute('size', new THREE.BufferAttribute(particleSizes, 1));
+
+  const particleMat = new THREE.PointsMaterial({
+    color: 0x2a93c1,
+    size: 0.03,
+    transparent: true,
+    opacity: 0.4,
+    blending: THREE.AdditiveBlending,
+    sizeAttenuation: true,
+  });
+  const particles = new THREE.Points(particleGeom, particleMat);
+  scene.add(particles);
+
+  // ===== LIGHTS (Gleb's dramatic multi-point setup) =====
+  const ambientLight = new THREE.AmbientLight(0x0a1628, 0.3);
+  scene.add(ambientLight);
+
+  const keyLight = new THREE.PointLight(0x2a93c1, 8, 20);
+  keyLight.position.set(3, 3, 3);
+  scene.add(keyLight);
+
+  const fillLight = new THREE.PointLight(0xf1420b, 4, 15);
+  fillLight.position.set(-3, -1, 2);
+  scene.add(fillLight);
+
+  const rimLight = new THREE.PointLight(0x5a3fd4, 3, 15);
+  rimLight.position.set(0, 4, -3);
+  scene.add(rimLight);
+
+  // Reflective floor (for caustic projection)
+  const floorGeom = new THREE.PlaneGeometry(20, 20);
+  const floorMat = new THREE.MeshPhysicalMaterial({
+    color: 0x080a12,
+    metalness: 0.9,
+    roughness: 0.15,
+  });
+  const floor = new THREE.Mesh(floorGeom, floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -2;
+  scene.add(floor);
+
+  // ===== POST-PROCESSING =====
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+
+  // Froxel volumetric pass (V1)
+  const froxelPass = new ShaderPass(FroxelVolumetricShader);
+  froxelPass.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+  froxelPass.enabled = true;
+  composer.addPass(froxelPass);
+
+  // Motion vector temporal pass (V2)
+  const motionPass = new ShaderPass(MotionVectorShader);
+  motionPass.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+  motionPass.enabled = false;
+  composer.addPass(motionPass);
+
+  // Bloom (Gleb signature)
+  const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    0.8, 0.4, 0.85
+  );
+  composer.addPass(bloomPass);
+
+  // Store passes for variation switching
+  window._passes = { froxelPass, motionPass, bloomPass };
+  window._scene = { particles, innerSphere, centerHex, keyLight, fillLight, rimLight };
+
+  // ===== EVENTS =====
+  window.addEventListener('resize', onResize);
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('click', onSphereClick);
+
+  // GPU info display
+  document.getElementById('perf').innerHTML =
+    `GPU: ${gpuInfo.name}<br>Tier: ${gpuInfo.tier}<br>Variation: Froxel Vol`;
+
+  // Store prev camera matrices
+  prevCamMatrix.copy(camera.matrixWorldInverse);
+  prevProjMatrix.copy(camera.projectionMatrix);
+
+  animate();
+}
+
+function onResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function onMouseMove(e) {
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+}
+
+function onSphereClick(e) {
+  if (hoveredSphere && currentVariation === 2) {
+    // Flash effect on click (Gleb interaction feedback)
+    const ud = hoveredSphere.userData;
+    ud.glowIntensity = 3.0;
+    ud.targetScale = 1.3;
+    setTimeout(() => { ud.targetScale = 1.0; }, 300);
+  }
+}
+
+// ===== VARIATION SWITCHING =====
+window.switchVariation = function(idx) {
+  currentVariation = idx;
+  const labels = [
+    'VARIATION 1: FROXEL VOLUMETRIC PRE-INTEGRATION',
+    'VARIATION 2: MOTION VECTOR TEMPORAL REPROJECTION',
+    'VARIATION 3: INTERACTIVE GLASS SPHERES (GLEB UI)',
+  ];
+  document.getElementById('variation-label').textContent = labels[idx];
+
+  // Toggle passes
+  window._passes.froxelPass.enabled = (idx === 0);
+  window._passes.motionPass.enabled = (idx === 1);
+
+  // Toggle interactive sphere visibility
+  interactiveSpheres.forEach(s => {
+    s.visible = (idx === 2 || idx === 0);
+  });
+
+  // Update nav buttons
+  document.querySelectorAll('#nav button').forEach((btn, i) => {
+    btn.classList.toggle('active', i === idx);
+  });
+
+  const perfEl = document.getElementById('perf');
+  const varNames = ['Froxel Vol', 'Motion Vectors', 'Interactive Glass'];
+  perfEl.innerHTML = `GPU: ${gpuInfo.name}<br>Tier: ${gpuInfo.tier}<br>Variation: ${varNames[idx]}`;
+};
+
+// ===== ANIMATION LOOP =====
+function animate() {
+  requestAnimationFrame(animate);
+
+  const t = clock.getElapsedTime();
+  const dt = clock.getDelta();
+  frameCount++;
+
+  // Camera orbit (gentle, Gleb-like)
+  camera.position.x = Math.sin(t * 0.15) * 5.5;
+  camera.position.z = Math.cos(t * 0.15) * 5.5;
+  camera.position.y = 0.5 + Math.sin(t * 0.1) * 0.5;
+  camera.lookAt(0, 0, 0);
+
+  // Animate scene elements
+  const { particles, innerSphere, centerHex, keyLight, fillLight } = window._scene;
+
+  // Inner sphere breathe
+  const breathe = 1 + Math.sin(t * 1.5) * 0.05;
+  innerSphere.scale.setScalar(breathe);
+  innerSphere.rotation.y = t * 0.3;
+
+  // Center hex slow rotation
+  centerHex.rotation.z = t * 0.1;
+
+  // Particle drift
+  const posAttr = particles.geometry.attributes.position;
+  for (let i = 0; i < posAttr.count; i++) {
+    posAttr.array[i * 3 + 1] += Math.sin(t + i) * 0.0005;
+    // Wrap
+    if (posAttr.array[i * 3 + 1] > 3) posAttr.array[i * 3 + 1] = -3;
+  }
+  posAttr.needsUpdate = true;
+
+  // Light animation
+  keyLight.position.x = Math.sin(t * 0.4) * 4;
+  keyLight.position.z = Math.cos(t * 0.4) * 4;
+  fillLight.position.x = Math.sin(t * 0.3 + 2) * -3;
+
+  // ===== V1: Update froxel uniforms =====
+  if (currentVariation === 0) {
+    const fp = window._passes.froxelPass;
+    fp.uniforms.uTime.value = t;
+    fp.uniforms.uFrame.value = frameCount;
+    fp.uniforms.uCameraPos.value.copy(camera.position);
+    fp.uniforms.uLightPos.value.copy(keyLight.position);
+  }
+
+  // ===== V2: Motion vector temporal blend =====
+  if (currentVariation === 1) {
+    const mp = window._passes.motionPass;
+    // In a real implementation, we'd render the velocity buffer here
+    // For this training study, we simulate via camera delta
+    mp.uniforms.uBlendFactor.value = 0.9;
+  }
+
+  // ===== V3: Interactive sphere hover =====
+  if (currentVariation === 2) {
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(interactiveSpheres);
+    const tooltip = document.getElementById('tooltip');
+
+    // Reset previous hover
+    if (hoveredSphere && (!intersects.length || intersects[0].object !== hoveredSphere)) {
+      hoveredSphere.userData.targetScale = 1.0;
+      hoveredSphere.userData.hovered = false;
+      hoveredSphere = null;
+      tooltip.style.display = 'none';
+    }
+
+    if (intersects.length > 0) {
+      const sphere = intersects[0].object;
+      if (sphere !== hoveredSphere) {
+        hoveredSphere = sphere;
+        sphere.userData.hovered = true;
+        sphere.userData.targetScale = 1.15;
+      }
+
+      // Show tooltip
+      const screenPos = sphere.position.clone().project(camera);
+      const x = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
+      const y = (-screenPos.y * 0.5 + 0.5) * window.innerHeight;
+      tooltip.style.display = 'block';
+      tooltip.style.left = (x + 20) + 'px';
+      tooltip.style.top = (y - 10) + 'px';
+      tooltip.textContent = sphere.userData.label;
+    }
+
+    // Animate sphere scales (spring-like)
+    interactiveSpheres.forEach(s => {
+      const ud = s.userData;
+      ud.scale += (ud.targetScale - ud.scale) * 0.1;
+      s.scale.setScalar(ud.scale);
+
+      // Glow decay
+      ud.glowIntensity *= 0.92;
+      if (ud.glowMesh) {
+        ud.glowMesh.material.opacity = 0.3 + ud.glowIntensity * 0.3;
+        ud.glowMesh.scale.setScalar(1 + ud.glowIntensity * 0.3);
+      }
+
+      // Gentle float (Gleb signature micro-motion)
+      s.position.y = ud.basePos.y + Math.sin(t * 0.8 + ud.basePos.x * 2) * 0.06;
+    });
+  }
+
+  // Store matrices for next frame's motion vectors
+  prevCamMatrix.copy(camera.matrixWorldInverse);
+  prevProjMatrix.copy(camera.projectionMatrix);
+
+  // Render
+  composer.render();
+}
+
+// ===== INIT =====
+init();
+</script>
+</body>
+</html>

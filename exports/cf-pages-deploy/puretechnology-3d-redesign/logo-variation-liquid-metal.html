@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology — Liquid Metal Logo</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body {
+  width:100%; height:100%;
+  background:#080a12;
+  overflow:hidden;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+canvas { display:block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// ============================================================
+//  PURE TECHNOLOGY — LIQUID METAL LOGO
+//  Chrome/liquid metal effect on the 13-ring hexagonal vortex
+//
+//  Technique:
+//  - Each hex ring rendered with thick strokes using layered
+//    gradient passes that simulate specular highlights,
+//    mid-tone body, and deep shadow — the chrome triad
+//  - Fresnel-style rim lighting: edges brightest at ~30° from
+//    normal, dark in the center of each face
+//  - Animated reflection "ripple": slow sinusoidal shift in
+//    the highlight position simulates the mercury wobble
+//  - Color tinting: chrome base is shifted toward cyan (outer)
+//    and orange-red (inner) — the PT palette preserved as
+//    tinted metal rather than flat color
+//  - Slow steady rotation with slight differential per ring
+// ============================================================
+
+const CANVAS = document.getElementById('c');
+const CTX    = CANVAS.getContext('2d');
+
+function resize() {
+  const s = Math.min(window.innerWidth, window.innerHeight);
+  CANVAS.width  = s;
+  CANVAS.height = s;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ---- mouse tracking for dynamic reflection ----
+let MX = 0, MY = 0, smoothMX = 0, smoothMY = 0;
+document.addEventListener('mousemove', e => {
+  const r = CANVAS.getBoundingClientRect();
+  MX = (e.clientX - r.left - r.width  * 0.5) / (r.width  * 0.5);
+  MY = (e.clientY - r.top  - r.height * 0.5) / (r.height * 0.5);
+});
+
+// ---- logo geometry ----
+const RING_NORMS = [
+  0.11, 0.16, 0.22, 0.28, 0.335, 0.40,
+  0.46, 0.535, 0.615, 0.685, 0.755, 0.840, 0.970
+];
+const BASE_ROT    = Math.PI / 6 - 5 * Math.PI / 180;
+const SPIRAL_STEP = 5 * Math.PI / 180;
+const SPEED_INNER = 0.08;   // slow, majestic rotation
+const SPEED_OUTER = 0.025;
+
+function hexVerts(radius, rotation) {
+  const pts = new Array(6);
+  for (let i = 0; i < 6; i++) {
+    const a = rotation + (Math.PI * 2 * i) / 6;
+    pts[i] = { x: radius * Math.cos(a), y: radius * Math.sin(a) };
+  }
+  return pts;
+}
+
+// ---- Chrome color builder ----
+// tBase: 0-1 (PT gradient position, 0=orange inner, 1=cyan outer)
+// highlight: 0-1 (how close to the bright specular)
+// ripple: oscillating time value
+function chromeColor(tBase, highlight, ripple, alpha) {
+  // Base PT tint
+  const br = 241 + (43  - 241) * tBase;
+  const bg = 66  + (147 -  66) * tBase;
+  const bb = 11  + (193 -  11) * tBase;
+
+  // Chrome mix:
+  // highlight=1 → near-white specular
+  // highlight=0 → very dark shadow
+  // highlight=0.5 → tinted mid-tone
+  const spec  = highlight * highlight; // non-linear for punchy specular
+  const shade = 1 - (1 - highlight) * (1 - highlight);
+
+  // Tinted chrome: blend between shadow (dark tint), body (pt tint), specular (bright white)
+  const shadowMix = Math.max(0, 1 - shade * 2);
+  const bodyMix   = Math.max(0, 1 - Math.abs(highlight - 0.5) * 3);
+  const specMix   = spec;
+  const total     = shadowMix + bodyMix + specMix || 1;
+
+  const r = Math.round(Math.min(255, (br * bodyMix * 0.6 + 255 * specMix + br * 0.2 * shadowMix + ripple * 30) / (bodyMix * 0.6 + specMix + 0.2 + 0.001)));
+  const g = Math.round(Math.min(255, (bg * bodyMix * 0.6 + 255 * specMix + bg * 0.2 * shadowMix + ripple * 20) / (bodyMix * 0.6 + specMix + 0.2 + 0.001)));
+  const b = Math.round(Math.min(255, (bb * bodyMix * 0.6 + 255 * specMix + bb * 0.2 * shadowMix + ripple * 40) / (bodyMix * 0.6 + specMix + 0.2 + 0.001)));
+
+  // Darken shadows strongly
+  const darkFactor = Math.max(0.05, shade * 0.9 + 0.1);
+  const fr = Math.round(r * darkFactor);
+  const fg = Math.round(g * darkFactor);
+  const fb = Math.round(b * darkFactor);
+
+  return alpha !== undefined
+    ? `rgba(${fr},${fg},${fb},${alpha})`
+    : `rgb(${fr},${fg},${fb})`;
+}
+
+// ---- Draw a chrome hex ring using multi-pass layering ----
+function drawChromeHexRing(ctx, radius, rotation, tBase, lw, t) {
+  const v = hexVerts(radius, rotation);
+
+  // For each edge of the hexagon, draw a chrome strip
+  for (let i = 0; i < 6; i++) {
+    const p0 = v[i];
+    const p1 = v[(i+1) % 6];
+
+    // Edge angle in world space
+    const edgeAngle = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+
+    // "Light direction" — animated + mouse influenced
+    const lightAngle = t * 0.3 + smoothMX * 0.5 + smoothMY * 0.3;
+    // How aligned is this edge's normal to the light?
+    const edgeNorm  = edgeAngle + Math.PI * 0.5;
+    const alignment = (Math.cos(edgeNorm - lightAngle) + 1) * 0.5; // 0-1
+
+    // Ripple: slow waving of highlight position across each edge
+    const ripple = (Math.sin(t * 0.7 + i * 1.2 + tBase * 4) + 1) * 0.5;
+
+    // Build perpendicular gradient across stroke width
+    const nx = Math.cos(edgeNorm);
+    const ny = Math.sin(edgeNorm);
+    const hw = lw * 0.5;
+
+    // Fresnel: highlight is strongest at grazing angle
+    const fresnelHighlight = Math.pow(1 - alignment, 1.5) * 0.8 + alignment * 0.2;
+    const fresnelAdjusted  = fresnelHighlight * 0.7 + ripple * 0.3;
+
+    // Mid-point for gradient calculation
+    const mx = (p0.x + p1.x) * 0.5;
+    const my = (p0.y + p1.y) * 0.5;
+
+    // Layered passes for chrome depth:
+    // Pass 1: dark body (base)
+    const gBody = ctx.createLinearGradient(
+      mx - nx * hw, my - ny * hw,
+      mx + nx * hw, my + ny * hw
+    );
+    gBody.addColorStop(0.0, chromeColor(tBase, 0.08,  ripple * 0.2, 1.0));
+    gBody.addColorStop(0.3, chromeColor(tBase, 0.25,  ripple * 0.3, 1.0));
+    gBody.addColorStop(0.5, chromeColor(tBase, 0.45 + fresnelAdjusted * 0.3, ripple * 0.4, 1.0));
+    gBody.addColorStop(0.7, chromeColor(tBase, 0.25,  ripple * 0.3, 1.0));
+    gBody.addColorStop(1.0, chromeColor(tBase, 0.06,  ripple * 0.2, 1.0));
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.strokeStyle = gBody;
+    ctx.lineWidth = lw;
+    ctx.globalAlpha = 1.0;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // Pass 2: specular highlight line (thin, bright)
+    const specStrength = fresnelAdjusted * alignment + ripple * 0.4;
+    if (specStrength > 0.2) {
+      const specColor = chromeColor(tBase, 0.85 + specStrength * 0.15, ripple, specStrength * 0.9);
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.strokeStyle = specColor;
+      ctx.lineWidth = lw * 0.18;
+      ctx.globalAlpha = specStrength * 0.8;
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---- Chrome spoke between two rings ----
+function drawChromeSpoke(ctx, p0, p1, t0, t1, lw, rimT) {
+  const len = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+  if (len < 0.5) return;
+
+  const g = ctx.createLinearGradient(p0.x, p0.y, p1.x, p1.y);
+
+  // Chrome gradients along the spoke length
+  const specOff = (Math.sin(rimT * 2.3 + t0 * 5) + 1) * 0.5;
+  g.addColorStop(0.0,  chromeColor(t0, 0.15, specOff * 0.3, 1.0));
+  g.addColorStop(0.25, chromeColor((t0+t1)*0.5, 0.4 + specOff * 0.3, specOff * 0.4, 1.0));
+  g.addColorStop(0.5,  chromeColor((t0+t1)*0.5, 0.6 + specOff * 0.2, specOff * 0.5, 1.0));
+  g.addColorStop(0.75, chromeColor((t0+t1)*0.5, 0.35 + specOff * 0.25, specOff * 0.3, 1.0));
+  g.addColorStop(1.0,  chromeColor(t1, 0.12, specOff * 0.2, 1.0));
+
+  ctx.beginPath();
+  ctx.moveTo(p0.x, p0.y);
+  ctx.lineTo(p1.x, p1.y);
+  ctx.strokeStyle = g;
+  ctx.lineWidth = lw;
+  ctx.globalAlpha = 0.7;
+  ctx.lineCap = 'butt';
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+function drawChromeSpokes(ctx, rA, rotA, rB, rotB, tA, tB, lw, rimT) {
+  const vA = hexVerts(rA, rotA);
+  const vB = hexVerts(rB, rotB);
+  for (let i = 0; i < 6; i++) {
+    drawChromeSpoke(ctx, vA[i], vB[i % 6],    tA, tB, lw,       rimT + i);
+    drawChromeSpoke(ctx, vA[i], vB[(i+1) % 6], tA, tB, lw * 0.6, rimT + i + 0.5);
+  }
+}
+
+let prevT = 0;
+function render(ms) {
+  const t = ms * 0.001;
+  const W = CANVAS.width;
+  const H = CANVAS.height;
+
+  smoothMX += (MX - smoothMX) * 0.04;
+  smoothMY += (MY - smoothMY) * 0.04;
+
+  const R = W * 0.42;
+  const N = RING_NORMS.length;
+
+  CTX.fillStyle = '#080a12';
+  CTX.fillRect(0, 0, W, H);
+  CTX.save();
+  CTX.translate(W * 0.5, H * 0.5);
+
+  const rotations = RING_NORMS.map((normR, i) => {
+    const speed = SPEED_OUTER + (SPEED_INNER - SPEED_OUTER) * (1 - normR);
+    return BASE_ROT + i * SPIRAL_STEP + speed * t;
+  });
+
+  // ---- Ambient glow pass (subtle colored bloom) ----
+  CTX.save();
+  CTX.shadowBlur = W * 0.025;
+  for (let i = 0; i < N; i++) {
+    const normR  = RING_NORMS[i];
+    const radius = normR * R;
+    const tBase  = normR;
+    // Shadow glow uses PT palette
+    const r = Math.round(241 + (43  - 241) * tBase);
+    const g2 = Math.round(66  + (147 -  66) * tBase);
+    const b  = Math.round(11  + (193 -  11) * tBase);
+    CTX.shadowColor = `rgb(${r},${g2},${b})`;
+    const v = hexVerts(radius, rotations[i]);
+    CTX.beginPath();
+    CTX.moveTo(v[0].x, v[0].y);
+    for (let j = 1; j < 6; j++) CTX.lineTo(v[j].x, v[j].y);
+    CTX.closePath();
+    CTX.strokeStyle = `rgba(${r},${g2},${b},0.08)`;
+    CTX.lineWidth = W * 0.004;
+    CTX.globalAlpha = 0.4;
+    CTX.stroke();
+  }
+  CTX.restore();
+
+  // ---- Chrome spokes (draw under rings) ----
+  CTX.shadowBlur = 0;
+  for (let i = N - 2; i >= 0; i--) {
+    const normR  = RING_NORMS[i];
+    const normR1 = RING_NORMS[i + 1];
+    const radius  = normR  * R;
+    const radius1 = normR1 * R;
+    const lw = (W * 0.0012) * (0.5 + 0.5 * normR);
+    if (normR > 0.3) {
+      drawChromeSpokes(
+        CTX, radius, rotations[i], radius1, rotations[i+1],
+        normR, normR1, lw, t + i * 0.3
+      );
+    }
+  }
+
+  // ---- Chrome hex rings (main draw) ----
+  for (let i = N - 1; i >= 0; i--) {
+    const normR  = RING_NORMS[i];
+    const radius = normR * R;
+    const lw     = W * 0.004 + W * 0.003 * normR;
+    drawChromeHexRing(CTX, radius, rotations[i], normR, lw, t);
+  }
+
+  // ---- Inner orange-red core glow ----
+  CTX.globalAlpha = 1;
+  const pulseR  = R * 0.14 * (1 + 0.05 * Math.sin(t * 1.8));
+  const coreGrd = CTX.createRadialGradient(0, 0, 0, 0, 0, pulseR);
+  coreGrd.addColorStop(0.0, 'rgba(241,66,11,0.5)');
+  coreGrd.addColorStop(0.4, 'rgba(241,66,11,0.2)');
+  coreGrd.addColorStop(1.0, 'rgba(241,66,11,0.0)');
+  CTX.beginPath(); CTX.arc(0, 0, pulseR, 0, Math.PI * 2);
+  CTX.fillStyle = coreGrd; CTX.fill();
+
+  // ---- Outer subtle environment reflection ring ----
+  const envR = R * 1.05;
+  const envGrd = CTX.createRadialGradient(0, 0, R * 0.9, 0, 0, envR);
+  envGrd.addColorStop(0.0, 'rgba(43,147,193,0.0)');
+  envGrd.addColorStop(1.0, 'rgba(43,147,193,0.04)');
+  CTX.beginPath(); CTX.arc(0, 0, envR, 0, Math.PI * 2);
+  CTX.fillStyle = envGrd; CTX.fill();
+
+  // ---- Black void ----
+  const voidGrd = CTX.createRadialGradient(0,0,0,0,0,R*0.075);
+  voidGrd.addColorStop(0.0,  '#080a12');
+  voidGrd.addColorStop(0.6,  '#080a12');
+  voidGrd.addColorStop(1.0,  'rgba(8,10,18,0)');
+  CTX.beginPath(); CTX.arc(0, 0, R*0.075, 0, Math.PI * 2);
+  CTX.fillStyle = voidGrd; CTX.fill();
+
+  CTX.restore();
+  CTX.globalAlpha = 1;
+  CTX.shadowBlur  = 0;
+
+  requestAnimationFrame(render);
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

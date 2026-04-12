@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PureBrain.ai — Cinematic Logo Reveal</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000000;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', sans-serif;
+  }
+
+  #canvas-container {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  #three-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ─── CSS TEXT OVERLAY ─── */
+  #brand-overlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Spacer to push text below logo center */
+  #brand-spacer {
+    height: 46vh;
+  }
+
+  #brand-name {
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity 1.4s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 1.4s cubic-bezier(0.22, 1, 0.36, 1);
+    font-size: clamp(22px, 3.5vw, 44px);
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    line-height: 1;
+    white-space: nowrap;
+    margin-bottom: 10px;
+  }
+  #brand-name .pb { color: #2a93c1; }
+  #brand-name .ai { color: #f1420b; }
+  #brand-name .n  { color: #2a93c1; }
+  #brand-name .dot { color: #ffffff; opacity: 0.85; }
+
+  #brand-tagline1 {
+    opacity: 0;
+    transform: translateY(14px);
+    transition: opacity 1.2s cubic-bezier(0.22, 1, 0.36, 1) 0.2s,
+                transform 1.2s cubic-bezier(0.22, 1, 0.36, 1) 0.2s;
+    font-size: clamp(11px, 1.4vw, 17px);
+    font-weight: 400;
+    letter-spacing: 0.24em;
+    color: rgba(255, 255, 255, 0.72);
+    text-transform: uppercase;
+    margin-bottom: 26px;
+  }
+
+  #brand-tagline2 {
+    opacity: 0;
+    transform: translateY(12px);
+    transition: opacity 1.2s cubic-bezier(0.22, 1, 0.36, 1) 0.15s,
+                transform 1.2s cubic-bezier(0.22, 1, 0.36, 1) 0.15s;
+    font-size: clamp(10px, 1.15vw, 14px);
+    font-weight: 300;
+    letter-spacing: 0.14em;
+    color: rgba(255, 255, 255, 0.52);
+    text-shadow: 0 0 18px rgba(42, 147, 193, 0.45);
+    max-width: 600px;
+    text-align: center;
+    padding: 0 20px;
+  }
+
+  /* ─── REPLAY BUTTON ─── */
+  #replay-btn {
+    position: fixed;
+    bottom: 28px;
+    right: 28px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.8s ease;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    padding: 9px 20px;
+    border-radius: 40px;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    transition: background 0.25s ease, color 0.25s ease, opacity 0.8s ease;
+  }
+  #replay-btn.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  #replay-btn:hover {
+    background: rgba(42, 147, 193, 0.18);
+    color: rgba(255, 255, 255, 0.9);
+    border-color: rgba(42, 147, 193, 0.45);
+  }
+</style>
+</head>
+<body>
+
+<div id="canvas-container">
+  <canvas id="three-canvas"></canvas>
+</div>
+
+<!-- CSS text overlay — below the 3D canvas -->
+<div id="brand-overlay">
+  <div id="brand-spacer"></div>
+  <div id="brand-name">
+    <span class="pb">PUREBR</span><span class="ai">AI</span><span class="n">N</span><span class="dot">.ai</span>
+  </div>
+  <div id="brand-tagline1">Your Brain. Your AI. Actual Intelligence.</div>
+  <div id="brand-tagline2">Prompting is dead. Wake up your living AI partner today.</div>
+</div>
+
+<button id="replay-btn" onclick="restartAnimation()">&#x21BB; Replay</button>
+
+<!-- Three.js r160 via CDN importmap -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer }  from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }      from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass }      from 'three/addons/postprocessing/OutputPass.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOGO SPECIFICATION — exact parameters
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SPEC = {
+  hexUnits:       3,
+  strokesPerUnit: 33,
+  rotOffset:      9  * Math.PI / 180,   // 9° between hex units
+  twistPerRing:   7  * Math.PI / 180,   // 7° twist per ring inward
+  shrinkRate:     0.07,                 // 7% radius shrink per ring
+  pointyTop:      Math.PI / 6,          // vertex at top
+  voidFraction:   0.06,                 // inner dead zone fraction
+};
+
+// Color interpolation: t=0 outer (blue) → t=1 inner (orange)
+const BLUE   = new THREE.Color('#2a93c1');
+const ORANGE = new THREE.Color('#f1420b');
+
+function strokeColor(t) {
+  if (t < 0.22) {
+    return BLUE.clone().multiplyScalar(0.85 + t * 0.7);
+  } else if (t < 0.58) {
+    const a = (t - 0.22) / 0.36;
+    const mid = BLUE.clone().lerp(ORANGE, a);
+    const lum = mid.r * 0.299 + mid.g * 0.587 + mid.b * 0.114;
+    const grey = new THREE.Color(lum, lum, lum);
+    const desatAmt = 0.48 * (1 - Math.abs(a - 0.5) * 1.8);
+    return mid.lerp(grey, Math.max(0, desatAmt));
+  } else {
+    const a = (t - 0.58) / 0.42;
+    return ORANGE.clone().lerp(new THREE.Color('#ff6633'), a)
+      .multiplyScalar(1.0 + a * 0.55);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RENDERER & SCENE
+// ─────────────────────────────────────────────────────────────────────────────
+
+const canvas   = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.3;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene  = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 1000);
+camera.position.set(0, 0, 7.0);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+  bloomPass.resolution.set(window.innerWidth, window.innerHeight);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST-PROCESSING
+// ─────────────────────────────────────────────────────────────────────────────
+
+const composer   = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.0,   // intensity — starts at 0, animated
+  0.5,   // radius
+  0.78   // threshold
+);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AMBIENT VOID PARTICLES (Phase 1 — swirling inward)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const VOID_COUNT = 1600;
+const voidGeo    = new THREE.BufferGeometry();
+const voidPos    = new Float32Array(VOID_COUNT * 3);
+const voidCol    = new Float32Array(VOID_COUNT * 3);
+const voidData   = []; // per-particle state
+
+for (let i = 0; i < VOID_COUNT; i++) {
+  const angle  = Math.random() * Math.PI * 2;
+  const radius = 1.5 + Math.random() * 5.5;
+  voidPos[i*3  ] = Math.cos(angle) * radius;
+  voidPos[i*3+1] = Math.sin(angle) * radius;
+  voidPos[i*3+2] = (Math.random() - 0.5) * 2.5;
+  // Soft blue/white dust
+  const t = Math.random();
+  voidCol[i*3  ] = 0.12 + t * 0.08;
+  voidCol[i*3+1] = 0.30 + t * 0.15;
+  voidCol[i*3+2] = 0.50 + t * 0.35;
+  voidData.push({
+    angle,
+    radius,
+    speed: 0.12 + Math.random() * 0.28,
+    inwardV: 0.0,
+    z: voidPos[i*3+2],
+    vz: (Math.random() - 0.5) * 0.003,
+  });
+}
+
+voidGeo.setAttribute('position', new THREE.BufferAttribute(voidPos, 3));
+voidGeo.setAttribute('color',    new THREE.BufferAttribute(voidCol, 3));
+
+const voidMat = new THREE.PointsMaterial({
+  size: 0.028,
+  sizeAttenuation: true,
+  transparent: true,
+  opacity: 0.0,
+  vertexColors: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+
+const voidPoints = new THREE.Points(voidGeo, voidMat);
+scene.add(voidPoints);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RADIAL ENERGY LINES (Phase 1 — burst from center)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const RAY_COUNT  = 24;
+const rayLines   = [];
+const rayMats    = [];
+
+for (let i = 0; i < RAY_COUNT; i++) {
+  const angle = (i / RAY_COUNT) * Math.PI * 2;
+  const maxL  = 2.8 + Math.random() * 2.0;
+  const pts   = [
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(Math.cos(angle) * maxL, Math.sin(angle) * maxL, 0),
+  ];
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  const t   = Math.random();
+  const col = i % 3 === 0
+    ? new THREE.Color(0.16, 0.58, 0.76)   // blue
+    : new THREE.Color(0.08, 0.08, 0.08);  // near-dark
+  const mat = new THREE.LineBasicMaterial({
+    color: col,
+    transparent: true,
+    opacity: 0.0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const line = new THREE.Line(geo, mat);
+  scene.add(line);
+  rayLines.push(line);
+  rayMats.push(mat);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CENTER SEED POINT
+// ─────────────────────────────────────────────────────────────────────────────
+
+const seedGeo = new THREE.SphereGeometry(0.04, 16, 16);
+const seedMat = new THREE.MeshBasicMaterial({
+  color: new THREE.Color('#2a93c1'),
+  transparent: true,
+  opacity: 0.0,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+const seedMesh = new THREE.Mesh(seedGeo, seedMat);
+scene.add(seedMesh);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOGO HEXAGON STROKES
+// ─────────────────────────────────────────────────────────────────────────────
+
+const BASE_R   = 1.62;
+const Z_FRONT  = 0.20;
+const Z_BACK   = 0.00;
+
+const logoGroup = new THREE.Group();
+scene.add(logoGroup);
+
+// Build hex ring geometry
+function buildHexLine(radius, rotAngle, zPos, color) {
+  const verts = [];
+  for (let i = 0; i <= 6; i++) {
+    const a = rotAngle + (i / 6) * Math.PI * 2;
+    verts.push(Math.cos(a) * radius, Math.sin(a) * radius, zPos);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
+  const mat = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    linewidth: 1,
+  });
+  return new THREE.Line(geo, mat);
+}
+
+// strokeData[s] = array of 3 lines (one per hex unit) + metadata
+const strokeData = [];
+
+for (let s = 0; s < SPEC.strokesPerUnit; s++) {
+  const t      = s / (SPEC.strokesPerUnit - 1);  // 0=outer, 1=inner
+  const radius = BASE_R * Math.pow(1 - SPEC.shrinkRate, s);
+  const zPos   = THREE.MathUtils.lerp(Z_BACK, Z_FRONT, t);
+  const color  = strokeColor(t);
+
+  if (radius < SPEC.voidFraction * BASE_R) break;
+
+  const entry = { t, radius, color, lines: [], opacity: 0 };
+
+  for (let u = 0; u < SPEC.hexUnits; u++) {
+    const rotAngle = SPEC.pointyTop + u * SPEC.rotOffset + s * SPEC.twistPerRing;
+    const line = buildHexLine(radius, rotAngle, zPos, color);
+    logoGroup.add(line);
+    entry.lines.push(line);
+  }
+
+  strokeData.push(entry);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CENTER IGNITION GLOW
+// ─────────────────────────────────────────────────────────────────────────────
+
+const coreGeo = new THREE.SphereGeometry(0.05, 32, 32);
+const coreMat = new THREE.MeshBasicMaterial({
+  color: new THREE.Color('#f1420b'),
+  transparent: true,
+  opacity: 0.0,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+coreMesh.position.z = Z_FRONT + 0.02;
+logoGroup.add(coreMesh);
+
+// Energy ring pulse — thin circle that expands outward
+const pulseGeo = new THREE.RingGeometry(0.0, 0.08, 64);
+const pulseMat = new THREE.MeshBasicMaterial({
+  color: new THREE.Color('#f1420b'),
+  transparent: true,
+  opacity: 0.0,
+  side: THREE.DoubleSide,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+const pulseMesh = new THREE.Mesh(pulseGeo, pulseMat);
+pulseMesh.position.z = Z_FRONT + 0.03;
+logoGroup.add(pulseMesh);
+
+// Second pulse ring (blue, slightly delayed)
+const pulseGeo2 = new THREE.RingGeometry(0.0, 0.05, 64);
+const pulseMat2 = new THREE.MeshBasicMaterial({
+  color: new THREE.Color('#2a93c1'),
+  transparent: true,
+  opacity: 0.0,
+  side: THREE.DoubleSide,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+const pulseMesh2 = new THREE.Mesh(pulseGeo2, pulseMat2);
+pulseMesh2.position.z = Z_FRONT + 0.04;
+logoGroup.add(pulseMesh2);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE TIMELINE
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1: 0.0 – 3.0s   "The Void"         seed appears, rays expand, particles swirl
+// Phase 2: 3.0 – 6.0s   "The Formation"    strokes draw outer→inner
+// Phase 3: 6.0 – 8.0s   "The Ignition"     core ignites, bloom spike
+// Phase 4: 8.0 – 10.0s  "The Brand"        name + tagline1 fade in
+// Phase 5: 10.0 – 13.0s "The Tagline"      tagline2 fades in, hold
+// Phase 6: 13.0s+        "The Rest"         gentle rotation + ambient, replay appears
+
+const T = {
+  void_end:        3.0,
+  formation_end:   6.2,
+  ignition_end:    8.2,
+  brand_end:       10.0,
+  tagline_end:     13.0,
+};
+
+let globalElapsed = 0.0;
+let globalRunning = true;
+let replayVisible = false;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function smoothstep(lo, hi, t) {
+  const x = clamp((t - lo) / (hi - lo), 0, 1);
+  return x * x * (3 - 2 * x);
+}
+function easeOutQuart(t) {
+  return 1 - Math.pow(1 - t, 4);
+}
+function easeInQuart(t) {
+  return t * t * t * t;
+}
+function easeOutElastic(t) {
+  if (t === 0 || t === 1) return t;
+  return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (2 * Math.PI) / 3) + 1;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOM refs
+// ─────────────────────────────────────────────────────────────────────────────
+
+const domName     = document.getElementById('brand-name');
+const domTag1     = document.getElementById('brand-tagline1');
+const domTag2     = document.getElementById('brand-tagline2');
+const domReplay   = document.getElementById('replay-btn');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE-BASED ANIMATION DRIVER
+// ─────────────────────────────────────────────────────────────────────────────
+
+let lastTime = null;
+
+function tick(now) {
+  requestAnimationFrame(tick);
+
+  if (!lastTime) lastTime = now;
+  const dt = Math.min((now - lastTime) * 0.001, 0.05);
+  lastTime = now;
+
+  if (globalRunning) globalElapsed += dt;
+  const el = globalElapsed;
+
+  // ── PHASE 1: THE VOID (0–3s) ──────────────────────────────────────────────
+  if (el >= 0) {
+    // Seed point appears 0.3s in
+    const seedP = smoothstep(0.3, 1.2, el);
+    seedMat.opacity = seedP * 0.9;
+    seedMesh.scale.setScalar(1.0 + seedP * 0.5);
+
+    // Bloom tiny at seed
+    bloomPass.strength = seedP * 0.3;
+
+    // Ray burst begins at 0.6s
+    const rayP = smoothstep(0.6, 2.5, el);
+    for (let i = 0; i < RAY_COUNT; i++) {
+      const wave = rayP * (1 - Math.abs(Math.sin(i * 0.7)) * 0.4);
+      rayMats[i].opacity = wave * (i % 3 === 0 ? 0.22 : 0.04);
+    }
+
+    // Particles fade in at 0.5s, spiral inward gently
+    voidMat.opacity = smoothstep(0.5, 2.2, el) * 0.65;
+    const inwardStrength = smoothstep(2.0, 3.0, el) * 0.004;
+    for (let i = 0; i < VOID_COUNT; i++) {
+      const d = voidData[i];
+      d.angle  += d.speed * dt * (0.3 + smoothstep(1.0, 3.0, el) * 0.7);
+      d.radius -= inwardStrength * d.radius * 0.05;
+      if (d.radius < 0.15) d.radius = 2.5 + Math.random() * 3;
+      d.z      += d.vz;
+      if (Math.abs(d.z) > 1.8) d.vz *= -1;
+
+      voidPos[i*3  ] = Math.cos(d.angle) * d.radius;
+      voidPos[i*3+1] = Math.sin(d.angle) * d.radius;
+      voidPos[i*3+2] = d.z;
+    }
+    voidGeo.attributes.position.needsUpdate = true;
+  }
+
+  // ── PHASE 2: THE FORMATION (3–6.2s) ───────────────────────────────────────
+  if (el >= T.void_end) {
+    const ph2 = clamp((el - T.void_end) / (T.formation_end - T.void_end), 0, 1);
+
+    // Fade out rays as formation begins
+    const rayFade = 1 - smoothstep(T.void_end, T.void_end + 1.0, el);
+    for (let i = 0; i < RAY_COUNT; i++) {
+      rayMats[i].opacity *= rayFade;
+    }
+
+    // Camera starts pulling back
+    const camZ = THREE.MathUtils.lerp(7.0, 5.5, easeOutQuart(ph2));
+    camera.position.z = camZ;
+
+    // Strokes draw in sequentially, outer → inner
+    // All 33 strokes animate over the formation window
+    // Each stroke starts after previous is ~55% through
+    const DRAW_WINDOW = 0.85; // fraction of phase 2 used for drawing
+    for (let s = 0; s < strokeData.length; s++) {
+      const sd = strokeData[s];
+      const startFrac = (s / strokeData.length) * DRAW_WINDOW;
+      const strokeT   = clamp((ph2 - startFrac) / (DRAW_WINDOW / strokeData.length + 0.12), 0, 1);
+      const opac      = easeOutQuart(strokeT);
+      sd.opacity = opac;
+      for (const line of sd.lines) {
+        line.material.opacity = opac;
+      }
+
+      // Spawn trail particles at the "drawing front"
+      if (strokeT > 0.02 && strokeT < 0.92 && Math.random() < 0.3) {
+        const angle = SPEC.pointyTop + s * SPEC.twistPerRing + el * 0.4;
+        const tx = Math.cos(angle) * sd.radius;
+        const ty = Math.sin(angle) * sd.radius;
+        spawnParticle(tx, ty, Z_FRONT * sd.t, sd.color, 0.012);
+      }
+    }
+
+    // Bloom gently rises during formation
+    bloomPass.strength = THREE.MathUtils.lerp(0.3, 0.8, easeOutQuart(ph2));
+  }
+
+  // ── PHASE 3: THE IGNITION (6.2–8.2s) ─────────────────────────────────────
+  if (el >= T.formation_end) {
+    const ph3    = clamp((el - T.formation_end) / (T.ignition_end - T.formation_end), 0, 1);
+    const spike  = Math.exp(-Math.pow((ph3 - 0.25) * 5, 2));  // gaussian spike at 25%
+    const settle = 1 - smoothstep(0.35, 1.0, ph3);
+
+    // Bloom spike: rises to 2.5 at peak, settles to 0.8
+    bloomPass.strength = 0.8 + spike * 1.7 + settle * 0.1;
+    renderer.toneMappingExposure = 1.3 + spike * 0.7;
+
+    // Core ignites
+    coreMat.opacity = smoothstep(0.0, 0.2, ph3) * (0.85 + spike * 0.5);
+    coreMesh.scale.setScalar(1.0 + spike * 3.5 + smoothstep(0.0, 0.15, ph3) * 1.2);
+
+    // Pulse ring expands outward
+    const pulseScale = ph3 * 14.0;
+    pulseMesh.scale.setScalar(pulseScale);
+    pulseMat.opacity = Math.max(0, (1 - ph3 * 1.4) * 0.65);
+
+    // Second pulse ring (offset)
+    const pulseScale2 = Math.max(0, (ph3 - 0.18) * 12.0);
+    pulseMesh2.scale.setScalar(pulseScale2);
+    pulseMat2.opacity = Math.max(0, (1 - (ph3 - 0.18) * 1.5) * 0.45);
+
+    // Seed fades out as core takes over
+    seedMat.opacity = Math.max(0, 1 - ph3 * 3);
+
+    // Burst particles from center
+    if (ph3 < 0.4 && Math.random() < 0.6) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 0.02 + Math.random() * 0.035;
+      const col   = Math.random() < 0.5 ? ORANGE.clone() : BLUE.clone();
+      spawnParticle(
+        Math.cos(angle) * 0.05,
+        Math.sin(angle) * 0.05,
+        Z_FRONT,
+        col,
+        speed
+      );
+    }
+
+    // Strokes settle with slight brightness boost at ignition
+    for (const sd of strokeData) {
+      const brightBoost = sd.t > 0.7
+        ? spike * 0.6  // inner orange strokes pulse brighter
+        : spike * 0.25; // outer blue strokes subtle
+      for (const line of sd.lines) {
+        line.material.opacity = clamp(sd.opacity + brightBoost, 0, 1);
+      }
+    }
+  }
+
+  // ── PHASE 4: THE BRAND (8.2–10s) ──────────────────────────────────────────
+  if (el >= T.ignition_end) {
+    const ph4 = clamp((el - T.ignition_end) / (T.brand_end - T.ignition_end), 0, 1);
+
+    // Bloom settles to ambient
+    bloomPass.strength = THREE.MathUtils.lerp(bloomPass.strength, 0.75, dt * 2.5);
+    renderer.toneMappingExposure = THREE.MathUtils.lerp(renderer.toneMappingExposure, 1.3, dt * 3);
+
+    // Fade in brand name
+    if (ph4 > 0.1 && domName.style.opacity !== '1') {
+      domName.style.opacity = '1';
+      domName.style.transform = 'translateY(0)';
+    }
+    if (ph4 > 0.35 && domTag1.style.opacity !== '1') {
+      domTag1.style.opacity = '1';
+      domTag1.style.transform = 'translateY(0)';
+    }
+
+    // Logo rotation begins gently
+    const rotStrength = smoothstep(0.0, 1.0, ph4) * 0.003;
+    logoGroup.rotation.z += rotStrength;
+
+    // Core dims to ambient glow
+    coreMat.opacity = THREE.MathUtils.lerp(coreMat.opacity, 0.35, dt * 1.5);
+    coreMesh.scale.lerp(new THREE.Vector3(1, 1, 1), dt * 2.0);
+  }
+
+  // ── PHASE 5: THE TAGLINE (10–13s) ─────────────────────────────────────────
+  if (el >= T.brand_end) {
+    const ph5 = clamp((el - T.brand_end) / (T.tagline_end - T.brand_end), 0, 1);
+
+    if (ph5 > 0.15 && domTag2.style.opacity !== '1') {
+      domTag2.style.opacity = '1';
+      domTag2.style.transform = 'translateY(0)';
+    }
+
+    // Continuous gentle rotation
+    logoGroup.rotation.z += 0.003 * dt * 30;
+
+    // Ambient particles still swirl
+    voidMat.opacity = THREE.MathUtils.lerp(voidMat.opacity, 0.18, dt * 0.8);
+
+    // Bloom stays ambient
+    bloomPass.strength = 0.72 + Math.sin(el * 1.2) * 0.04;
+  }
+
+  // ── PHASE 6: THE REST (13s+) ───────────────────────────────────────────────
+  if (el >= T.tagline_end) {
+    // Replay button appears
+    if (!replayVisible) {
+      replayVisible = true;
+      domReplay.classList.add('visible');
+    }
+
+    // Gentle idle rotation
+    logoGroup.rotation.z += dt * 0.12;
+
+    // Subtle float
+    logoGroup.position.y = Math.sin(el * 0.4) * 0.04;
+
+    // Core breathes
+    coreMat.opacity = 0.28 + Math.sin(el * 1.8) * 0.12;
+    coreMesh.scale.setScalar(1.0 + Math.sin(el * 2.2) * 0.15);
+
+    // Ambient bloom breathe
+    bloomPass.strength = 0.68 + Math.sin(el * 0.7) * 0.08;
+
+    // Particles fade very low
+    voidMat.opacity = 0.10 + Math.sin(el * 0.5) * 0.04;
+  }
+
+  // ── CONTINUOUS: update particle system ────────────────────────────────────
+  updateParticles(dt);
+
+  // ── RENDER ────────────────────────────────────────────────────────────────
+  composer.render();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PARTICLE SYSTEM (trail + burst)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MAX_P = 1500;
+const pGeo  = new THREE.BufferGeometry();
+const pPos  = new Float32Array(MAX_P * 3);
+const pCol  = new Float32Array(MAX_P * 3);
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+pGeo.setAttribute('color',    new THREE.BufferAttribute(pCol, 3));
+
+const pMat = new THREE.PointsMaterial({
+  size: 0.032,
+  sizeAttenuation: true,
+  transparent: true,
+  opacity: 0.92,
+  vertexColors: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+
+const pPoints = new THREE.Points(pGeo, pMat);
+scene.add(pPoints);
+
+const pool = Array.from({ length: MAX_P }, () => ({
+  active: false,
+  x:0, y:0, z:0,
+  vx:0, vy:0, vz:0,
+  r:1, g:1, b:1,
+  life:0, maxLife:0,
+}));
+
+function spawnParticle(x, y, z, color, speed) {
+  for (const p of pool) {
+    if (!p.active) {
+      p.active  = true;
+      p.x = x + (Math.random()-0.5)*0.05;
+      p.y = y + (Math.random()-0.5)*0.05;
+      p.z = z + (Math.random()-0.5)*0.03;
+      const spd = speed * (0.6 + Math.random() * 0.8);
+      const ang  = Math.random() * Math.PI * 2;
+      p.vx = Math.cos(ang) * spd * (Math.random() + 0.2);
+      p.vy = Math.sin(ang) * spd * (Math.random() + 0.2);
+      p.vz = (Math.random() - 0.5) * spd * 0.5;
+      p.r  = color.r;
+      p.g  = color.g;
+      p.b  = color.b;
+      p.life    = 0;
+      p.maxLife = 0.35 + Math.random() * 0.75;
+      return;
+    }
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = 0; i < MAX_P; i++) {
+    const p = pool[i];
+    if (p.active) {
+      p.life += dt;
+      if (p.life >= p.maxLife) {
+        p.active = false;
+      } else {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.z += p.vz;
+        p.vy -= dt * 0.008;   // faint gravity
+        p.vx *= 0.995;
+        p.vy *= 0.995;
+      }
+    }
+    const fade = p.active ? Math.pow(1 - p.life/p.maxLife, 1.5) : 0;
+    pPos[i*3  ] = p.active ? p.x : 9999;
+    pPos[i*3+1] = p.active ? p.y : 9999;
+    pPos[i*3+2] = p.active ? p.z : 9999;
+    pCol[i*3  ] = p.r * fade;
+    pCol[i*3+1] = p.g * fade;
+    pCol[i*3+2] = p.b * fade;
+  }
+  pGeo.attributes.position.needsUpdate = true;
+  pGeo.attributes.color.needsUpdate    = true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RESET / REPLAY
+// ─────────────────────────────────────────────────────────────────────────────
+
+function resetState() {
+  globalElapsed = 0;
+  lastTime = null;
+  replayVisible = false;
+  globalRunning = true;
+
+  // DOM text
+  domName.style.opacity   = '0';
+  domName.style.transform = 'translateY(18px)';
+  domTag1.style.opacity   = '0';
+  domTag1.style.transform = 'translateY(14px)';
+  domTag2.style.opacity   = '0';
+  domTag2.style.transform = 'translateY(12px)';
+  domReplay.classList.remove('visible');
+
+  // Camera
+  camera.position.set(0, 0, 7.0);
+
+  // Logo group
+  logoGroup.rotation.set(0, 0, 0);
+  logoGroup.position.set(0, 0, 0);
+
+  // Reset all stroke opacities
+  for (const sd of strokeData) {
+    sd.opacity = 0;
+    for (const line of sd.lines) line.material.opacity = 0;
+  }
+
+  // Reset materials
+  seedMat.opacity  = 0;
+  coreMat.opacity  = 0;
+  pulseMat.opacity = 0;
+  pulseMat2.opacity = 0;
+  voidMat.opacity  = 0;
+  bloomPass.strength = 0;
+  renderer.toneMappingExposure = 1.3;
+
+  pulseMesh.scale.setScalar(1);
+  pulseMesh2.scale.setScalar(1);
+  coreMesh.scale.setScalar(1);
+
+  for (const m of rayMats) m.opacity = 0;
+
+  // Reset particles
+  for (const p of pool) p.active = false;
+  for (const p of voidData) {
+    p.radius = 1.5 + Math.random() * 5.5;
+    p.angle  = Math.random() * Math.PI * 2;
+  }
+}
+
+// Expose restart to global scope for the replay button
+window.restartAnimation = () => {
+  resetState();
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// START
+// ─────────────────────────────────────────────────────────────────────────────
+
+requestAnimationFrame(tick);
+
+</script>
+</body>
+</html>

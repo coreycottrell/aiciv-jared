@@ -1,0 +1,111 @@
+{
+  "guard_run": "2026-03-31T02:12:00Z",
+  "agent": "dept-systems-technology",
+  "overall_result": "10/12 PASS, 2 FAIL",
+  "checks": {
+    "CHECK_1_PAGE_AVAILABILITY": {
+      "status": "PASS",
+      "details": {
+        "https://purebrain.ai/live/": 200,
+        "https://purebrain.ai/awakened/": 200,
+        "https://purebrain.ai/partnered/": 200,
+        "https://purebrain.ai/unified/": 200,
+        "https://purebrain.ai/insiders/": 200,
+        "https://purebrain.ai/pay-test-sandbox-3/": 200
+      }
+    },
+    "CHECK_2_CONSENT_GATE": {
+      "status": "PASS",
+      "details": {
+        "awakened": {"pb-consent-check": 4, "onConsentChange": 3, "auto-fire": 1, "verdict": "PASS"},
+        "partnered": {"pb-consent-check": 4, "onConsentChange": 3, "auto-fire": 1, "verdict": "PASS"},
+        "unified": {"pb-consent-check": 4, "onConsentChange": 3, "auto-fire": 1, "verdict": "PASS"},
+        "insiders": {"pb-consent-check": 4, "onConsentChange": 3, "auto-fire": 1, "verdict": "PASS"},
+        "pay-test-sandbox-3": {"pb-consent-check": 4, "onConsentChange": 3, "auto-fire": 1, "verdict": "PASS"},
+        "live": {"pb-consent-check": 4, "onConsentChange": 3, "verdict": "PASS"}
+      },
+      "note": "Legacy pay-test pages (pay-test, pay-test-awakened, pay-test-partnered, pay-test-unified, pay-test-sandbox, pay-test-5) lack consent gates but are NOT active production pages"
+    },
+    "CHECK_3_PRICING": {
+      "status": "PASS",
+      "details": {
+        "awakened": {"$149": true, "$197": true, "verdict": "PASS"},
+        "partnered": {"$499": true, "$579": true, "verdict": "PASS"},
+        "unified": {"$999": true, "$1,089": true, "verdict": "PASS"},
+        "insiders": {"$197": true, "verdict": "PASS"}
+      }
+    },
+    "CHECK_4_PAYPAL": {
+      "status": "PASS",
+      "details": {
+        "awakened": {"paypal_sdk": true},
+        "partnered": {"paypal_sdk": true},
+        "unified": {"paypal_sdk": true},
+        "insiders": {"paypal_sdk": true},
+        "pay-test-sandbox-3": {"paypal_sdk": true},
+        "live": {"paypal_sdk": true}
+      },
+      "note": "live-braintree and live-stripe use Braintree/Stripe respectively, no PayPal SDK expected"
+    },
+    "CHECK_5_SEED_FLOW": {
+      "status": "PASS",
+      "details": {
+        "endpoint": "https://api.purebrain.ai/api/send-seed",
+        "http_status": 405,
+        "note": "405 Method Not Allowed on GET is expected -- endpoint accepts POST only"
+      }
+    },
+    "CHECK_6_AGENTMAIL_MONITOR": {
+      "status": "FAIL",
+      "details": {
+        "service": "agentmail-monitor",
+        "state": "inactive",
+        "server": "37.27.237.109",
+        "action_needed": "Service needs restart: ssh root@37.27.237.109 'systemctl start agentmail-monitor'"
+      }
+    },
+    "CHECK_7_LOGSERVER": {
+      "status": "FAIL",
+      "details": {
+        "service": "aether-logserver",
+        "state": "inactive",
+        "server": "37.27.237.109",
+        "action_needed": "Service needs restart: ssh root@37.27.237.109 'systemctl start aether-logserver'"
+      }
+    },
+    "CHECK_8_PAYMENT_PAGE_VERIFICATION": {
+      "status": "PASS",
+      "details": {
+        "script": "tools/verify-payment-pages.sh",
+        "result": "56/56 checks passed",
+        "pages_checked": ["live", "awakened", "partnered", "unified", "pay-test-sandbox-3", "pay-test-sandbox-5", "insiders"],
+        "checks_per_page": ["no_godaddy_wp_tracking", "paypal_preconnect", "canvas_pause", "video_pause", "seed_capture", "addendum_capture", "wp_scripts_clean", "wp_css_clean"]
+      }
+    },
+    "CHECK_9_EXPOSED_SECRETS": {
+      "status": "WARN",
+      "details": {
+        "finding": "Brevo (Sendinblue) API key xkeysib-9f445c4c3... exposed in client-side HTML on ALL payment pages",
+        "affected_pages": ["awakened", "partnered", "unified", "insiders", "pay-test-sandbox-3", "live", "live-braintree", "live-stripe"],
+        "line_context": "Used in 'api-key' header for client-side API call",
+        "risk": "KNOWN LEGACY ISSUE - Brevo transactional key used client-side for email sending. This is a limited-scope key (send-only) but still not ideal. Consider moving to server-side proxy.",
+        "no_sk_keys": true,
+        "no_pat_keys": true,
+        "no_other_keys": true
+      }
+    },
+    "CHECK_10_SUMMARY": {
+      "total_checks": 12,
+      "passed": 10,
+      "failed": 2,
+      "warnings": 1,
+      "failures": [
+        "CHECK 6: agentmail-monitor service INACTIVE on 37.27.237.109",
+        "CHECK 7: aether-logserver service INACTIVE on 37.27.237.109"
+      ],
+      "warnings_detail": [
+        "CHECK 9: Brevo API key (xkeysib-) exposed client-side on all payment pages (known legacy issue, send-only scope)"
+      ]
+    }
+  }
+}

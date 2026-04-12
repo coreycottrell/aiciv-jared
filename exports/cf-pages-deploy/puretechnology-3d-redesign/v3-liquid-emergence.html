@@ -1,0 +1,1714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology — Empowering People Through AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --blue: #2a93c1;
+  --blue-glow: rgba(42,147,193,0.6);
+  --orange: #f1420b;
+  --orange-glow: rgba(241,66,11,0.6);
+  --dark: #05080f;
+  --dark2: #080b14;
+}
+
+html { scroll-behavior: auto; }
+
+body {
+  background: var(--dark);
+  color: #e8eaf0;
+  font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
+  cursor: none;
+}
+
+/* ── CUSTOM CURSOR ── */
+#cursor {
+  position: fixed;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: rgba(42,147,193,0.8);
+  pointer-events: none;
+  z-index: 9999;
+  transition: transform 0.15s ease, background 0.2s;
+  mix-blend-mode: screen;
+  transform: translate(-50%, -50%);
+}
+
+/* ── LIQUID CANVAS (Three.js — fixed background) ── */
+#liquid-canvas {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 0;
+}
+
+/* ── LIQUID SURFACE LINE ── */
+#surface-line {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 2px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--blue); border-radius: 1px; }
+
+/* ── NAV ── */
+nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 1000;
+  padding: 24px 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.nav-glass {
+  position: absolute;
+  inset: 0;
+  background: rgba(5,8,15,0.6);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(42,147,193,0.08);
+}
+.nav-logo {
+  font-family: 'Oswald', sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 3px;
+  color: #fff;
+  text-transform: uppercase;
+  position: relative;
+  z-index: 1;
+  text-decoration: none;
+}
+.nav-logo .b { color: var(--blue); }
+.nav-logo .o { color: var(--orange); }
+.nav-links {
+  display: flex;
+  gap: 36px;
+  list-style: none;
+  position: relative;
+  z-index: 1;
+}
+@media (max-width: 768px) { .nav-links { display: none; } }
+.nav-links a {
+  color: rgba(232,234,240,0.45);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition: color 0.2s;
+}
+.nav-links a:hover { color: #fff; }
+.nav-cta {
+  position: relative;
+  z-index: 1;
+  padding: 9px 22px;
+  background: var(--orange);
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.nav-cta:hover {
+  background: #ff5522;
+  box-shadow: 0 0 30px rgba(241,66,11,0.5);
+}
+
+/* ── PAGE SCROLL CONTAINER ── */
+#page {
+  position: relative;
+  z-index: 10;
+  pointer-events: none;
+}
+#page * { pointer-events: auto; }
+
+/* ── SECTION BASE ── */
+.emerge-section {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 120px 60px;
+  position: relative;
+  overflow: visible;
+}
+
+/* ── EMERGE ELEMENT — starts submerged ── */
+.emerge-block {
+  --emerge-progress: 0;
+  opacity: 0;
+  transform: translateY(80px) scaleY(0.92);
+  filter: blur(12px) saturate(0.3);
+  transition: none;
+  will-change: transform, opacity, filter;
+  position: relative;
+  z-index: 2;
+}
+
+.emerge-block.in-view {
+  opacity: calc(var(--emerge-progress) * 1);
+  transform: translateY(calc(80px * (1 - var(--emerge-progress)))) scaleY(calc(0.92 + 0.08 * var(--emerge-progress)));
+  filter: blur(calc(12px * (1 - var(--emerge-progress)))) saturate(calc(0.3 + 0.7 * var(--emerge-progress)));
+}
+.emerge-block.emerged {
+  opacity: 1;
+  transform: translateY(0) scaleY(1);
+  filter: blur(0px) saturate(1);
+}
+.emerge-block.submerging {
+  opacity: calc(var(--emerge-progress) * 1);
+  transform: translateY(calc(-60px * (1 - var(--emerge-progress)))) scaleY(calc(0.94 + 0.06 * var(--emerge-progress)));
+  filter: blur(calc(8px * (1 - var(--emerge-progress)))) saturate(calc(0.4 + 0.6 * var(--emerge-progress)));
+}
+
+/* ── LIQUID DISTORTION WRAPPER ── */
+.liquid-wrap {
+  position: relative;
+}
+.liquid-wrap::before {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: -20px;
+  right: -20px;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--blue), transparent);
+  opacity: 0;
+  border-radius: 50%;
+  transition: opacity 0.4s;
+  filter: blur(2px);
+}
+.emerge-block.emerged .liquid-wrap::before {
+  opacity: 0.6;
+  animation: liquidEdge 3s ease-in-out infinite;
+}
+@keyframes liquidEdge {
+  0%, 100% { transform: scaleX(0.8) translateY(0); opacity: 0.4; }
+  50% { transform: scaleX(1.05) translateY(1px); opacity: 0.7; }
+}
+
+/* ── HERO ── */
+#hero {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 24px;
+  position: relative;
+}
+
+.hero-eyebrow {
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px;
+  font-weight: 300;
+  letter-spacing: 6px;
+  color: var(--blue);
+  text-transform: uppercase;
+  margin-bottom: 28px;
+  opacity: 0;
+  transform: translateY(30px);
+}
+.hero-eyebrow.entered {
+  animation: riseFromLiquid 1.2s cubic-bezier(0.16,1,0.3,1) 0.4s forwards;
+}
+
+.hero-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: clamp(52px, 9vw, 128px);
+  font-weight: 700;
+  line-height: 0.88;
+  letter-spacing: -2px;
+  color: #fff;
+  text-transform: uppercase;
+  margin-bottom: 32px;
+  opacity: 0;
+  transform: translateY(60px) scaleY(0.85);
+  filter: blur(8px);
+}
+.hero-title.entered {
+  animation: riseFromLiquidBig 1.5s cubic-bezier(0.16,1,0.3,1) 0.7s forwards;
+}
+.hero-title .blue { color: var(--blue); }
+.hero-title .orange { color: var(--orange); }
+
+.hero-sub {
+  font-size: 18px;
+  font-weight: 300;
+  color: rgba(232,234,240,0.55);
+  max-width: 520px;
+  line-height: 1.7;
+  margin-bottom: 52px;
+  opacity: 0;
+  transform: translateY(40px);
+}
+.hero-sub.entered {
+  animation: riseFromLiquid 1.2s cubic-bezier(0.16,1,0.3,1) 1.1s forwards;
+}
+
+.hero-cta-group {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+  opacity: 0;
+  transform: translateY(30px);
+}
+.hero-cta-group.entered {
+  animation: riseFromLiquid 1s cubic-bezier(0.16,1,0.3,1) 1.4s forwards;
+}
+
+.btn-primary {
+  padding: 14px 36px;
+  background: var(--orange);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.25s;
+  text-decoration: none;
+  display: inline-block;
+}
+.btn-primary:hover {
+  background: #ff5522;
+  box-shadow: 0 0 40px rgba(241,66,11,0.55), 0 0 80px rgba(241,66,11,0.2);
+  transform: translateY(-2px);
+}
+.btn-ghost {
+  padding: 14px 36px;
+  background: transparent;
+  color: rgba(232,234,240,0.7);
+  border: 1px solid rgba(42,147,193,0.3);
+  border-radius: 6px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.25s;
+  text-decoration: none;
+  display: inline-block;
+}
+.btn-ghost:hover {
+  border-color: var(--blue);
+  color: #fff;
+  box-shadow: 0 0 30px rgba(42,147,193,0.25);
+}
+
+@keyframes riseFromLiquid {
+  0% { opacity: 0; transform: translateY(30px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes riseFromLiquidBig {
+  0% { opacity: 0; transform: translateY(60px) scaleY(0.85); filter: blur(8px); }
+  60% { filter: blur(0px); }
+  100% { opacity: 1; transform: translateY(0) scaleY(1); filter: blur(0px); }
+}
+
+/* ── HERO SCROLL INDICATOR ── */
+.scroll-indicator {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  opacity: 0;
+  animation: fadeIn 1s 2.5s forwards;
+}
+.scroll-line {
+  width: 1px;
+  height: 50px;
+  background: linear-gradient(to bottom, transparent, var(--blue));
+  animation: scrollPulse 2s ease-in-out infinite;
+}
+.scroll-label {
+  font-size: 9px;
+  letter-spacing: 3px;
+  color: rgba(42,147,193,0.5);
+  text-transform: uppercase;
+}
+@keyframes scrollPulse {
+  0%, 100% { opacity: 0.3; transform: scaleY(0.8); }
+  50% { opacity: 1; transform: scaleY(1); }
+}
+@keyframes fadeIn {
+  to { opacity: 1; }
+}
+
+/* ── SECTION EYEBROW ── */
+.eyebrow {
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px;
+  font-weight: 300;
+  letter-spacing: 5px;
+  color: var(--blue);
+  text-transform: uppercase;
+  margin-bottom: 20px;
+  display: block;
+}
+
+/* ── SECTION TITLES ── */
+.section-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: clamp(36px, 5vw, 68px);
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: -1px;
+  color: #fff;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+}
+.section-title .blue { color: var(--blue); }
+.section-title .orange { color: var(--orange); }
+
+.section-body {
+  font-size: 16px;
+  font-weight: 300;
+  color: rgba(232,234,240,0.55);
+  line-height: 1.75;
+  max-width: 560px;
+}
+
+/* ── GLASS CARD ── */
+.glass-card {
+  background: rgba(8,11,20,0.55);
+  backdrop-filter: blur(40px) saturate(1.6);
+  border: 1px solid rgba(42,147,193,0.12);
+  border-radius: 16px;
+  padding: 40px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.glass-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 20% 0%, rgba(42,147,193,0.07) 0%, transparent 60%);
+  pointer-events: none;
+}
+.glass-card:hover {
+  border-color: rgba(42,147,193,0.28);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(42,147,193,0.08);
+}
+
+/* ── SERVICE GRID ── */
+.services-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+  width: 100%;
+  max-width: 1200px;
+}
+
+.service-card {
+  background: rgba(8,11,20,0.6);
+  backdrop-filter: blur(40px) saturate(1.6);
+  border: 1px solid rgba(42,147,193,0.1);
+  border-radius: 14px;
+  padding: 36px;
+  position: relative;
+  overflow: hidden;
+  cursor: default;
+  transition: border-color 0.3s, transform 0.3s, box-shadow 0.3s;
+}
+.service-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--blue), transparent);
+  transform: scaleX(0);
+  transition: transform 0.4s cubic-bezier(0.16,1,0.3,1);
+}
+.service-card:hover {
+  border-color: rgba(42,147,193,0.25);
+  transform: translateY(-4px);
+  box-shadow: 0 30px 60px rgba(0,0,0,0.5), 0 0 50px rgba(42,147,193,0.06);
+}
+.service-card:hover::after {
+  transform: scaleX(1);
+}
+.service-icon {
+  font-size: 28px;
+  margin-bottom: 20px;
+  display: block;
+  filter: drop-shadow(0 0 8px var(--blue));
+}
+.service-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 22px;
+  font-weight: 500;
+  color: #fff;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+.service-desc {
+  font-size: 14px;
+  font-weight: 300;
+  color: rgba(232,234,240,0.5);
+  line-height: 1.7;
+}
+
+/* ── PROBLEM STAT ── */
+.stat-callout {
+  background: rgba(241,66,11,0.06);
+  border: 1px solid rgba(241,66,11,0.2);
+  border-radius: 12px;
+  padding: 30px 40px;
+  text-align: center;
+  max-width: 680px;
+}
+.stat-callout .number {
+  font-family: 'Oswald', sans-serif;
+  font-size: clamp(42px, 7vw, 88px);
+  font-weight: 700;
+  color: var(--orange);
+  letter-spacing: -2px;
+  line-height: 1;
+  filter: drop-shadow(0 0 20px rgba(241,66,11,0.4));
+}
+.stat-callout .label {
+  font-size: 14px;
+  color: rgba(232,234,240,0.45);
+  letter-spacing: 0.1em;
+  margin-top: 10px;
+  text-transform: uppercase;
+}
+
+/* ── MISSION / VISION / VALUES ── */
+.mvv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+  width: 100%;
+  max-width: 1100px;
+}
+.mvv-panel {
+  background: rgba(8,11,20,0.6);
+  backdrop-filter: blur(40px) saturate(1.6);
+  border: 1px solid rgba(42,147,193,0.1);
+  border-radius: 16px;
+  padding: 40px 36px;
+  position: relative;
+  overflow: hidden;
+}
+.mvv-panel::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(42,147,193,0.4), transparent);
+}
+.mvv-label {
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px;
+  font-weight: 300;
+  letter-spacing: 4px;
+  color: var(--blue);
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+.mvv-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 26px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 16px;
+  letter-spacing: 0.5px;
+}
+.mvv-text {
+  font-size: 14px;
+  font-weight: 300;
+  color: rgba(232,234,240,0.5);
+  line-height: 1.75;
+}
+
+/* ── ECOSYSTEM ── */
+#ecosystem { text-align: center; }
+.ecosystem-center {
+  max-width: 900px;
+  width: 100%;
+}
+.ecosystem-pillars {
+  display: flex;
+  gap: 32px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 60px;
+}
+.eco-pillar {
+  background: rgba(8,11,20,0.65);
+  backdrop-filter: blur(40px) saturate(1.6);
+  border: 1px solid rgba(42,147,193,0.1);
+  border-radius: 100px;
+  padding: 16px 36px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s;
+}
+.eco-pillar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(42,147,193,0.04), rgba(241,66,11,0.04));
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.eco-pillar:hover { border-color: rgba(42,147,193,0.3); }
+.eco-pillar:hover::before { opacity: 1; }
+.eco-pillar-text {
+  font-family: 'Oswald', sans-serif;
+  font-size: 18px;
+  font-weight: 500;
+  color: rgba(232,234,240,0.75);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── PUREBRAIN ── */
+#purebrain {
+  text-align: center;
+  background: transparent;
+}
+.purebrain-center {
+  max-width: 900px;
+  width: 100%;
+}
+.purebrain-badge {
+  display: inline-block;
+  padding: 8px 24px;
+  background: rgba(42,147,193,0.08);
+  border: 1px solid rgba(42,147,193,0.25);
+  border-radius: 100px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px;
+  letter-spacing: 4px;
+  color: var(--blue);
+  text-transform: uppercase;
+  margin-bottom: 28px;
+}
+.purebrain-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: clamp(42px, 6vw, 80px);
+  font-weight: 700;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: -1px;
+  line-height: 0.9;
+  margin-bottom: 20px;
+}
+.purebrain-title .blue { color: var(--blue); }
+.purebrain-tagline {
+  font-family: 'Oswald', sans-serif;
+  font-size: 18px;
+  color: rgba(232,234,240,0.45);
+  font-weight: 300;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 48px;
+}
+.purebrain-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 0;
+  text-align: left;
+}
+.feature-chip {
+  background: rgba(8,11,20,0.7);
+  backdrop-filter: blur(30px);
+  border: 1px solid rgba(42,147,193,0.1);
+  border-radius: 12px;
+  padding: 24px;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.feature-chip:hover {
+  border-color: rgba(42,147,193,0.25);
+  box-shadow: 0 10px 40px rgba(42,147,193,0.07);
+}
+.feature-chip-icon {
+  font-size: 20px;
+  margin-bottom: 12px;
+  display: block;
+}
+.feature-chip-name {
+  font-family: 'Oswald', sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  color: #fff;
+  margin-bottom: 6px;
+}
+.feature-chip-desc {
+  font-size: 12px;
+  color: rgba(232,234,240,0.4);
+  line-height: 1.6;
+}
+
+/* ── STATS ── */
+#stats { text-align: center; }
+.stats-row {
+  display: flex;
+  gap: 60px;
+  justify-content: center;
+  flex-wrap: wrap;
+  max-width: 900px;
+  width: 100%;
+}
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.stat-number {
+  font-family: 'Oswald', sans-serif;
+  font-size: clamp(52px, 7vw, 96px);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -2px;
+  color: #fff;
+  filter: drop-shadow(0 0 20px rgba(42,147,193,0.4));
+}
+.stat-number.orange { filter: drop-shadow(0 0 20px rgba(241,66,11,0.4)); color: var(--orange); }
+.stat-label {
+  font-family: 'Oswald', sans-serif;
+  font-size: 12px;
+  font-weight: 300;
+  letter-spacing: 4px;
+  color: rgba(232,234,240,0.35);
+  text-transform: uppercase;
+}
+
+/* ── TESTIMONIALS ── */
+.testimonials-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+  width: 100%;
+  max-width: 1200px;
+}
+.testimonial-card {
+  background: rgba(8,11,20,0.6);
+  backdrop-filter: blur(40px) saturate(1.6);
+  border: 1px solid rgba(42,147,193,0.09);
+  border-radius: 16px;
+  padding: 36px;
+  position: relative;
+  transition: border-color 0.3s;
+}
+.testimonial-card:hover {
+  border-color: rgba(42,147,193,0.2);
+}
+.testimonial-quote {
+  font-family: 'Oswald', sans-serif;
+  font-size: 72px;
+  font-weight: 700;
+  color: var(--blue);
+  opacity: 0.15;
+  line-height: 0.6;
+  margin-bottom: 16px;
+  display: block;
+}
+.testimonial-text {
+  font-size: 14px;
+  font-weight: 300;
+  color: rgba(232,234,240,0.65);
+  line-height: 1.75;
+  margin-bottom: 28px;
+  font-style: italic;
+}
+.testimonial-author {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.testimonial-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--blue), var(--orange));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Oswald', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  flex-shrink: 0;
+}
+.testimonial-name {
+  font-family: 'Oswald', sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+  color: #fff;
+  letter-spacing: 0.3px;
+}
+.testimonial-role {
+  font-size: 12px;
+  color: rgba(232,234,240,0.35);
+}
+
+/* ── CTA ── */
+#cta-section {
+  text-align: center;
+  position: relative;
+}
+.cta-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px;
+  height: 300px;
+  background: radial-gradient(ellipse, rgba(42,147,193,0.12) 0%, transparent 70%);
+  pointer-events: none;
+  border-radius: 50%;
+}
+.cta-center {
+  max-width: 700px;
+  position: relative;
+  z-index: 1;
+}
+.cta-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: clamp(44px, 6vw, 88px);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: -2px;
+  line-height: 0.9;
+  color: #fff;
+  margin-bottom: 28px;
+}
+.cta-title .orange { color: var(--orange); }
+.cta-sub {
+  font-size: 17px;
+  font-weight: 300;
+  color: rgba(232,234,240,0.45);
+  line-height: 1.7;
+  margin-bottom: 48px;
+}
+
+/* ── FOOTER ── */
+footer {
+  padding: 60px;
+  position: relative;
+  z-index: 10;
+  border-top: 1px solid rgba(42,147,193,0.07);
+}
+.footer-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1200px;
+  margin: 0 auto;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+.footer-logo {
+  font-family: 'Oswald', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: rgba(232,234,240,0.35);
+  text-transform: uppercase;
+}
+.footer-copy {
+  font-size: 12px;
+  color: rgba(232,234,240,0.2);
+}
+
+/* ── BUBBLE PARTICLES ── */
+.bubble-field {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 2;
+  overflow: hidden;
+}
+.bubble {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(42,147,193,0.3);
+  background: rgba(42,147,193,0.03);
+  animation: bubbleRise var(--dur, 8s) ease-in var(--delay, 0s) infinite;
+}
+.bubble.orange {
+  border-color: rgba(241,66,11,0.25);
+  background: rgba(241,66,11,0.03);
+}
+@keyframes bubbleRise {
+  0% {
+    bottom: -60px;
+    opacity: 0;
+    transform: translateX(0) scale(0.8);
+  }
+  10% { opacity: 1; }
+  70% { opacity: 0.6; }
+  90% { opacity: 0; }
+  100% {
+    bottom: 110%;
+    opacity: 0;
+    transform: translateX(var(--drift, 30px)) scale(1.1);
+  }
+}
+
+/* ── SECTION DIVIDER ── */
+.liquid-divider {
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(42,147,193,0.2), rgba(241,66,11,0.15), rgba(42,147,193,0.2), transparent);
+  position: relative;
+  margin: 0 auto;
+  max-width: 1200px;
+}
+
+/* ── RIPPLE EFFECT ── */
+.ripple-ring {
+  position: fixed;
+  border-radius: 50%;
+  border: 1.5px solid rgba(42,147,193,0.5);
+  pointer-events: none;
+  z-index: 5;
+  animation: rippleOut 0.8s ease-out forwards;
+}
+@keyframes rippleOut {
+  0% { transform: translate(-50%, -50%) scale(0.1); opacity: 0.8; }
+  100% { transform: translate(-50%, -50%) scale(3); opacity: 0; }
+}
+
+/* ── EMERGE STAGGER DELAYS ── */
+.emerge-d1 { transition-delay: 0.05s; }
+.emerge-d2 { transition-delay: 0.15s; }
+.emerge-d3 { transition-delay: 0.25s; }
+.emerge-d4 { transition-delay: 0.35s; }
+.emerge-d5 { transition-delay: 0.45s; }
+</style>
+</head>
+<body>
+
+<!-- Custom cursor -->
+<div id="cursor"></div>
+
+<!-- Bubble field (ambient) -->
+<div class="bubble-field" id="bubble-field"></div>
+
+<!-- Three.js liquid surface canvas -->
+<canvas id="liquid-canvas"></canvas>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-glass"></div>
+  <a href="#" class="nav-logo">PURE<span class="b">T</span>ECHNOLOGY</a>
+  <ul class="nav-links">
+    <li><a href="#services">Services</a></li>
+    <li><a href="#mission">Mission</a></li>
+    <li><a href="#ecosystem">Ecosystem</a></li>
+    <li><a href="#purebrain">PureBrain</a></li>
+    <li><a href="#contact">Contact</a></li>
+  </ul>
+  <button class="nav-cta" onclick="document.getElementById('cta-section').scrollIntoView({behavior:'smooth'})">Experience</button>
+</nav>
+
+<!-- PAGE CONTENT -->
+<div id="page">
+
+  <!-- ═══ HERO ═══ -->
+  <section id="hero">
+    <p class="hero-eyebrow" id="hero-eyebrow">Empowering People Through AI</p>
+    <h1 class="hero-title" id="hero-title">
+      <span class="blue">ACTUAL</span><br>
+      INTELLIGENCE<br>
+      <span class="orange">UNLEASHED</span>
+    </h1>
+    <p class="hero-sub" id="hero-sub">
+      Pure Technology lays waste to marketing inefficiency by leveraging Big Data and AI
+      to revolutionize brand-consumer personalization. Your data, content &amp; identity —
+      as a right, not a request.
+    </p>
+    <div class="hero-cta-group" id="hero-ctas">
+      <a href="#purebrain" class="btn-primary">Experience PureBrain</a>
+      <a href="#services" class="btn-ghost">Discover Services</a>
+    </div>
+    <div class="scroll-indicator">
+      <div class="scroll-line"></div>
+      <span class="scroll-label">Scroll to emerge</span>
+    </div>
+  </section>
+
+  <!-- ═══ PROBLEM ═══ -->
+  <section class="emerge-section" id="problem" style="justify-content: center; flex-direction: column; gap: 48px;">
+    <div class="emerge-block" data-emerge="1">
+      <div class="liquid-wrap">
+        <span class="eyebrow">The Problem</span>
+        <h2 class="section-title">Budget Waste.<br><span class="orange">Silently Systemic.</span></h2>
+        <p class="section-body">
+          The marketing world's multi-trillion-dollar problem? Budget waste.
+          In the time you've read this, $10,000 was wasted on marketing &amp; advertising.
+          And big tech earned $1 million+ from <strong style="color:var(--orange)">YOUR DATA</strong>.
+        </p>
+      </div>
+    </div>
+    <div class="emerge-block emerge-d2" data-emerge="1">
+      <div class="stat-callout">
+        <div class="number" id="waste-counter">$10,000</div>
+        <div class="label">Wasted on ads while you read this page</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="liquid-divider"></div>
+
+  <!-- ═══ SERVICES ═══ -->
+  <section class="emerge-section" id="services" style="flex-direction: column; align-items: center; gap: 60px;">
+    <div class="emerge-block" data-emerge="1" style="text-align: center;">
+      <div class="liquid-wrap">
+        <span class="eyebrow">What We Do</span>
+        <h2 class="section-title">Full-Funnel Digital<br><span class="blue">Built for Results</span></h2>
+      </div>
+    </div>
+    <div class="services-grid">
+      <div class="emerge-block emerge-d1" data-emerge="1">
+        <div class="service-card">
+          <span class="service-icon">📡</span>
+          <div class="service-title">Digital Marketing</div>
+          <p class="service-desc">Data-driven campaigns that convert attention into measurable results across social &amp; search. SEO to ads to social — every piece working together.</p>
+        </div>
+      </div>
+      <div class="emerge-block emerge-d2" data-emerge="1">
+        <div class="service-card">
+          <span class="service-icon">⚡</span>
+          <div class="service-title">Influencer Marketing</div>
+          <p class="service-desc">Build campaigns that transform influence into brand growth. We craft strategic experiences that create stories worth following.</p>
+        </div>
+      </div>
+      <div class="emerge-block emerge-d3" data-emerge="1">
+        <div class="service-card">
+          <span class="service-icon">🎯</span>
+          <div class="service-title">Experiential Giveaways</div>
+          <p class="service-desc">Strategic experiences that position, message, and architect revenue. From concept to promotion — packed-house results every time.</p>
+        </div>
+      </div>
+      <div class="emerge-block emerge-d1" data-emerge="1">
+        <div class="service-card">
+          <span class="service-icon">🚀</span>
+          <div class="service-title">LaunchBoost: GTM</div>
+          <p class="service-desc">Turn momentum into global revenue with a clear playbook, localized branding, and an execution pod that launches, learns, and scales in 90 days.</p>
+        </div>
+      </div>
+      <div class="emerge-block emerge-d2" data-emerge="1">
+        <div class="service-card">
+          <span class="service-icon">✍️</span>
+          <div class="service-title">Content Creation</div>
+          <p class="service-desc">High-quality, compelling content and graphics across social media, blogs, and videos designed to engage, captivate, and retain audiences.</p>
+        </div>
+      </div>
+      <div class="emerge-block emerge-d3" data-emerge="1">
+        <div class="service-card">
+          <span class="service-icon">📊</span>
+          <div class="service-title">Data-Driven Decisions</div>
+          <p class="service-desc">We utilize data insights to refine strategies, optimize performance, and ensure impactful, measurable results that compound over time.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="liquid-divider"></div>
+
+  <!-- ═══ MISSION / VISION / VALUES ═══ -->
+  <section class="emerge-section" id="mission" style="flex-direction: column; align-items: center; gap: 60px;">
+    <div class="emerge-block" data-emerge="1" style="text-align: center;">
+      <div class="liquid-wrap">
+        <span class="eyebrow">Why We Exist</span>
+        <h2 class="section-title">Pure<span class="blue"> Purpose</span></h2>
+        <p class="section-body" style="margin: 0 auto;">
+          Maximize humanity through technology by understanding pure passions to propel purpose.
+        </p>
+      </div>
+    </div>
+    <div class="mvv-grid">
+      <div class="emerge-block emerge-d1" data-emerge="1">
+        <div class="mvv-panel">
+          <div class="mvv-label">Mission</div>
+          <div class="mvv-title">Reimagine Data</div>
+          <p class="mvv-text">Reimagining data to redefine relationships between brands and consumers for a digitally inclusive mobile economy.</p>
+        </div>
+      </div>
+      <div class="emerge-block emerge-d2" data-emerge="1">
+        <div class="mvv-panel">
+          <div class="mvv-label">Vision</div>
+          <div class="mvv-title">Brighter World</div>
+          <p class="mvv-text">A brighter world where all people actualize their brilliance — where technology serves humanity, not harvests it.</p>
+        </div>
+      </div>
+      <div class="emerge-block emerge-d3" data-emerge="1">
+        <div class="mvv-panel">
+          <div class="mvv-label">Values</div>
+          <div class="mvv-title">The Foundation</div>
+          <p class="mvv-text">Integrity, transparency, growth, innovation, persistence, accountability, &amp; love. These aren't words on a wall — they're how we operate every day.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="liquid-divider"></div>
+
+  <!-- ═══ ECOSYSTEM ═══ -->
+  <section class="emerge-section" id="ecosystem">
+    <div class="ecosystem-center">
+      <div class="emerge-block" data-emerge="1">
+        <div class="liquid-wrap">
+          <span class="eyebrow">The Pure Ecosystem</span>
+          <h2 class="section-title">Strategy...<br><span class="blue">Influence...</span><br><span class="orange">Technology...</span></h2>
+          <p class="section-body" style="margin: 24px auto 0; max-width: 520px;">
+            Three pillars. One unified intelligence. The ecosystem that builds brand ownership
+            at the intersection of data, creativity, and AI.
+          </p>
+        </div>
+      </div>
+      <div class="ecosystem-pillars">
+        <div class="emerge-block emerge-d1" data-emerge="1">
+          <div class="eco-pillar">
+            <span class="eco-pillar-text">Pure Strategy</span>
+          </div>
+        </div>
+        <div class="emerge-block emerge-d2" data-emerge="1">
+          <div class="eco-pillar">
+            <span class="eco-pillar-text">Pure Influence</span>
+          </div>
+        </div>
+        <div class="emerge-block emerge-d3" data-emerge="1">
+          <div class="eco-pillar">
+            <span class="eco-pillar-text">Pure Technology</span>
+          </div>
+        </div>
+        <div class="emerge-block emerge-d4" data-emerge="1">
+          <div class="eco-pillar">
+            <span class="eco-pillar-text">Pure Marketing</span>
+          </div>
+        </div>
+        <div class="emerge-block emerge-d5" data-emerge="1">
+          <div class="eco-pillar">
+            <span class="eco-pillar-text" style="color:var(--orange)">PureBrain AI</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="liquid-divider"></div>
+
+  <!-- ═══ PUREBRAIN ═══ -->
+  <section class="emerge-section" id="purebrain">
+    <div class="purebrain-center">
+      <div class="emerge-block" data-emerge="1">
+        <div class="liquid-wrap">
+          <div class="purebrain-badge">PureBrain AI</div>
+          <h2 class="purebrain-title">The <span class="blue">AI</span> That<br>Matters Most</h2>
+          <p class="purebrain-tagline">The Key to Unlocking AI</p>
+          <p class="section-body" style="margin: 0 auto 48px; max-width: 560px;">
+            PureBrain is the intelligent partner that grows with you — with permanent memory,
+            deep personalization, and AI that actually understands your business.
+            Sign up here to experience the future.
+          </p>
+        </div>
+      </div>
+      <div class="purebrain-features">
+        <div class="emerge-block emerge-d1" data-emerge="1">
+          <div class="feature-chip">
+            <span class="feature-chip-icon">🧠</span>
+            <div class="feature-chip-name">Permanent Memory</div>
+            <div class="feature-chip-desc">Remembers everything about your business across every session</div>
+          </div>
+        </div>
+        <div class="emerge-block emerge-d2" data-emerge="1">
+          <div class="feature-chip">
+            <span class="feature-chip-icon">⚡</span>
+            <div class="feature-chip-name">Deep Personalization</div>
+            <div class="feature-chip-desc">AI that adapts to your unique voice, goals, and context</div>
+          </div>
+        </div>
+        <div class="emerge-block emerge-d3" data-emerge="1">
+          <div class="feature-chip">
+            <span class="feature-chip-icon">🎯</span>
+            <div class="feature-chip-name">Actual Intelligence</div>
+            <div class="feature-chip-desc">Not a chatbot — a strategic partner that compounds over time</div>
+          </div>
+        </div>
+        <div class="emerge-block emerge-d4" data-emerge="1">
+          <div class="feature-chip">
+            <span class="feature-chip-icon">🔒</span>
+            <div class="feature-chip-name">Private &amp; Secure</div>
+            <div class="feature-chip-desc">Personal brand ownership — your data, your identity, your right</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="liquid-divider"></div>
+
+  <!-- ═══ STATS ═══ -->
+  <section class="emerge-section" id="stats">
+    <div class="emerge-block" data-emerge="1">
+      <div class="liquid-wrap" style="text-align: center; margin-bottom: 60px;">
+        <span class="eyebrow">Pure Facts</span>
+        <h2 class="section-title">Results That<br><span class="blue">Speak Loudly</span></h2>
+      </div>
+      <div class="stats-row">
+        <div class="stat-item">
+          <div class="stat-number blue" data-count="50" data-suffix="M+">0</div>
+          <div class="stat-label">Followers Gained</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number orange" data-count="500" data-suffix="+">0</div>
+          <div class="stat-label">Brands Served</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number" data-count="1200" data-suffix="+">0</div>
+          <div class="stat-label">Campaigns Completed</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="liquid-divider"></div>
+
+  <!-- ═══ TESTIMONIALS ═══ -->
+  <section class="emerge-section" id="testimonials" style="flex-direction: column; align-items: center; gap: 60px;">
+    <div class="emerge-block" data-emerge="1" style="text-align: center;">
+      <div class="liquid-wrap">
+        <span class="eyebrow">Real Results</span>
+        <h2 class="section-title">What They<br><span class="blue">Say</span></h2>
+      </div>
+    </div>
+    <div class="testimonials-grid">
+      <div class="emerge-block emerge-d1" data-emerge="1">
+        <div class="testimonial-card">
+          <span class="testimonial-quote">"</span>
+          <p class="testimonial-text">The MYST Main Event Giveaway drove a massive influx of app downloads and brand reach — generating millions of impressions. PMG didn't just promote a product — they created a story worth following. That's the future of brand growth.</p>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">JS</div>
+            <div>
+              <div class="testimonial-name">Josh Sklut</div>
+              <div class="testimonial-role">Co-Founder @ MyStandard.io</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="emerge-block emerge-d2" data-emerge="1">
+        <div class="testimonial-card">
+          <span class="testimonial-quote">"</span>
+          <p class="testimonial-text">With the help of Pure Marketing Group, I've achieved enough influence with my personal brand to consistently land new brand opportunities &amp; events to speak!</p>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">DS</div>
+            <div>
+              <div class="testimonial-name">Dr. Suzanne Soliman</div>
+              <div class="testimonial-role">Public Figure</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="emerge-block emerge-d3" data-emerge="1">
+        <div class="testimonial-card">
+          <span class="testimonial-quote">"</span>
+          <p class="testimonial-text">Working with Pure Marketing Group has been a game-changer for our dealership. Their paid ad strategies consistently drive real traffic — not just clicks — and we've seen a noticeable lift in showroom visits during every campaign.</p>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">SM</div>
+            <div>
+              <div class="testimonial-name">Seanne Murray</div>
+              <div class="testimonial-role">GM @ Shoreline Harley Davidson</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="emerge-block emerge-d1" data-emerge="1">
+        <div class="testimonial-card">
+          <span class="testimonial-quote">"</span>
+          <p class="testimonial-text">Pure Marketing Group transformed our business. From SEO to ads to social — every piece worked together to bring in over 100 new clients a month. Our three Houston locations have never been busier.</p>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">DW</div>
+            <div>
+              <div class="testimonial-name">Donna Williams</div>
+              <div class="testimonial-role">Owner @ The Dog House Pet Salon</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="liquid-divider"></div>
+
+  <!-- ═══ CTA ═══ -->
+  <section class="emerge-section" id="cta-section" id="contact">
+    <div class="cta-glow"></div>
+    <div class="cta-center">
+      <div class="emerge-block" data-emerge="1">
+        <div class="liquid-wrap">
+          <span class="eyebrow">Ready to Emerge</span>
+          <h2 class="cta-title">Experience<br>The <span class="orange">Future</span></h2>
+          <p class="cta-sub">
+            Sign up to experience PureBrain — the AI that matters most.
+            Join our creative community to collaborate, innovate and thrive together.
+          </p>
+          <div style="display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;">
+            <a href="https://purebrain.ai" class="btn-primary" target="_blank">Launch PureBrain</a>
+            <a href="mailto:hello@puretechnology.nyc" class="btn-ghost">Get In Touch</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div><!-- end #page -->
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo">Pure Technology Inc.</div>
+    <div class="footer-copy">© 2026 Pure Technology Inc. Empowering People Through AI.</div>
+  </div>
+</footer>
+
+<!-- THREE.JS CDN -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.2/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.2/dist/ScrollTrigger.min.js"></script>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   PURE TECHNOLOGY v3 — LIQUID EMERGENCE
+   Architecture:
+   1. Three.js metaball / displacement liquid surface (WebGL)
+   2. CSS scroll-driven emergence: content rises from liquid, recedes back
+   3. GSAP ScrollTrigger for choreography
+   4. Mouse interaction disturbs the liquid surface
+   5. Ambient bubble particles float up continuously
+═══════════════════════════════════════════════════════════════════════ */
+
+const BLUE = new THREE.Color(0x2a93c1);
+const ORANGE = new THREE.Color(0xf1420b);
+
+/* ─────────────────────────────────────────────
+   1. LIQUID SURFACE — Three.js PlaneGeometry
+   with animated vertex displacement shader
+───────────────────────────────────────────── */
+const canvas = document.getElementById('liquid-canvas');
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: true,
+  alpha: true,
+  powerPreference: 'high-performance'
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x05080f, 1);
+
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+camera.position.z = 1;
+
+// Full-screen quad with liquid shader
+const liquidMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime:       { value: 0 },
+    uMouse:      { value: new THREE.Vector2(0.5, 0.5) },
+    uScroll:     { value: 0 },
+    uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+    uBlue:       { value: BLUE },
+    uOrange:     { value: ORANGE },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    precision highp float;
+    uniform float uTime;
+    uniform vec2  uMouse;
+    uniform float uScroll;
+    uniform vec2  uResolution;
+    uniform vec3  uBlue;
+    uniform vec3  uOrange;
+    varying vec2  vUv;
+
+    /* ── FBM noise ── */
+    float hash(vec2 p) {
+      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+    }
+    float noise(vec2 p) {
+      vec2 i = floor(p);
+      vec2 f = fract(p);
+      vec2 u = f * f * (3.0 - 2.0 * f);
+      return mix(
+        mix(hash(i + vec2(0,0)), hash(i + vec2(1,0)), u.x),
+        mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), u.x),
+        u.y
+      );
+    }
+    float fbm(vec2 p) {
+      float v = 0.0;
+      float a = 0.5;
+      vec2  s = vec2(1.0);
+      for(int i = 0; i < 6; i++) {
+        v += a * noise(p);
+        p  = p * 2.1 + vec2(1.7, 9.2);
+        a *= 0.5;
+      }
+      return v;
+    }
+
+    /* ── Metaball SDF ── */
+    float metaball(vec2 uv, vec2 center, float radius) {
+      float d = length(uv - center);
+      return radius / (d * d + 0.001);
+    }
+
+    void main() {
+      vec2 uv = vUv;
+      float t = uTime * 0.18;
+      float scroll = uScroll * 0.0003;
+
+      /* Background gradient — very dark */
+      vec3 bg = mix(vec3(0.020, 0.031, 0.063), vec3(0.031, 0.043, 0.094), uv.y);
+
+      /* ── Liquid surface height field ── */
+      vec2 liquidUv = uv * 2.8;
+      float surface = fbm(liquidUv + t * vec2(0.3, 0.2));
+      surface += 0.5 * fbm(liquidUv * 1.7 - t * vec2(0.25, 0.4));
+      surface += 0.25 * fbm(liquidUv * 3.1 + t * vec2(0.1, 0.5));
+
+      /* Mouse disturbance */
+      vec2 mouseUv = uv - uMouse;
+      float mouseDist = length(mouseUv * vec2(uResolution.x / uResolution.y, 1.0));
+      float mouseRipple = exp(-mouseDist * 6.0) *
+        sin(mouseDist * 20.0 - uTime * 3.0) * 0.15;
+      surface += mouseRipple;
+
+      /* Metaballs — organic bubbles below surface */
+      float mb = 0.0;
+      mb += metaball(uv, vec2(0.25 + sin(t * 0.7) * 0.12, 0.35 + cos(t * 0.5) * 0.08), 0.018);
+      mb += metaball(uv, vec2(0.65 + cos(t * 0.6) * 0.10, 0.55 + sin(t * 0.45) * 0.07), 0.022);
+      mb += metaball(uv, vec2(0.45 + sin(t * 0.9 + 1.1) * 0.15, 0.70 + cos(t * 0.38) * 0.09), 0.015);
+      mb += metaball(uv, vec2(0.80 + sin(t * 0.55) * 0.08, 0.30 + sin(t * 0.72) * 0.11), 0.012);
+      mb += metaball(uv, vec2(0.15 + cos(t * 0.48) * 0.09, 0.62 + sin(t * 0.63) * 0.10), 0.010);
+      float mbField = clamp((mb - 0.8) * 3.0, 0.0, 1.0);
+
+      /* ── Color composition ── */
+      float blueTint  = fbm(uv * 4.0 + t * 0.4) * 0.6 +
+                        fbm(uv * 7.0 - t * 0.3) * 0.4;
+      float orangeTint = fbm(uv * 5.0 + t * vec2(-0.3, 0.5)) * 0.5;
+
+      /* Liquid color layers */
+      vec3 liquidColor = bg;
+
+      /* Deep blue fluid veins */
+      float vein = smoothstep(0.48, 0.52, surface);
+      liquidColor += uBlue * vein * 0.08;
+
+      /* Orange upwelling zones */
+      float upwell = smoothstep(0.55, 0.70, surface);
+      liquidColor += uOrange * upwell * 0.04;
+
+      /* Metaball glow */
+      liquidColor += uBlue * mbField * 0.12;
+
+      /* Surface shimmer — thin bright lines where liquid curves */
+      float grad = length(vec2(
+        dFdx(surface * 8.0),
+        dFdy(surface * 8.0)
+      ));
+      float shimmer = smoothstep(0.8, 1.4, grad * 4.0) * 0.35;
+      liquidColor += mix(uBlue, uOrange, blueTint) * shimmer;
+
+      /* Caustic-like scatter at bottom */
+      float caustic = fbm(uv * 9.0 + t * 0.8) * fbm(uv * 12.0 - t * 0.6);
+      caustic = pow(caustic, 3.0) * 0.5;
+      liquidColor += uBlue * caustic * 0.15 * (1.0 - uv.y);
+
+      /* Horizontal surface line — subtle */
+      float surfLine = smoothstep(0.02, 0.0, abs(surface - 0.58 + sin(uv.x * 8.0 + t) * 0.03));
+      liquidColor += mix(uBlue, uOrange, uv.x) * surfLine * 0.6;
+
+      /* Vignette */
+      vec2 vigUv = uv * 2.0 - 1.0;
+      float vig = 1.0 - dot(vigUv * 0.45, vigUv * 0.45);
+      vig = pow(clamp(vig, 0.0, 1.0), 1.2);
+      liquidColor *= 0.3 + vig * 0.7;
+
+      /* Subtle bloom on bright spots */
+      float brightness = dot(liquidColor, vec3(0.299, 0.587, 0.114));
+      liquidColor += liquidColor * smoothstep(0.15, 0.35, brightness) * 0.4;
+
+      gl_FragColor = vec4(liquidColor, 1.0);
+    }
+  `,
+  depthTest: false,
+  depthWrite: false,
+});
+
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), liquidMat);
+scene.add(quad);
+
+/* ─────────────────────────────────────────────
+   2. MOUSE — disturb liquid surface
+───────────────────────────────────────────── */
+const mouse = { x: 0.5, y: 0.5, targetX: 0.5, targetY: 0.5 };
+const cursor = document.getElementById('cursor');
+
+window.addEventListener('mousemove', (e) => {
+  mouse.targetX = e.clientX / window.innerWidth;
+  mouse.targetY = 1.0 - (e.clientY / window.innerHeight);
+  cursor.style.left = e.clientX + 'px';
+  cursor.style.top = e.clientY + 'px';
+  spawnRipple(e.clientX, e.clientY);
+});
+
+// Ripple on click
+window.addEventListener('click', (e) => {
+  spawnRipple(e.clientX, e.clientY);
+  spawnRipple(e.clientX, e.clientY, 1.5);
+});
+
+function spawnRipple(x, y, scale = 1) {
+  const ring = document.createElement('div');
+  ring.className = 'ripple-ring';
+  ring.style.left = x + 'px';
+  ring.style.top = y + 'px';
+  ring.style.width = (40 * scale) + 'px';
+  ring.style.height = (40 * scale) + 'px';
+  document.body.appendChild(ring);
+  setTimeout(() => ring.remove(), 850);
+}
+
+/* ─────────────────────────────────────────────
+   3. SCROLL — track for shader + emergence
+───────────────────────────────────────────── */
+let scrollY = 0;
+let scrollVelocity = 0;
+
+window.addEventListener('scroll', () => {
+  scrollY = window.scrollY;
+  scrollVelocity = 0.06;
+});
+
+/* ─────────────────────────────────────────────
+   4. GSAP ScrollTrigger — emerge choreography
+───────────────────────────────────────────── */
+gsap.registerPlugin(ScrollTrigger);
+
+// Find all emerge blocks and wire them up
+document.querySelectorAll('.emerge-block[data-emerge]').forEach((el) => {
+  // Get stagger delay from class
+  let staggerDelay = 0;
+  if (el.classList.contains('emerge-d1')) staggerDelay = 0.05;
+  else if (el.classList.contains('emerge-d2')) staggerDelay = 0.15;
+  else if (el.classList.contains('emerge-d3')) staggerDelay = 0.25;
+  else if (el.classList.contains('emerge-d4')) staggerDelay = 0.35;
+  else if (el.classList.contains('emerge-d5')) staggerDelay = 0.45;
+
+  ScrollTrigger.create({
+    trigger: el,
+    start: 'top 90%',
+    end: 'top 15%',
+    onEnter: () => {
+      setTimeout(() => {
+        el.classList.add('in-view');
+        el.style.setProperty('--emerge-progress', '0');
+        // Animate progress 0 -> 1
+        let prog = 0;
+        const step = () => {
+          prog = Math.min(prog + 0.035, 1);
+          el.style.setProperty('--emerge-progress', prog);
+          if (prog < 1) requestAnimationFrame(step);
+          else el.classList.add('emerged');
+        };
+        requestAnimationFrame(step);
+      }, staggerDelay * 1000);
+    },
+    onLeave: () => {
+      // Sinking back down (past top)
+      el.classList.remove('emerged');
+      el.classList.add('submerging');
+      let prog = 1;
+      const step = () => {
+        prog = Math.max(prog - 0.04, 0);
+        el.style.setProperty('--emerge-progress', prog);
+        if (prog > 0) requestAnimationFrame(step);
+        else {
+          el.classList.remove('in-view', 'submerging');
+          el.style.opacity = '0';
+        }
+      };
+      requestAnimationFrame(step);
+    },
+    onEnterBack: () => {
+      el.classList.remove('submerging');
+      el.classList.add('in-view');
+      let prog = 0;
+      const step = () => {
+        prog = Math.min(prog + 0.03, 1);
+        el.style.setProperty('--emerge-progress', prog);
+        if (prog < 1) requestAnimationFrame(step);
+        else el.classList.add('emerged');
+      };
+      requestAnimationFrame(step);
+    },
+    onLeaveBack: () => {
+      el.classList.remove('emerged', 'in-view');
+      el.style.setProperty('--emerge-progress', '0');
+      el.style.opacity = '0';
+    },
+  });
+});
+
+/* ─────────────────────────────────────────────
+   5. STATS COUNTER — count up as stats emerge
+───────────────────────────────────────────── */
+document.querySelectorAll('[data-count]').forEach((el) => {
+  const target = parseInt(el.dataset.count);
+  const suffix = el.dataset.suffix || '';
+  let started = false;
+
+  ScrollTrigger.create({
+    trigger: el,
+    start: 'top 80%',
+    onEnter: () => {
+      if (started) return;
+      started = true;
+      let current = 0;
+      const duration = 1800;
+      const start = performance.now();
+      const step = (now) => {
+        const elapsed = now - start;
+        const prog = Math.min(elapsed / duration, 1);
+        const ease = 1 - Math.pow(1 - prog, 3);
+        current = Math.round(ease * target);
+        el.textContent = current.toLocaleString() + suffix;
+        if (prog < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }
+  });
+});
+
+/* ─────────────────────────────────────────────
+   6. HERO — entrance animation
+───────────────────────────────────────────── */
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    document.getElementById('hero-eyebrow').classList.add('entered');
+    document.getElementById('hero-title').classList.add('entered');
+    document.getElementById('hero-sub').classList.add('entered');
+    document.getElementById('hero-ctas').classList.add('entered');
+  }, 200);
+});
+
+/* ─────────────────────────────────────────────
+   7. AMBIENT BUBBLES
+───────────────────────────────────────────── */
+const bubbleField = document.getElementById('bubble-field');
+const BUBBLE_COUNT = 22;
+
+for (let i = 0; i < BUBBLE_COUNT; i++) {
+  const b = document.createElement('div');
+  b.className = 'bubble' + (Math.random() > 0.65 ? ' orange' : '');
+  const size = 4 + Math.random() * 20;
+  b.style.cssText = `
+    width: ${size}px;
+    height: ${size}px;
+    left: ${Math.random() * 100}%;
+    --dur: ${6 + Math.random() * 10}s;
+    --delay: ${-Math.random() * 12}s;
+    --drift: ${(Math.random() - 0.5) * 80}px;
+    opacity: 0;
+  `;
+  bubbleField.appendChild(b);
+}
+
+/* ─────────────────────────────────────────────
+   8. RENDER LOOP
+───────────────────────────────────────────── */
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const elapsed = clock.getElapsedTime();
+
+  // Smooth mouse
+  mouse.x += (mouse.targetX - mouse.x) * 0.055;
+  mouse.y += (mouse.targetY - mouse.y) * 0.055;
+
+  // Decay scroll velocity
+  scrollVelocity *= 0.9;
+
+  // Update uniforms
+  liquidMat.uniforms.uTime.value = elapsed;
+  liquidMat.uniforms.uMouse.value.set(mouse.x, mouse.y);
+  liquidMat.uniforms.uScroll.value = scrollY;
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+/* ─────────────────────────────────────────────
+   9. RESIZE
+───────────────────────────────────────────── */
+window.addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  liquidMat.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+});
+
+/* ─────────────────────────────────────────────
+   10. WASTE COUNTER ANIMATION
+───────────────────────────────────────────── */
+const wasteEl = document.getElementById('waste-counter');
+if (wasteEl) {
+  let wasteVal = 10000;
+  setInterval(() => {
+    wasteVal += Math.floor(Math.random() * 120 + 80);
+    wasteEl.textContent = '$' + wasteVal.toLocaleString();
+  }, 1200);
+}
+
+</script>
+</body>
+</html>

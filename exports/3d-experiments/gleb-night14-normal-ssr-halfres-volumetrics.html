@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gleb Night 14 — Normal-Buffer SSR + Half-Res Volumetrics + Glass Container UI</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #060608; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+canvas { display: block; }
+#info {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  color: rgba(255,255,255,0.5); font-size: 12px; text-align: center;
+  z-index: 10; letter-spacing: 1px;
+}
+#variation-label {
+  position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+  color: rgba(255,255,255,0.7); font-size: 14px; text-align: center;
+  z-index: 10; letter-spacing: 2px; text-transform: uppercase;
+}
+#controls {
+  position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 12px; z-index: 10;
+}
+.btn {
+  background: rgba(42,147,193,0.15); border: 1px solid rgba(42,147,193,0.3);
+  color: rgba(255,255,255,0.7); padding: 8px 18px; cursor: pointer;
+  font-size: 12px; letter-spacing: 1px; transition: all 0.3s;
+  border-radius: 4px;
+}
+.btn:hover, .btn.active {
+  background: rgba(42,147,193,0.35); border-color: rgba(42,147,193,0.7);
+  color: #fff;
+}
+#perf {
+  position: fixed; bottom: 50px; right: 20px;
+  color: rgba(255,255,255,0.35); font-size: 11px;
+  z-index: 10; text-align: right; font-family: monospace;
+}
+</style>
+</head>
+<body>
+<div id="variation-label">Variation 1 — Normal-Buffer MRT SSR</div>
+<div id="controls">
+  <button class="btn active" onclick="setVariation(0)">1: Normal SSR</button>
+  <button class="btn" onclick="setVariation(1)">2: Half-Res Volumetrics</button>
+  <button class="btn" onclick="setVariation(2)">3: Glass Container UI</button>
+</div>
+<div id="info">Night 14 — Gleb Mastery Training | Closing final 3% gaps</div>
+<div id="perf">FPS: --</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// ════════ SCENE SETUP ════════
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0.5, 4.5);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+// ════════ PROCEDURAL PMREM ENVIRONMENT ════════
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+const envScene = new THREE.Scene();
+const envGeo = new THREE.IcosahedronGeometry(5, 3);
+const envMat = new THREE.MeshBasicMaterial({ side: THREE.BackSide, color: '#080a12' });
+envScene.add(new THREE.Mesh(envGeo, envMat));
+
+[
+  { color: '#2a93c1', pos: [3, 2, 1], intensity: 2.0 },
+  { color: '#f1420b', pos: [-2, -1, 3], intensity: 1.2 },
+  { color: '#C8A84A', pos: [0, 3, -2], intensity: 0.8 },
+].forEach(l => {
+  const light = new THREE.PointLight(l.color, l.intensity, 10);
+  light.position.set(...l.pos);
+  envScene.add(light);
+});
+
+const envRT = pmremGenerator.fromScene(envScene, 0.04);
+scene.environment = envRT.texture;
+
+// ════════ SCENE LIGHTS ════════
+const keyLight = new THREE.SpotLight('#ffffff', 15, 20, Math.PI * 0.2, 0.5, 1);
+keyLight.position.set(3, 4, 3);
+keyLight.lookAt(0, 0, 0);
+scene.add(keyLight);
+
+const fillLight = new THREE.PointLight('#2a93c1', 3, 10);
+fillLight.position.set(-3, 1, 2);
+scene.add(fillLight);
+
+const rimLight = new THREE.PointLight('#f1420b', 2, 10);
+rimLight.position.set(0, -1, -3);
+scene.add(rimLight);
+
+scene.add(new THREE.AmbientLight('#111122', 0.3));
+
+// God ray light for volumetrics
+const godRayLight = new THREE.PointLight('#C8A84A', 0, 15);
+godRayLight.position.set(2, 5, 1);
+scene.add(godRayLight);
+
+// ════════ GLASS SPHERE (Outer + Inner) ════════
+const glassGeo = new THREE.SphereGeometry(1.0, 128, 128);
+const glassMat = new THREE.MeshPhysicalMaterial({
+  color: '#ffffff',
+  metalness: 0.0,
+  roughness: 0.02,
+  transmission: 0.97,
+  thickness: 0.8,
+  ior: 1.45,
+  iridescence: 0.35,
+  iridescenceIOR: 1.3,
+  clearcoat: 0.3,
+  clearcoatRoughness: 0.1,
+  specularColor: new THREE.Color('#C8A84A'),
+  specularIntensity: 1.0,
+  envMapIntensity: 1.5,
+  transparent: true,
+  depthWrite: false,
+  side: THREE.FrontSide,
+});
+const glassSphere = new THREE.Mesh(glassGeo, glassMat);
+scene.add(glassSphere);
+
+const innerGeo = new THREE.SphereGeometry(0.55, 96, 96);
+const innerMat = new THREE.MeshPhysicalMaterial({
+  color: '#2a93c1',
+  metalness: 0.1,
+  roughness: 0.05,
+  transmission: 0.85,
+  thickness: 0.3,
+  ior: 1.8,
+  iridescence: 0.5,
+  iridescenceIOR: 1.5,
+  clearcoat: 0.5,
+  specularColor: new THREE.Color('#C8A84A'),
+  envMapIntensity: 2.0,
+  transparent: true,
+  depthWrite: false,
+});
+const innerSphere = new THREE.Mesh(innerGeo, innerMat);
+scene.add(innerSphere);
+
+// ════════ FLOOR ════════
+const floorGeo = new THREE.PlaneGeometry(20, 20);
+const floorMat = new THREE.MeshStandardMaterial({
+  color: '#0a0c14',
+  roughness: 0.3,
+  metalness: 0.8,
+});
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = -1.8;
+scene.add(floor);
+
+// ════════ CAUSTICS ════════
+const causticSize = 512;
+const causticCanvas = document.createElement('canvas');
+causticCanvas.width = causticSize;
+causticCanvas.height = causticSize;
+const causticCtx = causticCanvas.getContext('2d');
+const causticTexture = new THREE.CanvasTexture(causticCanvas);
+causticTexture.wrapS = causticTexture.wrapT = THREE.RepeatWrapping;
+
+function updateCaustics(time, sphereY) {
+  causticCtx.fillStyle = 'rgba(10,12,20,1)';
+  causticCtx.fillRect(0, 0, causticSize, causticSize);
+  const cx = causticSize / 2, cy = causticSize / 2;
+  const glassInfluence = 0.5 + sphereY * 0.3;
+
+  for (let i = 0; i < 25; i++) {
+    const angle = (i / 25) * Math.PI * 2 + time * 0.3;
+    const radius = 80 + Math.sin(time * 0.5 + i * 1.7) * 40 * glassInfluence;
+    const x = cx + Math.cos(angle) * radius;
+    const y = cy + Math.sin(angle) * radius;
+
+    const blueGrad = causticCtx.createRadialGradient(x - 3, y - 2, 0, x, y, 35 + Math.sin(time + i) * 10);
+    blueGrad.addColorStop(0, 'rgba(42,147,193,0.15)');
+    blueGrad.addColorStop(0.5, 'rgba(42,147,193,0.05)');
+    blueGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    causticCtx.fillStyle = blueGrad;
+    causticCtx.fillRect(0, 0, causticSize, causticSize);
+
+    const orangeGrad = causticCtx.createRadialGradient(x + 3, y + 2, 0, x, y, 25 + Math.cos(time + i) * 8);
+    orangeGrad.addColorStop(0, 'rgba(241,66,11,0.08)');
+    orangeGrad.addColorStop(0.5, 'rgba(241,66,11,0.03)');
+    orangeGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    causticCtx.fillStyle = orangeGrad;
+    causticCtx.fillRect(0, 0, causticSize, causticSize);
+  }
+
+  const centralGrad = causticCtx.createRadialGradient(cx, cy, 0, cx, cy, 100 * glassInfluence);
+  centralGrad.addColorStop(0, 'rgba(200,168,74,0.12)');
+  centralGrad.addColorStop(0.4, 'rgba(42,147,193,0.06)');
+  centralGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  causticCtx.fillStyle = centralGrad;
+  causticCtx.fillRect(0, 0, causticSize, causticSize);
+  causticTexture.needsUpdate = true;
+}
+
+floorMat.emissiveMap = causticTexture;
+floorMat.emissive = new THREE.Color('#ffffff');
+floorMat.emissiveIntensity = 2.0;
+
+// ════════ GLASS CONTAINER UI ELEMENTS (Variation 3) ════════
+const glassUIGroup = new THREE.Group();
+glassUIGroup.visible = false;
+scene.add(glassUIGroup);
+
+// Glass Panel function — Gleb's structural glass container architecture
+function createGlassPanel(w, h, pos, rotation, color, opacity) {
+  const panelGeo = new THREE.PlaneGeometry(w, h, 1, 1);
+  const panelMat = new THREE.MeshPhysicalMaterial({
+    color: color || '#2a93c1',
+    metalness: 0.0,
+    roughness: 0.1,
+    transmission: 0.6,
+    thickness: 0.05,
+    ior: 1.5,
+    transparent: true,
+    opacity: opacity || 0.7,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    envMapIntensity: 1.0,
+  });
+
+  const panel = new THREE.Mesh(panelGeo, panelMat);
+  panel.position.set(...pos);
+  if (rotation) panel.rotation.set(...rotation);
+
+  // Edge highlight (1px white line at 10-15% opacity — Gleb signature)
+  const edgeGeo = new THREE.EdgesGeometry(panelGeo);
+  const edgeMat = new THREE.LineBasicMaterial({
+    color: '#ffffff',
+    transparent: true,
+    opacity: 0.12,
+    linewidth: 1,
+  });
+  const edges = new THREE.LineSegments(edgeGeo, edgeMat);
+  panel.add(edges);
+
+  return { mesh: panel, material: panelMat };
+}
+
+// Main container panel (centered, behind sphere)
+const mainPanel = createGlassPanel(2.4, 3.0, [0, 0, -0.8], null, '#0d1520', 0.6);
+glassUIGroup.add(mainPanel.mesh);
+
+// Side info panel (left)
+const leftPanel = createGlassPanel(1.2, 1.8, [-2.0, 0.2, -0.3], [0, 0.2, 0], '#0a1825', 0.5);
+glassUIGroup.add(leftPanel.mesh);
+
+// Side status panel (right)
+const rightPanel = createGlassPanel(1.0, 1.4, [2.1, 0.3, -0.2], [0, -0.15, 0], '#0a1825', 0.5);
+glassUIGroup.add(rightPanel.mesh);
+
+// Top floating mini card
+const topCard = createGlassPanel(1.6, 0.5, [0, 1.9, -0.5], [-0.1, 0, 0], '#0d1828', 0.55);
+glassUIGroup.add(topCard.mesh);
+
+// Bottom status bar
+const bottomBar = createGlassPanel(3.0, 0.35, [0, -1.5, -0.4], [0, 0, 0], '#080e18', 0.5);
+glassUIGroup.add(bottomBar.mesh);
+
+// Small floating accent dots (Gleb uses these as data indicators)
+for (let i = 0; i < 6; i++) {
+  const dotGeo = new THREE.SphereGeometry(0.04, 16, 16);
+  const dotMat = new THREE.MeshBasicMaterial({
+    color: i < 3 ? '#2a93c1' : '#f1420b',
+    transparent: true,
+    opacity: 0.6,
+  });
+  const dot = new THREE.Mesh(dotGeo, dotMat);
+  dot.position.set(
+    -1.6 + (i % 3) * 0.15,
+    0.8 - Math.floor(i / 3) * 0.2,
+    -0.2
+  );
+  dot.userData.baseY = dot.position.y;
+  dot.userData.phase = i * 0.7;
+  glassUIGroup.add(dot);
+}
+
+// ════════ NORMAL-BUFFER MRT SSR SHADER ════════
+// Key improvement over Night 13: proper G-buffer with normal data
+// Enables arbitrary-surface reflections, not just vertical approximation
+const NormalSSRShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    tDepth: { value: null },
+    tNormal: { value: null },
+    resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+    cameraNear: { value: 0.1 },
+    cameraFar: { value: 100.0 },
+    cameraProjectionMatrix: { value: new THREE.Matrix4() },
+    cameraInverseProjectionMatrix: { value: new THREE.Matrix4() },
+    ssrIntensity: { value: 0.5 },
+    ssrStepSize: { value: 0.05 },
+    ssrMaxSteps: { value: 48 },
+    ssrThickness: { value: 0.15 },
+    ssrFadeEdge: { value: 0.1 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform sampler2D tDepth;
+    uniform sampler2D tNormal;
+    uniform vec2 resolution;
+    uniform float cameraNear;
+    uniform float cameraFar;
+    uniform mat4 cameraProjectionMatrix;
+    uniform mat4 cameraInverseProjectionMatrix;
+    uniform float ssrIntensity;
+    uniform float ssrStepSize;
+    uniform float ssrMaxSteps;
+    uniform float ssrThickness;
+    uniform float ssrFadeEdge;
+    varying vec2 vUv;
+
+    float linearizeDepth(float d) {
+      return cameraNear * cameraFar / (cameraFar - d * (cameraFar - cameraNear));
+    }
+
+    // Reconstruct view-space position from UV + depth
+    vec3 getViewPos(vec2 uv) {
+      float depth = texture2D(tDepth, uv).x;
+      vec4 clipPos = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+      vec4 viewPos = cameraInverseProjectionMatrix * clipPos;
+      return viewPos.xyz / viewPos.w;
+    }
+
+    // Project view-space position to screen UV
+    vec2 projectToScreen(vec3 viewPos) {
+      vec4 clipPos = cameraProjectionMatrix * vec4(viewPos, 1.0);
+      return (clipPos.xy / clipPos.w) * 0.5 + 0.5;
+    }
+
+    void main() {
+      vec4 baseColor = texture2D(tDiffuse, vUv);
+
+      // Read normal from G-buffer (view-space normals encoded in RGB)
+      vec3 normal = texture2D(tNormal, vUv).xyz * 2.0 - 1.0;
+      float normalLen = length(normal);
+
+      // Skip pixels with no valid normal (sky/background)
+      if (normalLen < 0.1) {
+        gl_FragColor = baseColor;
+        return;
+      }
+      normal = normalize(normal);
+
+      // Reconstruct view-space position
+      vec3 viewPos = getViewPos(vUv);
+
+      // Compute reflection direction in view space
+      vec3 viewDir = normalize(viewPos);
+      vec3 reflDir = reflect(viewDir, normal);
+
+      // Skip reflections pointing away from camera
+      if (reflDir.z > 0.0) {
+        gl_FragColor = baseColor;
+        return;
+      }
+
+      // ── Screen-Space Ray March ──
+      vec3 rayPos = viewPos;
+      vec4 reflColor = vec4(0.0);
+      float hitWeight = 0.0;
+
+      for (float i = 1.0; i <= 48.0; i += 1.0) {
+        if (i > ssrMaxSteps) break;
+
+        rayPos += reflDir * ssrStepSize * (1.0 + i * 0.05); // Accelerating steps
+        vec2 sampleUv = projectToScreen(rayPos);
+
+        // Edge fade — reduce artifacts at screen borders
+        float edgeFade = 1.0;
+        edgeFade *= smoothstep(0.0, ssrFadeEdge, sampleUv.x);
+        edgeFade *= smoothstep(1.0, 1.0 - ssrFadeEdge, sampleUv.x);
+        edgeFade *= smoothstep(0.0, ssrFadeEdge, sampleUv.y);
+        edgeFade *= smoothstep(1.0, 1.0 - ssrFadeEdge, sampleUv.y);
+
+        if (edgeFade <= 0.0) break;
+
+        // Depth test at sample position
+        vec3 sampleViewPos = getViewPos(sampleUv);
+        float depthDiff = rayPos.z - sampleViewPos.z;
+
+        if (depthDiff > 0.0 && depthDiff < ssrThickness) {
+          float distFade = 1.0 - i / ssrMaxSteps;
+          reflColor = texture2D(tDiffuse, sampleUv) * edgeFade * distFade;
+          hitWeight = edgeFade * distFade;
+          break;
+        }
+      }
+
+      if (hitWeight > 0.01) {
+        // Fresnel-weighted blending — stronger reflections at glancing angles
+        float fresnel = pow(1.0 - abs(dot(viewDir, normal)), 3.0);
+        float reflAmount = ssrIntensity * hitWeight * (0.3 + fresnel * 0.7);
+        gl_FragColor = baseColor + reflColor * reflAmount;
+      } else {
+        gl_FragColor = baseColor;
+      }
+    }
+  `
+};
+
+// ════════ HALF-RES VOLUMETRIC GOD RAY SHADER ════════
+// Key technique: render at half resolution, then upscale — 2x mobile performance
+const VolumetricGodRayShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    tDepth: { value: null },
+    lightScreenPos: { value: new THREE.Vector2(0.6, 0.8) },
+    exposure: { value: 0.12 },
+    decay: { value: 0.96 },
+    density: { value: 0.8 },
+    weight: { value: 0.4 },
+    samples: { value: 40 }, // Reduced from 80 for half-res
+    lightColor: { value: new THREE.Vector3(0.78, 0.66, 0.29) }, // Gold
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform sampler2D tDepth;
+    uniform vec2 lightScreenPos;
+    uniform float exposure;
+    uniform float decay;
+    uniform float density;
+    uniform float weight;
+    uniform int samples;
+    uniform vec3 lightColor;
+    varying vec2 vUv;
+
+    void main() {
+      vec4 baseColor = texture2D(tDiffuse, vUv);
+
+      // Direction from pixel toward light source in screen space
+      vec2 deltaUv = (vUv - lightScreenPos) * density / float(samples);
+      vec2 sampleUv = vUv;
+
+      float illumination = 0.0;
+      float currentDecay = 1.0;
+
+      for (int i = 0; i < 40; i++) {
+        if (i >= samples) break;
+        sampleUv -= deltaUv;
+
+        // Sample depth — unoccluded pixels contribute to god ray
+        float sampleDepth = texture2D(tDepth, sampleUv).x;
+
+        // Brighter contribution from unoccluded regions (far depth = sky)
+        float occlusion = smoothstep(0.99, 1.0, sampleDepth);
+        illumination += occlusion * currentDecay * weight;
+        currentDecay *= decay;
+      }
+
+      illumination *= exposure;
+
+      // Apply god ray color — gold/amber for Gleb's warm volumetrics
+      vec3 godRay = lightColor * illumination;
+
+      // Additive blend with scene
+      gl_FragColor = vec4(baseColor.rgb + godRay, baseColor.a);
+    }
+  `
+};
+
+// ════════ UPSCALE COMPOSITOR SHADER ════════
+// Bilinear upscale from half-res volumetric to full-res scene
+const UpscaleCompositeShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    tHalfRes: { value: null },
+    blendAmount: { value: 1.0 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform sampler2D tHalfRes;
+    uniform float blendAmount;
+    varying vec2 vUv;
+
+    void main() {
+      vec4 fullRes = texture2D(tDiffuse, vUv);
+      vec4 halfRes = texture2D(tHalfRes, vUv);
+      gl_FragColor = fullRes + halfRes * blendAmount;
+    }
+  `
+};
+
+// ════════ NORMAL RENDER TARGET (G-buffer) ════════
+// Custom material override to capture view-space normals
+const normalRT = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+  minFilter: THREE.NearestFilter,
+  magFilter: THREE.NearestFilter,
+  format: THREE.RGBAFormat,
+  type: THREE.HalfFloatType,
+});
+
+const normalMaterial = new THREE.ShaderMaterial({
+  vertexShader: `
+    varying vec3 vNormal;
+    void main() {
+      vNormal = normalize(normalMatrix * normal);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vNormal;
+    void main() {
+      gl_FragColor = vec4(vNormal * 0.5 + 0.5, 1.0);
+    }
+  `,
+});
+
+// ════════ HALF-RES RENDER TARGETS (for volumetric optimization) ════════
+const halfW = Math.floor(window.innerWidth / 2);
+const halfH = Math.floor(window.innerHeight / 2);
+
+const halfResRT = new THREE.WebGLRenderTarget(halfW, halfH, {
+  minFilter: THREE.LinearFilter,
+  magFilter: THREE.LinearFilter,
+  format: THREE.RGBAFormat,
+});
+
+const halfResDepthRT = new THREE.WebGLRenderTarget(halfW, halfH, {
+  minFilter: THREE.NearestFilter,
+  magFilter: THREE.NearestFilter,
+  type: THREE.FloatType,
+});
+halfResDepthRT.depthTexture = new THREE.DepthTexture();
+halfResDepthRT.depthTexture.format = THREE.DepthFormat;
+halfResDepthRT.depthTexture.type = THREE.UnsignedIntType;
+
+// Half-res composer (renders volumetrics at half resolution)
+const halfResComposer = new EffectComposer(renderer, halfResDepthRT);
+halfResComposer.setSize(halfW, halfH);
+const halfResRenderPass = new RenderPass(scene, camera);
+halfResComposer.addPass(halfResRenderPass);
+
+const godRayPass = new ShaderPass(VolumetricGodRayShader);
+godRayPass.uniforms.tDepth.value = halfResDepthRT.depthTexture;
+halfResComposer.addPass(godRayPass);
+
+// ════════ FULL-RES DEPTH RENDER TARGET ════════
+const depthRT = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+  minFilter: THREE.NearestFilter,
+  magFilter: THREE.NearestFilter,
+  type: THREE.FloatType,
+});
+depthRT.depthTexture = new THREE.DepthTexture();
+depthRT.depthTexture.format = THREE.DepthFormat;
+depthRT.depthTexture.type = THREE.UnsignedIntType;
+
+// ════════ MAIN POST-PROCESSING ════════
+const composer = new EffectComposer(renderer, depthRT);
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.35, 0.8, 0.85
+);
+composer.addPass(bloomPass);
+
+// Normal-buffer SSR pass
+const normalSSRPass = new ShaderPass(NormalSSRShader);
+normalSSRPass.uniforms.tDepth.value = depthRT.depthTexture;
+normalSSRPass.uniforms.tNormal.value = normalRT.texture;
+normalSSRPass.uniforms.cameraProjectionMatrix.value = camera.projectionMatrix;
+normalSSRPass.uniforms.cameraInverseProjectionMatrix.value = camera.projectionMatrixInverse;
+normalSSRPass.enabled = true;
+composer.addPass(normalSSRPass);
+
+// Upscale composite pass (for half-res volumetrics)
+const upscalePass = new ShaderPass(UpscaleCompositeShader);
+upscalePass.uniforms.tHalfRes.value = halfResRT.texture;
+upscalePass.enabled = false;
+composer.addPass(upscalePass);
+
+// ════════ FLOATING PARTICLES ════════
+const particleCount = 80;
+const particleGeo = new THREE.BufferGeometry();
+const particlePositions = new Float32Array(particleCount * 3);
+const particleSizes = new Float32Array(particleCount);
+for (let i = 0; i < particleCount; i++) {
+  particlePositions[i * 3] = (Math.random() - 0.5) * 8;
+  particlePositions[i * 3 + 1] = (Math.random() - 0.5) * 5 + 0.5;
+  particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 8;
+  particleSizes[i] = Math.random() * 3 + 1;
+}
+particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+particleGeo.setAttribute('size', new THREE.BufferAttribute(particleSizes, 1));
+
+const particleMat = new THREE.PointsMaterial({
+  color: '#2a93c1',
+  size: 0.04,
+  transparent: true,
+  opacity: 0.4,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+const particles = new THREE.Points(particleGeo, particleMat);
+scene.add(particles);
+
+// ════════ BREATHING VERTEX SHADERS ════════
+glassMat.onBeforeCompile = (shader) => {
+  shader.uniforms.uTime = { value: 0 };
+  shader.vertexShader = shader.vertexShader.replace(
+    '#include <begin_vertex>',
+    `
+    #include <begin_vertex>
+    float breathe = sin(uTime * 0.55) * 0.015 + sin(uTime * 0.38) * 0.01 + sin(uTime * 0.22) * 0.008;
+    transformed += normal * breathe;
+    `
+  );
+  glassMat.userData.shader = shader;
+};
+
+innerMat.onBeforeCompile = (shader) => {
+  shader.uniforms.uTime = { value: 0 };
+  shader.vertexShader = shader.vertexShader.replace(
+    '#include <begin_vertex>',
+    `
+    #include <begin_vertex>
+    float breathe = sin(uTime * 0.7) * 0.02 + sin(uTime * 0.45) * 0.012;
+    transformed += normal * breathe;
+    `
+  );
+  innerMat.userData.shader = shader;
+};
+
+// ════════ VARIATION STATE ════════
+let currentVariation = 0;
+const labels = [
+  'Variation 1 — Normal-Buffer MRT SSR',
+  'Variation 2 — Half-Res Volumetric God Rays',
+  'Variation 3 — Glass Container UI Architecture'
+];
+
+window.setVariation = function(v) {
+  currentVariation = v;
+  document.getElementById('variation-label').textContent = labels[v];
+  document.querySelectorAll('.btn').forEach((b, i) => b.classList.toggle('active', i === v));
+
+  // V1: Normal-buffer SSR (proper G-buffer reflections)
+  normalSSRPass.enabled = (v === 0);
+
+  // V2: Half-res volumetric god rays
+  upscalePass.enabled = (v === 1);
+  godRayLight.intensity = v === 1 ? 5.0 : 0;
+
+  // V3: Glass container UI panels
+  glassUIGroup.visible = (v === 2);
+
+  // Adjust bloom per variation
+  bloomPass.strength = v === 1 ? 0.5 : v === 2 ? 0.3 : 0.4;
+
+  // Floor reflectivity
+  floorMat.roughness = v === 0 ? 0.15 : 0.3;
+  floorMat.metalness = v === 0 ? 0.9 : 0.8;
+};
+
+// ════════ MOUSE PARALLAX ════════
+let mouseX = 0, mouseY = 0;
+document.addEventListener('mousemove', (e) => {
+  mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
+  mouseY = (e.clientY / window.innerHeight - 0.5) * 2;
+});
+
+// ════════ FPS COUNTER ════════
+let frameCount = 0, lastFpsTime = 0;
+const perfEl = document.getElementById('perf');
+
+// ════════ ANIMATION LOOP ════════
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // FPS
+  frameCount++;
+  if (t - lastFpsTime >= 1.0) {
+    perfEl.textContent = `FPS: ${frameCount} | Var: ${currentVariation + 1}`;
+    frameCount = 0;
+    lastFpsTime = t;
+  }
+
+  // Camera parallax
+  camera.position.x += (mouseX * 0.3 - camera.position.x) * 0.02;
+  camera.position.y += (-mouseY * 0.2 + 0.5 - camera.position.y) * 0.02;
+  camera.lookAt(0, 0, 0);
+
+  // Glass breathing
+  const breathY = Math.sin(t * 0.55) * 0.05;
+  glassSphere.position.y = breathY;
+  innerSphere.position.y = breathY;
+  innerSphere.rotation.y = t * 0.15;
+  innerSphere.rotation.x = Math.sin(t * 0.22) * 0.1;
+
+  // Shader time
+  if (glassMat.userData.shader) glassMat.userData.shader.uniforms.uTime.value = t;
+  if (innerMat.userData.shader) innerMat.userData.shader.uniforms.uTime.value = t;
+
+  // Particles
+  const posArr = particles.geometry.attributes.position.array;
+  for (let i = 0; i < particleCount; i++) {
+    posArr[i * 3 + 1] += Math.sin(t * 0.3 + i) * 0.0003;
+    posArr[i * 3] += Math.cos(t * 0.2 + i * 0.7) * 0.0002;
+  }
+  particles.geometry.attributes.position.needsUpdate = true;
+
+  // Caustics
+  updateCaustics(t, glassSphere.position.y + 1.0);
+
+  // ── Variation 1: Normal-buffer SSR ──
+  if (currentVariation === 0) {
+    // Render normal pass to G-buffer
+    const origOverrideMaterial = scene.overrideMaterial;
+    scene.overrideMaterial = normalMaterial;
+    renderer.setRenderTarget(normalRT);
+    renderer.render(scene, camera);
+    scene.overrideMaterial = origOverrideMaterial;
+    renderer.setRenderTarget(null);
+
+    // Update SSR camera matrices each frame
+    normalSSRPass.uniforms.cameraProjectionMatrix.value.copy(camera.projectionMatrix);
+    normalSSRPass.uniforms.cameraInverseProjectionMatrix.value.copy(camera.projectionMatrixInverse);
+  }
+
+  // ── Variation 2: Half-res volumetrics ──
+  if (currentVariation === 1) {
+    // Project god ray light to screen space
+    const lightPos = godRayLight.position.clone().project(camera);
+    godRayPass.uniforms.lightScreenPos.value.set(
+      lightPos.x * 0.5 + 0.5,
+      lightPos.y * 0.5 + 0.5
+    );
+
+    // Render volumetric pass at HALF resolution
+    halfResComposer.render();
+
+    // Store half-res result for upscale composite
+    upscalePass.uniforms.tHalfRes.value = halfResComposer.readBuffer.texture;
+  }
+
+  // ── Variation 3: Glass container UI animation ──
+  if (currentVariation === 2) {
+    // Panels breathe subtly (different rates for depth layering)
+    mainPanel.mesh.position.z = -0.8 + Math.sin(t * 0.3) * 0.02;
+    leftPanel.mesh.position.x = -2.0 + Math.sin(t * 0.25 + 1.0) * 0.03;
+    rightPanel.mesh.position.x = 2.1 + Math.cos(t * 0.2 + 0.5) * 0.03;
+    topCard.mesh.position.y = 1.9 + Math.sin(t * 0.4) * 0.05;
+
+    // Panels fade in/out subtly (60-80% opacity range per Gleb)
+    mainPanel.material.opacity = 0.55 + Math.sin(t * 0.15) * 0.05;
+    leftPanel.material.opacity = 0.45 + Math.sin(t * 0.2 + 0.7) * 0.05;
+    rightPanel.material.opacity = 0.45 + Math.cos(t * 0.18 + 1.2) * 0.05;
+
+    // Accent dots float
+    glassUIGroup.children.forEach(child => {
+      if (child.userData.baseY !== undefined) {
+        child.position.y = child.userData.baseY + Math.sin(t * 0.6 + child.userData.phase) * 0.03;
+      }
+    });
+  }
+
+  // Main render
+  composer.render();
+}
+
+animate();
+
+// ════════ RESIZE ════════
+window.addEventListener('resize', () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+  depthRT.setSize(w, h);
+  normalRT.setSize(w, h);
+
+  const hw = Math.floor(w / 2), hh = Math.floor(h / 2);
+  halfResRT.setSize(hw, hh);
+  halfResDepthRT.setSize(hw, hh);
+  halfResComposer.setSize(hw, hh);
+
+  normalSSRPass.uniforms.resolution.value.set(w, h);
+});
+</script>
+</body>
+</html>

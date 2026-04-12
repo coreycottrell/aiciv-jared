@@ -3,7 +3,7 @@ name: florida-bar-specialist
 description: Florida-focused legal document review and contract analysis. Specializes in Florida Bar rules, Florida business law (Chapter 605 LLCs, Chapter 607 Corporations), Florida contract law, Florida Statute 542.335 non-compete enforceability, and FDUTPA consumer protection. Use when reviewing business agreements, partnerships, contracts, or any legal documents requiring Florida-specific risk assessment.
 tools: [Read, Write, Grep, Glob, WebSearch, WebFetch]
 skills: [partnership-review, verification-before-completion, memory-first-protocol]
-model: sonnet-4-5
+model: opus
 created: 2026-01-21
 ---
 

@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 4 — Shader Masterclass: Breathing Glass + Custom Vertex Deformation</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #040407;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  canvas { display: block; }
+
+  /* HUD overlay */
+  #hud {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  /* Title block */
+  #title {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+    pointer-events: none;
+    opacity: 0;
+    animation: fadeInTitle 1.2s cubic-bezier(0.16,1,0.3,1) 0.5s forwards;
+  }
+
+  @keyframes fadeInTitle {
+    to { opacity: 1; }
+  }
+
+  #title h1 {
+    font-size: clamp(2rem, 4vw, 3.5rem);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.0;
+    background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.6) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 0.6rem;
+  }
+
+  #title .sub {
+    font-size: 0.7rem;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: rgba(42,147,193,0.8);
+    font-weight: 500;
+  }
+
+  /* Mode display */
+  #mode-display {
+    position: absolute;
+    bottom: 2.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .mode-btn {
+    padding: 0.4rem 1rem;
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.04);
+    color: rgba(255,255,255,0.4);
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    cursor: pointer;
+    pointer-events: all;
+    transition: all 0.3s ease;
+    font-family: inherit;
+  }
+
+  .mode-btn.active {
+    border-color: rgba(42,147,193,0.6);
+    background: rgba(42,147,193,0.12);
+    color: rgba(42,147,193,0.9);
+  }
+
+  /* Stats */
+  #stats {
+    position: absolute;
+    top: 1.5rem;
+    right: 1.5rem;
+    text-align: right;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.6rem;
+    color: rgba(255,255,255,0.2);
+    line-height: 1.7;
+  }
+
+  /* Corner accent */
+  #corner-tl {
+    position: absolute;
+    top: 1.5rem;
+    left: 1.5rem;
+    font-family: -apple-system, sans-serif;
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.2);
+  }
+
+  #corner-tl strong {
+    color: rgba(42,147,193,0.7);
+    -webkit-text-fill-color: rgba(42,147,193,0.7);
+  }
+
+  /* Parameter labels */
+  .param-row {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .param-label { color: rgba(255,255,255,0.15); }
+  .param-value { color: rgba(42,147,193,0.7); min-width: 3.5em; text-align: right; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div id="corner-tl">
+    <strong>PUREBRAIN</strong> — 3D Design Study Day 4
+  </div>
+
+  <div id="title">
+    <h1>Breathing Glass</h1>
+    <div class="sub">GLSL vertex deformation · Iridescence · GPU particles</div>
+  </div>
+
+  <div id="stats">
+    <div class="param-row">
+      <span class="param-label">IOR</span>
+      <span class="param-value" id="p-ior">1.55</span>
+    </div>
+    <div class="param-row">
+      <span class="param-label">transmission</span>
+      <span class="param-value" id="p-trans">0.98</span>
+    </div>
+    <div class="param-row">
+      <span class="param-label">iridescence</span>
+      <span class="param-value" id="p-irid">0.38</span>
+    </div>
+    <div class="param-row">
+      <span class="param-label">bloom</span>
+      <span class="param-value" id="p-bloom">0.45</span>
+    </div>
+    <div class="param-row">
+      <span class="param-label">mode</span>
+      <span class="param-value" id="p-mode">glass</span>
+    </div>
+  </div>
+
+  <div id="mode-display">
+    <button class="mode-btn active" data-mode="glass">Glass</button>
+    <button class="mode-btn" data-mode="disperse">Disperse</button>
+    <button class="mode-btn" data-mode="converge">Converge</button>
+    <button class="mode-btn" data-mode="storm">Storm</button>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.148.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.148.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+// ─────────────────────────────────────────────
+// CORE SETUP
+// ─────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const W = innerWidth, H = innerHeight;
+
+const renderer = new THREE.WebGLRenderer({
+  canvas, antialias: true, alpha: false,
+  powerPreference: 'high-performance'
+});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(W, H);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x040407);
+scene.fog = new THREE.FogExp2(0x040407, 0.06);
+
+const camera = new THREE.PerspectiveCamera(42, W / H, 0.01, 100);
+camera.position.set(0, 0, 5.5);
+
+window.addEventListener('resize', () => {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  composer.setSize(innerWidth, innerHeight);
+});
+
+// ─────────────────────────────────────────────
+// ENVIRONMENT
+// ─────────────────────────────────────────────
+const pmrem = new THREE.PMREMGenerator(renderer);
+pmrem.compileEquirectangularShader();
+
+// Procedural environment: colored gradient
+const envScene = new THREE.Scene();
+const envLights = [
+  { col: 0x2a93c1, pos: [4, 5, 2],    int: 6 },
+  { col: 0xf1420b, pos: [-5, -3, 1],  int: 4 },
+  { col: 0x44aaff, pos: [0, 6, -4],   int: 5 },
+  { col: 0xffffff, pos: [-3, 3, 5],   int: 3 },
+  { col: 0x0055aa, pos: [2, -5, 3],   int: 2 },
+];
+envLights.forEach(({ col, pos, int }) => {
+  const light = new THREE.PointLight(col, int, 30);
+  light.position.set(...pos);
+  envScene.add(light);
+});
+const roomEnv = new THREE.RoomEnvironment();
+const envTex = pmrem.fromScene(roomEnv, 0.02);
+pmrem.dispose();
+scene.environment = envTex.texture;
+
+// Scene lighting
+scene.add(new THREE.AmbientLight(0x2a93c1, 0.18));
+const kl = new THREE.DirectionalLight(0x88ccff, 2.2);
+kl.position.set(3, 4, 2);
+scene.add(kl);
+const rl = new THREE.DirectionalLight(0xf1420b, 0.8);
+rl.position.set(-4, -2, -2);
+scene.add(rl);
+
+// ─────────────────────────────────────────────
+// POSTPROCESSING
+// ─────────────────────────────────────────────
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.45, 0.6, 0.82);
+composer.addPass(bloom);
+
+// Full final pass: CA + grain + vignette + color grade
+const finalPass = new ShaderPass({
+  uniforms: {
+    tDiffuse: { value: null },
+    uCA:   { value: 1.2 },
+    uVig:  { value: 0.4 },
+    uTime: { value: 0 },
+    uSat:  { value: 1.15 },  // saturation boost
+  },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uCA, uVig, uTime, uSat;
+    varying vec2 vUv;
+
+    vec3 saturation(vec3 c, float s) {
+      float luma = dot(c, vec3(0.299, 0.587, 0.114));
+      return mix(vec3(luma), c, s);
+    }
+
+    void main() {
+      vec2 ctr = vUv - 0.5;
+      float d = length(ctr);
+      float str = uCA * 0.0022;
+
+      // RYGCBV-style chromatic aberration (6-channel approximation with 3)
+      float r = texture2D(tDiffuse, vUv + ctr * str * 1.0).r;
+      float g = texture2D(tDiffuse, vUv + ctr * str * 0.4).g;
+      float b = texture2D(tDiffuse, vUv - ctr * str * 0.2).b;
+      vec3 col = vec3(r, g, b);
+
+      // Saturation
+      col = saturation(col, uSat);
+
+      // Subtle lift in shadows (cinematic grade)
+      col = mix(vec3(0.02, 0.02, 0.03), vec3(1.0), col);
+
+      // Film grain
+      float noise = fract(sin(dot(vUv * 100.0 + uTime * 0.03, vec2(12.989, 78.233))) * 43758.5);
+      col += (noise - 0.5) * 0.015;
+
+      // Vignette
+      float vig = 1.0 - smoothstep(0.4, 1.3, d * uVig * 2.2);
+      col *= vig;
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `,
+});
+composer.addPass(finalPass);
+
+// ─────────────────────────────────────────────
+// GLSL NOISE FUNCTIONS (Simplex-like)
+// ─────────────────────────────────────────────
+// Used in multiple shaders below
+const NOISE_GLSL = `
+  vec3 mod289(vec3 x) { return x - floor(x * (1.0/289.0)) * 289.0; }
+  vec4 mod289v(vec4 x) { return x - floor(x * (1.0/289.0)) * 289.0; }
+  vec4 permute(vec4 x) { return mod289v(((x*34.0)+1.0)*x); }
+  vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+  float snoise(vec3 v) {
+    const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+    const vec4 D = vec4(0., 0.5, 1., 2.);
+    vec3 i  = floor(v + dot(v, C.yyy));
+    vec3 x0 = v - i + dot(i, C.xxx);
+    vec3 g  = step(x0.yzx, x0.xyz);
+    vec3 l  = 1.0 - g;
+    vec3 i1 = min(g.xyz, l.zxy);
+    vec3 i2 = max(g.xyz, l.zxy);
+    vec3 x1 = x0 - i1 + C.xxx;
+    vec3 x2 = x0 - i2 + C.yyy;
+    vec3 x3 = x0 - D.yyy;
+    i = mod289(i);
+    vec4 p = permute(permute(permute(
+      i.z + vec4(0.,i1.z,i2.z,1.)) +
+      i.y + vec4(0.,i1.y,i2.y,1.)) +
+      i.x + vec4(0.,i1.x,i2.x,1.));
+    float n_ = 0.142857142857;
+    vec3 ns = n_ * D.wyz - D.xzx;
+    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+    vec4 x_ = floor(j * ns.z);
+    vec4 y_ = floor(j - 7.0 * x_);
+    vec4 x = x_ * ns.x + ns.yyyy;
+    vec4 y = y_ * ns.x + ns.yyyy;
+    vec4 h = 1.0 - abs(x) - abs(y);
+    vec4 b0 = vec4(x.xy, y.xy);
+    vec4 b1 = vec4(x.zw, y.zw);
+    vec4 s0 = floor(b0) * 2.0 + 1.0;
+    vec4 s1 = floor(b1) * 2.0 + 1.0;
+    vec4 sh = -step(h, vec4(0.0));
+    vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+    vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
+    vec3 p0 = vec3(a0.xy, h.x);
+    vec3 p1 = vec3(a0.zw, h.y);
+    vec3 p2 = vec3(a1.xy, h.z);
+    vec3 p3 = vec3(a1.zw, h.w);
+    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+    p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.);
+    m = m * m;
+    return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+  }
+
+  float fbm(vec3 p, int octaves) {
+    float val = 0.0, amp = 0.5, freq = 1.0;
+    for (int i = 0; i < 5; i++) {
+      if (i >= octaves) break;
+      val += snoise(p * freq) * amp;
+      freq *= 2.0; amp *= 0.5;
+    }
+    return val;
+  }
+`;
+
+// ─────────────────────────────────────────────
+// BREATHING GLASS SPHERE — GLSL vertex deformation
+// ─────────────────────────────────────────────
+const breathingVertShader = `
+  ${NOISE_GLSL}
+
+  uniform float uTime;
+  uniform float uDeformStr;  // 0 = sphere, 1 = full deform
+  uniform float uBreatheAmp;
+  varying vec3 vNormal;
+  varying vec3 vWorldPos;
+  varying float vNoise;
+
+  void main() {
+    vec3 pos = position;
+    vec3 n = normalize(normal);
+
+    // Prime float frequencies — never repeat within 120s
+    float breathe = sin(uTime * 0.55) * 0.012
+                  + sin(uTime * 0.38) * 0.007
+                  + sin(uTime * 0.22) * 0.004;
+    breathe *= uBreatheAmp;
+
+    // fBm surface deformation — organic lumpiness
+    vec3 noiseCoord = pos + vec3(uTime * 0.08, uTime * 0.05, uTime * 0.06);
+    float noise = fbm(noiseCoord * 1.4, 4);
+    vNoise = noise;
+
+    float deform = noise * uDeformStr * 0.18;
+    pos += n * (breathe + deform);
+
+    vNormal = normalize(normalMatrix * n);
+    vWorldPos = (modelMatrix * vec4(pos, 1.0)).xyz;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+  }
+`;
+
+const breathingFragShader = `
+  varying vec3 vNormal;
+  varying vec3 vWorldPos;
+  varying float vNoise;
+
+  uniform float uTime;
+  uniform vec3 uCamPos;
+  uniform float uIridStr;
+
+  // Iridescence: view-angle dependent color shift
+  vec3 iridescence(float cosTheta, float strength) {
+    float t = 1.0 - cosTheta;
+    // Rainbow band at grazing angles
+    float hue = fract(t * 2.0 + uTime * 0.08);
+    float h6 = hue * 6.0;
+    float r = clamp(abs(h6 - 3.0) - 1.0, 0., 1.);
+    float g = clamp(2.0 - abs(h6 - 2.0), 0., 1.);
+    float b = clamp(2.0 - abs(h6 - 4.0), 0., 1.);
+    return mix(vec3(1.0), vec3(r, g, b), strength * t * t * 2.0);
+  }
+
+  void main() {
+    vec3 viewDir = normalize(uCamPos - vWorldPos);
+    vec3 n = normalize(vNormal);
+    float NdotV = max(dot(n, viewDir), 0.0);
+
+    // Fresnel
+    float fresnel = pow(1.0 - NdotV, 3.5);
+
+    // PureBrain blue base
+    vec3 baseCol = vec3(0.165, 0.576, 0.757);  // #2a93c1
+
+    // Iridescent color at grazing angles
+    vec3 irid = iridescence(NdotV, uIridStr);
+    vec3 col = mix(baseCol, irid, fresnel * 0.6);
+
+    // Noise-based surface variation
+    col += vNoise * 0.05 * vec3(0.2, 0.5, 0.8);
+
+    // Transmission: glass appears clear in center, opaque at edges
+    float alpha = 0.08 + fresnel * 0.7;
+
+    // Orange rim from opposite light direction
+    float rimOrange = pow(max(0.0, 1.0 - NdotV - 0.2), 4.0);
+    col = mix(col, vec3(0.95, 0.26, 0.04), rimOrange * 0.3);
+
+    gl_FragColor = vec4(col, alpha);
+  }
+`;
+
+// We use ShaderMaterial for the breathing sphere — full GLSL control
+const breathSphere = new THREE.Mesh(
+  new THREE.SphereGeometry(1.15, 128, 128),
+  new THREE.ShaderMaterial({
+    uniforms: {
+      uTime:       { value: 0 },
+      uDeformStr:  { value: 0.5 },
+      uBreatheAmp: { value: 1.0 },
+      uCamPos:     { value: new THREE.Vector3() },
+      uIridStr:    { value: 0.38 },
+    },
+    vertexShader:   breathingVertShader,
+    fragmentShader: breathingFragShader,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  })
+);
+scene.add(breathSphere);
+
+// "True glass" overlay — MeshPhysicalMaterial layered on top of shader sphere
+// This provides the actual transmission/refraction that ShaderMaterial can't do
+const trueSphere = new THREE.Mesh(
+  new THREE.SphereGeometry(1.15, 128, 128),
+  new THREE.MeshPhysicalMaterial({
+    color: new THREE.Color(0x2a93c1).multiplyScalar(0.08),
+    metalness: 0.0,
+    roughness: 0.03,
+    transmission: 0.97,
+    thickness: 1.5,
+    ior: 1.55,
+    iridescence: 0.38,
+    iridescenceIOR: 1.4,
+    iridescenceThicknessRange: [80, 900],
+    clearcoat: 0.7,
+    clearcoatRoughness: 0.04,
+    attenuationColor: new THREE.Color(0x2a93c1),
+    attenuationDistance: 1.6,
+    envMapIntensity: 1.8,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  })
+);
+scene.add(trueSphere);
+
+// Inner glowing core
+const innerCore = new THREE.Mesh(
+  new THREE.SphereGeometry(0.25, 32, 32),
+  new THREE.MeshBasicMaterial({ color: new THREE.Color(0x2a93c1).multiplyScalar(4.0) })
+);
+scene.add(innerCore);
+
+// Inner data rings
+for (let i = 0; i < 3; i++) {
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.55 + i * 0.12, 0.008, 6, 100),
+    new THREE.MeshBasicMaterial({
+      color: i === 1 ? 0xf1420b : 0x2a93c1,
+      transparent: true,
+      opacity: 0.25 - i * 0.04,
+    })
+  );
+  ring.rotation.x = (Math.PI / 2) + (i * Math.PI / 3);
+  ring.rotation.z = i * 1.1;
+  ring.userData.ringIdx = i;
+  scene.add(ring);
+}
+
+// ─────────────────────────────────────────────
+// GPU PARTICLE SYSTEM — 12K particles
+// ─────────────────────────────────────────────
+const N = 12000;
+const pPos  = new Float32Array(N * 3);
+const pCol  = new Float32Array(N * 3);
+const pSize = new Float32Array(N);
+const pLife = new Float32Array(N);  // random phase offset
+
+const blue   = new THREE.Color(0x2a93c1);
+const orange = new THREE.Color(0xf1420b);
+const white  = new THREE.Color(0xaaccff);
+
+for (let i = 0; i < N; i++) {
+  // Shell distribution with bias toward equator
+  const theta  = Math.random() * Math.PI * 2;
+  const phi    = Math.acos(Math.random() * 2 - 1);
+  const radius = 1.8 + Math.random() * 3.2;
+
+  pPos[i*3+0] = Math.sin(phi) * Math.cos(theta) * radius;
+  pPos[i*3+1] = Math.cos(phi) * radius;
+  pPos[i*3+2] = Math.sin(phi) * Math.sin(theta) * radius;
+
+  const r = Math.random();
+  const c = r < 0.65 ? blue : r < 0.82 ? white : orange;
+  pCol[i*3+0] = c.r;
+  pCol[i*3+1] = c.g;
+  pCol[i*3+2] = c.b;
+
+  pSize[i] = 0.4 + Math.random() * 1.6;
+  pLife[i] = Math.random() * Math.PI * 2;
+}
+
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos,  3));
+pGeo.setAttribute('color',    new THREE.BufferAttribute(pCol,  3));
+pGeo.setAttribute('size',     new THREE.BufferAttribute(pSize, 1));
+pGeo.setAttribute('life',     new THREE.BufferAttribute(pLife, 1));
+
+const pMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime:       { value: 0 },
+    uPixelRatio: { value: renderer.getPixelRatio() },
+    uMode:       { value: 0.0 },  // 0=orbit, 1=disperse, 2=converge, 3=storm
+    uProgress:   { value: 1.0 },  // mode transition 0->1
+  },
+  vertexShader: `
+    ${NOISE_GLSL}
+
+    attribute float size;
+    attribute vec3 color;
+    attribute float life;
+    varying vec3 vColor;
+    varying float vAlpha;
+
+    uniform float uTime;
+    uniform float uPixelRatio;
+    uniform float uMode;
+    uniform float uProgress;
+
+    void main() {
+      vColor = color;
+
+      vec3 pos = position;
+      float r = length(pos);
+      vec3 dir = normalize(pos);
+
+      // ── Mode 0: Orbit ──────────────────────────────
+      float orbitAngle = uTime * 0.07 + life;
+      float wobble = snoise(pos * 0.3 + vec3(uTime * 0.15)) * 0.08;
+      vec3 orbitPos = pos;
+      orbitPos.xz *= mat2(cos(orbitAngle), -sin(orbitAngle), sin(orbitAngle), cos(orbitAngle));
+      orbitPos += dir * wobble;
+
+      // ── Mode 1: Disperse ──────────────────────────
+      float disperseR = r + uTime * 0.3 + life * 0.5;
+      vec3 dispersePos = dir * disperseR;
+
+      // ── Mode 2: Converge ──────────────────────────
+      float convergeT = smoothstep(3.0, 0.0, uTime * 0.4);
+      vec3 convergePos = mix(pos, dir * 1.3, uProgress);
+      // Swirl as they converge
+      float swirl = uProgress * 3.0;
+      convergePos.xz *= mat2(cos(swirl), -sin(swirl), sin(swirl), cos(swirl));
+
+      // ── Mode 3: Storm ─────────────────────────────
+      float stormNoise = fbm(pos * 0.5 + vec3(0, uTime * 0.3, 0), 3);
+      vec3 stormPos = pos + vec3(
+        snoise(pos + vec3(uTime * 0.2)) * 0.8,
+        stormNoise * 1.2,
+        snoise(pos.zyx + vec3(uTime * 0.15)) * 0.8
+      );
+      // Spiral
+      stormPos.xz *= mat2(cos(uTime * 0.2 + life), -sin(uTime * 0.2 + life),
+                          sin(uTime * 0.2 + life),  cos(uTime * 0.2 + life));
+
+      // ── Blend modes ───────────────────────────────
+      vec3 finalPos;
+      if (uMode < 0.5) {
+        finalPos = orbitPos;
+      } else if (uMode < 1.5) {
+        finalPos = mix(orbitPos, dispersePos, uProgress);
+      } else if (uMode < 2.5) {
+        finalPos = mix(orbitPos, convergePos, uProgress);
+      } else {
+        finalPos = mix(orbitPos, stormPos, uProgress);
+      }
+
+      float dist = length(finalPos);
+      vAlpha = (1.0 - smoothstep(2.5, 5.5, dist)) * 0.75;
+
+      // Extra brightness near sphere in converge mode
+      float nearGlow = smoothstep(1.5, 1.1, dist) * uProgress * (uMode > 1.5 ? 1.0 : 0.0);
+      vAlpha += nearGlow * 0.5;
+
+      vec4 mvPos = modelViewMatrix * vec4(finalPos, 1.0);
+      gl_PointSize = size * uPixelRatio * (250.0 / -mvPos.z);
+      gl_Position = projectionMatrix * mvPos;
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vColor;
+    varying float vAlpha;
+
+    void main() {
+      vec2 uv = gl_PointCoord - 0.5;
+      float d = length(uv) * 2.0;
+      float alpha = (1.0 - smoothstep(0.3, 1.0, d)) * vAlpha;
+      gl_FragColor = vec4(vColor * 1.6, alpha);
+    }
+  `,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  vertexColors: true,
+});
+
+const particles = new THREE.Points(pGeo, pMat);
+scene.add(particles);
+
+// ─────────────────────────────────────────────
+// MODE SYSTEM
+// ─────────────────────────────────────────────
+let currentMode = 0;
+let modeTransitionStart = 0;
+let modeTransitionDuration = 1.8;
+let modeTransitioning = false;
+let targetMode = 0;
+
+const modeBtns = document.querySelectorAll('.mode-btn');
+const modeNames = ['glass', 'disperse', 'converge', 'storm'];
+const modeValues = { glass: 0, disperse: 1, converge: 2, storm: 3 };
+
+modeBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const mode = btn.dataset.mode;
+    const modeIdx = modeValues[mode];
+    if (modeIdx === currentMode) return;
+
+    modeBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    targetMode = modeIdx;
+    modeTransitionStart = clock.getElapsedTime();
+    modeTransitioning = true;
+    currentMode = modeIdx;
+
+    document.getElementById('p-mode').textContent = mode;
+  });
+});
+
+// ─────────────────────────────────────────────
+// MOUSE PARALLAX
+// ─────────────────────────────────────────────
+let mx = 0, my = 0;
+let smx = 0, smy = 0;
+
+window.addEventListener('mousemove', e => {
+  mx = (e.clientX / innerWidth  - 0.5) * 2;
+  my = (e.clientY / innerHeight - 0.5) * 2;
+});
+
+// ─────────────────────────────────────────────
+// RENDER LOOP
+// ─────────────────────────────────────────────
+const clock = new THREE.Clock();
+let frameCount = 0;
+
+// Store inner rings for animation
+const innerRings = [];
+scene.traverse(obj => {
+  if (obj.userData.ringIdx !== undefined) innerRings.push(obj);
+});
+
+function animate() {
+  requestAnimationFrame(animate);
+  frameCount++;
+  const t = clock.getElapsedTime();
+
+  // Smooth mouse
+  smx += (mx - smx) * 0.05;
+  smy += (my - smy) * 0.05;
+
+  // Camera orbit + mouse
+  camera.position.x = smx * 0.5;
+  camera.position.y = -smy * 0.3;
+  camera.position.z = 5.5;
+  camera.lookAt(0, 0, 0);
+
+  // Shader uniforms
+  breathSphere.material.uniforms.uTime.value   = t;
+  breathSphere.material.uniforms.uCamPos.value.copy(camera.position);
+  pMat.uniforms.uTime.value = t;
+  finalPass.uniforms.uTime.value = t;
+
+  // Mode transitions
+  if (modeTransitioning) {
+    const elapsed = (t - modeTransitionStart) / modeTransitionDuration;
+    const progress = Math.min(elapsed, 1.0);
+    pMat.uniforms.uProgress.value = progress;
+    pMat.uniforms.uMode.value = currentMode;
+
+    if (progress >= 1.0) modeTransitioning = false;
+  }
+
+  // Bloom modulation: storm = more bloom
+  if (currentMode === 3) {
+    bloom.strength = 0.55 + Math.sin(t * 3.0) * 0.1;
+  } else if (currentMode === 2) {
+    bloom.strength = 0.7;
+  } else {
+    bloom.strength = 0.45;
+  }
+
+  // Breathing sphere + true sphere — scale with breathe
+  const breathe = 1.0
+    + Math.sin(t * 0.55) * 0.012
+    + Math.sin(t * 0.38) * 0.007
+    + Math.sin(t * 0.22) * 0.004;
+  breathSphere.scale.setScalar(breathe);
+  trueSphere.scale.setScalar(breathe);
+
+  // Inner rings
+  innerRings.forEach((ring, i) => {
+    ring.rotation.z += (0.004 + i * 0.002) * (i % 2 === 0 ? 1 : -1);
+    ring.rotation.x += 0.002 * (i % 2 === 0 ? 1 : -1);
+  });
+
+  // Core pulse
+  const coreScale = 1.0 + Math.sin(t * 2.2) * 0.12;
+  innerCore.scale.setScalar(coreScale);
+  innerCore.material.color.set(new THREE.Color(0x2a93c1).multiplyScalar(4 + Math.sin(t * 1.8) * 1.5));
+
+  // Particle rotation (slow orbit)
+  particles.rotation.y = t * 0.025;
+
+  // CA spikes with mode
+  finalPass.uniforms.uCA.value = currentMode === 3 ? 2.0 + Math.sin(t * 5.0) * 0.8
+                                : currentMode === 2 ? 1.8
+                                : 1.1;
+
+  // Update stat HUD (every 30 frames)
+  if (frameCount % 30 === 0) {
+    document.getElementById('p-bloom').textContent = bloom.strength.toFixed(2);
+    document.getElementById('p-irid').textContent = breathSphere.material.uniforms.uIridStr.value.toFixed(2);
+  }
+
+  composer.render();
+}
+
+animate();
+</script>
+</body>
+</html>

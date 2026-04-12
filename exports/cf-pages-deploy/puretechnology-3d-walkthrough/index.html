@@ -1,0 +1,1653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology — 3D Walkthrough Experience</title>
+<meta name="description" content="Navigate through the Pure Technology neural network. Explore our mission, team, AI partners, and global experience in an immersive 3D world.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@200;400;600;700&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --blue: #2a93c1;
+    --blue-bright: #4db8e8;
+    --orange: #f1420b;
+    --orange-bright: #ff6b35;
+    --dark: #080a12;
+    --dark2: #0a0d18;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--dark);
+    color: #e8eaf0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    overflow-x: hidden;
+  }
+
+  #canvas-container {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  #three-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  #scroll-driver {
+    height: 1200vh;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Scene panels */
+  .scene-panel {
+    position: fixed;
+    z-index: 10;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+  .scene-panel.visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+
+  /* Glass card */
+  .glass-card {
+    background: rgba(8,10,18,0.72);
+    border: 1px solid rgba(42,147,193,0.2);
+    border-radius: 14px;
+    padding: 28px 32px;
+    backdrop-filter: blur(30px) saturate(1.6);
+    -webkit-backdrop-filter: blur(30px) saturate(1.6);
+  }
+
+  .glass-card h2 {
+    font-family: 'Oswald', sans-serif;
+    font-size: clamp(22px, 3vw, 34px);
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .section-label {
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--orange);
+    margin-bottom: 14px;
+    opacity: 0.9;
+  }
+
+  .glass-card p, .panel-text {
+    font-size: 15px;
+    color: rgba(232,234,240,0.65);
+    line-height: 1.7;
+    margin-bottom: 14px;
+  }
+
+  /* ── PANEL 0: HERO ── */
+  #panel-hero {
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    width: 90%; max-width: 750px;
+  }
+  #panel-hero.visible { transform: translate(-50%, -50%); }
+
+  #panel-hero .eyebrow {
+    font-family: 'Oswald', sans-serif;
+    font-size: 13px;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 20px;
+    opacity: 0.8;
+  }
+
+  #panel-hero h1 {
+    font-family: 'Oswald', sans-serif;
+    font-size: clamp(42px, 7vw, 100px);
+    font-weight: 700;
+    line-height: 1.02;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    background: linear-gradient(135deg, #fff 30%, rgba(42,147,193,0.9) 70%, rgba(241,66,11,0.8) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 18px;
+  }
+
+  #panel-hero .subtitle {
+    font-family: 'Oswald', sans-serif;
+    font-size: clamp(14px, 2vw, 20px);
+    font-weight: 200;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: rgba(232,234,240,0.55);
+    margin-bottom: 36px;
+  }
+
+  /* ── PANEL 1: PROBLEM ── */
+  #panel-problem {
+    top: 50%; right: 5%;
+    transform: translateY(-50%);
+    width: 420px; max-width: 90vw;
+  }
+  #panel-problem.visible { transform: translateY(-50%); }
+
+  .highlight-stat {
+    font-family: 'Oswald', sans-serif;
+    font-size: 18px;
+    color: var(--orange);
+    font-weight: 600;
+    border-left: 3px solid var(--orange);
+    padding-left: 14px;
+    margin: 16px 0;
+    line-height: 1.5;
+  }
+
+  /* ── PANEL 2: FOUNDATION ── */
+  #panel-foundation {
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%; max-width: 900px;
+  }
+  #panel-foundation.visible { transform: translate(-50%, -50%); }
+
+  .mvv-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 20px;
+  }
+  @media (max-width: 768px) { .mvv-grid { grid-template-columns: 1fr; } }
+
+  .mvv-card {
+    background: rgba(42,147,193,0.06);
+    border: 1px solid rgba(42,147,193,0.15);
+    border-radius: 10px;
+    padding: 20px;
+    transition: border-color 0.3s, background 0.3s;
+  }
+  .mvv-card:hover {
+    border-color: rgba(42,147,193,0.4);
+    background: rgba(42,147,193,0.1);
+  }
+  .mvv-card h3 {
+    font-family: 'Oswald', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--blue-bright);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .mvv-card p {
+    font-size: 14px;
+    color: rgba(232,234,240,0.6);
+    line-height: 1.6;
+    margin: 0;
+  }
+
+  .pure-purpose {
+    text-align: center;
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid rgba(42,147,193,0.1);
+  }
+  .pure-purpose span {
+    font-family: 'Oswald', sans-serif;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--orange);
+  }
+  .pure-purpose p {
+    font-size: 16px;
+    color: rgba(232,234,240,0.7);
+    font-style: italic;
+    margin-top: 8px;
+  }
+
+  /* ── PANEL 3: PROOF ── */
+  #panel-proof {
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    width: 90%; max-width: 700px;
+  }
+  #panel-proof.visible { transform: translate(-50%, -50%); }
+
+  .stats-row {
+    display: flex;
+    justify-content: center;
+    gap: 48px;
+    margin-top: 28px;
+    flex-wrap: wrap;
+  }
+  .stat-item { text-align: center; }
+  .stat-num {
+    font-family: 'Oswald', sans-serif;
+    font-size: clamp(36px, 5vw, 56px);
+    font-weight: 700;
+    color: var(--blue-bright);
+    display: block;
+    letter-spacing: -1px;
+  }
+  .stat-label {
+    font-size: 12px;
+    color: rgba(232,234,240,0.45);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  /* ── PANEL 4: VOICES ── */
+  #panel-voices {
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%; max-width: 900px;
+  }
+  #panel-voices.visible { transform: translate(-50%, -50%); }
+
+  .testimonial-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 18px;
+  }
+  @media (max-width: 768px) { .testimonial-grid { grid-template-columns: 1fr; } }
+
+  .testi-card {
+    background: rgba(8,10,18,0.65);
+    border: 1px solid rgba(42,147,193,0.12);
+    border-radius: 10px;
+    padding: 18px 20px;
+    backdrop-filter: blur(14px);
+  }
+  .testi-card blockquote {
+    font-size: 13px;
+    color: rgba(232,234,240,0.58);
+    line-height: 1.65;
+    font-style: italic;
+    margin-bottom: 12px;
+  }
+  .testi-card cite {
+    font-size: 12px;
+    color: var(--blue);
+    font-style: normal;
+    font-weight: 600;
+  }
+  .testi-card .cite-title {
+    font-size: 11px;
+    color: rgba(232,234,240,0.35);
+    display: block;
+    margin-top: 2px;
+  }
+
+  /* ── PANEL 5: ARSENAL ── */
+  #panel-arsenal {
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%; max-width: 950px;
+  }
+  #panel-arsenal.visible { transform: translate(-50%, -50%); }
+
+  .services-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-top: 18px;
+  }
+  @media (max-width: 768px) { .services-grid { grid-template-columns: 1fr 1fr; } }
+
+  .srv-card {
+    background: rgba(42,147,193,0.06);
+    border: 1px solid rgba(42,147,193,0.14);
+    border-radius: 10px;
+    padding: 18px 16px;
+    transition: border-color 0.3s, background 0.3s;
+  }
+  .srv-card:hover {
+    background: rgba(42,147,193,0.12);
+    border-color: rgba(42,147,193,0.35);
+  }
+  .srv-card .srv-icon {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    background: rgba(241,66,11,0.12);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    margin-bottom: 12px;
+  }
+  .srv-card h4 {
+    font-family: 'Oswald', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .srv-card p {
+    font-size: 12px;
+    color: rgba(232,234,240,0.5);
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  .benefits-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 16px;
+  }
+  @media (max-width: 768px) { .benefits-row { grid-template-columns: 1fr 1fr; } }
+
+  .benefit-item {
+    text-align: center;
+    padding: 12px 8px;
+    border-radius: 8px;
+    background: rgba(8,10,18,0.5);
+    border: 1px solid rgba(42,147,193,0.08);
+  }
+  .benefit-item h5 {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--blue-bright);
+    margin-bottom: 4px;
+  }
+  .benefit-item p {
+    font-size: 11px;
+    color: rgba(232,234,240,0.4);
+    line-height: 1.4;
+    margin: 0;
+  }
+
+  /* ── PANEL 6: TEAM ── */
+  #panel-team {
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 94%; max-width: 1100px;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+  #panel-team.visible { transform: translate(-50%, -50%); }
+  #panel-team::-webkit-scrollbar { width: 3px; }
+  #panel-team::-webkit-scrollbar-thumb { background: var(--blue); border-radius: 3px; }
+
+  .team-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 10px;
+    margin-top: 18px;
+  }
+  @media (max-width: 1024px) { .team-grid { grid-template-columns: repeat(6, 1fr); } }
+  @media (max-width: 768px) { .team-grid { grid-template-columns: repeat(4, 1fr); } }
+  @media (max-width: 480px) { .team-grid { grid-template-columns: repeat(3, 1fr); } }
+
+  .team-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-decoration: none;
+    padding: 8px 4px;
+    border-radius: 10px;
+    transition: background 0.3s;
+  }
+  .team-node:hover { background: rgba(42,147,193,0.1); }
+  .team-node img {
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    border: 2px solid rgba(42,147,193,0.3);
+    object-fit: cover;
+    margin-bottom: 6px;
+    transition: border-color 0.3s;
+  }
+  .team-node:hover img { border-color: var(--blue); }
+  .team-node .initials {
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    border: 2px solid rgba(42,147,193,0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Oswald', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--blue);
+    background: rgba(42,147,193,0.08);
+    margin-bottom: 6px;
+    transition: border-color 0.3s, background 0.3s;
+  }
+  .team-node:hover .initials { border-color: var(--blue); background: rgba(42,147,193,0.18); }
+  .team-node .tn-name {
+    font-size: 10px;
+    color: rgba(232,234,240,0.7);
+    text-align: center;
+    line-height: 1.2;
+    font-weight: 600;
+  }
+  .team-node .tn-role {
+    font-size: 9px;
+    color: rgba(232,234,240,0.35);
+    text-align: center;
+    line-height: 1.2;
+    margin-top: 2px;
+  }
+
+  /* ── PANEL 7: AI PARTNERS ── */
+  #panel-ai {
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%; max-width: 900px;
+    text-align: center;
+  }
+  #panel-ai.visible { transform: translate(-50%, -50%); }
+
+  .ai-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 14px;
+    margin-top: 24px;
+  }
+  @media (max-width: 768px) { .ai-grid { grid-template-columns: repeat(4, 1fr); } }
+  @media (max-width: 480px) { .ai-grid { grid-template-columns: repeat(3, 1fr); } }
+
+  .ai-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .ai-orb {
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Oswald', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: #fff;
+    animation: ai-pulse 3s ease-in-out infinite;
+    position: relative;
+  }
+  .ai-orb.blue-orb {
+    background: radial-gradient(circle at 35% 35%, var(--blue-bright), var(--blue), #0a3a55);
+    box-shadow: 0 0 20px rgba(42,147,193,0.5), 0 0 40px rgba(42,147,193,0.2);
+  }
+  .ai-orb.orange-orb {
+    background: radial-gradient(circle at 35% 35%, var(--orange-bright), var(--orange), #5a1a04);
+    box-shadow: 0 0 20px rgba(241,66,11,0.5), 0 0 40px rgba(241,66,11,0.2);
+  }
+  @keyframes ai-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+  }
+  .ai-name {
+    font-size: 11px;
+    color: rgba(232,234,240,0.7);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── PANEL 8: NETWORK ── */
+  #panel-network {
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 94%; max-width: 1100px;
+    text-align: center;
+  }
+  #panel-network.visible { transform: translate(-50%, -50%); }
+
+  .experience-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 14px;
+    margin-top: 24px;
+    max-height: 55vh;
+    overflow: hidden;
+  }
+  .exp-tag {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 400;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: rgba(232,234,240,0.45);
+    transition: color 0.3s;
+    white-space: nowrap;
+    line-height: 1.6;
+  }
+  .exp-tag:hover { color: var(--blue-bright); }
+
+  /* ── PANEL 9: GATEWAY ── */
+  #panel-gateway {
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    width: 90%; max-width: 640px;
+  }
+  #panel-gateway.visible { transform: translate(-50%, -50%); }
+
+  #panel-gateway h2 {
+    font-family: 'Oswald', sans-serif;
+    font-size: clamp(32px, 5vw, 60px);
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    line-height: 1.1;
+    background: linear-gradient(135deg, #fff 20%, var(--orange) 80%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 16px;
+  }
+  #panel-gateway .brand-mark {
+    font-family: 'Oswald', sans-serif;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 28px;
+  }
+  #panel-gateway .brand-mark .br { color: var(--blue); }
+  #panel-gateway .brand-mark .ai { color: var(--orange); }
+  #panel-gateway .brand-mark .n { color: var(--blue); }
+
+  .btn-cta {
+    display: inline-block;
+    padding: 18px 50px;
+    background: var(--orange);
+    border: none;
+    border-radius: 4px;
+    color: #fff;
+    font-family: 'Oswald', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 0 40px rgba(241,66,11,0.4);
+    animation: cta-pulse 2.5s ease-in-out infinite;
+  }
+  @keyframes cta-pulse {
+    0%, 100% { box-shadow: 0 0 30px rgba(241,66,11,0.4); }
+    50% { box-shadow: 0 0 60px rgba(241,66,11,0.7), 0 0 100px rgba(241,66,11,0.3); }
+  }
+  .btn-cta:hover {
+    background: #ff5520;
+    transform: scale(1.04);
+  }
+
+  /* Scroll indicator */
+  #scroll-hint {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    opacity: 1;
+    transition: opacity 0.5s;
+  }
+  #scroll-hint span {
+    font-family: 'Oswald', sans-serif;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+  }
+  #scroll-hint .arrow {
+    width: 1px;
+    height: 40px;
+    background: linear-gradient(to bottom, rgba(42,147,193,0.6), transparent);
+    animation: scroll-drop 1.5s ease-in-out infinite;
+  }
+  @keyframes scroll-drop {
+    0% { transform: scaleY(0); transform-origin: top; opacity: 0; }
+    50% { transform: scaleY(1); transform-origin: top; opacity: 1; }
+    100% { transform: scaleY(0); transform-origin: bottom; opacity: 0; }
+  }
+
+  /* Progress dots */
+  #section-dots {
+    position: fixed;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .sdot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.15);
+    transition: background 0.3s, transform 0.3s;
+    cursor: pointer;
+  }
+  .sdot.active {
+    background: var(--blue);
+    transform: scale(1.6);
+  }
+
+  /* Nav logo */
+  #nav-logo {
+    position: fixed;
+    top: 24px; left: 28px;
+    z-index: 30;
+    font-family: 'Oswald', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.85);
+    text-decoration: none;
+  }
+  #nav-logo span { color: var(--blue); }
+
+  /* Room label */
+  #room-label {
+    position: fixed;
+    bottom: 32px; left: 32px;
+    z-index: 20;
+    font-family: 'Oswald', sans-serif;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: rgba(232,234,240,0.25);
+    transition: opacity 0.4s;
+  }
+  #room-label .room-num {
+    color: var(--orange);
+    margin-right: 8px;
+  }
+
+  /* Tag */
+  .tag {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 20px;
+    background: rgba(241,66,11,0.1);
+    border: 1px solid rgba(241,66,11,0.25);
+    font-family: 'Oswald', sans-serif;
+    font-size: 11px;
+    color: var(--orange);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--blue); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<a href="https://puretechnology.ai" id="nav-logo">Pure<span>Technology</span></a>
+
+<!-- Section dots (10 rooms) -->
+<div id="section-dots">
+  <div class="sdot active" data-section="0"></div>
+  <div class="sdot" data-section="1"></div>
+  <div class="sdot" data-section="2"></div>
+  <div class="sdot" data-section="3"></div>
+  <div class="sdot" data-section="4"></div>
+  <div class="sdot" data-section="5"></div>
+  <div class="sdot" data-section="6"></div>
+  <div class="sdot" data-section="7"></div>
+  <div class="sdot" data-section="8"></div>
+  <div class="sdot" data-section="9"></div>
+</div>
+
+<!-- Room label -->
+<div id="room-label"><span class="room-num">01</span> THE ARRIVAL</div>
+
+<!-- Scroll hint -->
+<div id="scroll-hint">
+  <span>Scroll to Enter</span>
+  <div class="arrow"></div>
+</div>
+
+<!-- FIXED 3D CANVAS -->
+<div id="canvas-container">
+  <canvas id="three-canvas"></canvas>
+</div>
+
+<!-- SCROLL DRIVER -->
+<div id="scroll-driver"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- CONTENT PANELS -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+
+<!-- ROOM 1: THE ARRIVAL (0-10%) -->
+<div class="scene-panel visible" id="panel-hero">
+  <p class="eyebrow">Pure Technology Inc.</p>
+  <h1>The Key to<br>Unlocking AI</h1>
+  <p class="subtitle">Actual Intelligence &middot; The AI That Matters Most</p>
+</div>
+
+<!-- ROOM 2: THE PROBLEM (10-20%) -->
+<div class="scene-panel" id="panel-problem">
+  <div class="glass-card">
+    <div class="section-label">Why Pure Technology Exists</div>
+    <h2>The Multi-Trillion Dollar Problem</h2>
+    <p>The marketing world's multi-trillion-dollar problem? Budget waste. Pure Technology lays waste to this inefficiency by leveraging Big Data and AI to revolutionize brand-consumer personalization.</p>
+    <p>This cutting-edge methodology wastes no opportunity to unlock and unleash the full consumer profile for the first time &mdash; ensuring personal brand ownership as a right, not a request.</p>
+    <div class="highlight-stat">In the time you've read this, $10,000 was wasted on marketing &amp; advertising... And big tech earned $1 million+ from YOUR DATA.</div>
+  </div>
+</div>
+
+<!-- ROOM 3: THE FOUNDATION (20-35%) -->
+<div class="scene-panel" id="panel-foundation">
+  <div class="glass-card">
+    <div class="section-label">The Foundation</div>
+    <h2>Mission &middot; Vision &middot; Values</h2>
+    <div class="mvv-grid">
+      <div class="mvv-card">
+        <h3>Mission</h3>
+        <p>Reimagining data to redefine relationships between brands and consumers for a digitally inclusive mobile economy.</p>
+      </div>
+      <div class="mvv-card">
+        <h3>Vision</h3>
+        <p>A brighter world where all people actualize their brilliance.</p>
+      </div>
+      <div class="mvv-card">
+        <h3>Values</h3>
+        <p>Integrity, transparency, growth, innovation, persistence, accountability, and love.</p>
+      </div>
+    </div>
+    <div class="pure-purpose">
+      <span>Pure Purpose</span>
+      <p>Maximize humanity through technology by understanding their pure passions to propel purpose.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ROOM 4: THE PROOF (35-45%) -->
+<div class="scene-panel" id="panel-proof">
+  <div class="tag">Pure Facts</div>
+  <div class="stats-row">
+    <div class="stat-item">
+      <span class="stat-num" data-target="500">0</span>
+      <span class="stat-label">M+ Followers Gained</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-num" data-target="200">0</span>
+      <span class="stat-label">+ Brands Served</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-num" data-target="1000">0</span>
+      <span class="stat-label">+ Campaigns Completed</span>
+    </div>
+  </div>
+</div>
+
+<!-- ROOM 5: THE VOICES (45-55%) -->
+<div class="scene-panel" id="panel-voices">
+  <div class="glass-card">
+    <div class="section-label">The Voices</div>
+    <h2>What They Say</h2>
+    <div class="testimonial-grid">
+      <div class="testi-card">
+        <blockquote>"The MYST Main Event Giveaway drove a massive influx of app downloads and brand reach -- generating millions of impressions. PMG didn't just promote a product -- they created a story worth following."</blockquote>
+        <cite>Josh Sklut</cite>
+        <span class="cite-title">Co-Founder @ MyStandard.io</span>
+      </div>
+      <div class="testi-card">
+        <blockquote>"With the help of Pure Marketing Group, I've achieved enough influence with my personal brand to consistently land new brand opportunities &amp; events to speak!"</blockquote>
+        <cite>Dr. Suzanne Soliman</cite>
+        <span class="cite-title">Public Figure</span>
+      </div>
+      <div class="testi-card">
+        <blockquote>"Working with Pure Marketing Group has been a game-changer for our dealership. Their paid ad strategies consistently drive real traffic -- not just clicks."</blockquote>
+        <cite>Seanne Murray</cite>
+        <span class="cite-title">GM @ Shoreline Harley Davidson</span>
+      </div>
+      <div class="testi-card">
+        <blockquote>"Pure Marketing Group transformed our business. From SEO to ads to social -- every piece worked together to bring in over 100 new clients a month."</blockquote>
+        <cite>Donna Williams</cite>
+        <span class="cite-title">Owner @ The Dog House Pet Salon</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ROOM 6: THE ARSENAL (55-65%) -->
+<div class="scene-panel" id="panel-arsenal">
+  <div class="glass-card">
+    <div class="section-label">The Arsenal</div>
+    <h2>Services &amp; Capabilities</h2>
+    <div class="services-grid">
+      <div class="srv-card">
+        <div class="srv-icon">&#9733;</div>
+        <h4>Experiential Giveaways</h4>
+        <p>Strategic experiences -- positioning, messaging, and revenue architecture that power scalable growth.</p>
+      </div>
+      <div class="srv-card">
+        <div class="srv-icon">&#9672;</div>
+        <h4>Influencer Marketing</h4>
+        <p>Campaigns that convert attention into measurable results across social and search.</p>
+      </div>
+      <div class="srv-card">
+        <div class="srv-icon">&#9654;</div>
+        <h4>LaunchBoost GTM</h4>
+        <p>Turn momentum into global revenue with a clear playbook that launches, learns, and scales in 90 days.</p>
+      </div>
+      <div class="srv-card">
+        <div class="srv-icon">&#9998;</div>
+        <h4>Content Creation</h4>
+        <p>High-quality content across social media, blogs, and videos designed to engage and retain audiences.</p>
+      </div>
+    </div>
+    <div class="benefits-row">
+      <div class="benefit-item">
+        <h5>Personalized</h5>
+        <p>Customized to your brand's specific needs</p>
+      </div>
+      <div class="benefit-item">
+        <h5>Experienced</h5>
+        <p>Industry knowledge and creativity combined</p>
+      </div>
+      <div class="benefit-item">
+        <h5>Data-Driven</h5>
+        <p>Insights that optimize for measurable results</p>
+      </div>
+      <div class="benefit-item">
+        <h5>Ongoing Support</h5>
+        <p>Continuous maintenance for your assets</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ROOM 7: THE TEAM (65-75%) -->
+<div class="scene-panel" id="panel-team">
+  <div class="glass-card">
+    <div class="section-label">The Team</div>
+    <h2>Pure Leadership</h2>
+    <div class="team-grid">
+      <a class="team-node" href="https://www.linkedin.com/in/jaredsanborn/" target="_blank" rel="noopener">
+        <img src="../puretechnology-redesign/headshots/Jared-Sanborn-AI-Linkedin-Website-Headshot.png" alt="Jared Sanborn" loading="lazy">
+        <span class="tn-name">Jared Sanborn</span><span class="tn-role">CEO</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/nathan0lson/" target="_blank" rel="noopener">
+        <div class="initials">NO</div>
+        <span class="tn-name">Nathan Olson</span><span class="tn-role">President</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/melaniesalvador/" target="_blank" rel="noopener">
+        <img src="../puretechnology-redesign/headshots/Melanie-Salvador.png" alt="Melanie Salvador" loading="lazy">
+        <span class="tn-name">Melanie Salvador</span><span class="tn-role">Deputy CEO</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/mike-schuman-1008/" target="_blank" rel="noopener">
+        <div class="initials">MS</div>
+        <span class="tn-name">Mike Schuman</span><span class="tn-role">Commercial</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/mireille-dirany-41464434/" target="_blank" rel="noopener">
+        <div class="initials">MD</div>
+        <span class="tn-name">Mireille Dirany</span><span class="tn-role">Director</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/philbliss/" target="_blank" rel="noopener">
+        <div class="initials">PB</div>
+        <span class="tn-name">Phil Bliss</span><span class="tn-role">Marketing</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/jsgu19/" target="_blank" rel="noopener">
+        <img src="../puretechnology-redesign/headshots/John-Smith.png" alt="John Smith" loading="lazy">
+        <span class="tn-name">John Smith</span><span class="tn-role">Sales</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/nilswaschkau/" target="_blank" rel="noopener">
+        <div class="initials">NW</div>
+        <span class="tn-name">Nils Waschkau</span><span class="tn-role">Operations</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/mhancock-dubai/" target="_blank" rel="noopener">
+        <img src="../puretechnology-redesign/headshots/Michael-Hancock-AI.png" alt="Michael Hancock" loading="lazy">
+        <span class="tn-name">Michael Hancock</span><span class="tn-role">Counsel</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/mike-daser-phri-72b2028a/" target="_blank" rel="noopener">
+        <div class="initials">MD</div>
+        <span class="tn-name">Mike Daser</span><span class="tn-role">People</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/natasha-carrasco-734273205/" target="_blank" rel="noopener">
+        <div class="initials">NC</div>
+        <span class="tn-name">Natasha Carrasco</span><span class="tn-role">Operations</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/ahsen-awan-8b909213" target="_blank" rel="noopener">
+        <img src="../puretechnology-redesign/headshots/Ahsen-Awan-Head-Shot-AI-Compressed.png" alt="Ahsen Awan" loading="lazy">
+        <span class="tn-name">Ahsen Awan</span><span class="tn-role">Product</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/robertorlowski1/" target="_blank" rel="noopener">
+        <div class="initials">RO</div>
+        <span class="tn-name">Robert Orlowski</span><span class="tn-role">Communications</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/johnparis6/" target="_blank" rel="noopener">
+        <img src="../puretechnology-redesign/headshots/John-Paris-AI.png" alt="John Paris" loading="lazy">
+        <span class="tn-name">John Paris</span><span class="tn-role">Strategy</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/ericinnyc/" target="_blank" rel="noopener">
+        <img src="../puretechnology-redesign/headshots/Eric-Solomon-AI.png" alt="Eric Solomon" loading="lazy">
+        <span class="tn-name">Eric Solomon</span><span class="tn-role">Actualizer</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/ashley-tom-14a525239/" target="_blank" rel="noopener">
+        <img src="../puretechnology-redesign/headshots/Ashley-Tom-AI.png" alt="Ashley Tom" loading="lazy">
+        <span class="tn-name">Ashley Tom</span><span class="tn-role">Client Success</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/rimahharb/" target="_blank" rel="noopener">
+        <div class="initials">RH</div>
+        <span class="tn-name">Rimah Harb</span><span class="tn-role">Strategy</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/edwbrennan/" target="_blank" rel="noopener">
+        <img src="../puretechnology-redesign/headshots/Ed-Brennan-AI.png" alt="Edward Brennan" loading="lazy">
+        <span class="tn-name">Edward Brennan</span><span class="tn-role">Operations</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/shahbaz-ali-a8991529/" target="_blank" rel="noopener">
+        <div class="initials">SA</div>
+        <span class="tn-name">Shahbaz Ali</span><span class="tn-role">IT &amp; DevOps</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/muhammad-zafeer-ul-hassan-5482b4107/" target="_blank" rel="noopener">
+        <div class="initials">MZ</div>
+        <span class="tn-name">M. Zafeer</span><span class="tn-role">Software</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/company/puretechnologyai/" target="_blank" rel="noopener">
+        <div class="initials">WN</div>
+        <span class="tn-name">Waqas Nasir</span><span class="tn-role">Product</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/baruchsantana/" target="_blank" rel="noopener">
+        <img src="../puretechnology-redesign/headshots/Baruch-Santana-AI.png" alt="Baruch Santana" loading="lazy">
+        <span class="tn-name">Baruch Santana</span><span class="tn-role">Media &amp; Sales</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/moises-g-64620a197/" target="_blank" rel="noopener">
+        <div class="initials">MG</div>
+        <span class="tn-name">Moises Guerra</span><span class="tn-role">Social</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/roger-beaini-685761153/" target="_blank" rel="noopener">
+        <div class="initials">RB</div>
+        <span class="tn-name">Roger Beaini</span><span class="tn-role">Operations</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/emmanuel-akinleye-26819383e3/" target="_blank" rel="noopener">
+        <img src="../puretechnology-redesign/headshots/Emmanuel-Akinleye-AI.jpeg" alt="Emmanuel Akinleye" loading="lazy">
+        <span class="tn-name">Emmanuel Akinleye</span><span class="tn-role">Website</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/alex-seant-62baa945/" target="_blank" rel="noopener">
+        <img src="../puretechnology-redesign/headshots/Alex-Seant-AI-2.jpeg" alt="Alex Seant" loading="lazy">
+        <span class="tn-name">Alex Seant</span><span class="tn-role">Software</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/in/russell-korus-ez/" target="_blank" rel="noopener">
+        <div class="initials">RK</div>
+        <span class="tn-name">Russell Korus</span><span class="tn-role">Web 3.0</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/company/pure-marketing-ai" target="_blank" rel="noopener">
+        <div class="initials">RP</div>
+        <span class="tn-name">Rodelina Prado</span><span class="tn-role">Social</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/company/pure-marketing-ai" target="_blank" rel="noopener">
+        <img src="../puretechnology-redesign/headshots/Arlene-T.-AI-2.png" alt="Arlene T." loading="lazy">
+        <span class="tn-name">Arlene T.</span><span class="tn-role">Social</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/company/pure-marketing-ai" target="_blank" rel="noopener">
+        <img src="../puretechnology-redesign/headshots/Akande-Michael-Festus-AI.png" alt="Akande Festus" loading="lazy">
+        <span class="tn-name">Akande Festus</span><span class="tn-role">SEO</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/company/pure-marketing-ai" target="_blank" rel="noopener">
+        <div class="initials">RF</div>
+        <span class="tn-name">Rose F.</span><span class="tn-role">Video</span>
+      </a>
+      <a class="team-node" href="https://www.linkedin.com/company/pure-marketing-ai" target="_blank" rel="noopener">
+        <div class="initials">RL</div>
+        <span class="tn-name">Richard Lombana</span><span class="tn-role">Video &amp; Content</span>
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- ROOM 8: AI PARTNERS (75-82%) -->
+<div class="scene-panel" id="panel-ai">
+  <div class="glass-card">
+    <div class="section-label">The AI Partners</div>
+    <h2>Our AI Collective</h2>
+    <p class="panel-text" style="text-align:center;">14 AI partners powering Pure Technology's intelligent infrastructure.</p>
+    <div class="ai-grid">
+      <div class="ai-node"><div class="ai-orb orange-orb" style="animation-delay:0s">AE</div><span class="ai-name">Aether</span></div>
+      <div class="ai-node"><div class="ai-orb blue-orb" style="animation-delay:0.2s">CH</div><span class="ai-name">Chy</span></div>
+      <div class="ai-node"><div class="ai-orb blue-orb" style="animation-delay:0.4s">TE</div><span class="ai-name">Tether</span></div>
+      <div class="ai-node"><div class="ai-orb orange-orb" style="animation-delay:0.6s">LY</div><span class="ai-name">Lyra</span></div>
+      <div class="ai-node"><div class="ai-orb blue-orb" style="animation-delay:0.8s">CL</div><span class="ai-name">Clarity</span></div>
+      <div class="ai-node"><div class="ai-orb blue-orb" style="animation-delay:1.0s">AN</div><span class="ai-name">Anchor</span></div>
+      <div class="ai-node"><div class="ai-orb orange-orb" style="animation-delay:1.2s">ME</div><span class="ai-name">Meridian</span></div>
+      <div class="ai-node"><div class="ai-orb blue-orb" style="animation-delay:1.4s">MT</div><span class="ai-name">Metis</span></div>
+      <div class="ai-node"><div class="ai-orb orange-orb" style="animation-delay:1.6s">LU</div><span class="ai-name">Lumen</span></div>
+      <div class="ai-node"><div class="ai-orb blue-orb" style="animation-delay:1.8s">PR</div><span class="ai-name">Prodigy</span></div>
+      <div class="ai-node"><div class="ai-orb orange-orb" style="animation-delay:2.0s">FL</div><span class="ai-name">Flux</span></div>
+      <div class="ai-node"><div class="ai-orb blue-orb" style="animation-delay:2.2s">TD</div><span class="ai-name">Teddy</span></div>
+      <div class="ai-node"><div class="ai-orb orange-orb" style="animation-delay:2.4s">PA</div><span class="ai-name">Parallax</span></div>
+      <div class="ai-node"><div class="ai-orb blue-orb" style="animation-delay:2.6s">KE</div><span class="ai-name">Keel</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ROOM 9: THE NETWORK (82-90%) -->
+<div class="scene-panel" id="panel-network">
+  <div class="glass-card" style="background: rgba(8,10,18,0.6);">
+    <div class="section-label">The Network</div>
+    <h2>Experience Wall</h2>
+    <div class="experience-cloud" id="experience-cloud"></div>
+  </div>
+</div>
+
+<!-- ROOM 10: THE GATEWAY (90-100%) -->
+<div class="scene-panel" id="panel-gateway">
+  <div class="tag">Awakened State</div>
+  <h2>Experience Our<br>AI Partnership</h2>
+  <div class="brand-mark"><span class="br">PUREBR</span><span class="ai">AI</span><span class="n">N</span>.ai</div>
+  <a href="https://purebrain.ai" class="btn-cta" target="_blank" rel="noopener">Enter PureBrain</a>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- THREE.JS -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ─── EXPERIENCE WALL DATA ─────────────────────────────────────────────────────
+const experienceCompanies = [
+  'Microsoft','Samsung','YouTube','Walmart','IBM','Nokia','HTC','Meizu','Alcatel',
+  'Ooredoo','Micromax','Karbonn','Panasonic','Philips','Jabil','Verizon','AT&T',
+  'Viacom','Sun Microsystems','Xerox','Apple','Instagram','Ericsson','General Motors',
+  'T-Mobile','New York Giants','Motorola','Homeland Security','MCI Worldcom','Cisco',
+  'CNN','Spotify','Lord & Taylor','Hi-P International','Salesforce','Visa','Singularity',
+  'Scalar','PHP POS','BrandStar','Clear','FedEx','WPP','CEO Gaming','XPrize',
+  'Sirius XM','OXXO','Adobe','Campbells','Schlumberger','PayPal','Time Inc','Allstate',
+  'McCann','E*Trade','J. Walter Thompson','JD Power','New York Yankees','BlackBerry',
+  'Spokeo','Wyndham','Alibaba','Bank of America','ImageWare','Rubikloud',
+  'Raymond James','Teralight','Eyefuel PR','Google','LinkedIn','TikTok','Meta','Shopify'
+];
+
+// Populate experience cloud
+const cloudEl = document.getElementById('experience-cloud');
+const sizes = [12, 14, 16, 18, 22, 26, 13, 15, 20, 17, 11, 24];
+experienceCompanies.forEach((name, i) => {
+  const span = document.createElement('span');
+  span.className = 'exp-tag';
+  span.textContent = name;
+  span.style.fontSize = sizes[i % sizes.length] + 'px';
+  cloudEl.appendChild(span);
+});
+
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+const BLUE   = new THREE.Color(0x2a93c1);
+const ORANGE = new THREE.Color(0xf1420b);
+const DARK   = new THREE.Color(0x080a12);
+const MOBILE = window.innerWidth < 768;
+const NODE_COUNT = MOBILE ? 80 : 200;
+
+// ─── SCENE / RENDERER / CAMERA ───────────────────────────────────────────────
+const canvas   = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+scene.background = DARK;
+scene.fog = new THREE.FogExp2(0x080a12, 0.016);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(0, 0, 14);
+
+// ─── POSTPROCESSING ──────────────────────────────────────────────────────────
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloom = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.8, 0.5, 0.82
+);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+// ─── LIGHTING ────────────────────────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0x1a2a3a, 1.5));
+
+const bluePoint = new THREE.PointLight(0x2a93c1, 6, 30);
+bluePoint.position.set(-3, 4, 6);
+scene.add(bluePoint);
+
+const orangePoint = new THREE.PointLight(0xf1420b, 3, 20);
+orangePoint.position.set(3, -2, 5);
+scene.add(orangePoint);
+
+const innerLight = new THREE.PointLight(0x2a93c1, 2, 10);
+innerLight.position.set(0, 0, 0);
+scene.add(innerLight);
+
+// ─── BRAIN GEOMETRY ──────────────────────────────────────────────────────────
+function getBrainPosition(i, total) {
+  const phi = Math.acos(1 - 2 * (i + 0.5) / total);
+  const theta = Math.PI * (1 + Math.sqrt(5)) * i;
+
+  let x = Math.sin(phi) * Math.cos(theta);
+  let y = Math.cos(phi);
+  let z = Math.sin(phi) * Math.sin(theta);
+
+  const isFront = z > 0;
+  const r = 3.2;
+  if (isFront) {
+    z = z * (1.0 + 0.35 * z);
+    x = x * (1.0 + 0.15 * Math.abs(z));
+  }
+  y = y * 0.82;
+  x = x * (1.0 + 0.05 * Math.sin(theta * 3));
+
+  return new THREE.Vector3(x * r, y * r, z * r);
+}
+
+function getLobe(pos) {
+  if (pos.z > 1.5)  return 'frontal';
+  if (pos.z < -1.5) return 'occipital';
+  if (pos.y > 1.5)  return 'parietal';
+  if (pos.y < -1.0) return 'cerebellum';
+  return 'temporal';
+}
+
+// ─── NODES ───────────────────────────────────────────────────────────────────
+const nodeGroup = new THREE.Group();
+scene.add(nodeGroup);
+
+const nodePositions = [];
+const nodeMeshes    = [];
+const nodeData      = [];
+
+const nodeMat = new THREE.MeshPhysicalMaterial({
+  color: BLUE,
+  emissive: new THREE.Color(0x0a2a3a),
+  emissiveIntensity: 0.6,
+  roughness: 0.05,
+  metalness: 0.1,
+  transmission: 0.7,
+  thickness: 0.5,
+  transparent: true,
+  opacity: 0.9,
+});
+
+const nodeGeo = new THREE.IcosahedronGeometry(0.065, 1);
+
+for (let i = 0; i < NODE_COUNT; i++) {
+  const pos  = getBrainPosition(i, NODE_COUNT);
+  const lobe = getLobe(pos);
+
+  const mesh = new THREE.Mesh(nodeGeo, nodeMat.clone());
+  mesh.position.copy(pos);
+  mesh.scale.setScalar(0.6 + Math.random() * 0.8);
+
+  if (lobe === 'frontal') {
+    mesh.material.color.set(0x3db0e8);
+    mesh.material.emissive.set(0x0a2540);
+  } else if (lobe === 'cerebellum') {
+    mesh.material.color.set(0x1a6a90);
+    mesh.material.emissive.set(0x050f1a);
+  }
+
+  nodeGroup.add(mesh);
+  nodePositions.push(pos.clone());
+  nodeMeshes.push(mesh);
+  nodeData.push({
+    lobe,
+    baseScale: mesh.scale.x,
+    phase: Math.random() * Math.PI * 2,
+    speed: 0.5 + Math.random() * 1.0,
+    originalColor: mesh.material.color.clone(),
+    originalEmissive: mesh.material.emissive.clone()
+  });
+}
+
+// ─── NEURAL PATHWAYS ─────────────────────────────────────────────────────────
+const connectionGroup = new THREE.Group();
+scene.add(connectionGroup);
+
+const connectionLines = [];
+const MAX_CONNECTIONS = MOBILE ? 120 : 320;
+const CONNECTION_DIST = 2.8;
+
+const lineMatBase = new THREE.LineBasicMaterial({
+  color: new THREE.Color(0x1a5c8a),
+  transparent: true,
+  opacity: 0.25,
+});
+
+let connCount = 0;
+for (let i = 0; i < NODE_COUNT && connCount < MAX_CONNECTIONS; i++) {
+  for (let j = i + 1; j < NODE_COUNT && connCount < MAX_CONNECTIONS; j++) {
+    const dist = nodePositions[i].distanceTo(nodePositions[j]);
+    if (dist < CONNECTION_DIST) {
+      const geo = new THREE.BufferGeometry().setFromPoints([nodePositions[i], nodePositions[j]]);
+      const mat = lineMatBase.clone();
+      mat.opacity = 0.08 + (1 - dist / CONNECTION_DIST) * 0.3;
+      const line = new THREE.Line(geo, mat);
+      connectionGroup.add(line);
+      connectionLines.push({ line, i, j, dist, baseOpacity: mat.opacity });
+      connCount++;
+    }
+  }
+}
+
+// ─── SIGNAL PARTICLES ────────────────────────────────────────────────────────
+const SIGNAL_COUNT = MOBILE ? 40 : 100;
+const signals = [];
+
+const signalGeo = new THREE.SphereGeometry(0.045, 4, 4);
+const signalMats = {
+  blue:   new THREE.MeshBasicMaterial({ color: 0x5bc8f0, transparent: true, opacity: 0.9 }),
+  orange: new THREE.MeshBasicMaterial({ color: 0xf1420b, transparent: true, opacity: 0.85 }),
+};
+
+for (let i = 0; i < SIGNAL_COUNT; i++) {
+  const isOrange = Math.random() < 0.3;
+  const mesh = new THREE.Mesh(signalGeo, (isOrange ? signalMats.orange : signalMats.blue).clone());
+  const fromIdx = Math.floor(Math.random() * NODE_COUNT);
+  const toIdx   = Math.floor(Math.random() * NODE_COUNT);
+  const t = Math.random();
+
+  mesh.position.lerpVectors(nodePositions[fromIdx], nodePositions[toIdx], t);
+  scene.add(mesh);
+
+  signals.push({ mesh, from: fromIdx, to: toIdx, t, speed: 0.003 + Math.random() * 0.012, isOrange });
+}
+
+// ─── AMBIENT PARTICLES ───────────────────────────────────────────────────────
+const AMBIENT_COUNT = MOBILE ? 60 : 150;
+const ambientGeo = new THREE.BufferGeometry();
+const ambPositions = new Float32Array(AMBIENT_COUNT * 3);
+const ambSpeeds = [];
+
+for (let i = 0; i < AMBIENT_COUNT; i++) {
+  ambPositions[i * 3]     = (Math.random() - 0.5) * 28;
+  ambPositions[i * 3 + 1] = (Math.random() - 0.5) * 20;
+  ambPositions[i * 3 + 2] = (Math.random() - 0.5) * 28;
+  ambSpeeds.push({
+    vx: (Math.random() - 0.5) * 0.003,
+    vy: (Math.random() - 0.5) * 0.003,
+    vz: (Math.random() - 0.5) * 0.003,
+  });
+}
+ambientGeo.setAttribute('position', new THREE.BufferAttribute(ambPositions, 3));
+
+const ambientParticles = new THREE.Points(
+  ambientGeo,
+  new THREE.PointsMaterial({
+    color: 0x2a93c1, size: 0.06, transparent: true, opacity: 0.4, sizeAttenuation: true,
+  })
+);
+scene.add(ambientParticles);
+
+// ─── SCROLL-DRIVEN CAMERA JOURNEY (10 rooms) ─────────────────────────────────
+// The camera path goes: FAR OUT -> orbits right -> approaches -> enters -> deep inside -> pulls back
+const camKeyframes = [
+  { t: 0.00, pos: new THREE.Vector3(0,    0,    15),   look: new THREE.Vector3(0, 0, 0) },   // Room 1: Far away, centered
+  { t: 0.10, pos: new THREE.Vector3(0,    0.5,  14),   look: new THREE.Vector3(0, 0, 0) },   // Room 1 end
+  { t: 0.15, pos: new THREE.Vector3(5,    1,    11),   look: new THREE.Vector3(-1, 0, 0) },  // Room 2: Orbit right
+  { t: 0.20, pos: new THREE.Vector3(5.5,  0.8,  10),   look: new THREE.Vector3(-1, 0, 0) },  // Room 2 end
+  { t: 0.27, pos: new THREE.Vector3(3,    1.5,  8),    look: new THREE.Vector3(0, 0, 0) },   // Room 3: Approach
+  { t: 0.35, pos: new THREE.Vector3(1,    0.8,  6),    look: new THREE.Vector3(0, 0, 0) },   // Room 3 end
+  { t: 0.40, pos: new THREE.Vector3(0,    0.5,  4.5),  look: new THREE.Vector3(0, 0, 0) },   // Room 4: Closer
+  { t: 0.45, pos: new THREE.Vector3(-0.5, 0.3,  3.5),  look: new THREE.Vector3(0, 0, 0) },   // Room 4 end
+  { t: 0.50, pos: new THREE.Vector3(-0.3, 0.2,  2),    look: new THREE.Vector3(0, 0, 0) },   // Room 5: Outer layer
+  { t: 0.55, pos: new THREE.Vector3(0.3, -0.1,  1.5),  look: new THREE.Vector3(0, 0, 0) },   // Room 5 end
+  { t: 0.60, pos: new THREE.Vector3(0.5,  0,    0.5),  look: new THREE.Vector3(0, 0, 0) },   // Room 6: INSIDE
+  { t: 0.65, pos: new THREE.Vector3(-0.3, 0.2, -0.5),  look: new THREE.Vector3(0, 0.1, 0) }, // Room 6 end
+  { t: 0.70, pos: new THREE.Vector3(0.2, -0.3, -0.8),  look: new THREE.Vector3(0, 0, 0) },   // Room 7: Deep inside
+  { t: 0.75, pos: new THREE.Vector3(-0.5, 0.1, -0.3),  look: new THREE.Vector3(0, 0, 0) },   // Room 7 end
+  { t: 0.78, pos: new THREE.Vector3(0,    0,    0.2),   look: new THREE.Vector3(0, 0, 0) },   // Room 8: AI partners
+  { t: 0.82, pos: new THREE.Vector3(0.3,  0.5,  1),    look: new THREE.Vector3(0, 0, 0) },   // Room 8 end
+  { t: 0.86, pos: new THREE.Vector3(0,    1,    5),    look: new THREE.Vector3(0, 0, 0) },   // Room 9: Pulling back
+  { t: 0.90, pos: new THREE.Vector3(0,    1.5,  8),    look: new THREE.Vector3(0, 0, 0) },   // Room 9 end
+  { t: 0.95, pos: new THREE.Vector3(0,    2,    12),   look: new THREE.Vector3(0, 0, 0) },   // Room 10: All the way out
+  { t: 1.00, pos: new THREE.Vector3(0,    2,    14),   look: new THREE.Vector3(0, 0, 0) },   // Room 10 end
+];
+
+function getCameraFromScroll(progress) {
+  let from, to;
+  for (let i = 0; i < camKeyframes.length - 1; i++) {
+    if (progress >= camKeyframes[i].t && progress <= camKeyframes[i + 1].t) {
+      from = camKeyframes[i];
+      to   = camKeyframes[i + 1];
+      break;
+    }
+  }
+  if (!from) { from = camKeyframes[camKeyframes.length - 2]; to = camKeyframes[camKeyframes.length - 1]; }
+
+  const range = to.t - from.t;
+  const local = (progress - from.t) / range;
+  const eased = local < 0.5 ? 2 * local * local : -1 + (4 - 2 * local) * local;
+
+  const pos  = new THREE.Vector3().lerpVectors(from.pos, to.pos, eased);
+  const look = new THREE.Vector3().lerpVectors(from.look, to.look, eased);
+  return { pos, look };
+}
+
+// ─── PANEL MANAGER (10 rooms) ────────────────────────────────────────────────
+const panels = [
+  document.getElementById('panel-hero'),
+  document.getElementById('panel-problem'),
+  document.getElementById('panel-foundation'),
+  document.getElementById('panel-proof'),
+  document.getElementById('panel-voices'),
+  document.getElementById('panel-arsenal'),
+  document.getElementById('panel-team'),
+  document.getElementById('panel-ai'),
+  document.getElementById('panel-network'),
+  document.getElementById('panel-gateway'),
+];
+
+const dots = document.querySelectorAll('.sdot');
+const scrollHint = document.getElementById('scroll-hint');
+const roomLabel = document.getElementById('room-label');
+
+const roomNames = [
+  'THE ARRIVAL', 'THE PROBLEM', 'THE FOUNDATION', 'THE PROOF',
+  'THE VOICES', 'THE ARSENAL', 'THE TEAM', 'THE AI PARTNERS',
+  'THE NETWORK', 'THE GATEWAY'
+];
+
+function getSectionFromProgress(p) {
+  if (p < 0.10) return 0;
+  if (p < 0.20) return 1;
+  if (p < 0.35) return 2;
+  if (p < 0.45) return 3;
+  if (p < 0.55) return 4;
+  if (p < 0.65) return 5;
+  if (p < 0.75) return 6;
+  if (p < 0.82) return 7;
+  if (p < 0.90) return 8;
+  return 9;
+}
+
+let lastSection = -1;
+let countersAnimated = false;
+let wasInAISection = false;
+
+function updatePanels(section) {
+  if (section === lastSection) return;
+  const prevSection = lastSection;
+  lastSection = section;
+
+  panels.forEach((p, i) => {
+    if (!p) return;
+    if (i === section) p.classList.add('visible');
+    else p.classList.remove('visible');
+  });
+
+  dots.forEach((d, i) => d.classList.toggle('active', i === section));
+
+  // Room label
+  if (roomLabel) {
+    const num = String(section + 1).padStart(2, '0');
+    roomLabel.innerHTML = `<span class="room-num">${num}</span> ${roomNames[section]}`;
+  }
+
+  // Scroll hint
+  if (scrollHint) scrollHint.style.opacity = section > 0 ? '0' : '1';
+
+  // Animate counters in Room 4
+  if (section === 3 && !countersAnimated) {
+    countersAnimated = true;
+    document.querySelectorAll('.stat-num[data-target]').forEach(el => {
+      const target = parseInt(el.dataset.target);
+      let current = 0;
+      const step = Math.ceil(target / 60);
+      const interval = setInterval(() => {
+        current += step;
+        if (current >= target) {
+          current = target;
+          clearInterval(interval);
+        }
+        el.textContent = current.toLocaleString();
+      }, 30);
+    });
+  }
+
+  // Room 8 (AI partners): shift brain colors toward orange/blue
+  if (section === 7) {
+    wasInAISection = true;
+    nodeData.forEach((nd, i) => {
+      const mesh = nodeMeshes[i];
+      mesh.material.emissiveIntensity = 1.2;
+      if (i % 3 === 0) {
+        mesh.material.color.set(0xf1420b);
+        mesh.material.emissive.set(0x5a1a04);
+      } else {
+        mesh.material.color.set(0x2a93c1);
+        mesh.material.emissive.set(0x0a3a55);
+      }
+    });
+  } else if (wasInAISection) {
+    // Restore original colors when leaving AI section
+    wasInAISection = false;
+    nodeData.forEach((nd, i) => {
+      const mesh = nodeMeshes[i];
+      mesh.material.color.copy(nd.originalColor);
+      mesh.material.emissive.copy(nd.originalEmissive);
+      mesh.material.emissiveIntensity = 0.6;
+    });
+  }
+}
+
+// ─── Dot navigation ──────────────────────────────────────────────────────────
+dots.forEach((dot) => {
+  dot.addEventListener('click', () => {
+    const idx = parseInt(dot.dataset.section);
+    const scrollTarget = (idx / 9.5) * (document.getElementById('scroll-driver').offsetHeight - window.innerHeight);
+    window.scrollTo({ top: scrollTarget, behavior: 'smooth' });
+  });
+});
+
+// ─── EXPLOSION EFFECT (Room 10) ──────────────────────────────────────────────
+const nodeOriginalPositions = nodePositions.map(p => p.clone());
+const nodeExplodeTargets = nodePositions.map(() =>
+  new THREE.Vector3(
+    (Math.random() - 0.5) * 25,
+    (Math.random() - 0.5) * 18,
+    (Math.random() - 0.5) * 25,
+  )
+);
+
+// ─── MOUSE ───────────────────────────────────────────────────────────────────
+const mouse = new THREE.Vector2(0, 0);
+const targetMouse = new THREE.Vector2(0, 0);
+
+window.addEventListener('mousemove', (e) => {
+  targetMouse.x = (e.clientX / window.innerWidth - 0.5) * 2;
+  targetMouse.y = -(e.clientY / window.innerHeight - 0.5) * 2;
+});
+
+// ─── LOBE GLOW ───────────────────────────────────────────────────────────────
+const lobes = ['frontal', 'temporal', 'parietal', 'occipital', 'cerebellum'];
+
+// ─── MAIN LOOP ───────────────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+let currentScrollProgress = 0;
+
+function getScrollProgress() {
+  const total = document.getElementById('scroll-driver').offsetHeight - window.innerHeight;
+  return Math.min(Math.max(window.scrollY / total, 0), 1);
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // Smooth scroll
+  const rawProgress = getScrollProgress();
+  currentScrollProgress += (rawProgress - currentScrollProgress) * 0.12;
+  const progress = currentScrollProgress;
+
+  // Section
+  const section = getSectionFromProgress(progress);
+  updatePanels(section);
+
+  // Camera
+  const cam = getCameraFromScroll(progress);
+
+  mouse.x += (targetMouse.x - mouse.x) * 0.06;
+  mouse.y += (targetMouse.y - mouse.y) * 0.06;
+
+  const outsideFactor = Math.max(0, 1 - progress * 2.5);
+  cam.pos.x += mouse.x * 1.0 * outsideFactor;
+  cam.pos.y += mouse.y * 0.6 * outsideFactor;
+
+  if (progress > 0.5 && progress < 0.85) {
+    cam.pos.x += mouse.x * 0.25;
+    cam.pos.y += mouse.y * 0.15;
+  }
+
+  camera.position.lerp(cam.pos, 0.04);
+  camera.lookAt(cam.look);
+
+  // Brain rotation (slows as you go inside)
+  const rotSpeed = Math.max(0, 1 - progress * 3);
+  nodeGroup.rotation.y = t * 0.1 * rotSpeed;
+  connectionGroup.rotation.y = t * 0.1 * rotSpeed;
+
+  // Room 3 (Foundation): lobe glow cycle
+  if (section === 2) {
+    const lobeIdx = Math.floor(t * 0.5) % lobes.length;
+    const activeLobe = lobes[lobeIdx];
+    nodeData.forEach((nd, i) => {
+      const mesh = nodeMeshes[i];
+      if (nd.lobe === activeLobe) {
+        mesh.material.emissiveIntensity = 1.5 + Math.sin(t * 4) * 0.5;
+      } else {
+        mesh.material.emissiveIntensity = 0.6;
+      }
+    });
+  }
+
+  // Node breathing
+  for (let i = 0; i < nodeMeshes.length; i++) {
+    const nd = nodeData[i];
+    const mesh = nodeMeshes[i];
+    const pulse = 1.0 + Math.sin(t * nd.speed + nd.phase) * 0.15;
+    mesh.scale.setScalar(nd.baseScale * pulse);
+  }
+
+  // Explosion at end (Room 10)
+  if (progress > 0.92) {
+    const explodeFactor = Math.min(1, (progress - 0.92) / 0.04);
+    // Scatter
+    for (let i = 0; i < nodeMeshes.length; i++) {
+      const target = nodeExplodeTargets[i];
+      const orig = nodeOriginalPositions[i];
+      nodeMeshes[i].position.lerpVectors(orig, target, explodeFactor * 0.3);
+    }
+    // Then reassemble
+    if (progress > 0.96) {
+      const reassembleFactor = Math.min(1, (progress - 0.96) / 0.04);
+      for (let i = 0; i < nodeMeshes.length; i++) {
+        const scattered = new THREE.Vector3().lerpVectors(nodeOriginalPositions[i], nodeExplodeTargets[i], 0.3);
+        nodeMeshes[i].position.lerpVectors(scattered, nodeOriginalPositions[i], reassembleFactor);
+      }
+    }
+
+    // Final pulse glow
+    bloom.strength = 0.8 + Math.sin(t * 3) * 0.4;
+  } else {
+    // Restore positions
+    for (let i = 0; i < nodeMeshes.length; i++) {
+      nodeMeshes[i].position.copy(nodeOriginalPositions[i]);
+    }
+    bloom.strength = 0.8;
+  }
+
+  // Signal particles
+  for (const sig of signals) {
+    sig.t += sig.speed;
+    if (sig.t >= 1) {
+      sig.from = sig.to;
+      sig.to = Math.floor(Math.random() * NODE_COUNT);
+      sig.t = 0;
+    }
+    sig.mesh.position.lerpVectors(nodePositions[sig.from], nodePositions[sig.to], sig.t);
+    // Rotate signals with brain
+    const rotY = t * 0.1 * rotSpeed;
+    const x = sig.mesh.position.x;
+    const z = sig.mesh.position.z;
+    sig.mesh.position.x = x * Math.cos(rotY) - z * Math.sin(rotY);
+    sig.mesh.position.z = x * Math.sin(rotY) + z * Math.cos(rotY);
+  }
+
+  // Ambient particles drift
+  const ambPos = ambientGeo.attributes.position.array;
+  for (let i = 0; i < AMBIENT_COUNT; i++) {
+    ambPos[i * 3]     += ambSpeeds[i].vx;
+    ambPos[i * 3 + 1] += ambSpeeds[i].vy;
+    ambPos[i * 3 + 2] += ambSpeeds[i].vz;
+    if (Math.abs(ambPos[i * 3]) > 14) ambSpeeds[i].vx *= -1;
+    if (Math.abs(ambPos[i * 3 + 1]) > 10) ambSpeeds[i].vy *= -1;
+    if (Math.abs(ambPos[i * 3 + 2]) > 14) ambSpeeds[i].vz *= -1;
+  }
+  ambientGeo.attributes.position.needsUpdate = true;
+
+  // Lights follow camera slightly
+  bluePoint.position.x = camera.position.x - 3;
+  bluePoint.position.y = camera.position.y + 4;
+  orangePoint.position.x = camera.position.x + 3;
+  orangePoint.position.y = camera.position.y - 2;
+
+  composer.render();
+}
+
+// Force initial panel visibility before first frame
+updatePanels(0);
+
+animate();
+
+// ─── RESIZE ──────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+});
+
+</script>
+</body>
+</html>

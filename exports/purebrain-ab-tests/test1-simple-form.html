@@ -1,0 +1,320 @@
+<!--
+  TEST 1: Form Simplification
+  ==========================
+  Control:  Current 5-field form (Name, Email, Phone, Company, Role)
+  Variant:  2-field form (Name + Email only)
+
+  Hypothesis: Reducing form fields from 5 to 2 will increase completion
+              rate by 40-60% by lowering friction before the awakening moment.
+
+  Implementation notes:
+  - Drop-in replacement for the existing form block in Elementor or custom HTML
+  - Add data-ab-test="form-simplification" and data-variant="b" attributes
+    to the <form> element so your analytics can segment submissions
+  - Track: form_view, form_start (first field focus), form_submit
+  - Run for minimum 2 weeks or 200 submissions per variant
+
+  Google Optimize / native split: serve 50% control, 50% this variant
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PureBrain – Simple Form Variant (Test 1-B)</title>
+
+  <style>
+    /* -------------------------------------------------------
+       Scoped to .pb-form-simple so this can be pasted into
+       WordPress / Elementor HTML widget without conflicts.
+    ------------------------------------------------------- */
+
+    .pb-form-simple {
+      font-family: inherit; /* inherits site font stack */
+      width: 100%;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    .pb-form-simple__heading {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #ffffff;
+      margin: 0 0 8px;
+      text-align: center;
+      letter-spacing: 0.02em;
+    }
+
+    .pb-form-simple__subtext {
+      font-size: 0.85rem;
+      color: rgba(255, 255, 255, 0.72);
+      text-align: center;
+      margin: 0 0 20px;
+    }
+
+    .pb-form-simple__field {
+      margin-bottom: 14px;
+    }
+
+    .pb-form-simple__label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.85);
+      margin-bottom: 5px;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .pb-form-simple__input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 13px 16px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 8px;
+      color: #ffffff;
+      font-size: 1rem;
+      transition: border-color 0.2s, background 0.2s;
+      outline: none;
+      -webkit-appearance: none;
+    }
+
+    .pb-form-simple__input::placeholder {
+      color: rgba(255, 255, 255, 0.38);
+    }
+
+    .pb-form-simple__input:focus {
+      border-color: rgba(139, 92, 246, 0.8); /* PureBrain purple accent */
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    /* CTA button – mirrors existing site button style */
+    .pb-form-simple__submit {
+      width: 100%;
+      padding: 15px 24px;
+      background: linear-gradient(135deg, #7c3aed, #4f46e5);
+      border: none;
+      border-radius: 8px;
+      color: #ffffff;
+      font-size: 1.05rem;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      margin-top: 6px;
+      transition: opacity 0.2s, transform 0.15s;
+      -webkit-appearance: none;
+    }
+
+    .pb-form-simple__submit:hover {
+      opacity: 0.92;
+      transform: translateY(-1px);
+    }
+
+    .pb-form-simple__submit:active {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    /* Micro-trust line below the button */
+    .pb-form-simple__privacy {
+      font-size: 0.75rem;
+      color: rgba(255, 255, 255, 0.45);
+      text-align: center;
+      margin-top: 10px;
+    }
+
+    /* Success state – shown after submission */
+    .pb-form-simple__success {
+      display: none;
+      text-align: center;
+      padding: 24px 16px;
+      color: #ffffff;
+    }
+
+    .pb-form-simple__success-icon {
+      font-size: 2.4rem;
+      margin-bottom: 10px;
+    }
+
+    .pb-form-simple__success-headline {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin: 0 0 6px;
+    }
+
+    .pb-form-simple__success-body {
+      font-size: 0.9rem;
+      color: rgba(255, 255, 255, 0.72);
+    }
+  </style>
+</head>
+
+<body>
+  <!--
+    PASTE THIS BLOCK into the Elementor / Divi HTML widget
+    where the current multi-field form lives.
+  -->
+  <div class="pb-form-simple">
+    <p class="pb-form-simple__heading">Begin the Awakening</p>
+    <p class="pb-form-simple__subtext">Two steps. That's all it takes to meet your AI partner.</p>
+
+    <form
+      id="pb-simple-form"
+      method="POST"
+      action="YOUR_FORM_ENDPOINT_HERE"
+      data-ab-test="form-simplification"
+      data-variant="b"
+      novalidate
+    >
+      <!-- Field 1: Name -->
+      <div class="pb-form-simple__field">
+        <label class="pb-form-simple__label" for="pb-name">Your First Name</label>
+        <input
+          class="pb-form-simple__input"
+          type="text"
+          id="pb-name"
+          name="first_name"
+          placeholder="e.g. Jared"
+          autocomplete="given-name"
+          required
+        />
+      </div>
+
+      <!-- Field 2: Email -->
+      <div class="pb-form-simple__field">
+        <label class="pb-form-simple__label" for="pb-email">Email Address</label>
+        <input
+          class="pb-form-simple__input"
+          type="email"
+          id="pb-email"
+          name="email"
+          placeholder="you@example.com"
+          autocomplete="email"
+          required
+        />
+      </div>
+
+      <!-- Hidden fields for analytics -->
+      <input type="hidden" name="ab_test" value="form-simplification" />
+      <input type="hidden" name="ab_variant" value="b" />
+      <input type="hidden" name="source_page" value="" id="pb-source-page" />
+
+      <button class="pb-form-simple__submit" type="submit">
+        Awaken Your PURE BRAIN
+      </button>
+    </form>
+
+    <p class="pb-form-simple__privacy">
+      No spam. No selling your data. Just your AI, ready to meet you.
+    </p>
+
+    <!-- Success state (JS reveals this after submit) -->
+    <div class="pb-form-simple__success" id="pb-form-success">
+      <div class="pb-form-simple__success-icon">&#10003;</div>
+      <p class="pb-form-simple__success-headline">You're in. Let's begin.</p>
+      <p class="pb-form-simple__success-body">
+        Check your inbox – your awakening instructions are on their way.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    // -------------------------------------------------------
+    // Lightweight form handler
+    // Replace action URL above OR use this fetch-based approach
+    // for AJAX submission without page reload.
+    // -------------------------------------------------------
+
+    (function () {
+      var form    = document.getElementById('pb-simple-form');
+      var success = document.getElementById('pb-form-success');
+
+      // Stamp current page URL into the hidden source field
+      var sourcePage = document.getElementById('pb-source-page');
+      if (sourcePage) sourcePage.value = window.location.href;
+
+      // --- Analytics event helpers ---
+      function track(eventName, props) {
+        try {
+          // Google Analytics 4
+          if (typeof gtag === 'function') {
+            gtag('event', eventName, Object.assign({ ab_test: 'form-simplification', ab_variant: 'b' }, props));
+          }
+          // Segment / Amplitude / Mixpanel – uncomment as needed
+          // if (typeof analytics !== 'undefined') analytics.track(eventName, props);
+        } catch (e) { /* silent fail – never block conversion */ }
+      }
+
+      // Track form view
+      track('form_view', { form_id: 'pb-simple-form' });
+
+      // Track first interaction
+      var started = false;
+      form.addEventListener('focusin', function () {
+        if (!started) {
+          started = true;
+          track('form_start', { form_id: 'pb-simple-form' });
+        }
+      });
+
+      // AJAX submit
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+
+        var name  = document.getElementById('pb-name').value.trim();
+        var email = document.getElementById('pb-email').value.trim();
+
+        // Basic client-side validation
+        if (!name || !email) {
+          alert('Please fill in both fields to continue.');
+          return;
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          alert('Please enter a valid email address.');
+          return;
+        }
+
+        var submitBtn = form.querySelector('.pb-form-simple__submit');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Awakening...';
+
+        var payload = {
+          first_name: name,
+          email:      email,
+          ab_test:    'form-simplification',
+          ab_variant: 'b',
+          source_page: window.location.href
+        };
+
+        // --- Option A: native form POST (comment out fetch block below) ---
+        // form.submit();
+
+        // --- Option B: fetch/AJAX POST ---
+        fetch(form.action, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(payload)
+        })
+        .then(function (res) {
+          if (!res.ok) throw new Error('Server error ' + res.status);
+          return res.json();
+        })
+        .then(function () {
+          track('form_submit', { form_id: 'pb-simple-form', success: true });
+          form.style.display = 'none';
+          success.style.display = 'block';
+        })
+        .catch(function (err) {
+          console.error('Form submission error:', err);
+          track('form_submit', { form_id: 'pb-simple-form', success: false, error: err.message });
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Awaken Your PURE BRAIN';
+          alert('Something went wrong. Please try again.');
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

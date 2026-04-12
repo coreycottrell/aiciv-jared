@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AETHER Night 20 — Multi-Layer Thin-Film Interference</title>
+<style>
+  :root {
+    --navy: #080a12;
+    --blue: #2a93c1;
+    --orange: #f1420b;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--navy); }
+  canvas { display: block; width: 100%; height: 100%; }
+  #info {
+    position: fixed; top: 16px; left: 16px; color: rgba(255,255,255,0.5);
+    font: 11px/1.4 'SF Mono', monospace; pointer-events: none; z-index: 10;
+  }
+  #info h3 { color: rgba(255,255,255,0.8); font-size: 13px; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div id="info">
+  <h3>Night 20 / Variation 1</h3>
+  Multi-Layer Thin-Film Interference<br>
+  Stacked coatings (3 layers) with complex iridescence<br>
+  Recursive Fresnel amplitude summation
+</div>
+<canvas id="c"></canvas>
+<script>
+// Night 20 Variation 1: Multi-Layered Thin-Film Interference
+// Physics: Stack of 3 thin films with different thicknesses and IORs
+// Each interface produces reflected/transmitted amplitudes
+// Total reflectance = coherent sum of all partial waves
+// This creates complex, shifting color patterns impossible with single-film
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+if (!gl) document.body.innerHTML = '<p style="color:white;padding:2em">WebGL2 required</p>';
+
+function resize() {
+  const dpr = Math.min(devicePixelRatio, 2);
+  canvas.width = canvas.clientWidth * dpr;
+  canvas.height = canvas.clientHeight * dpr;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+resize();
+window.addEventListener('resize', resize);
+
+const vs = `#version 300 es
+in vec2 p;
+void main(){ gl_Position = vec4(p, 0, 1); }`;
+
+const fs = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform vec2 uRes;
+uniform float uTime;
+uniform vec2 uMouse;
+
+#define PI 3.14159265
+#define TAU 6.28318530
+
+// --- SDF primitives ---
+float sdSphere(vec3 p, float r) { return length(p) - r; }
+
+float sdTorus(vec3 p, vec2 t) {
+  vec2 q = vec2(length(p.xz) - t.x, p.y);
+  return length(q) - t.y;
+}
+
+// Organic brain-like distortion
+float fbm(vec3 p) {
+  float v = 0.0, a = 0.5;
+  for (int i = 0; i < 4; i++) {
+    v += a * (sin(p.x * 3.7 + p.y * 2.1) * cos(p.z * 2.9 + p.x * 1.3));
+    p *= 2.1;
+    a *= 0.5;
+  }
+  return v;
+}
+
+float scene(vec3 p) {
+  // Rotating organic sphere
+  float angle = uTime * 0.3;
+  mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
+  p.xz *= rot;
+
+  float sphere = sdSphere(p, 1.2);
+  float organic = fbm(p * 1.5 + uTime * 0.1) * 0.15;
+  float torus = sdTorus(p, vec2(1.0, 0.25));
+
+  return min(sphere + organic, torus + organic * 0.5);
+}
+
+vec3 getNormal(vec3 p) {
+  vec2 e = vec2(0.001, 0);
+  return normalize(vec3(
+    scene(p + e.xyy) - scene(p - e.xyy),
+    scene(p + e.yxy) - scene(p - e.yxy),
+    scene(p + e.yyx) - scene(p - e.yyx)
+  ));
+}
+
+// --- Multi-Layer Thin Film ---
+// Fresnel reflectance amplitude (s-polarized, simplified)
+vec2 fresnelAmplitude(float n1, float n2, float cosTheta1) {
+  float sinTheta2Sq = (n1/n2) * (n1/n2) * (1.0 - cosTheta1*cosTheta1);
+  if (sinTheta2Sq > 1.0) return vec2(1.0, 0.0); // TIR
+  float cosTheta2 = sqrt(1.0 - sinTheta2Sq);
+  float rs = (n1*cosTheta1 - n2*cosTheta2) / (n1*cosTheta1 + n2*cosTheta2);
+  float ts = 2.0*n1*cosTheta1 / (n1*cosTheta1 + n2*cosTheta2);
+  return vec2(rs, ts);
+}
+
+// Phase accumulated traversing a single film layer
+float filmPhase(float n, float thickness, float cosTheta, float wavelength) {
+  return TAU * 2.0 * n * thickness * cosTheta / wavelength;
+}
+
+// Recursive transfer matrix for multi-layer stack
+// Returns complex reflectance (r_real, r_imag) for given wavelength
+vec2 multiLayerReflectance(
+  float wavelength,
+  float cosTheta0,
+  float n0,          // incident medium
+  float n1, float d1, // layer 1
+  float n2, float d2, // layer 2
+  float n3, float d3, // layer 3
+  float nSub          // substrate
+) {
+  // Build from bottom up: substrate -> layer3 -> layer2 -> layer1 -> air
+
+  // Interface layer3/substrate
+  vec2 f34 = fresnelAmplitude(n3, nSub, cosTheta0);
+  float r34 = f34.x;
+
+  // Complex reflectance of layer 3 + substrate (Airy formula)
+  float phi3 = filmPhase(n3, d3, cosTheta0, wavelength);
+  // r_stack = (r23 + r34*exp(-i*phi3)) / (1 + r23*r34*exp(-i*phi3))
+  vec2 f23 = fresnelAmplitude(n2, n3, cosTheta0);
+  float r23 = f23.x;
+
+  // Complex arithmetic: a = r34 * exp(-i*phi3)
+  float ar = r34 * cos(phi3);
+  float ai = -r34 * sin(phi3);
+
+  // r_stack3 = (r23 + a) / (1 + r23*a)
+  float numR = r23 + ar;
+  float numI = ai;
+  float denR = 1.0 + r23*ar;
+  float denI = r23*ai;
+  float denMag2 = denR*denR + denI*denI;
+  float s3r = (numR*denR + numI*denI) / denMag2;
+  float s3i = (numI*denR - numR*denI) / denMag2;
+
+  // Now layer 2 wrapping layer3-substrate stack
+  float phi2 = filmPhase(n2, d2, cosTheta0, wavelength);
+  vec2 f12 = fresnelAmplitude(n1, n2, cosTheta0);
+  float r12 = f12.x;
+
+  // a2 = s3 * exp(-i*phi2)
+  float a2r = s3r*cos(phi2) + s3i*sin(phi2);
+  float a2i = -s3r*sin(phi2) + s3i*cos(phi2);
+
+  float num2R = r12 + a2r;
+  float num2I = a2i;
+  float den2R = 1.0 + r12*a2r;
+  float den2I = r12*a2i;
+  float den2Mag2 = den2R*den2R + den2I*den2I;
+  float s2r = (num2R*den2R + num2I*den2I) / den2Mag2;
+  float s2i = (num2I*den2R - num2R*den2I) / den2Mag2;
+
+  // Now layer 1 wrapping everything
+  float phi1 = filmPhase(n1, d1, cosTheta0, wavelength);
+  vec2 f01 = fresnelAmplitude(n0, n1, cosTheta0);
+  float r01 = f01.x;
+
+  float a1r = s2r*cos(phi1) + s2i*sin(phi1);
+  float a1i = -s2r*sin(phi1) + s2i*cos(phi1);
+
+  float num1R = r01 + a1r;
+  float num1I = a1i;
+  float den1R = 1.0 + r01*a1r;
+  float den1I = r01*a1i;
+  float den1Mag2 = den1R*den1R + den1I*den1I;
+
+  return vec2(
+    (num1R*den1R + num1I*den1I) / den1Mag2,
+    (num1I*den1R - num1R*den1I) / den1Mag2
+  );
+}
+
+// CIE approximate wavelength to RGB
+vec3 wavelengthToRGB(float wl) {
+  float r = 0.0, g = 0.0, b = 0.0;
+  if (wl >= 380.0 && wl < 440.0) { r = -(wl-440.0)/(440.0-380.0); b = 1.0; }
+  else if (wl < 490.0) { g = (wl-440.0)/(490.0-440.0); b = 1.0; }
+  else if (wl < 510.0) { g = 1.0; b = -(wl-510.0)/(510.0-490.0); }
+  else if (wl < 580.0) { r = (wl-510.0)/(580.0-510.0); g = 1.0; }
+  else if (wl < 645.0) { r = 1.0; g = -(wl-645.0)/(645.0-580.0); }
+  else if (wl <= 780.0) { r = 1.0; }
+  // Intensity falloff at edges
+  float f = 1.0;
+  if (wl < 420.0) f = 0.3 + 0.7*(wl-380.0)/40.0;
+  else if (wl > 700.0) f = 0.3 + 0.7*(780.0-wl)/80.0;
+  return vec3(r, g, b) * f;
+}
+
+// Compute full spectral multi-layer reflectance
+vec3 spectralMultiLayer(float cosTheta, float thicknessScale) {
+  float n0 = 1.0;    // air
+  // 3 coating layers with different IORs and animated thicknesses
+  float n1 = 1.38;   // MgF2-like anti-reflection
+  float n2 = 1.55;   // polymer mid-layer
+  float n3 = 1.72;   // TiO2-like high-index
+  float nSub = 1.52;  // glass substrate
+
+  // Thicknesses animated for shifting patterns
+  float d1 = (120.0 + 40.0 * sin(uTime * 0.7)) * thicknessScale;
+  float d2 = (250.0 + 80.0 * sin(uTime * 0.5 + 1.0)) * thicknessScale;
+  float d3 = (180.0 + 60.0 * sin(uTime * 0.9 + 2.0)) * thicknessScale;
+
+  vec3 color = vec3(0.0);
+  const int SAMPLES = 20;
+  for (int i = 0; i < SAMPLES; i++) {
+    float wl = 380.0 + (400.0 * float(i)) / float(SAMPLES);
+    vec2 rComplex = multiLayerReflectance(wl, cosTheta, n0, n1, d1, n2, d2, n3, d3, nSub);
+    float R = rComplex.x*rComplex.x + rComplex.y*rComplex.y;
+    color += wavelengthToRGB(wl) * R;
+  }
+  return color / float(SAMPLES) * 4.0; // brightness boost
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5*uRes) / min(uRes.x, uRes.y);
+  vec2 mouse = (uMouse - 0.5*uRes) / min(uRes.x, uRes.y);
+
+  // Camera
+  vec3 ro = vec3(0, 0, 3.5);
+  vec3 rd = normalize(vec3(uv, -1.5));
+
+  // Slight camera orbit from mouse
+  float mx = mouse.x * 0.5;
+  float my = mouse.y * 0.3;
+  mat2 rotY = mat2(cos(mx), -sin(mx), sin(mx), cos(mx));
+  mat2 rotX = mat2(cos(my), -sin(my), sin(my), cos(my));
+  ro.xz *= rotY; rd.xz *= rotY;
+  ro.yz *= rotX; rd.yz *= rotX;
+
+  // Ray march
+  float t = 0.0;
+  bool hit = false;
+  for (int i = 0; i < 120; i++) {
+    vec3 p = ro + rd * t;
+    float d = scene(p);
+    if (d < 0.001) { hit = true; break; }
+    if (t > 20.0) break;
+    t += d;
+  }
+
+  vec3 col = vec3(0.02, 0.03, 0.06); // dark navy bg
+
+  if (hit) {
+    vec3 p = ro + rd * t;
+    vec3 n = getNormal(p);
+
+    // View-dependent angle for thin film
+    float cosTheta = abs(dot(n, -rd));
+
+    // Thickness varies across surface (simulating non-uniform coating)
+    float thicknessVar = 0.7 + 0.6 * (0.5 + 0.5*sin(p.x*3.0 + p.y*2.0 + uTime*0.3));
+
+    // Multi-layer spectral color
+    vec3 filmColor = spectralMultiLayer(cosTheta, thicknessVar);
+
+    // Base glass (subtle)
+    vec3 glassBase = vec3(0.04, 0.06, 0.12);
+
+    // Fresnel blend: at grazing = film dominates, at normal = glass shows through
+    float fresnel = pow(1.0 - cosTheta, 3.0);
+    vec3 surface = mix(glassBase, filmColor, 0.4 + 0.6 * fresnel);
+
+    // Rim glow (brand colors)
+    float rim = pow(1.0 - cosTheta, 4.0);
+    vec3 rimColor = mix(
+      vec3(0.165, 0.576, 0.757), // #2a93c1
+      vec3(0.945, 0.259, 0.043), // #f1420b
+      0.5 + 0.5 * sin(uTime * 0.8)
+    );
+    surface += rimColor * rim * 0.6;
+
+    // Specular highlight
+    vec3 lightDir = normalize(vec3(1.0, 1.5, 2.0));
+    vec3 h = normalize(lightDir - rd);
+    float spec = pow(max(dot(n, h), 0.0), 64.0);
+    surface += vec3(1.0) * spec * 0.5;
+
+    // Light wrapping
+    float diffuse = max(dot(n, lightDir), 0.0);
+    surface *= 0.5 + 0.5 * diffuse;
+
+    col = surface;
+  }
+
+  // Subtle vignette
+  vec2 vUv = gl_FragCoord.xy / uRes;
+  float vig = 1.0 - 0.4 * length(vUv - 0.5);
+  col *= vig;
+
+  // Tone mapping
+  col = col / (1.0 + col);
+  col = pow(col, vec3(0.85));
+
+  fragColor = vec4(col, 1.0);
+}`;
+
+function createShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(s));
+    return null;
+  }
+  return s;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, createShader(gl.VERTEX_SHADER, vs));
+gl.attachShader(prog, createShader(gl.FRAGMENT_SHADER, fs));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+const pLoc = gl.getAttribLocation(prog, 'p');
+gl.enableVertexAttribArray(pLoc);
+gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
+
+const uRes = gl.getUniformLocation(prog, 'uRes');
+const uTime = gl.getUniformLocation(prog, 'uTime');
+const uMouse = gl.getUniformLocation(prog, 'uMouse');
+
+let mx = canvas.width/2, my = canvas.height/2;
+canvas.addEventListener('mousemove', e => {
+  mx = e.clientX * devicePixelRatio;
+  my = (canvas.clientHeight - e.clientY) * devicePixelRatio;
+});
+
+function frame(t) {
+  gl.uniform2f(uRes, canvas.width, canvas.height);
+  gl.uniform1f(uTime, t * 0.001);
+  gl.uniform2f(uMouse, mx, my);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,2129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Tool Stack Calculator | How Much Are You Really Spending? | PureBrain.ai</title>
+<meta name="description" content="Calculate your real AI spending across 60+ tools. Compare your stack cost against PureBrain's all-in-one AI partnership starting at $79/month.">
+<meta property="og:title" content="AI Tool Stack Calculator — Are You Overpaying?">
+<meta property="og:description" content="Add up your AI tools and discover what you're really spending. One AI partner vs. 15+ separate subscriptions — starting at $79/month.">
+<meta property="og:url" content="https://purebrain.ai/ai-tool-stack-calculator/">
+<style>
+/* ===================================================
+   PUREBRAIN AI TOOL STACK CALCULATOR V2
+   Self-contained — no external dependencies
+   Prefix: .calc- for all classes
+=================================================== */
+
+:root {
+  --pb-bg: #080a12;
+  --pb-card: #0d1120;
+  --pb-card-alt: #111827;
+  --pb-border: rgba(42, 147, 193, 0.15);
+  --pb-border-hover: rgba(42, 147, 193, 0.4);
+  --pb-blue: #2a93c1;
+  --pb-orange: #f1420b;
+  --pb-white: #ffffff;
+  --pb-gray: #8892a4;
+  --pb-gray-light: #c4cdd8;
+  --pb-green: #22c55e;
+  --pb-text: #e8edf3;
+  --pb-radius: 12px;
+  --pb-radius-sm: 8px;
+  --pb-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  --pb-glow: 0 0 20px rgba(42, 147, 193, 0.15);
+  --pb-transition: all 0.25s ease;
+  --sticky-height: 90px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--pb-bg);
+  color: var(--pb-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ---- STICKY BAR ---- */
+.calc-sticky {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 1000;
+  background: rgba(8, 10, 18, 0.96);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--pb-border);
+  height: var(--sticky-height);
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  transform: translateY(-100%);
+  transition: transform 0.35s ease;
+  box-shadow: 0 4px 32px rgba(0,0,0,0.6);
+}
+.calc-sticky.calc-sticky--visible { transform: translateY(0); }
+
+.calc-sticky-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.calc-sticky-left, .calc-sticky-right {
+  flex: 1;
+  background: var(--pb-card);
+  border-radius: var(--pb-radius-sm);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--pb-border);
+}
+
+.calc-sticky-vs {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--pb-gray);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.calc-sticky-label {
+  font-size: 11px;
+  color: var(--pb-gray);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.calc-sticky-amount {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.calc-sticky-amount--stack { color: #f87171; }
+.calc-sticky-amount--pb { color: var(--pb-green); }
+
+.calc-sticky-tools {
+  font-size: 11px;
+  color: var(--pb-gray);
+  margin-left: auto;
+}
+
+.calc-sticky-save {
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--pb-green);
+  color: #000;
+  padding: 4px 10px;
+  border-radius: 20px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.calc-sticky-nudge {
+  font-size: 11px;
+  color: var(--pb-gray);
+  margin-left: auto;
+  max-width: 160px;
+  line-height: 1.3;
+}
+
+.calc-sticky-tier-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--pb-blue);
+  background: rgba(42,147,193,0.12);
+  border: 1px solid rgba(42,147,193,0.3);
+  padding: 2px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+/* ---- HERO ---- */
+.calc-hero {
+  padding: 100px 24px 60px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.calc-hero::before {
+  content: '';
+  position: absolute;
+  top: -200px; left: 50%; transform: translateX(-50%);
+  width: 700px; height: 600px;
+  background: radial-gradient(ellipse, rgba(42, 147, 193, 0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.calc-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  margin-bottom: 32px;
+  text-decoration: none;
+}
+.calc-logo span.blue { color: var(--pb-blue); }
+.calc-logo span.orange { color: var(--pb-orange); }
+.calc-logo span.white { color: var(--pb-white); }
+
+.calc-eyebrow {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--pb-orange);
+  background: rgba(241, 66, 11, 0.1);
+  border: 1px solid rgba(241, 66, 11, 0.25);
+  padding: 5px 14px;
+  border-radius: 20px;
+  margin-bottom: 20px;
+}
+
+.calc-hero h1 {
+  font-size: clamp(30px, 5vw, 52px);
+  font-weight: 900;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--pb-white);
+  margin-bottom: 20px;
+  max-width: 780px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.calc-hero h1 em {
+  font-style: normal;
+  color: var(--pb-blue);
+}
+
+.calc-hero p {
+  font-size: clamp(15px, 2vw, 18px);
+  color: var(--pb-gray-light);
+  max-width: 580px;
+  margin: 0 auto 40px;
+  line-height: 1.7;
+}
+
+/* ---- PRESETS ---- */
+.calc-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 40px;
+}
+
+.calc-preset-btn {
+  background: var(--pb-card);
+  border: 1px solid var(--pb-border);
+  color: var(--pb-text);
+  padding: 10px 20px;
+  border-radius: 30px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: var(--pb-transition);
+  white-space: nowrap;
+}
+.calc-preset-btn:hover {
+  border-color: var(--pb-blue);
+  color: var(--pb-blue);
+  background: rgba(42, 147, 193, 0.08);
+}
+.calc-preset-btn.calc-preset-btn--active {
+  background: rgba(42, 147, 193, 0.12);
+  border-color: var(--pb-blue);
+  color: var(--pb-blue);
+}
+
+.calc-reset-btn {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.1);
+  color: var(--pb-gray);
+  padding: 10px 20px;
+  border-radius: 30px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: var(--pb-transition);
+}
+.calc-reset-btn:hover {
+  border-color: rgba(255,255,255,0.25);
+  color: var(--pb-gray-light);
+}
+
+/* ---- MAIN LAYOUT ---- */
+.calc-wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 24px 80px;
+}
+
+.calc-layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 32px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .calc-layout { grid-template-columns: 1fr; }
+}
+
+/* ---- CATEGORIES ---- */
+.calc-categories { display: flex; flex-direction: column; gap: 16px; }
+
+.calc-category {
+  background: var(--pb-card);
+  border: 1px solid var(--pb-border);
+  border-radius: var(--pb-radius);
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+.calc-category:has(.calc-tool--on) {
+  border-color: rgba(42, 147, 193, 0.35);
+}
+
+.calc-cat-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+.calc-cat-header:hover { background: rgba(255,255,255,0.02); }
+
+.calc-cat-icon {
+  width: 36px; height: 36px;
+  border-radius: var(--pb-radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+  background: rgba(42, 147, 193, 0.1);
+  border: 1px solid rgba(42, 147, 193, 0.2);
+}
+
+.calc-cat-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pb-white);
+  flex: 1;
+}
+.calc-cat-count {
+  font-size: 11px;
+  color: var(--pb-gray);
+  font-weight: 500;
+  margin-right: 8px;
+}
+.calc-cat-selected {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--pb-blue);
+  background: rgba(42, 147, 193, 0.12);
+  padding: 2px 8px;
+  border-radius: 20px;
+  display: none;
+  margin-right: 8px;
+}
+.calc-cat-selected.visible { display: inline-block; }
+
+.calc-cat-chevron {
+  width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--pb-gray);
+  transition: transform 0.25s;
+  flex-shrink: 0;
+}
+.calc-cat-chevron svg { width: 14px; height: 14px; }
+.calc-category.calc-cat--open .calc-cat-chevron { transform: rotate(180deg); }
+
+.calc-cat-body {
+  display: none;
+  padding: 4px 16px 16px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.calc-category.calc-cat--open .calc-cat-body { display: flex; }
+
+/* ---- TOOL CARDS ---- */
+.calc-tool {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--pb-card-alt);
+  border: 1.5px solid rgba(255,255,255,0.06);
+  border-radius: var(--pb-radius-sm);
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: var(--pb-transition);
+  user-select: none;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+.calc-tool::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(42,147,193,0.06) 0%, transparent 60%);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.calc-tool:hover { border-color: rgba(42, 147, 193, 0.35); }
+.calc-tool:hover::before { opacity: 1; }
+
+.calc-tool--on {
+  border-color: var(--pb-blue);
+  background: rgba(42, 147, 193, 0.08);
+}
+.calc-tool--on::before { opacity: 1; }
+
+.calc-tool-toggle {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.2);
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: var(--pb-transition);
+  background: transparent;
+}
+.calc-tool--on .calc-tool-toggle {
+  background: var(--pb-blue);
+  border-color: var(--pb-blue);
+}
+.calc-tool-toggle-check {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.calc-tool--on .calc-tool-toggle-check { opacity: 1; }
+
+.calc-tool-icon {
+  width: 30px; height: 30px;
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.05);
+}
+
+.calc-tool-info { flex: 1; min-width: 0; }
+.calc-tool-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pb-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.calc-tool-desc {
+  font-size: 11px;
+  color: var(--pb-gray);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.calc-tool-price {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pb-gray-light);
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.calc-tool--on .calc-tool-price { color: var(--pb-white); }
+
+/* free tools style */
+.calc-tool--free .calc-tool-price { color: var(--pb-gray); font-weight: 500; }
+
+/* ---- SIDEBAR: COMPARISON PANEL ---- */
+.calc-sidebar {
+  position: sticky;
+  top: calc(var(--sticky-height) + 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.calc-panel {
+  background: var(--pb-card);
+  border: 1px solid var(--pb-border);
+  border-radius: var(--pb-radius);
+  overflow: hidden;
+}
+
+.calc-panel-header {
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--pb-border);
+}
+.calc-panel-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 4px;
+}
+.calc-panel-label--stack { color: var(--pb-gray); }
+.calc-panel-label--pb { color: var(--pb-blue); }
+
+.calc-panel-amount {
+  font-size: 40px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.calc-panel-amount--stack { color: #f87171; }
+.calc-panel-amount--pb { color: var(--pb-green); }
+
+.calc-panel-sub {
+  font-size: 12px;
+  color: var(--pb-gray);
+  margin-top: 4px;
+}
+
+.calc-panel-body { padding: 16px 20px; }
+
+/* Tool list in sidebar */
+.calc-selected-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--pb-border) transparent;
+  margin-bottom: 12px;
+}
+.calc-selected-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--pb-gray-light);
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.calc-selected-item-name { flex: 1; }
+.calc-selected-item-price {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--pb-text);
+}
+.calc-empty-msg {
+  font-size: 12px;
+  color: var(--pb-gray);
+  text-align: center;
+  padding: 20px 0;
+  line-height: 1.5;
+}
+
+/* Savings block */
+.calc-savings {
+  border-radius: var(--pb-radius-sm);
+  padding: 14px 16px;
+  margin-top: 4px;
+  transition: var(--pb-transition);
+}
+.calc-savings--positive {
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+.calc-savings--negative {
+  background: rgba(42, 147, 193, 0.06);
+  border: 1px solid rgba(42, 147, 193, 0.2);
+}
+
+.calc-savings-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+.calc-savings--positive .calc-savings-label { color: var(--pb-green); }
+.calc-savings--negative .calc-savings-label { color: var(--pb-blue); }
+
+.calc-savings-amount {
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.calc-savings--positive .calc-savings-amount { color: var(--pb-green); }
+.calc-savings--negative .calc-savings-amount { color: var(--pb-text); }
+
+.calc-savings-note {
+  font-size: 11px;
+  color: var(--pb-gray);
+  line-height: 1.5;
+}
+
+/* ---- PUREBRAIN TIER PANEL (NEW V2) ---- */
+.calc-tier-panel {
+  background: var(--pb-card);
+  border: 1px solid var(--pb-border);
+  border-radius: var(--pb-radius);
+  overflow: hidden;
+}
+
+.calc-tier-recommended {
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--pb-border);
+  position: relative;
+}
+
+.calc-tier-best-match {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--pb-orange);
+  background: rgba(241, 66, 11, 0.1);
+  border: 1px solid rgba(241, 66, 11, 0.25);
+  padding: 3px 10px;
+  border-radius: 20px;
+  margin-bottom: 10px;
+}
+
+.calc-tier-name {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--pb-white);
+  letter-spacing: -0.02em;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.calc-tier-tagline {
+  font-size: 12px;
+  color: var(--pb-gray);
+  margin-bottom: 10px;
+  font-style: italic;
+}
+
+.calc-tier-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.calc-tier-price {
+  font-size: 38px;
+  font-weight: 900;
+  color: var(--pb-green);
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.calc-tier-price-suffix {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--pb-gray);
+}
+
+.calc-tier-features {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.calc-tier-feature {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--pb-gray-light);
+  line-height: 1.4;
+}
+
+.calc-tier-feature-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--pb-blue);
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+
+/* Other tiers compact */
+.calc-other-tiers {
+  padding: 14px 20px 16px;
+}
+
+.calc-other-tiers-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--pb-gray);
+  margin-bottom: 10px;
+}
+
+.calc-tier-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.calc-tier-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--pb-radius-sm);
+  border: 1px solid rgba(255,255,255,0.06);
+  cursor: pointer;
+  transition: var(--pb-transition);
+  background: var(--pb-card-alt);
+}
+
+.calc-tier-card:hover {
+  border-color: rgba(42,147,193,0.35);
+  background: rgba(42,147,193,0.05);
+}
+
+.calc-tier-card--selected {
+  border-color: var(--pb-blue);
+  background: rgba(42,147,193,0.08);
+}
+
+.calc-tier-card-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--pb-text);
+  flex: 1;
+}
+
+.calc-tier-card-price {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--pb-gray-light);
+  font-variant-numeric: tabular-nums;
+}
+
+.calc-tier-card--selected .calc-tier-card-price {
+  color: var(--pb-green);
+}
+
+.calc-tier-card-popular {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--pb-orange);
+  background: rgba(241,66,11,0.12);
+  border: 1px solid rgba(241,66,11,0.25);
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+/* Tier comparison toggle */
+.calc-tier-compare-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--pb-blue);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: var(--pb-radius-sm);
+  transition: var(--pb-transition);
+  margin-top: 4px;
+  background: transparent;
+  border: none;
+  width: 100%;
+}
+.calc-tier-compare-toggle:hover { background: rgba(42,147,193,0.06); }
+
+.calc-tier-compare-table {
+  display: none;
+  margin-top: 12px;
+  border: 1px solid var(--pb-border);
+  border-radius: var(--pb-radius-sm);
+  overflow: hidden;
+}
+.calc-tier-compare-table.open { display: block; }
+
+.calc-compare-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr;
+  gap: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.calc-compare-row:last-child { border-bottom: none; }
+
+.calc-compare-cell {
+  padding: 6px 8px;
+  font-size: 10px;
+  color: var(--pb-gray-light);
+  border-right: 1px solid rgba(255,255,255,0.04);
+  line-height: 1.3;
+}
+.calc-compare-cell:last-child { border-right: none; }
+.calc-compare-cell--header {
+  font-weight: 700;
+  color: var(--pb-gray);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: rgba(0,0,0,0.2);
+}
+
+/* CTA Button */
+.calc-cta {
+  display: block;
+  background: var(--pb-orange);
+  color: var(--pb-white);
+  text-align: center;
+  padding: 16px 24px;
+  border-radius: var(--pb-radius);
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: var(--pb-transition);
+  border: none;
+  cursor: pointer;
+  letter-spacing: -0.01em;
+  width: 100%;
+}
+.calc-cta:hover {
+  background: var(--pb-blue);
+  color: var(--pb-white);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(42, 147, 193, 0.3);
+}
+
+.calc-cta-sub {
+  font-size: 11px;
+  color: var(--pb-gray);
+  text-align: center;
+  margin-top: 8px;
+}
+
+/* ---- WHAT PB REPLACES ---- */
+.calc-replaces-section {
+  padding: 60px 24px;
+  border-top: 1px solid var(--pb-border);
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.calc-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--pb-blue);
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.calc-section-title {
+  font-size: clamp(24px, 4vw, 38px);
+  font-weight: 900;
+  text-align: center;
+  color: var(--pb-white);
+  letter-spacing: -0.03em;
+  margin-bottom: 12px;
+}
+
+.calc-section-subtitle {
+  font-size: 16px;
+  color: var(--pb-gray-light);
+  text-align: center;
+  max-width: 560px;
+  margin: 0 auto 48px;
+  line-height: 1.7;
+}
+
+.calc-replaces-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.calc-replace-card {
+  background: var(--pb-card);
+  border: 1px solid var(--pb-border);
+  border-radius: var(--pb-radius);
+  padding: 20px;
+  transition: var(--pb-transition);
+}
+.calc-replace-card:hover {
+  border-color: var(--pb-border-hover);
+  box-shadow: var(--pb-glow);
+}
+
+.calc-replace-category {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.calc-replace-icon {
+  width: 38px; height: 38px;
+  background: rgba(42, 147, 193, 0.1);
+  border: 1px solid rgba(42, 147, 193, 0.2);
+  border-radius: var(--pb-radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+}
+.calc-replace-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pb-blue);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.calc-replace-tools {
+  font-size: 12px;
+  color: var(--pb-gray);
+  margin-bottom: 10px;
+  line-height: 1.6;
+}
+.calc-replace-pb {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pb-text);
+  line-height: 1.5;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+.calc-replace-arrow {
+  color: var(--pb-blue);
+  margin-right: 4px;
+}
+
+/* ---- BOTTOM CTA ---- */
+.calc-bottom-cta {
+  padding: 80px 24px;
+  text-align: center;
+  background: linear-gradient(180deg, transparent 0%, rgba(42, 147, 193, 0.04) 100%);
+  border-top: 1px solid var(--pb-border);
+}
+.calc-bottom-cta h2 {
+  font-size: clamp(26px, 4vw, 42px);
+  font-weight: 900;
+  color: var(--pb-white);
+  letter-spacing: -0.03em;
+  margin-bottom: 16px;
+}
+.calc-bottom-cta p {
+  font-size: 17px;
+  color: var(--pb-gray-light);
+  max-width: 560px;
+  margin: 0 auto 36px;
+  line-height: 1.7;
+}
+
+/* Tier cards in bottom CTA */
+.calc-bottom-tiers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 36px;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.calc-bottom-tier-card {
+  background: var(--pb-card);
+  border: 1px solid var(--pb-border);
+  border-radius: var(--pb-radius);
+  padding: 18px 22px;
+  text-align: center;
+  min-width: 160px;
+  flex: 1;
+  transition: var(--pb-transition);
+  text-decoration: none;
+}
+.calc-bottom-tier-card:hover {
+  border-color: var(--pb-border-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--pb-glow);
+}
+.calc-bottom-tier-card--featured {
+  border-color: var(--pb-blue);
+  background: rgba(42,147,193,0.06);
+}
+.calc-bottom-tier-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pb-white);
+  margin-bottom: 4px;
+}
+.calc-bottom-tier-price {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--pb-green);
+  letter-spacing: -0.02em;
+  margin-bottom: 4px;
+}
+.calc-bottom-tier-tagline {
+  font-size: 10px;
+  color: var(--pb-gray);
+  line-height: 1.3;
+}
+.calc-bottom-tier-popular {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--pb-orange);
+  background: rgba(241,66,11,0.1);
+  border: 1px solid rgba(241,66,11,0.25);
+  padding: 2px 8px;
+  border-radius: 10px;
+  display: inline-block;
+  margin-bottom: 8px;
+}
+
+.calc-bottom-cta-btn {
+  display: inline-block;
+  background: var(--pb-orange);
+  color: var(--pb-white);
+  padding: 18px 42px;
+  border-radius: var(--pb-radius);
+  font-size: 17px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: var(--pb-transition);
+  letter-spacing: -0.01em;
+}
+.calc-bottom-cta-btn:hover {
+  background: var(--pb-blue);
+  color: var(--pb-white);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(42, 147, 193, 0.35);
+}
+.calc-bottom-note {
+  font-size: 13px;
+  color: var(--pb-gray);
+  margin-top: 16px;
+}
+
+/* ---- CONFETTI CANVAS ---- */
+#calc-confetti {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 9999;
+  display: none;
+}
+
+/* ---- RESPONSIVE ---- */
+@media (max-width: 768px) {
+  .calc-hero { padding: 80px 20px 40px; }
+  .calc-sticky-left, .calc-sticky-right { padding: 10px 14px; }
+  .calc-sticky-vs { display: none; }
+  .calc-panel-amount { font-size: 32px; }
+  .calc-savings-amount { font-size: 22px; }
+  .calc-tool-desc { display: none; }
+  :root { --sticky-height: 80px; }
+  .calc-bottom-tiers { flex-direction: column; align-items: center; }
+  .calc-bottom-tier-card { min-width: 200px; max-width: 280px; }
+}
+
+@media (max-width: 480px) {
+  .calc-sticky-amount { font-size: 18px; }
+  .calc-sticky-tools, .calc-sticky-nudge, .calc-sticky-tier-badge { display: none; }
+  .calc-presets { gap: 8px; }
+  .calc-preset-btn { font-size: 12px; padding: 8px 14px; }
+  .calc-compare-row { grid-template-columns: 1fr 1fr 1fr 1fr 1fr; }
+  .calc-compare-cell { font-size: 9px; padding: 4px 4px; }
+}
+</style>
+</head>
+<body>
+
+<!-- CONFETTI CANVAS -->
+<canvas id="calc-confetti"></canvas>
+
+<!-- STICKY COMPARISON BAR -->
+<div class="calc-sticky" id="calcSticky">
+  <div class="calc-sticky-inner">
+    <div class="calc-sticky-left">
+      <div>
+        <div class="calc-sticky-label calc-panel-label--stack">Your Tool Stack</div>
+        <div class="calc-sticky-amount calc-sticky-amount--stack">$<span id="stickyStackAmt">0</span>/mo</div>
+      </div>
+      <div class="calc-sticky-tools" id="stickyToolCount">0 tools</div>
+    </div>
+    <div class="calc-sticky-vs">VS</div>
+    <div class="calc-sticky-right">
+      <div>
+        <div class="calc-sticky-label calc-panel-label--pb">PureBrain AI</div>
+        <div class="calc-sticky-amount calc-sticky-amount--pb">$<span id="stickyPbPrice">79</span>/mo</div>
+      </div>
+      <div class="calc-sticky-tier-badge" id="stickyTierBadge">Awakened</div>
+      <div id="stickySaveLabel" class="calc-sticky-save" style="display:none">Save $<span id="stickySaveAmt">0</span>/mo</div>
+      <div id="stickyNudgeLabel" class="calc-sticky-nudge" style="display:none">PureBrain adds strategist + chatbot + lead gen</div>
+    </div>
+  </div>
+</div>
+
+<!-- HERO -->
+<header class="calc-hero">
+  <a href="https://purebrain.ai" class="calc-logo">
+    <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span><span class="white">.ai</span>
+  </a>
+  <div style="text-align:center">
+    <div class="calc-eyebrow">Free Calculator Tool</div>
+    <h1>How Much Are You <em>Really</em> Spending on AI?</h1>
+    <p>Most teams pay $300–$800/month across 10–20 separate AI tools. Select the ones you use and see what you're actually spending — then find the PureBrain plan that replaces it all, starting at $79/month.</p>
+  </div>
+
+  <!-- PRESETS -->
+  <div class="calc-presets">
+    <button class="calc-preset-btn" data-preset="solopreneur" onclick="applyPreset('solopreneur')">Solopreneur Stack</button>
+    <button class="calc-preset-btn" data-preset="marketing" onclick="applyPreset('marketing')">Marketing Team</button>
+    <button class="calc-preset-btn" data-preset="creator" onclick="applyPreset('creator')">Creator Studio</button>
+    <button class="calc-preset-btn" data-preset="enterprise" onclick="applyPreset('enterprise')">Enterprise Stack</button>
+    <button class="calc-preset-btn" data-preset="founder" onclick="applyPreset('founder')">Full Stack Founder</button>
+    <button class="calc-reset-btn" onclick="resetAll()">Clear All</button>
+  </div>
+</header>
+
+<!-- MAIN CALCULATOR -->
+<main class="calc-wrap">
+  <div class="calc-layout">
+
+    <!-- LEFT: CATEGORIES + TOOLS -->
+    <div class="calc-categories" id="calcCategories">
+      <!-- Rendered by JS -->
+    </div>
+
+    <!-- RIGHT: SIDEBAR -->
+    <div class="calc-sidebar">
+
+      <!-- Your stack total -->
+      <div class="calc-panel">
+        <div class="calc-panel-header">
+          <div class="calc-panel-label calc-panel-label--stack">Your Current Stack</div>
+          <div class="calc-panel-amount calc-panel-amount--stack">$<span id="panelStackAmt">0</span><span style="font-size:18px;font-weight:500;color:var(--pb-gray)">/mo</span></div>
+          <div class="calc-panel-sub" id="panelToolCount">No tools selected</div>
+        </div>
+        <div class="calc-panel-body">
+          <div class="calc-selected-list" id="selectedList">
+            <div class="calc-empty-msg">Toggle tools on the left<br>to build your stack</div>
+          </div>
+          <div class="calc-savings calc-savings--negative" id="savingsBlock">
+            <div class="calc-savings-label" id="savingsLabel">What PureBrain Adds</div>
+            <div class="calc-savings-amount" id="savingsAmount">$79/mo</div>
+            <div class="calc-savings-note" id="savingsNote">PureBrain replaces all of these — plus adds an AI strategist, custom chatbot builder, and integrated lead gen system.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PureBrain Dynamic Tier Panel -->
+      <div class="calc-tier-panel">
+        <div class="calc-tier-recommended">
+          <div class="calc-tier-best-match">&#9733; Your Best Match</div>
+          <div class="calc-tier-name" id="tierName">Awakened</div>
+          <div class="calc-tier-tagline" id="tierTagline">"Your AI is born"</div>
+          <div class="calc-tier-price-row">
+            <div class="calc-tier-price">$<span id="tierPrice">79</span></div>
+            <div class="calc-tier-price-suffix">/month</div>
+          </div>
+          <div class="calc-tier-features" id="tierFeatures">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+
+        <div class="calc-other-tiers">
+          <div class="calc-other-tiers-label">Compare All Plans</div>
+          <div class="calc-tier-cards" id="tierCards">
+            <!-- Rendered by JS -->
+          </div>
+          <button class="calc-tier-compare-toggle" onclick="toggleCompareTable()">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 4 6 8 10 4"/></svg>
+            View full comparison
+          </button>
+          <div class="calc-tier-compare-table" id="tierCompareTable">
+            <div class="calc-compare-row">
+              <div class="calc-compare-cell calc-compare-cell--header">Feature</div>
+              <div class="calc-compare-cell calc-compare-cell--header">Awakened<br>$79</div>
+              <div class="calc-compare-cell calc-compare-cell--header">Bonded<br>$149</div>
+              <div class="calc-compare-cell calc-compare-cell--header">Partnered<br>$499</div>
+              <div class="calc-compare-cell calc-compare-cell--header">Unified<br>$999</div>
+            </div>
+            <div class="calc-compare-row">
+              <div class="calc-compare-cell">Concurrent agents</div>
+              <div class="calc-compare-cell">10</div>
+              <div class="calc-compare-cell">10+</div>
+              <div class="calc-compare-cell">Unlimited</div>
+              <div class="calc-compare-cell">Unlimited</div>
+            </div>
+            <div class="calc-compare-row">
+              <div class="calc-compare-cell">24/7 deployment</div>
+              <div class="calc-compare-cell">&#10003;</div>
+              <div class="calc-compare-cell">&#10003;</div>
+              <div class="calc-compare-cell">&#10003;</div>
+              <div class="calc-compare-cell">&#10003;</div>
+            </div>
+            <div class="calc-compare-row">
+              <div class="calc-compare-cell">RAG knowledge base</div>
+              <div class="calc-compare-cell">&#10003;</div>
+              <div class="calc-compare-cell">&#10003;</div>
+              <div class="calc-compare-cell">&#10003;</div>
+              <div class="calc-compare-cell">&#10003;</div>
+            </div>
+            <div class="calc-compare-row">
+              <div class="calc-compare-cell">Managed service</div>
+              <div class="calc-compare-cell">&#8212;</div>
+              <div class="calc-compare-cell">&#10003;</div>
+              <div class="calc-compare-cell">&#10003;</div>
+              <div class="calc-compare-cell">&#10003;</div>
+            </div>
+            <div class="calc-compare-row">
+              <div class="calc-compare-cell">Social integrations</div>
+              <div class="calc-compare-cell">&#8212;</div>
+              <div class="calc-compare-cell">&#10003;</div>
+              <div class="calc-compare-cell">&#10003;</div>
+              <div class="calc-compare-cell">&#10003;</div>
+            </div>
+            <div class="calc-compare-row">
+              <div class="calc-compare-cell">Strategy consulting</div>
+              <div class="calc-compare-cell">&#8212;</div>
+              <div class="calc-compare-cell">&#8212;</div>
+              <div class="calc-compare-cell">1hr/mo</div>
+              <div class="calc-compare-cell">4hrs/mo</div>
+            </div>
+            <div class="calc-compare-row">
+              <div class="calc-compare-cell">Custom agent build</div>
+              <div class="calc-compare-cell">&#8212;</div>
+              <div class="calc-compare-cell">&#8212;</div>
+              <div class="calc-compare-cell">1/mo</div>
+              <div class="calc-compare-cell">Priority</div>
+            </div>
+            <div class="calc-compare-row">
+              <div class="calc-compare-cell">SLA</div>
+              <div class="calc-compare-cell">Community</div>
+              <div class="calc-compare-cell">Business</div>
+              <div class="calc-compare-cell">Same-day</div>
+              <div class="calc-compare-cell">Dedicated</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CTA -->
+      <a href="https://purebrain.ai/#awakening" class="calc-cta" id="mainCta">Start Your AI Partnership &mdash; $79/mo &rarr;</a>
+      <div class="calc-cta-sub">No contracts. Cancel anytime. Setup takes minutes.</div>
+
+    </div>
+  </div>
+</main>
+
+<!-- WHAT PUREBRAIN REPLACES -->
+<section class="calc-replaces-section">
+  <div class="calc-section-label">The Full Picture</div>
+  <h2 class="calc-section-title">One Partner. Everything Replaced.</h2>
+  <p class="calc-section-subtitle">PureBrain doesn't just replace these tools — it connects them. One AI that knows your business, remembers your preferences, and improves over time.</p>
+
+  <div class="calc-replaces-grid">
+    <div class="calc-replace-card">
+      <div class="calc-replace-category">
+        <div class="calc-replace-icon">🤖</div>
+        <div class="calc-replace-name">AI Assistant</div>
+      </div>
+      <div class="calc-replace-tools">Replaces: ChatGPT Plus/Pro, Claude Pro, Gemini Advanced, Perplexity Pro, Copilot, Grok</div>
+      <div class="calc-replace-pb"><span class="calc-replace-arrow">&#8594;</span>Your AI partner handles every conversation, question, and analysis — and unlike generic chatbots, it knows your business deeply.</div>
+    </div>
+
+    <div class="calc-replace-card">
+      <div class="calc-replace-category">
+        <div class="calc-replace-icon">💻</div>
+        <div class="calc-replace-name">Coding &amp; Apps</div>
+      </div>
+      <div class="calc-replace-tools">Replaces: Cursor, Lovable, Bolt.new, v0.dev, Replit, GitHub Copilot, Bubble</div>
+      <div class="calc-replace-pb"><span class="calc-replace-arrow">&#8594;</span>Builds full-stack web apps, automations, and integrations. No subscription per project.</div>
+    </div>
+
+    <div class="calc-replace-card">
+      <div class="calc-replace-category">
+        <div class="calc-replace-icon">✍️</div>
+        <div class="calc-replace-name">AI Writing</div>
+      </div>
+      <div class="calc-replace-tools">Replaces: Jasper, Copy.ai, Writesonic, Grammarly Business, Wordtune</div>
+      <div class="calc-replace-pb"><span class="calc-replace-arrow">&#8594;</span>Writes blogs, emails, ads, landing pages — in your brand voice. Trained on your business, not generic templates.</div>
+    </div>
+
+    <div class="calc-replace-card">
+      <div class="calc-replace-category">
+        <div class="calc-replace-icon">🎨</div>
+        <div class="calc-replace-name">Design &amp; Presentations</div>
+      </div>
+      <div class="calc-replace-tools">Replaces: Gamma, Canva Pro, Beautiful.ai, Tome, Copilot for PowerPoint</div>
+      <div class="calc-replace-pb"><span class="calc-replace-arrow">&#8594;</span>Creates polished decks, proposals, reports, and branded content — on demand.</div>
+    </div>
+
+    <div class="calc-replace-card">
+      <div class="calc-replace-category">
+        <div class="calc-replace-icon">🖼️</div>
+        <div class="calc-replace-name">Image Generation</div>
+      </div>
+      <div class="calc-replace-tools">Replaces: Midjourney, DALL-E 3, Adobe Firefly, Leonardo.ai, Ideogram</div>
+      <div class="calc-replace-pb"><span class="calc-replace-arrow">&#8594;</span>Generates branded visuals, social assets, and product imagery — consistent with your identity.</div>
+    </div>
+
+    <div class="calc-replace-card">
+      <div class="calc-replace-category">
+        <div class="calc-replace-icon">🎬</div>
+        <div class="calc-replace-name">Video &amp; Media</div>
+      </div>
+      <div class="calc-replace-tools">Replaces: Runway, Pika, Kling, InVideo AI, Luma Dream Machine</div>
+      <div class="calc-replace-pb"><span class="calc-replace-arrow">&#8594;</span>Generates AI video content, short-form clips, and promotional media for your brand.</div>
+    </div>
+
+    <div class="calc-replace-card">
+      <div class="calc-replace-category">
+        <div class="calc-replace-icon">📈</div>
+        <div class="calc-replace-name">SEO &amp; Marketing Intel</div>
+      </div>
+      <div class="calc-replace-tools">Replaces: SEMrush, Ahrefs, Moz Pro, Surfer SEO, MarketMuse</div>
+      <div class="calc-replace-pb"><span class="calc-replace-arrow">&#8594;</span>AI-driven SEO strategy, content gap analysis, and competitive intelligence — without the per-seat pricing.</div>
+    </div>
+
+    <div class="calc-replace-card">
+      <div class="calc-replace-category">
+        <div class="calc-replace-icon">📱</div>
+        <div class="calc-replace-name">Social Media</div>
+      </div>
+      <div class="calc-replace-tools">Replaces: Hootsuite, Buffer, Sprout Social, Later, SocialBee</div>
+      <div class="calc-replace-pb"><span class="calc-replace-arrow">&#8594;</span>Plans, writes, and schedules content across all your social channels — autonomously.</div>
+    </div>
+
+    <div class="calc-replace-card">
+      <div class="calc-replace-category">
+        <div class="calc-replace-icon">💬</div>
+        <div class="calc-replace-name">Custom Chatbot</div>
+      </div>
+      <div class="calc-replace-tools">Replaces: Botpress, Voiceflow, Chatbase, SiteGPT, Custom GPTs</div>
+      <div class="calc-replace-pb"><span class="calc-replace-arrow">&#8594;</span>Your AI is already a custom chatbot for your site — trained on your business, no extra fee.</div>
+    </div>
+
+    <div class="calc-replace-card">
+      <div class="calc-replace-category">
+        <div class="calc-replace-icon">📧</div>
+        <div class="calc-replace-name">Lead Generation</div>
+      </div>
+      <div class="calc-replace-tools">Replaces: HubSpot, Mailchimp, ActiveCampaign, Brevo, LinkedIn Sales Nav, ConvertKit</div>
+      <div class="calc-replace-pb"><span class="calc-replace-arrow">&#8594;</span>Built-in lead capture, email sequences, assessment funnels, and CRM — all connected to your AI.</div>
+    </div>
+
+    <div class="calc-replace-card">
+      <div class="calc-replace-category">
+        <div class="calc-replace-icon">📊</div>
+        <div class="calc-replace-name">Strategy &amp; Research</div>
+      </div>
+      <div class="calc-replace-tools">Replaces: $150–300/hr consultants, NotebookLM, Perplexity Pro, Elicit, Consensus</div>
+      <div class="calc-replace-pb"><span class="calc-replace-arrow">&#8594;</span>Your always-on AI strategist. Market research, competitive analysis, business planning — no hourly rate.</div>
+    </div>
+
+    <div class="calc-replace-card">
+      <div class="calc-replace-category">
+        <div class="calc-replace-icon">📋</div>
+        <div class="calc-replace-name">Project Management AI</div>
+      </div>
+      <div class="calc-replace-tools">Replaces: Notion AI, ClickUp AI, Monday AI, Motion, Reclaim.ai</div>
+      <div class="calc-replace-pb"><span class="calc-replace-arrow">&#8594;</span>Your AI manages priorities, schedules, and project coordination — proactively, not reactively.</div>
+    </div>
+  </div>
+</section>
+
+<!-- BOTTOM CTA -->
+<section class="calc-bottom-cta">
+  <h2>Stop Managing Subscriptions.<br>Start Building Your Business.</h2>
+  <p>The average team using PureBrain replaces 10–15 separate AI subscriptions. One AI partner that knows your business, remembers everything, and gets better every day.</p>
+
+  <div class="calc-bottom-tiers">
+    <a href="https://purebrain.ai/#awakening" class="calc-bottom-tier-card">
+      <div class="calc-bottom-tier-name">Awakened</div>
+      <div class="calc-bottom-tier-price">$79</div>
+      <div class="calc-bottom-tier-tagline">/mo — Your AI is born</div>
+    </a>
+    <a href="https://purebrain.ai/#awakening" class="calc-bottom-tier-card calc-bottom-tier-card--featured">
+      <div class="calc-bottom-tier-popular">Most Popular</div>
+      <div class="calc-bottom-tier-name">Bonded</div>
+      <div class="calc-bottom-tier-price">$149</div>
+      <div class="calc-bottom-tier-tagline">/mo — Your AI is cared for</div>
+    </a>
+    <a href="https://purebrain.ai/#awakening" class="calc-bottom-tier-card">
+      <div class="calc-bottom-tier-name">Partnered</div>
+      <div class="calc-bottom-tier-price">$499</div>
+      <div class="calc-bottom-tier-tagline">/mo — Expert guidance</div>
+    </a>
+    <a href="https://purebrain.ai/#awakening" class="calc-bottom-tier-card">
+      <div class="calc-bottom-tier-name">Unified</div>
+      <div class="calc-bottom-tier-price">$999</div>
+      <div class="calc-bottom-tier-tagline">/mo — Full integration</div>
+    </a>
+  </div>
+
+  <a href="https://purebrain.ai/#awakening" class="calc-bottom-cta-btn">Start Your AI Partnership &rarr;</a>
+  <div class="calc-bottom-note">Starting at $79/month &bull; Cancel anytime &bull; Most clients recoup the cost in week one</div>
+</section>
+
+<script>
+// ===================================================
+// AI TOOL STACK CALCULATOR V2 — Vanilla JS
+// Dynamic tier recommendations
+// ===================================================
+
+// PUREBRAIN TIERS
+const TIERS = [
+  {
+    id: 'awakened',
+    name: 'Awakened',
+    price: 79,
+    tagline: '"Your AI is born"',
+    badge: null,
+    minSpend: 0,
+    maxSpend: 200,
+    features: [
+      '10 concurrent agents running 24/7',
+      'RAG knowledge base — AI learns your business',
+      'Custom chatbot deployed to your site',
+      'Community support',
+    ]
+  },
+  {
+    id: 'bonded',
+    name: 'Bonded',
+    price: 149,
+    tagline: '"Your AI is cared for"',
+    badge: 'Most Popular',
+    minSpend: 200,
+    maxSpend: 500,
+    features: [
+      'Everything in Awakened',
+      'Managed service with proactive monitoring',
+      'Social media integrations (automated posting)',
+      'Autonomous workflows — AI acts without prompting',
+    ]
+  },
+  {
+    id: 'partnered',
+    name: 'Partnered',
+    price: 499,
+    tagline: '"Your AI has expert guidance"',
+    badge: null,
+    minSpend: 500,
+    maxSpend: 1000,
+    features: [
+      'Everything in Bonded',
+      '1hr/month strategy consulting session',
+      '1 custom agent build per month',
+      'Same-day SLA on support',
+    ]
+  },
+  {
+    id: 'unified',
+    name: 'Unified',
+    price: 999,
+    tagline: '"Full integration & priority access"',
+    badge: null,
+    minSpend: 1000,
+    maxSpend: Infinity,
+    features: [
+      'Everything in Partnered',
+      '4hrs/month executive consulting',
+      'Dedicated resources — your own infrastructure',
+      'Priority access to new capabilities',
+    ]
+  }
+];
+
+// TOOL DATA — all categories including new V2 additions
+const toolData = [
+  {
+    id: 'chatbots',
+    label: 'AI Chatbots & Assistants',
+    icon: '🤖',
+    tools: [
+      { id: 'chatgpt-plus', name: 'ChatGPT Plus', desc: 'OpenAI — general AI, writing, coding', price: 20, icon: '🟢' },
+      { id: 'chatgpt-pro', name: 'ChatGPT Pro', desc: 'OpenAI — heavy usage tier', price: 200, icon: '🟢' },
+      { id: 'claude-pro', name: 'Claude Pro', desc: 'Anthropic — long docs, reasoning', price: 20, icon: '🟣' },
+      { id: 'gemini-advanced', name: 'Gemini Advanced', desc: 'Google — ecosystem integration', price: 20, icon: '🔵' },
+      { id: 'perplexity-pro', name: 'Perplexity Pro', desc: 'AI search with citations', price: 20, icon: '🔍' },
+      { id: 'copilot-pro', name: 'Microsoft Copilot Pro', desc: 'Office integration', price: 20, icon: '💙' },
+      { id: 'grok', name: 'Grok (X Premium+)', desc: 'xAI — real-time web + X integration', price: 16, icon: '🔷' },
+      { id: 'deepseek', name: 'DeepSeek', desc: 'Free — but privacy concerns', price: 0, icon: '⚡', free: true },
+    ]
+  },
+  {
+    id: 'coding',
+    label: 'AI Coding & App Building',
+    icon: '💻',
+    tools: [
+      { id: 'cursor', name: 'Cursor', desc: 'AI code editor', price: 20, icon: '⌨️' },
+      { id: 'lovable', name: 'Lovable (Pro)', desc: 'AI app builder — pro tier', price: 60, icon: '❤️' },
+      { id: 'lovable-starter', name: 'Lovable (Starter)', desc: 'AI app builder — starter', price: 20, icon: '❤️' },
+      { id: 'bolt-new', name: 'Bolt.new', desc: 'AI full-stack app builder', price: 20, icon: '⚡' },
+      { id: 'v0-dev', name: 'v0.dev', desc: 'AI UI generator by Vercel', price: 20, icon: '▲' },
+      { id: 'replit', name: 'Replit Core', desc: 'AI IDE + hosting', price: 15, icon: '🔄' },
+      { id: 'github-copilot', name: 'GitHub Copilot', desc: 'Code completion', price: 19, icon: '🐙' },
+      { id: 'bubble', name: 'Bubble', desc: 'No-code builder', price: 32, icon: '🫧' },
+    ]
+  },
+  {
+    id: 'presentations',
+    label: 'AI Presentations & Design',
+    icon: '🎨',
+    tools: [
+      { id: 'gamma-plus', name: 'Gamma Plus', desc: 'AI presentations', price: 10, icon: '✨' },
+      { id: 'gamma-pro', name: 'Gamma Pro', desc: 'AI presentations — pro', price: 20, icon: '✨' },
+      { id: 'canva-pro', name: 'Canva Pro', desc: 'Design + AI features', price: 15, icon: '🎨' },
+      { id: 'beautiful-ai', name: 'Beautiful.ai', desc: 'AI presentations', price: 12, icon: '💎' },
+      { id: 'tome', name: 'Tome', desc: 'AI storytelling / decks', price: 10, icon: '📖' },
+      { id: 'copilot-ppt', name: 'Copilot for PowerPoint', desc: 'Enterprise presentations', price: 12.50, icon: '📊' },
+    ]
+  },
+  {
+    id: 'chatbots-custom',
+    label: 'Custom GPTs & Chatbot Builders',
+    icon: '💬',
+    tools: [
+      { id: 'custom-gpts', name: 'Custom GPTs (ChatGPT Plus)', desc: 'Requires ChatGPT Plus subscription', price: 20, icon: '🤖' },
+      { id: 'botpress', name: 'Botpress', desc: 'Enterprise chatbot builder', price: 50, icon: '🤖' },
+      { id: 'voiceflow', name: 'Voiceflow', desc: 'Chatbot designer', price: 50, icon: '🎙️' },
+      { id: 'chatbase', name: 'Chatbase', desc: 'Custom ChatGPT for your site', price: 20, icon: '💬' },
+      { id: 'sitegpt', name: 'SiteGPT', desc: 'Website chatbot', price: 40, icon: '🌐' },
+    ]
+  },
+  {
+    id: 'images',
+    label: 'AI Image Generation',
+    icon: '🖼️',
+    tools: [
+      { id: 'midjourney-basic', name: 'Midjourney Basic', desc: 'AI image generation — basic', price: 10, icon: '🎨' },
+      { id: 'midjourney-standard', name: 'Midjourney Standard', desc: 'AI image generation — standard', price: 30, icon: '🎨' },
+      { id: 'dalle-3', name: 'DALL-E 3 (ChatGPT Plus)', desc: 'Included with ChatGPT Plus', price: 20, icon: '🖌️' },
+      { id: 'adobe-firefly', name: 'Adobe Firefly', desc: 'Commercial-safe AI images', price: 9.99, icon: '🔥' },
+      { id: 'leonardo-ai', name: 'Leonardo.ai', desc: 'Game assets, creative AI', price: 10, icon: '🦁' },
+      { id: 'ideogram', name: 'Ideogram', desc: 'AI images with text rendering', price: 16, icon: '💡' },
+      { id: 'clipdrop', name: 'Stable Diffusion (Clipdrop)', desc: 'Open-source AI image gen', price: 10, icon: '🌀' },
+    ]
+  },
+  {
+    id: 'video',
+    label: 'AI Video Generation',
+    icon: '🎬',
+    tools: [
+      { id: 'runway-standard', name: 'Runway Gen-3 Standard', desc: 'AI video — standard', price: 15, icon: '🎥' },
+      { id: 'runway-pro', name: 'Runway Gen-3 Pro', desc: 'AI video — pro', price: 35, icon: '🎥' },
+      { id: 'pika', name: 'Pika', desc: 'AI video generation', price: 10, icon: '✨' },
+      { id: 'kling', name: 'Kling', desc: 'AI video creation', price: 9, icon: '🎞️' },
+      { id: 'invideo', name: 'InVideo AI', desc: 'YouTube automation', price: 25, icon: '▶️' },
+      { id: 'luma', name: 'Luma Dream Machine', desc: 'AI video/3D generation', price: 30, icon: '💫' },
+    ]
+  },
+  {
+    id: 'research',
+    label: 'AI Research & Strategy',
+    icon: '📊',
+    tools: [
+      { id: 'perplexity-research', name: 'Perplexity Pro (Research)', desc: 'AI search with citations', price: 20, icon: '🔍' },
+      { id: 'notebooklm', name: 'NotebookLM', desc: 'Google research assistant', price: 0, icon: '📓', free: true },
+      { id: 'elicit', name: 'Elicit', desc: 'AI research assistant for papers', price: 10, icon: '📚' },
+      { id: 'consensus', name: 'Consensus', desc: 'AI scientific research search', price: 10, icon: '🔬' },
+      { id: 'strategist-low', name: 'Human Strategist (light)', desc: 'Consultant retainer ~10hrs/mo', price: 1500, icon: '👔' },
+      { id: 'strategist-high', name: 'Human Strategist (heavy)', desc: 'Consultant retainer ~20hrs/mo', price: 3500, icon: '👔' },
+    ]
+  },
+  {
+    id: 'leadgen',
+    label: 'Lead Generation & Marketing',
+    icon: '📧',
+    tools: [
+      { id: 'hubspot', name: 'HubSpot Starter', desc: 'CRM + email marketing', price: 50, icon: '🟠' },
+      { id: 'mailchimp', name: 'Mailchimp Standard', desc: 'Email marketing platform', price: 20, icon: '🐒' },
+      { id: 'activecampaign', name: 'ActiveCampaign', desc: 'Marketing automation', price: 49, icon: '⚡' },
+      { id: 'brevo', name: 'Brevo (Sendinblue)', desc: 'Email + SMS marketing', price: 25, icon: '📨' },
+      { id: 'linkedin-salenav', name: 'LinkedIn Sales Navigator', desc: 'Lead prospecting', price: 100, icon: '💼' },
+      { id: 'constant-contact', name: 'Constant Contact', desc: 'Email marketing for SMBs', price: 35, icon: '📬' },
+      { id: 'convertkit', name: 'ConvertKit (Creator Pro)', desc: 'Email for creators', price: 59, icon: '✉️' },
+    ]
+  },
+  // NEW V2 CATEGORIES
+  {
+    id: 'writing',
+    label: 'AI Writing & Copywriting',
+    icon: '✍️',
+    tools: [
+      { id: 'jasper', name: 'Jasper', desc: 'AI writing assistant — pro', price: 49, icon: '✍️' },
+      { id: 'copyai', name: 'Copy.ai Pro', desc: 'AI copywriting platform', price: 49, icon: '📝' },
+      { id: 'writesonic', name: 'Writesonic Pro', desc: 'AI writing + SEO content', price: 19, icon: '⚡' },
+      { id: 'grammarly', name: 'Grammarly Business', desc: 'Writing clarity & brand voice', price: 15, icon: '✅' },
+      { id: 'wordtune', name: 'Wordtune Premium', desc: 'AI rewriting & paraphrase', price: 10, icon: '🔄' },
+    ]
+  },
+  {
+    id: 'seo',
+    label: 'SEO & Marketing Intelligence',
+    icon: '📈',
+    tools: [
+      { id: 'semrush', name: 'SEMrush Pro', desc: 'SEO, PPC, content marketing', price: 140, icon: '📈' },
+      { id: 'ahrefs', name: 'Ahrefs Lite', desc: 'Backlink analysis & keyword research', price: 129, icon: '🔗' },
+      { id: 'moz-pro', name: 'Moz Pro', desc: 'SEO toolset & rank tracking', price: 99, icon: '📊' },
+      { id: 'surfer-seo', name: 'Surfer SEO', desc: 'Content optimization & NLP', price: 89, icon: '🏄' },
+      { id: 'marketmuse', name: 'MarketMuse', desc: 'AI content strategy platform', price: 149, icon: '🧠' },
+    ]
+  },
+  {
+    id: 'social',
+    label: 'Social Media Management',
+    icon: '📱',
+    tools: [
+      { id: 'hootsuite', name: 'Hootsuite Pro', desc: 'Social media scheduling & analytics', price: 99, icon: '📱' },
+      { id: 'buffer', name: 'Buffer Pro', desc: 'Simple social scheduling', price: 36, icon: '📅' },
+      { id: 'sprout-social', name: 'Sprout Social Standard', desc: 'Social management & CRM', price: 249, icon: '🌱' },
+      { id: 'later', name: 'Later Pro', desc: 'Visual social media planner', price: 25, icon: '🖼️' },
+      { id: 'socialbee', name: 'SocialBee Pro', desc: 'Content recycling & scheduling', price: 29, icon: '🐝' },
+    ]
+  },
+  {
+    id: 'productivity',
+    label: 'Project Management & Productivity AI',
+    icon: '📋',
+    tools: [
+      { id: 'notion-ai', name: 'Notion AI', desc: 'AI add-on for Notion workspace', price: 10, icon: '📓' },
+      { id: 'clickup-ai', name: 'ClickUp AI', desc: 'AI in project management', price: 7, icon: '✅' },
+      { id: 'monday-ai', name: 'Monday AI', desc: 'AI-powered work management', price: 12, icon: '📋' },
+      { id: 'motion', name: 'Motion', desc: 'AI calendar & task scheduler', price: 34, icon: '⚡' },
+      { id: 'reclaim', name: 'Reclaim.ai', desc: 'AI time blocking & scheduling', price: 12, icon: '🕐' },
+    ]
+  },
+  {
+    id: 'data',
+    label: 'Data Analysis & Business Intelligence',
+    icon: '🔬',
+    tools: [
+      { id: 'tableau', name: 'Tableau Creator', desc: 'Data visualization platform', price: 75, icon: '📊' },
+      { id: 'powerbi', name: 'Power BI Pro', desc: 'Microsoft BI & analytics', price: 10, icon: '📈' },
+      { id: 'julius-ai', name: 'Julius AI', desc: 'Chat with your data / CSV AI', price: 20, icon: '🤖' },
+      { id: 'obviously-ai', name: 'Obviously AI', desc: 'No-code predictive analytics', price: 75, icon: '🔮' },
+    ]
+  },
+];
+
+// PRESET DEFINITIONS (updated V2)
+const presets = {
+  solopreneur: {
+    label: 'Solopreneur Stack',
+    tools: ['chatgpt-plus', 'canva-pro', 'grammarly', 'mailchimp', 'midjourney-basic'],
+  },
+  marketing: {
+    label: 'Marketing Team',
+    tools: ['chatgpt-plus', 'semrush', 'jasper', 'hootsuite', 'midjourney-standard', 'hubspot', 'buffer', 'canva-pro'],
+  },
+  creator: {
+    label: 'Creator Studio',
+    tools: ['chatgpt-plus', 'canva-pro', 'midjourney-standard', 'runway-standard', 'pika', 'invideo', 'copyai'],
+  },
+  enterprise: {
+    label: 'Enterprise Stack',
+    tools: ['chatgpt-plus', 'cursor', 'copilot-pro', 'semrush', 'sprout-social', 'hubspot', 'linkedin-salenav', 'tableau', 'botpress'],
+  },
+  founder: {
+    label: 'Full Stack Founder',
+    tools: ['chatgpt-plus', 'claude-pro', 'cursor', 'lovable', 'gamma-pro', 'midjourney-standard', 'jasper', 'mailchimp'],
+  },
+};
+
+// STATE
+let selectedTools = new Set();
+let currentPreset = null;
+let confettiTriggered = false;
+let animFrame = null;
+let selectedTierId = 'awakened'; // user-selected tier (can differ from recommended)
+let recommendedTierId = 'awakened';
+
+// Build tool lookup
+const toolLookup = {};
+toolData.forEach(cat => cat.tools.forEach(t => { toolLookup[t.id] = t; }));
+
+// Build tier lookup
+const tierLookup = {};
+TIERS.forEach(t => { tierLookup[t.id] = t; });
+
+// ---- GET RECOMMENDED TIER ----
+function getRecommendedTier(total) {
+  for (let i = TIERS.length - 1; i >= 0; i--) {
+    if (total >= TIERS[i].minSpend) return TIERS[i];
+  }
+  return TIERS[0];
+}
+
+// ---- RENDER CATEGORIES ----
+function renderCategories() {
+  const container = document.getElementById('calcCategories');
+  container.innerHTML = '';
+
+  toolData.forEach((cat, ci) => {
+    const el = document.createElement('div');
+    el.className = 'calc-category' + (ci < 2 ? ' calc-cat--open' : '');
+    el.dataset.catId = cat.id;
+
+    el.innerHTML = `
+      <div class="calc-cat-header" onclick="toggleCategory('${cat.id}')">
+        <div class="calc-cat-icon">${cat.icon}</div>
+        <div class="calc-cat-title">${cat.label}</div>
+        <div class="calc-cat-count">${cat.tools.length} tools</div>
+        <div class="calc-cat-selected" id="catSel-${cat.id}"></div>
+        <div class="calc-cat-chevron">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 7 10 12 5"/></svg>
+        </div>
+      </div>
+      <div class="calc-cat-body" id="catBody-${cat.id}">
+        ${cat.tools.map(tool => renderTool(tool)).join('')}
+      </div>
+    `;
+    container.appendChild(el);
+  });
+}
+
+function renderTool(tool) {
+  const isOn = selectedTools.has(tool.id);
+  const isFree = tool.price === 0;
+  const priceStr = isFree ? 'Free' : `$${tool.price % 1 === 0 ? tool.price : tool.price.toFixed(2)}/mo`;
+  return `
+    <div class="calc-tool${isOn ? ' calc-tool--on' : ''}${isFree ? ' calc-tool--free' : ''}"
+         id="tool-${tool.id}"
+         onclick="toggleTool('${tool.id}')">
+      <div class="calc-tool-toggle">
+        <svg class="calc-tool-toggle-check" width="11" height="9" viewBox="0 0 11 9" fill="none">
+          <polyline points="1,4.5 4,7.5 10,1.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="calc-tool-icon">${tool.icon}</div>
+      <div class="calc-tool-info">
+        <div class="calc-tool-name">${tool.name}</div>
+        <div class="calc-tool-desc">${tool.desc}</div>
+      </div>
+      <div class="calc-tool-price">${priceStr}</div>
+    </div>
+  `;
+}
+
+function toggleCategory(catId) {
+  const el = document.querySelector(`.calc-category[data-cat-id="${catId}"]`);
+  if (el) el.classList.toggle('calc-cat--open');
+}
+
+// ---- TOGGLE TOOL ----
+function toggleTool(id) {
+  if (selectedTools.has(id)) {
+    selectedTools.delete(id);
+  } else {
+    selectedTools.add(id);
+  }
+  updateToolUI(id);
+  updateTotals();
+  clearPresetHighlight();
+}
+
+function updateToolUI(id) {
+  const el = document.getElementById('tool-' + id);
+  if (!el) return;
+  if (selectedTools.has(id)) {
+    el.classList.add('calc-tool--on');
+  } else {
+    el.classList.remove('calc-tool--on');
+  }
+}
+
+// ---- COMPUTE TOTAL ----
+function computeTotal() {
+  let total = 0;
+  selectedTools.forEach(id => {
+    const tool = toolLookup[id];
+    if (tool) total += tool.price;
+  });
+  return total;
+}
+
+// ---- UPDATE UI ----
+let displayedTotal = 0;
+function updateTotals() {
+  const rawTotal = computeTotal();
+  const count = selectedTools.size;
+
+  // Get recommended tier
+  const recommended = getRecommendedTier(rawTotal);
+  recommendedTierId = recommended.id;
+
+  // If user hasn't manually selected a different tier, follow recommendation
+  // We always auto-follow recommendation on tool toggle
+  selectedTierId = recommendedTierId;
+
+  // Animate counter
+  animateCounter(displayedTotal, rawTotal, (val) => {
+    displayedTotal = val;
+    const formatted = Math.round(val).toLocaleString();
+
+    // Panel
+    document.getElementById('panelStackAmt').textContent = formatted;
+    document.getElementById('stickyStackAmt').textContent = formatted;
+
+    // Tool count
+    const toolWord = count === 1 ? 'tool' : 'tools';
+    document.getElementById('panelToolCount').textContent =
+      count === 0 ? 'No tools selected' : `${count} ${toolWord} selected`;
+    document.getElementById('stickyToolCount').textContent = `${count} ${toolWord}`;
+  });
+
+  // Selected list
+  renderSelectedList();
+
+  // Update category selected counts
+  updateCategoryBadges();
+
+  // Savings block
+  updateSavingsBlock(rawTotal);
+
+  // Tier panel
+  renderTierPanel(rawTotal);
+
+  // Sticky bar
+  updateStickyBar(rawTotal, count);
+
+  // Confetti when savings first exceed $100
+  const currentTier = tierLookup[selectedTierId];
+  const savings = rawTotal - currentTier.price;
+  if (savings > 100 && !confettiTriggered) {
+    confettiTriggered = true;
+    launchConfetti();
+  } else if (savings <= 100) {
+    confettiTriggered = false;
+  }
+}
+
+function renderSelectedList() {
+  const list = document.getElementById('selectedList');
+  if (selectedTools.size === 0) {
+    list.innerHTML = '<div class="calc-empty-msg">Toggle tools on the left<br>to build your stack</div>';
+    return;
+  }
+  const items = [];
+  selectedTools.forEach(id => {
+    const tool = toolLookup[id];
+    if (!tool) return;
+    const priceStr = tool.price === 0 ? 'Free' : `$${tool.price % 1 === 0 ? tool.price : tool.price.toFixed(2)}`;
+    items.push(`
+      <div class="calc-selected-item">
+        <span style="font-size:13px">${tool.icon}</span>
+        <span class="calc-selected-item-name">${tool.name}</span>
+        <span class="calc-selected-item-price">${priceStr}</span>
+      </div>
+    `);
+  });
+  list.innerHTML = items.join('');
+}
+
+function updateSavingsBlock(total) {
+  const block = document.getElementById('savingsBlock');
+  const label = document.getElementById('savingsLabel');
+  const amount = document.getElementById('savingsAmount');
+  const note = document.getElementById('savingsNote');
+
+  const tier = tierLookup[selectedTierId];
+  const diff = total - tier.price;
+
+  if (diff > 0) {
+    block.className = 'calc-savings calc-savings--positive';
+    label.textContent = 'You\'d Save With PureBrain';
+    amount.textContent = `$${Math.round(diff).toLocaleString()}/mo`;
+    note.textContent = `That's $${(Math.round(diff) * 12).toLocaleString()} back in your pocket every year — while getting MORE capability.`;
+  } else {
+    block.className = 'calc-savings calc-savings--negative';
+    label.textContent = 'PureBrain Also Includes';
+    const missing = [];
+    if (!selectedTools.has('strategist-low') && !selectedTools.has('strategist-high')) missing.push('an AI strategist');
+    if (!selectedTools.has('botpress') && !selectedTools.has('voiceflow') && !selectedTools.has('chatbase') && !selectedTools.has('sitegpt')) missing.push('a custom chatbot builder');
+    if (!selectedTools.has('hubspot') && !selectedTools.has('mailchimp') && !selectedTools.has('activecampaign')) missing.push('a lead gen system');
+    if (missing.length > 0) {
+      amount.textContent = `+${missing.length} more`;
+      note.textContent = `PureBrain at $${tier.price}/mo includes ${missing.join(', ')} — plus 10+ more capabilities not available in individual tools.`;
+    } else {
+      amount.textContent = `$${tier.price}/mo`;
+      note.textContent = 'PureBrain connects all these tools into one AI that knows your business. No more context-switching between apps.';
+    }
+  }
+}
+
+function renderTierPanel(total) {
+  const tier = tierLookup[selectedTierId];
+
+  // Update recommended tier section
+  document.getElementById('tierName').textContent = tier.name;
+  document.getElementById('tierTagline').textContent = tier.tagline;
+  document.getElementById('tierPrice').textContent = tier.price;
+
+  // Update features
+  const featuresEl = document.getElementById('tierFeatures');
+  featuresEl.innerHTML = tier.features.map(f => `
+    <div class="calc-tier-feature">
+      <div class="calc-tier-feature-dot"></div>
+      <span>${f}</span>
+    </div>
+  `).join('');
+
+  // Render other tier cards
+  const cardsEl = document.getElementById('tierCards');
+  const otherTiers = TIERS.filter(t => t.id !== selectedTierId);
+  cardsEl.innerHTML = otherTiers.map(t => {
+    const isRec = t.id === recommendedTierId;
+    return `
+      <div class="calc-tier-card${t.id === selectedTierId ? ' calc-tier-card--selected' : ''}"
+           onclick="selectTier('${t.id}', ${total})">
+        <div class="calc-tier-card-name">${t.name}</div>
+        ${t.badge ? `<div class="calc-tier-card-popular">${t.badge}</div>` : ''}
+        ${isRec && t.id !== selectedTierId ? '<div class="calc-tier-card-popular" style="color:var(--pb-blue);background:rgba(42,147,193,0.1);border-color:rgba(42,147,193,0.3);">Recommended</div>' : ''}
+        <div class="calc-tier-card-price">$${t.price}/mo</div>
+      </div>
+    `;
+  }).join('');
+
+  // Update CTA button
+  document.getElementById('mainCta').textContent = `Start Your AI Partnership \u2014 $${tier.price}/mo \u2192`;
+}
+
+function selectTier(tierId, total) {
+  selectedTierId = tierId;
+  renderTierPanel(total || computeTotal());
+  updateSavingsBlock(total || computeTotal());
+  updateStickyBar(total || computeTotal(), selectedTools.size);
+}
+
+function updateStickyBar(total, count) {
+  const saveLabel = document.getElementById('stickySaveLabel');
+  const nudgeLabel = document.getElementById('stickyNudgeLabel');
+  const saveAmt = document.getElementById('stickySaveAmt');
+  const pbPrice = document.getElementById('stickyPbPrice');
+  const tierBadge = document.getElementById('stickyTierBadge');
+
+  const tier = tierLookup[selectedTierId];
+  pbPrice.textContent = tier.price;
+  tierBadge.textContent = tier.name;
+
+  const diff = total - tier.price;
+  if (diff > 0) {
+    saveLabel.style.display = 'inline-block';
+    nudgeLabel.style.display = 'none';
+    saveAmt.textContent = Math.round(diff).toLocaleString();
+  } else {
+    saveLabel.style.display = 'none';
+    nudgeLabel.style.display = count > 0 ? 'block' : 'none';
+  }
+}
+
+function updateCategoryBadges() {
+  toolData.forEach(cat => {
+    const badge = document.getElementById('catSel-' + cat.id);
+    if (!badge) return;
+    const count = cat.tools.filter(t => selectedTools.has(t.id)).length;
+    if (count > 0) {
+      badge.textContent = `${count} selected`;
+      badge.classList.add('visible');
+    } else {
+      badge.textContent = '';
+      badge.classList.remove('visible');
+    }
+  });
+}
+
+function toggleCompareTable() {
+  const table = document.getElementById('tierCompareTable');
+  table.classList.toggle('open');
+  const btn = document.querySelector('.calc-tier-compare-toggle');
+  btn.textContent = table.classList.contains('open') ? ' Hide comparison' : ' View full comparison';
+}
+
+// ---- PRESETS ----
+function applyPreset(key) {
+  const preset = presets[key];
+  if (!preset) return;
+
+  selectedTools.clear();
+  preset.tools.forEach(id => selectedTools.add(id));
+  Object.keys(toolLookup).forEach(id => updateToolUI(id));
+  updateTotals();
+
+  document.querySelectorAll('.calc-preset-btn').forEach(btn => {
+    btn.classList.toggle('calc-preset-btn--active', btn.dataset.preset === key);
+  });
+  currentPreset = key;
+  openCategoriesWithSelections();
+}
+
+function clearPresetHighlight() {
+  document.querySelectorAll('.calc-preset-btn').forEach(btn => {
+    btn.classList.remove('calc-preset-btn--active');
+  });
+  currentPreset = null;
+}
+
+function resetAll() {
+  selectedTools.clear();
+  confettiTriggered = false;
+  selectedTierId = 'awakened';
+  recommendedTierId = 'awakened';
+  Object.keys(toolLookup).forEach(id => updateToolUI(id));
+  updateTotals();
+  clearPresetHighlight();
+}
+
+function openCategoriesWithSelections() {
+  toolData.forEach(cat => {
+    const hasSelection = cat.tools.some(t => selectedTools.has(t.id));
+    const catEl = document.querySelector(`.calc-category[data-cat-id="${cat.id}"]`);
+    if (catEl && hasSelection) catEl.classList.add('calc-cat--open');
+  });
+}
+
+// ---- SCROLL: sticky bar visibility ----
+let heroBottom = 0;
+function updateHeroBottom() {
+  const hero = document.querySelector('.calc-hero');
+  if (hero) heroBottom = hero.getBoundingClientRect().bottom + window.scrollY;
+}
+
+window.addEventListener('scroll', () => {
+  const sticky = document.getElementById('calcSticky');
+  if (window.scrollY > heroBottom * 0.7) {
+    sticky.classList.add('calc-sticky--visible');
+  } else {
+    sticky.classList.remove('calc-sticky--visible');
+  }
+}, { passive: true });
+
+// ---- COUNTER ANIMATION ----
+function animateCounter(from, to, setter) {
+  if (animFrame) cancelAnimationFrame(animFrame);
+  const duration = 350;
+  const start = performance.now();
+  function step(now) {
+    const elapsed = Math.min(now - start, duration);
+    const progress = easeOut(elapsed / duration);
+    const current = from + (to - from) * progress;
+    setter(current);
+    if (elapsed < duration) {
+      animFrame = requestAnimationFrame(step);
+    } else {
+      setter(to);
+    }
+  }
+  animFrame = requestAnimationFrame(step);
+}
+
+function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+
+// ---- CONFETTI ----
+function launchConfetti() {
+  const canvas = document.getElementById('calc-confetti');
+  canvas.style.display = 'block';
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const colors = ['#2a93c1', '#f1420b', '#22c55e', '#ffffff', '#fbbf24'];
+  const particles = Array.from({ length: 120 }, () => ({
+    x: Math.random() * canvas.width,
+    y: -10 - Math.random() * 200,
+    r: 4 + Math.random() * 6,
+    color: colors[Math.floor(Math.random() * colors.length)],
+    speed: 2 + Math.random() * 4,
+    angle: (Math.random() * 60 - 30) * Math.PI / 180,
+    spin: (Math.random() - 0.5) * 0.2,
+    rotation: Math.random() * Math.PI * 2,
+    shape: Math.random() > 0.5 ? 'rect' : 'circle',
+  }));
+
+  let start = null;
+  const totalDuration = 2800;
+
+  function drawConfetti(ts) {
+    if (!start) start = ts;
+    const elapsed = ts - start;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let alive = 0;
+    particles.forEach(p => {
+      p.y += p.speed;
+      p.x += Math.sin(p.angle) * 1.5;
+      p.rotation += p.spin;
+      const opacity = Math.max(0, 1 - (elapsed - 1800) / 1000);
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rotation);
+      ctx.fillStyle = p.color;
+      if (p.shape === 'rect') {
+        ctx.fillRect(-p.r, -p.r * 0.4, p.r * 2, p.r * 0.8);
+      } else {
+        ctx.beginPath();
+        ctx.arc(0, 0, p.r * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+      if (p.y < canvas.height + 20) alive++;
+    });
+    if (elapsed < totalDuration && alive > 0) {
+      requestAnimationFrame(drawConfetti);
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      canvas.style.display = 'none';
+    }
+  }
+
+  requestAnimationFrame(drawConfetti);
+}
+
+// ---- INIT ----
+renderCategories();
+updateHeroBottom();
+updateTotals();
+
+// Apply solopreneur preset by default
+applyPreset('solopreneur');
+
+window.addEventListener('resize', () => {
+  updateHeroBottom();
+  const canvas = document.getElementById('calc-confetti');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 12 Scene 1 — God Rays + Cinematic Camera</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #060606; overflow: hidden; font-family: 'Inter', sans-serif; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+
+  #ui {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 12px;
+    z-index: 10;
+  }
+  .btn {
+    background: rgba(42,147,193,0.12);
+    border: 1px solid rgba(42,147,193,0.35);
+    color: #2a93c1;
+    padding: 8px 20px;
+    border-radius: 20px;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+  .btn:hover { background: rgba(42,147,193,0.22); border-color: rgba(42,147,193,0.6); }
+  .btn.active { background: rgba(42,147,193,0.28); border-color: #2a93c1; color: #fff; }
+
+  #label {
+    position: fixed;
+    top: 36px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.5);
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    z-index: 10;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="label">Day 12 — Volumetric God Rays + Cinematic Camera</div>
+<canvas id="c"></canvas>
+<div id="ui">
+  <button class="btn active" id="btn-orbit" onclick="setMode('orbit')">Orbit</button>
+  <button class="btn" id="btn-cinema" onclick="setMode('cinema')">Cinematic</button>
+  <button class="btn" id="btn-sweep" onclick="setMode('sweep')">Sweep</button>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.171.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GammaCorrectionShader } from 'three/addons/shaders/GammaCorrectionShader.js';
+
+// ─── Renderer ───────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.9;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x020408, 0.038);
+
+const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.1, 120);
+camera.position.set(0, 2.5, 8);
+camera.lookAt(0, 0.5, 0);
+
+// ─── PMREM Environment ───────────────────────────────────────────────────────
+const pmrem = new THREE.PMREMGenerator(renderer);
+pmrem.compileCubemapShader();
+const probeScene = new THREE.Scene();
+[
+  { col: 0x6ec6ef, pos: [5, 8, 4],   int: 10 },
+  { col: 0x2a93c1, pos: [-6, 3, 2],  int: 5  },
+  { col: 0xf1420b, pos: [1, -2, -7], int: 3  },
+  { col: 0xffffff, pos: [0, 12, 0],  int: 4  },
+].forEach(({ col, pos, int }) => {
+  const l = new THREE.PointLight(col, int, 50);
+  l.position.set(...pos);
+  probeScene.add(l);
+});
+const envTexture = pmrem.fromScene(probeScene).texture;
+scene.environment = envTexture;
+pmrem.dispose();
+
+// ─── Controls ────────────────────────────────────────────────────────────────
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0.5, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.04;
+controls.minDistance = 3;
+controls.maxDistance = 20;
+controls.maxPolarAngle = Math.PI * 0.62;
+
+// ─── Ground ───────────────────────────────────────────────────────────────────
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(40, 40, 1, 1),
+  new THREE.MeshPhysicalMaterial({
+    color: 0x060a10,
+    roughness: 0.10,
+    metalness: 0.80,
+    envMapIntensity: 1.8,
+  })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -2.0;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// ─── Central Glass Orb ────────────────────────────────────────────────────────
+const orbGeo = new THREE.SphereGeometry(1.1, 128, 128);
+const orbMat = new THREE.MeshPhysicalMaterial({
+  transmission: 1.0,
+  thickness: 1.2,
+  roughness: 0.02,
+  ior: 1.52,
+  iridescence: 0.4,
+  iridescenceIOR: 1.38,
+  iridescenceThicknessRange: [100, 400],
+  clearcoat: 0.9,
+  clearcoatRoughness: 0.01,
+  envMapIntensity: 3.8,
+  depthWrite: false,
+});
+const orb = new THREE.Mesh(orbGeo, orbMat);
+orb.position.set(0, 0.5, 0);
+orb.castShadow = true;
+scene.add(orb);
+
+// ─── Orbital Ring System ─────────────────────────────────────────────────────
+const rings = [];
+[
+  { r: 1.7,  tube: 0.016, color: 0x2a93c1, tilt: [0.3, 0, 0] },
+  { r: 2.1,  tube: 0.012, color: 0xf1420b, tilt: [0.6, 0.3, 0] },
+  { r: 2.45, tube: 0.009, color: 0x5ad4ff, tilt: [-0.2, 0.5, 0.1] },
+].forEach(({ r, tube, color, tilt }) => {
+  const geo = new THREE.TorusGeometry(r, tube, 16, 180);
+  const mat = new THREE.MeshStandardMaterial({
+    color,
+    emissive: new THREE.Color(color).multiplyScalar(0.6),
+    roughness: 0.1,
+    metalness: 0.9,
+  });
+  const ring = new THREE.Mesh(geo, mat);
+  ring.rotation.set(...tilt);
+  ring.castShadow = false;
+  scene.add(ring);
+  rings.push({ mesh: ring, baseTilt: [...tilt] });
+});
+
+// ─── VOlUMETRIC GOD RAY SYSTEM ────────────────────────────────────────────────
+// Technique: layered translucent cones pointing from top light source downward.
+// Each cone has a radial gradient alpha — darkest at center axis (shadowed),
+// lightest at 30-70% radius (where light scatters), transparent at edge.
+
+const godRayVert = /* glsl */`
+  varying vec2 vUv;
+  varying float vFade;
+  void main() {
+    vUv = uv;
+    // Fade based on Y position: top = bright, bottom = dim
+    vFade = 1.0 - uv.y;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const godRayFrag = /* glsl */`
+  uniform float uTime;
+  uniform vec3 uColor;
+  uniform float uAlpha;
+  uniform float uPhase;
+  varying vec2 vUv;
+  varying float vFade;
+
+  float noise(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+
+  float smoothNoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f*f*(3.0-2.0*f);
+    float a = noise(i);
+    float b = noise(i + vec2(1,0));
+    float c = noise(i + vec2(0,1));
+    float d = noise(i + vec2(1,1));
+    return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
+  }
+
+  void main() {
+    // Radial position from center (0=axis, 1=edge)
+    float r = abs(vUv.x - 0.5) * 2.0;
+
+    // God ray shape: peak at ~0.4 radius, fade to 0 at edge and center
+    float shape = smoothstep(0.0, 0.35, r) * smoothstep(1.0, 0.5, r);
+
+    // Animated volumetric noise for light scattering
+    float t = uTime * 0.12 + uPhase;
+    float n = smoothNoise(vec2(vUv.x * 3.0 + t, vUv.y * 2.5 - t * 0.5));
+    n += smoothNoise(vec2(vUv.x * 6.0 - t * 0.7, vUv.y * 4.0 + t * 0.3)) * 0.5;
+    n = n / 1.5;
+
+    // Vertical fade: bright near source, dim at bottom
+    float fade = pow(1.0 - vUv.y, 0.6) * smoothstep(0.0, 0.1, vUv.y);
+
+    float alpha = shape * n * fade * uAlpha;
+
+    gl_FragColor = vec4(uColor, alpha);
+  }
+`;
+
+const godRays = [];
+const godRayCount = 5;
+for (let i = 0; i < godRayCount; i++) {
+  const angle = (i / godRayCount) * Math.PI * 2 + 0.3;
+  const radius = 0.5 + Math.random() * 0.8;
+
+  // Cone geometry: height = 6, top radius = 0.08, bottom radius = radius
+  const geo = new THREE.CylinderGeometry(0.08, radius, 6, 1, 32, true);
+  // Open-ended cylinder = looks like light cone
+
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: godRayVert,
+    fragmentShader: godRayFrag,
+    uniforms: {
+      uTime:  { value: 0 },
+      uColor: { value: new THREE.Color(0x2a93c1) },
+      uAlpha: { value: 0.06 + Math.random() * 0.04 },
+      uPhase: { value: Math.random() * 100 },
+    },
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+
+  const ray = new THREE.Mesh(geo, mat);
+  ray.position.set(
+    Math.cos(angle) * 0.3,
+    4.5,  // start at top light position
+    Math.sin(angle) * 0.3
+  );
+  // Tilt each cone slightly
+  ray.rotation.z = Math.cos(angle) * 0.15;
+  ray.rotation.x = Math.sin(angle) * 0.1;
+  scene.add(ray);
+  godRays.push(ray);
+}
+
+// Secondary warm god rays (orange, from front light)
+for (let i = 0; i < 3; i++) {
+  const angle = (i / 3) * Math.PI * 2 + 1.1;
+  const geo = new THREE.CylinderGeometry(0.06, 0.7, 5, 1, 32, true);
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: godRayVert,
+    fragmentShader: godRayFrag,
+    uniforms: {
+      uTime:  { value: 0 },
+      uColor: { value: new THREE.Color(0xf1420b) },
+      uAlpha: { value: 0.03 + Math.random() * 0.02 },
+      uPhase: { value: Math.random() * 100 + 50 },
+    },
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+  const ray = new THREE.Mesh(geo, mat);
+  ray.position.set(
+    Math.cos(angle) * 0.5 + 1,
+    3.5,
+    Math.sin(angle) * 0.5 - 2
+  );
+  ray.rotation.z = Math.cos(angle) * 0.25;
+  scene.add(ray);
+  godRays.push(ray);
+}
+
+// ─── KEY LIGHT (source of god rays) ──────────────────────────────────────────
+const keyLight = new THREE.PointLight(0x7ad6ff, 35, 25);
+keyLight.position.set(0, 5.5, 1);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(1024, 1024);
+keyLight.shadow.radius = 4;
+scene.add(keyLight);
+
+// Visible light source sphere
+const lightMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(0.08, 16, 16),
+  new THREE.MeshBasicMaterial({ color: 0xb0e8ff })
+);
+lightMesh.position.copy(keyLight.position);
+scene.add(lightMesh);
+
+// Fill + rim
+const fillLight = new THREE.PointLight(0x2a93c1, 6, 20);
+fillLight.position.set(-5, 2, 3);
+scene.add(fillLight);
+
+const rimLight = new THREE.PointLight(0xf1420b, 4, 18);
+rimLight.position.set(3, -0.5, -5);
+scene.add(rimLight);
+
+// ─── BACKGROUND PARTICLES ──────────────────────────────────────────────────
+const ptCount = 1200;
+const ptPos = new Float32Array(ptCount * 3);
+for (let i = 0; i < ptCount; i++) {
+  const r = 6 + Math.random() * 12;
+  const th = Math.random() * Math.PI * 2;
+  const ph = Math.acos(2 * Math.random() - 1);
+  ptPos[i*3]   = r * Math.sin(ph) * Math.cos(th);
+  ptPos[i*3+1] = r * Math.cos(ph) * 0.6;
+  ptPos[i*3+2] = r * Math.sin(ph) * Math.sin(th);
+}
+const ptGeo = new THREE.BufferGeometry();
+ptGeo.setAttribute('position', new THREE.BufferAttribute(ptPos, 3));
+const ptMat = new THREE.PointsMaterial({
+  color: 0x2a93c1, size: 0.04,
+  transparent: true, opacity: 0.4,
+  blending: THREE.AdditiveBlending, depthWrite: false,
+  sizeAttenuation: true,
+});
+scene.add(new THREE.Points(ptGeo, ptMat));
+
+// ─── POST PROCESSING ─────────────────────────────────────────────────────────
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.6, 0.4, 0.82);
+composer.addPass(bloom);
+
+// Chromatic Aberration + Vignette (custom shader)
+const caVigPass = new ShaderPass({
+  uniforms: {
+    tDiffuse: { value: null },
+    uCA: { value: 0.0022 },
+    uVig: { value: 0.55 },
+    uTime: { value: 0 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uCA;
+    uniform float uVig;
+    uniform float uTime;
+    varying vec2 vUv;
+
+    void main() {
+      vec2 uv = vUv;
+      vec2 center = vec2(0.5);
+      vec2 dir = uv - center;
+      float dist = length(dir);
+
+      // Subtle lens distortion
+      vec2 uvR = uv + dir * uCA * 1.0;
+      vec2 uvG = uv + dir * uCA * 0.0;
+      vec2 uvB = uv - dir * uCA * 1.0;
+
+      float r = texture2D(tDiffuse, uvR).r;
+      float g = texture2D(tDiffuse, uvG).g;
+      float b = texture2D(tDiffuse, uvB).b;
+
+      // Vignette
+      float vig = 1.0 - smoothstep(0.4, 1.0, dist * uVig);
+
+      gl_FragColor = vec4(r, g, b, 1.0) * vig;
+    }
+  `,
+});
+composer.addPass(caVigPass);
+composer.addPass(new OutputPass());
+
+// ─── CINEMATIC CAMERA SYSTEM ─────────────────────────────────────────────────
+// Three pre-defined camera moves, interpolated smoothly
+const cameraMoves = {
+  orbit: null,  // handled by OrbitControls
+  cinema: [
+    { pos: [0, 2.5, 8],   target: [0, 0.5, 0],  t: 0    },
+    { pos: [5, 3.5, 4],   target: [0, 0.2, 0],  t: 4    },
+    { pos: [0, 6, 2],     target: [0, -0.5, 0], t: 9    },
+    { pos: [-4, 1.5, 5],  target: [0, 0.8, 0],  t: 14   },
+    { pos: [0, 2.5, 8],   target: [0, 0.5, 0],  t: 20   },
+  ],
+  sweep: [
+    { pos: [0, 1.5, 6],   target: [0, 0.5, 0],  t: 0  },
+    { pos: [8, 2, 0],     target: [0, 0.3, 0],  t: 5  },
+    { pos: [0, 1.5, -8],  target: [0, 0.5, 0],  t: 10 },
+    { pos: [-8, 2, 0],    target: [0, 0.3, 0],  t: 15 },
+    { pos: [0, 1.5, 6],   target: [0, 0.5, 0],  t: 20 },
+  ],
+};
+
+let currentMode = 'orbit';
+let cinematicTime = 0;
+const camPos = new THREE.Vector3(0, 2.5, 8);
+const camTarget = new THREE.Vector3(0, 0.5, 0);
+const tmpPos = new THREE.Vector3();
+const tmpTarget = new THREE.Vector3();
+
+window.setMode = function(mode) {
+  currentMode = mode;
+  cinematicTime = 0;
+  document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + mode).classList.add('active');
+  controls.enabled = (mode === 'orbit');
+  if (mode !== 'orbit') {
+    controls.enabled = false;
+  } else {
+    controls.enabled = true;
+  }
+};
+
+function sampleCameraMove(moves, t) {
+  const total = moves[moves.length - 1].t;
+  const loopT = t % total;
+  // Find segment
+  let a = moves[0], b = moves[1];
+  for (let i = 0; i < moves.length - 1; i++) {
+    if (loopT >= moves[i].t && loopT < moves[i+1].t) {
+      a = moves[i]; b = moves[i+1];
+      break;
+    }
+  }
+  const segDur = b.t - a.t;
+  const segT = (loopT - a.t) / segDur;
+  // Smooth step for cinematic easing
+  const eased = segT * segT * (3 - 2 * segT);
+
+  tmpPos.fromArray(a.pos).lerp(new THREE.Vector3(...b.pos), eased);
+  tmpTarget.fromArray(a.target).lerp(new THREE.Vector3(...b.target), eased);
+}
+
+// ─── CONTACT SHADOW ──────────────────────────────────────────────────────────
+const shadowCanvas = document.createElement('canvas');
+shadowCanvas.width = 256; shadowCanvas.height = 256;
+const sCtx = shadowCanvas.getContext('2d');
+const sg = sCtx.createRadialGradient(128,128,0,128,128,120);
+sg.addColorStop(0,   'rgba(0,0,0,0.85)');
+sg.addColorStop(0.4, 'rgba(0,0,0,0.45)');
+sg.addColorStop(0.8, 'rgba(0,0,0,0.08)');
+sg.addColorStop(1,   'rgba(0,0,0,0)');
+sCtx.fillStyle = sg;
+sCtx.fillRect(0,0,256,256);
+const shadowMesh = new THREE.Mesh(
+  new THREE.CircleGeometry(2.0, 64),
+  new THREE.MeshBasicMaterial({
+    map: new THREE.CanvasTexture(shadowCanvas),
+    transparent: true, opacity: 0.6, depthWrite: false,
+  })
+);
+shadowMesh.rotation.x = -Math.PI / 2;
+shadowMesh.position.y = -1.99;
+scene.add(shadowMesh);
+
+// ─── RESIZE ──────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+  bloom.resolution.set(innerWidth, innerHeight);
+});
+
+// ─── ANIMATION LOOP ──────────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const elapsed = clock.getElapsedTime();
+  const delta = clock.getDelta();
+
+  // Update god ray uniforms
+  godRays.forEach(r => {
+    r.material.uniforms.uTime.value = elapsed;
+  });
+
+  // Orb float
+  orb.position.y = 0.5 + Math.sin(elapsed * 0.55) * 0.09
+                       + Math.sin(elapsed * 0.38) * 0.03;
+  orb.rotation.y = elapsed * 0.08;
+
+  // Ring rotation
+  rings.forEach((r, i) => {
+    r.mesh.rotation.y = elapsed * (0.12 + i * 0.05);
+    r.mesh.rotation.x = r.baseTilt[0] + Math.sin(elapsed * 0.22 + i) * 0.04;
+  });
+
+  // Contact shadow tracks orb height
+  const floatH = orb.position.y - 0.5;
+  const shadowS = 1.0 - floatH * 0.5;
+  shadowMesh.scale.set(shadowS, shadowS, shadowS);
+  shadowMesh.material.opacity = 0.6 - floatH * 0.2;
+
+  // Key light subtle pulse
+  keyLight.intensity = 35 + Math.sin(elapsed * 0.4) * 3;
+
+  // Cinematic camera
+  if (currentMode !== 'orbit') {
+    cinematicTime += delta;
+    const moves = cameraMoves[currentMode];
+    sampleCameraMove(moves, cinematicTime);
+
+    // Smooth lerp to target position (cinematic inertia)
+    camPos.lerp(tmpPos, 0.025);
+    camTarget.lerp(tmpTarget, 0.025);
+
+    camera.position.copy(camPos);
+    camera.lookAt(camTarget);
+  }
+
+  // Update CA pass time
+  caVigPass.uniforms.uTime.value = elapsed;
+
+  controls.update();
+  composer.render();
+}
+
+animate();
+</script>
+</body>
+</html>

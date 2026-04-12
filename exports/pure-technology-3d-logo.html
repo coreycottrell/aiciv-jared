@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology — Living 3D Logo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #080a12;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+    font-family: 'Inter', -apple-system, sans-serif;
+  }
+  canvas { display: block; }
+  #ui {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 12px;
+    z-index: 100;
+  }
+  .btn {
+    padding: 8px 20px;
+    border: 1px solid rgba(42,147,193,0.4);
+    border-radius: 20px;
+    background: rgba(8,10,18,0.8);
+    color: rgba(42,147,193,0.9);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(12px);
+  }
+  .btn:hover, .btn.active {
+    background: rgba(42,147,193,0.15);
+    border-color: rgba(42,147,193,0.8);
+    color: #fff;
+    box-shadow: 0 0 20px rgba(42,147,193,0.3);
+  }
+  #wordmark {
+    position: fixed;
+    top: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 100;
+    opacity: 0;
+    animation: fadeIn 2s 1.5s ease forwards;
+  }
+  @keyframes fadeIn { to { opacity: 1; } }
+  #wordmark span {
+    font-size: 13px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.5);
+    font-weight: 300;
+  }
+  #wordmark strong {
+    color: #2a93c1;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<div id="wordmark">
+  <strong>PURE</strong><span>TECHNOLOGY</span>
+</div>
+
+<div id="ui">
+  <button class="btn active" onclick="setMode('idle')">Idle</button>
+  <button class="btn" onclick="setMode('active')">Active</button>
+  <button class="btn" onclick="setMode('pulse')">Pulse</button>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PT_BLUE   = new THREE.Color(0x2a93c1);
+const PT_ORANGE = new THREE.Color(0xf1420b);
+const PT_DARK   = new THREE.Color(0x080a12);
+const PT_CYAN   = new THREE.Color(0x00d4ff);
+const PT_GOLD   = new THREE.Color(0xc8a84a);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SCENE SETUP
+// ─────────────────────────────────────────────────────────────────────────────
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: true,
+  alpha: false,
+  powerPreference: 'high-performance'
+});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = PT_DARK;
+scene.fog = new THREE.FogExp2(0x080a12, 0.06);
+
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 1.2, 7.5);
+camera.lookAt(0, 0, 0);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.minDistance = 4;
+controls.maxDistance = 14;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.35;
+controls.target.set(0, 0, 0);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIGHTING RIG  (Gleb 6-color studio)
+// ─────────────────────────────────────────────────────────────────────────────
+
+scene.add(new THREE.AmbientLight(0x0a1020, 0.8));
+
+const keyLight = new THREE.DirectionalLight(0xffffff, 2.0);
+keyLight.position.set(4, 6, 4);
+scene.add(keyLight);
+
+const blueRim = new THREE.PointLight(0x0d16f5, 3.0, 20);
+blueRim.position.set(-4, 1, -3);
+scene.add(blueRim);
+
+const cyanTop = new THREE.PointLight(0x00d4ff, 2.5, 15);
+cyanTop.position.set(1, 5, -2);
+scene.add(cyanTop);
+
+const orangeAccent = new THREE.PointLight(0xf1420b, 2.0, 12);
+orangeAccent.position.set(3, -2, 2);
+scene.add(orangeAccent);
+
+const goldBounce = new THREE.PointLight(0xc8a84a, 1.2, 10);
+goldBounce.position.set(-2, -3, 1);
+scene.add(goldBounce);
+
+// Sub-surface fill from below - makes glass glow
+const bottomFill = new THREE.PointLight(0x2a93c1, 1.5, 8);
+bottomFill.position.set(0, -4, 0);
+scene.add(bottomFill);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CORE ENERGY SPHERE (the black dot in the logo)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const coreGeo = new THREE.SphereGeometry(0.18, 64, 64);
+const coreMat = new THREE.MeshStandardMaterial({
+  color: 0xf1420b,
+  emissive: 0xf1420b,
+  emissiveIntensity: 4.0,
+  roughness: 0.1,
+  metalness: 0.0
+});
+const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+scene.add(coreMesh);
+
+// Halo around core
+const haloGeo = new THREE.SphereGeometry(0.32, 32, 32);
+const haloMat = new THREE.MeshStandardMaterial({
+  color: 0xf1420b,
+  emissive: 0xf1420b,
+  emissiveIntensity: 1.5,
+  transparent: true,
+  opacity: 0.12,
+  side: THREE.BackSide,
+  depthWrite: false
+});
+const haloMesh = new THREE.Mesh(haloGeo, haloMat);
+scene.add(haloMesh);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HEXAGONAL LAYER GENERATOR
+// ─────────────────────────────────────────────────────────────────────────────
+
+// The Pure Tech logo has 3 concentric hexagonal layers
+// Outer: blue wireframe hex outline
+// Middle: transitional (blue→orange)
+// Inner: orange, closest to center
+
+function buildHexLayer(config) {
+  const group = new THREE.Group();
+  const {
+    outerRadius,    // hex circumradius
+    innerRadius,    // hex inradius (for ring thickness)
+    thickness,      // Z-depth of the prism
+    color,          // base color
+    emissiveColor,  // glow color
+    emissiveIntensity,
+    opacity,
+    rotY,           // initial Y rotation
+    wireframe       // show wireframe edges
+  } = config;
+
+  // Solid hex prism with glass material
+  const hexGeo = new THREE.CylinderGeometry(
+    outerRadius, outerRadius,
+    thickness,
+    6, 1, false
+  );
+
+  // Custom glass-like shader material
+  const hexMat = new THREE.MeshPhysicalMaterial({
+    color: color,
+    emissive: emissiveColor,
+    emissiveIntensity: emissiveIntensity,
+    transmission: 0.85,
+    thickness: 0.5,
+    roughness: 0.04,
+    ior: 1.5,
+    transparent: true,
+    opacity: opacity,
+    side: THREE.DoubleSide,
+    metalness: 0.0,
+    reflectivity: 0.6,
+    specularIntensity: 1.0
+  });
+
+  const hexMesh = new THREE.Mesh(hexGeo, hexMat);
+  hexMesh.rotation.y = rotY;
+  group.add(hexMesh);
+
+  // Wireframe edge highlight
+  if (wireframe) {
+    const edgesGeo = new THREE.EdgesGeometry(hexGeo);
+    const edgesMat = new THREE.LineBasicMaterial({
+      color: color,
+      transparent: true,
+      opacity: 0.9,
+      linewidth: 1
+    });
+    const edges = new THREE.LineSegments(edgesGeo, edgesMat);
+    edges.rotation.y = rotY;
+    group.add(edges);
+
+    // Emissive edge glow mesh (thin shell)
+    const outerShell = new THREE.CylinderGeometry(
+      outerRadius + 0.005, outerRadius + 0.005,
+      thickness + 0.005,
+      6, 1, true
+    );
+    const shellMat = new THREE.MeshStandardMaterial({
+      color: emissiveColor,
+      emissive: emissiveColor,
+      emissiveIntensity: emissiveIntensity * 1.5,
+      transparent: true,
+      opacity: 0.4,
+      side: THREE.BackSide,
+      depthWrite: false
+    });
+    const shell = new THREE.Mesh(outerShell, shellMat);
+    shell.rotation.y = rotY;
+    group.add(shell);
+  }
+
+  // Inner hole (to make it a ring/frame like the logo)
+  // Create inner cylinder to punch out (using stencil-like approach with transparency)
+  const innerGeo = new THREE.CylinderGeometry(
+    innerRadius, innerRadius,
+    thickness + 0.01,
+    6, 1, true  // open-ended for caps
+  );
+  const innerMat = new THREE.MeshPhysicalMaterial({
+    color: color,
+    emissive: emissiveColor,
+    emissiveIntensity: emissiveIntensity * 0.5,
+    transmission: 0.95,
+    thickness: 0.3,
+    roughness: 0.02,
+    transparent: true,
+    opacity: 0.15,
+    side: THREE.BackSide,
+    depthWrite: false
+  });
+  const innerMesh = new THREE.Mesh(innerGeo, innerMat);
+  innerMesh.rotation.y = rotY;
+  group.add(innerMesh);
+
+  return { group, hexMesh, edgesMat: wireframe ? group.children[1].material : null };
+}
+
+// Build the three hex layers matching the PT logo structure
+
+// Layer 1: OUTER — large, blue, slow rotation
+const outerLayer = buildHexLayer({
+  outerRadius: 2.2,
+  innerRadius: 1.8,
+  thickness: 0.12,
+  color: new THREE.Color(0x2a93c1),
+  emissiveColor: new THREE.Color(0x2a93c1),
+  emissiveIntensity: 1.2,
+  opacity: 0.35,
+  rotY: 0,
+  wireframe: true
+});
+scene.add(outerLayer.group);
+
+// Layer 2: MIDDLE — medium, transitional blue-orange, medium rotation
+const midLayer = buildHexLayer({
+  outerRadius: 1.45,
+  innerRadius: 1.05,
+  thickness: 0.14,
+  color: new THREE.Color(0x8a5ab0),   // purple transition
+  emissiveColor: new THREE.Color(0xf1420b),
+  emissiveIntensity: 1.0,
+  opacity: 0.40,
+  rotY: Math.PI / 6,   // offset 30 degrees from outer
+  wireframe: true
+});
+scene.add(midLayer.group);
+
+// Layer 3: INNER — small, orange, fast rotation
+const innerLayer = buildHexLayer({
+  outerRadius: 0.88,
+  innerRadius: 0.52,
+  thickness: 0.18,
+  color: new THREE.Color(0xf1420b),
+  emissiveColor: new THREE.Color(0xf14a00),
+  emissiveIntensity: 1.8,
+  opacity: 0.55,
+  rotY: Math.PI / 3,   // offset 60 degrees
+  wireframe: true
+});
+scene.add(innerLayer.group);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SWIRL LINES (the diagonal spokes that give the logo its vortex character)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildSwirlSpokes(count, innerR, outerR, color, emissiveIntensity) {
+  const group = new THREE.Group();
+  const positions = [];
+
+  for (let i = 0; i < count; i++) {
+    const t = i / count;
+    const angleOuter = t * Math.PI * 2;
+    // Spoke twists as it goes inward — the spiral effect
+    const twist = Math.PI * 0.75;  // 135 degree twist from outer to inner
+    const angleInner = angleOuter + twist;
+
+    // Outer point on hex boundary
+    const ox = Math.cos(angleOuter) * outerR;
+    const oz = Math.sin(angleOuter) * outerR;
+
+    // Inner point converges toward center with twist
+    const ix = Math.cos(angleInner) * innerR;
+    const iz = Math.sin(angleInner) * innerR;
+
+    // Add multiple intermediate points for curved appearance
+    const segments = 12;
+    for (let s = 0; s < segments; s++) {
+      const u0 = s / segments;
+      const u1 = (s + 1) / segments;
+
+      // Bezier-like interpolation with slight curvature
+      const bx0 = ox * (1 - u0) + ix * u0;
+      const bz0 = oz * (1 - u0) + iz * u0;
+      const bx1 = ox * (1 - u1) + ix * u1;
+      const bz1 = oz * (1 - u1) + iz * u1;
+
+      // Add slight Y wave for depth
+      const y0 = Math.sin(u0 * Math.PI) * 0.06;
+      const y1 = Math.sin(u1 * Math.PI) * 0.06;
+
+      positions.push(bx0, y0, bz0);
+      positions.push(bx1, y1, bz1);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+
+  const mat = new THREE.LineBasicMaterial({
+    color: color,
+    transparent: true,
+    opacity: 0.6,
+    depthWrite: false
+  });
+
+  const lines = new THREE.LineSegments(geo, mat);
+  group.add(lines);
+  return group;
+}
+
+// Outer spokes: blue
+const outerSpokes = buildSwirlSpokes(24, 0.55, 2.1, 0x2a93c1, 1.5);
+scene.add(outerSpokes);
+
+// Inner spokes: orange (tighter spiral)
+const innerSpokes = buildSwirlSpokes(16, 0.28, 1.4, 0xf1420b, 2.0);
+scene.add(innerSpokes);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENERGY RING CORONAS (thin torus rings at layer boundaries)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildEnergyRing(radius, tubeRadius, color, emissiveIntensity) {
+  const geo = new THREE.TorusGeometry(radius, tubeRadius, 16, 128);
+  const mat = new THREE.MeshStandardMaterial({
+    color: color,
+    emissive: color,
+    emissiveIntensity: emissiveIntensity,
+    transparent: true,
+    opacity: 0.7,
+    depthWrite: false
+  });
+  return new THREE.Mesh(geo, mat);
+}
+
+// Rings in the horizontal plane
+const ring1 = buildEnergyRing(2.2, 0.008, 0x2a93c1, 2.5);
+ring1.rotation.x = Math.PI / 2;
+scene.add(ring1);
+
+const ring2 = buildEnergyRing(1.45, 0.007, 0x9966cc, 2.0);
+ring2.rotation.x = Math.PI / 2;
+scene.add(ring2);
+
+const ring3 = buildEnergyRing(0.88, 0.009, 0xf1420b, 3.0);
+ring3.rotation.x = Math.PI / 2;
+scene.add(ring3);
+
+// Slight Y-tilted rings for orbital feel
+const ring4 = buildEnergyRing(1.8, 0.004, 0x00d4ff, 1.5);
+ring4.rotation.x = Math.PI / 2 + 0.3;
+ring4.rotation.z = 0.15;
+scene.add(ring4);
+
+const ring5 = buildEnergyRing(2.4, 0.003, 0x2a93c1, 1.0);
+ring5.rotation.x = Math.PI / 2 - 0.4;
+ring5.rotation.z = -0.2;
+scene.add(ring5);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GPU PARTICLE FIELD (orbiting the structure)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PARTICLE_COUNT = 8000;
+
+const pPositions = new Float32Array(PARTICLE_COUNT * 3);
+const pColors    = new Float32Array(PARTICLE_COUNT * 3);
+const pSizes     = new Float32Array(PARTICLE_COUNT);
+const pPhase     = new Float32Array(PARTICLE_COUNT);   // orbit phase offset
+const pSpeed     = new Float32Array(PARTICLE_COUNT);   // orbit speed multiplier
+const pOrbitR    = new Float32Array(PARTICLE_COUNT);   // orbital radius
+const pOrbitInc  = new Float32Array(PARTICLE_COUNT);   // orbital inclination
+
+for (let i = 0; i < PARTICLE_COUNT; i++) {
+  pPhase[i]    = Math.random() * Math.PI * 2;
+  pSpeed[i]    = 0.4 + Math.random() * 1.6;
+  pOrbitR[i]   = 1.0 + Math.random() * 2.8;
+  pOrbitInc[i] = (Math.random() - 0.5) * Math.PI * 0.8;
+
+  // Initial positions (will be updated each frame)
+  pPositions[i * 3]     = Math.cos(pPhase[i]) * pOrbitR[i];
+  pPositions[i * 3 + 1] = Math.sin(pOrbitInc[i]) * pOrbitR[i] * 0.3;
+  pPositions[i * 3 + 2] = Math.sin(pPhase[i]) * pOrbitR[i];
+
+  pSizes[i] = 1.5 + Math.random() * 3.5;
+
+  // Color: blend blue to orange based on orbit radius
+  const blend = (pOrbitR[i] - 1.0) / 2.8;  // 0=inner(orange) 1=outer(blue)
+  pColors[i * 3]     = PT_ORANGE.r * (1 - blend) + PT_BLUE.r * blend;
+  pColors[i * 3 + 1] = PT_ORANGE.g * (1 - blend) + PT_BLUE.g * blend;
+  pColors[i * 3 + 2] = PT_ORANGE.b * (1 - blend) + PT_BLUE.b * blend;
+}
+
+const particleGeo = new THREE.BufferGeometry();
+particleGeo.setAttribute('position', new THREE.BufferAttribute(pPositions, 3));
+particleGeo.setAttribute('color',    new THREE.BufferAttribute(pColors,    3));
+particleGeo.setAttribute('size',     new THREE.BufferAttribute(pSizes,     1));
+
+const particleVertShader = `
+  attribute float size;
+  attribute vec3 color;
+  varying vec3 vColor;
+  varying float vAlpha;
+
+  void main() {
+    vColor = color;
+    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = size * (280.0 / -mvPos.z);
+    gl_Position = projectionMatrix * mvPos;
+
+    // Fade particles near center and at edges
+    float dist = length(position.xz);
+    vAlpha = smoothstep(0.3, 0.8, dist) * smoothstep(4.2, 2.8, dist);
+  }
+`;
+
+const particleFragShader = `
+  varying vec3 vColor;
+  varying float vAlpha;
+
+  void main() {
+    vec2 uv = gl_PointCoord - 0.5;
+    float d = length(uv);
+    if (d > 0.5) discard;
+
+    // Soft circular particle
+    float alpha = (1.0 - d * 2.0) * vAlpha;
+    alpha = pow(alpha, 1.4);
+    gl_FragColor = vec4(vColor, alpha * 0.85);
+  }
+`;
+
+const particleMat = new THREE.ShaderMaterial({
+  vertexShader: particleVertShader,
+  fragmentShader: particleFragShader,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  vertexColors: true
+});
+
+const particles = new THREE.Points(particleGeo, particleMat);
+scene.add(particles);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FLOOR GLOW DISC (caustic-inspired radial glow)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const glowDiscGeo = new THREE.CircleGeometry(3.5, 64);
+const glowDiscVert = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const glowDiscFrag = `
+  uniform float uTime;
+  varying vec2 vUv;
+
+  // 2D noise for caustic texture
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(hash(i + vec2(0,0)), hash(i + vec2(1,0)), f.x),
+      mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), f.x),
+      f.y
+    );
+  }
+
+  void main() {
+    vec2 center = vUv - 0.5;
+    float dist = length(center);
+
+    // Radial falloff
+    float fade = 1.0 - smoothstep(0.0, 0.5, dist);
+    fade = pow(fade, 2.5);
+
+    // Animated caustic noise
+    vec2 nuv = center * 3.5 + uTime * 0.04;
+    float n1 = noise(nuv);
+    float n2 = noise(nuv * 1.8 + 0.5);
+    float caustic = (n1 + n2 * 0.5) * 0.5;
+
+    // Blue ring at outer edge, orange at center
+    vec3 blueColor  = vec3(0.165, 0.576, 0.757);  // #2a93c1
+    vec3 orangeColor = vec3(0.945, 0.259, 0.043); // #f1420b
+    vec3 c = mix(orangeColor, blueColor, dist * 2.0);
+
+    float alpha = caustic * fade * 0.18;
+    gl_FragColor = vec4(c, alpha);
+  }
+`;
+
+const glowDiscMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0.0 } },
+  vertexShader: glowDiscVert,
+  fragmentShader: glowDiscFrag,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  side: THREE.DoubleSide
+});
+const glowDisc = new THREE.Mesh(glowDiscGeo, glowDiscMat);
+glowDisc.rotation.x = -Math.PI / 2;
+glowDisc.position.y = -2.8;
+scene.add(glowDisc);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POSTPROCESSING (Gleb full stack)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+// Bloom — precise threshold, no nuclear glow
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.55,   // strength
+  0.4,    // radius (spread)
+  0.82    // threshold (only very bright pixels bloom)
+);
+composer.addPass(bloomPass);
+
+// Chromatic aberration + vignette
+const chromaticVignetteShader = {
+  uniforms: {
+    tDiffuse:  { value: null },
+    uTime:     { value: 0.0 },
+    uOffset:   { value: 0.0015 },
+    uVignette: { value: 0.55 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uTime;
+    uniform float uOffset;
+    uniform float uVignette;
+    varying vec2 vUv;
+
+    void main() {
+      vec2 center = vUv - 0.5;
+      float d = length(center);
+
+      // Radial chromatic aberration (stronger at edges)
+      float strength = d * uOffset;
+      vec2 dir = normalize(center + 0.0001) * strength;
+
+      float r = texture2D(tDiffuse, vUv + dir).r;
+      float g = texture2D(tDiffuse, vUv       ).g;
+      float b = texture2D(tDiffuse, vUv - dir).b;
+
+      // Very subtle breathing lens distortion
+      float breathe = sin(uTime * 0.4) * 0.0002;
+      vec2 lens = center * breathe;
+      r = texture2D(tDiffuse, vUv + dir + lens).r;
+
+      vec3 col = vec3(r, g, b);
+
+      // Vignette
+      float vignette = 1.0 - smoothstep(0.3, 1.2, d * uVignette * 2.0);
+      col *= vignette;
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `
+};
+const chromaticVignettePass = new ShaderPass(chromaticVignetteShader);
+composer.addPass(chromaticVignettePass);
+
+composer.addPass(new OutputPass());
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODE SYSTEM
+// ─────────────────────────────────────────────────────────────────────────────
+
+let currentMode = 'idle';
+let modeTime = 0;
+
+const modes = {
+  idle: {
+    bloomStrength: 0.45,
+    bloomThreshold: 0.85,
+    autoRotateSpeed: 0.35,
+    coreEmissive: 3.0,
+    particleSpeedMul: 1.0,
+    outerRotSpeed: 0.15,
+    midRotSpeed: -0.25,
+    innerRotSpeed: 0.45
+  },
+  active: {
+    bloomStrength: 0.75,
+    bloomThreshold: 0.75,
+    autoRotateSpeed: 1.2,
+    coreEmissive: 6.0,
+    particleSpeedMul: 2.5,
+    outerRotSpeed: 0.35,
+    midRotSpeed: -0.6,
+    innerRotSpeed: 1.1
+  },
+  pulse: {
+    bloomStrength: 0.65,
+    bloomThreshold: 0.70,
+    autoRotateSpeed: 0.6,
+    coreEmissive: 5.0,
+    particleSpeedMul: 1.8,
+    outerRotSpeed: 0.25,
+    midRotSpeed: -0.45,
+    innerRotSpeed: 0.75
+  }
+};
+
+// Lerp current state toward target
+let state = { ...modes.idle };
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+// Smooth state transitions
+let stateTarget = { ...modes.idle };
+
+window.setMode = function(mode) {
+  currentMode = mode;
+  stateTarget = { ...modes[mode] };
+  document.querySelectorAll('.btn').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('onclick').includes(mode));
+  });
+  modeTime = 0;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ANIMATION LOOP
+// ─────────────────────────────────────────────────────────────────────────────
+
+const clock = new THREE.Clock();
+let totalTime = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const delta = clock.getDelta();
+  totalTime += delta;
+  modeTime  += delta;
+
+  // Smooth state lerp
+  const lerpSpeed = 0.04;
+  state.bloomStrength    = lerp(state.bloomStrength,    stateTarget.bloomStrength,    lerpSpeed);
+  state.bloomThreshold   = lerp(state.bloomThreshold,   stateTarget.bloomThreshold,   lerpSpeed);
+  state.coreEmissive     = lerp(state.coreEmissive,     stateTarget.coreEmissive,     lerpSpeed);
+  state.particleSpeedMul = lerp(state.particleSpeedMul, stateTarget.particleSpeedMul, lerpSpeed);
+  state.outerRotSpeed    = lerp(state.outerRotSpeed,    stateTarget.outerRotSpeed,    lerpSpeed);
+  state.midRotSpeed      = lerp(state.midRotSpeed,      stateTarget.midRotSpeed,      lerpSpeed);
+  state.innerRotSpeed    = lerp(state.innerRotSpeed,    stateTarget.innerRotSpeed,    lerpSpeed);
+  state.autoRotateSpeed  = lerp(state.autoRotateSpeed,  stateTarget.autoRotateSpeed,  lerpSpeed);
+
+  // ── HEX LAYER ROTATIONS ───────────────────────────────────────────────────
+
+  // Outer layer: slow counter-clockwise
+  outerLayer.group.rotation.y += delta * state.outerRotSpeed;
+
+  // Mid layer: clockwise, medium speed
+  midLayer.group.rotation.y   -= delta * state.midRotSpeed;
+
+  // Inner layer: fast counter-clockwise
+  innerLayer.group.rotation.y += delta * state.innerRotSpeed;
+
+  // Slight wobble on each layer (the "breathing" motion)
+  const wobble1 = Math.sin(totalTime * 0.6) * 0.04;
+  const wobble2 = Math.sin(totalTime * 0.8 + 1.0) * 0.035;
+  const wobble3 = Math.sin(totalTime * 1.1 + 2.0) * 0.025;
+
+  outerLayer.group.rotation.x = wobble1;
+  outerLayer.group.rotation.z = wobble1 * 0.5;
+  midLayer.group.rotation.x   = wobble2;
+  midLayer.group.rotation.z   = -wobble2 * 0.6;
+  innerLayer.group.rotation.x = wobble3;
+  innerLayer.group.rotation.z = wobble3 * 0.8;
+
+  // ── SWIRL SPOKES ROTATE WITH LAYERS ───────────────────────────────────────
+
+  outerSpokes.rotation.y -= delta * state.outerRotSpeed * 0.7;
+  innerSpokes.rotation.y += delta * state.innerRotSpeed * 0.6;
+
+  // ── ENERGY RINGS ──────────────────────────────────────────────────────────
+
+  ring1.rotation.z += delta * 0.3;
+  ring2.rotation.z -= delta * 0.5;
+  ring3.rotation.z += delta * 0.8;
+  ring4.rotation.z -= delta * 0.2;
+  ring4.rotation.y += delta * 0.15;
+  ring5.rotation.z += delta * 0.12;
+  ring5.rotation.x += delta * 0.08;
+
+  // ── CORE ENERGY PULSE ─────────────────────────────────────────────────────
+
+  const pulseMul = currentMode === 'pulse'
+    ? 1.0 + Math.abs(Math.sin(totalTime * 3.5)) * 1.2
+    : 1.0;
+  coreMat.emissiveIntensity = state.coreEmissive * pulseMul;
+
+  const coreScale = 1.0 + Math.sin(totalTime * 2.2) * 0.08 * pulseMul;
+  coreMesh.scale.setScalar(coreScale);
+  haloMesh.scale.setScalar(coreScale * (1.0 + Math.sin(totalTime * 1.5) * 0.15));
+
+  // ── PARTICLES ─────────────────────────────────────────────────────────────
+
+  const posArr = particleGeo.attributes.position.array;
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    // Update orbital angle
+    pPhase[i] += delta * pSpeed[i] * state.particleSpeedMul * 0.35;
+
+    // Particles also slowly spiral inward/outward
+    const spiralOffset = Math.sin(totalTime * 0.12 + i * 0.01) * 0.2;
+    const r = pOrbitR[i] + spiralOffset;
+
+    const inc  = pOrbitInc[i] + Math.sin(totalTime * 0.08 + i * 0.05) * 0.08;
+    const cosI = Math.cos(inc);
+    const sinI = Math.sin(inc);
+
+    posArr[i * 3]     = Math.cos(pPhase[i]) * r * cosI;
+    posArr[i * 3 + 1] = sinI * r * 0.5;
+    posArr[i * 3 + 2] = Math.sin(pPhase[i]) * r * cosI;
+  }
+  particleGeo.attributes.position.needsUpdate = true;
+
+  // ── BLOOM ─────────────────────────────────────────────────────────────────
+
+  bloomPass.strength  = state.bloomStrength;
+  bloomPass.threshold = state.bloomThreshold;
+
+  // ── POSTPROCESSING UNIFORMS ───────────────────────────────────────────────
+
+  chromaticVignettePass.uniforms.uTime.value   = totalTime;
+  chromaticVignettePass.uniforms.uOffset.value = 0.001 + state.bloomStrength * 0.001;
+  glowDiscMat.uniforms.uTime.value = totalTime;
+
+  // ── LIGHTS ANIMATE ────────────────────────────────────────────────────────
+
+  // Blue rim light slowly orbits
+  blueRim.position.x = Math.cos(totalTime * 0.3) * 4.5;
+  blueRim.position.z = Math.sin(totalTime * 0.3) * 3.0;
+
+  // Orange accent pulses
+  orangeAccent.intensity = 1.8 + Math.sin(totalTime * 1.8) * 0.4;
+
+  // Cyan top breathes
+  cyanTop.intensity = 2.0 + Math.sin(totalTime * 0.7 + 1.5) * 0.5;
+
+  // ── RING EMISSIVE ANIMATE ─────────────────────────────────────────────────
+
+  const ringPulse = 1.0 + Math.sin(totalTime * 1.2) * 0.3;
+  ring1.material.emissiveIntensity = 2.5 * ringPulse;
+  ring3.material.emissiveIntensity = 3.0 * ringPulse;
+
+  // ── CONTROLS & RENDER ─────────────────────────────────────────────────────
+
+  controls.autoRotateSpeed = state.autoRotateSpeed;
+  controls.update();
+  composer.render();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RESIZE HANDLER
+// ─────────────────────────────────────────────────────────────────────────────
+
+window.addEventListener('resize', () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+  bloomPass.resolution.set(w, h);
+});
+
+// Start
+animate();
+
+// Fade in wordmark (already done via CSS animation)
+</script>
+</body>
+</html>

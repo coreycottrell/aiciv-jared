@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PureBrain Neural Network 3D - Standalone Demo</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #0a0e1a;
+  }
+
+  #canvas-container {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  /* Demo overlay - shows this is the standalone scene */
+  #demo-label {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'JetBrains Mono', monospace, 'Courier New';
+    font-size: 11px;
+    color: rgba(42, 147, 193, 0.5);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  /* Performance toggle */
+  #perf-toggle {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    background: rgba(10, 14, 26, 0.8);
+    border: 1px solid rgba(42, 147, 193, 0.3);
+    color: rgba(42, 147, 193, 0.8);
+    font-family: monospace;
+    font-size: 11px;
+    padding: 6px 12px;
+    cursor: pointer;
+    letter-spacing: 0.1em;
+    border-radius: 3px;
+    transition: all 0.2s;
+    z-index: 10;
+  }
+  #perf-toggle:hover {
+    background: rgba(42, 147, 193, 0.15);
+    border-color: rgba(42, 147, 193, 0.6);
+  }
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+<div id="demo-label">PureBrain Neural Network — 3D Interactive Demo</div>
+<button id="perf-toggle" onclick="window.togglePerf && window.togglePerf()">QUALITY: HIGH</button>
+
+<!-- THREE.js ESM via importmap — confirmed working pattern (Day 9/10 sprint) -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer }   from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }       from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass }  from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass }       from 'three/addons/postprocessing/OutputPass.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BRAND CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
+const C_BLUE   = new THREE.Color(0x2a93c1);
+const C_ORANGE = new THREE.Color(0xf1420b);
+const C_BG     = new THREE.Color(0x0a0e1a);
+const C_IDLE   = new THREE.Color(0x1a2840);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SCENE SETUP
+// ─────────────────────────────────────────────────────────────────────────────
+const container = document.getElementById('canvas-container');
+const W = window.innerWidth;
+const H = window.innerHeight;
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: true,
+  alpha: false,
+  powerPreference: 'high-performance'
+});
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(C_BG, 1);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = C_BG;
+scene.fog = new THREE.FogExp2(0x0a0e1a, 0.038);
+
+const camera = new THREE.PerspectiveCamera(55, W / H, 0.1, 200);
+camera.position.set(0, 0, 22);
+camera.lookAt(0, 0, 0);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROCEDURAL PMREM ENVIRONMENT (no external HDRI file needed)
+// Pattern from Day 10 sprint — studio probe from lights
+// ─────────────────────────────────────────────────────────────────────────────
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+pmremGenerator.compileCubemapShader();
+
+const probeScene = new THREE.Scene();
+const envKey  = new THREE.PointLight(0x4ab8ff, 6.0, 60);
+envKey.position.set(5, 8, 5);
+const envFill = new THREE.PointLight(0x2a93c1, 3.5, 40);
+envFill.position.set(-6, 2, 3);
+const envRim  = new THREE.PointLight(0xf1420b, 2.0, 30);
+envRim.position.set(1, -2, -8);
+probeScene.add(envKey, envFill, envRim);
+
+const envTexture = pmremGenerator.fromScene(probeScene).texture;
+scene.environment = envTexture;
+pmremGenerator.dispose();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NEURAL NETWORK DATA STRUCTURES
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Brain-shaped ellipsoid distribution for neurons
+// Wider in X/Z, flatter in Y — approximates cerebral cortex shape
+const NODE_COUNT = 280;
+const CONNECTION_LIMIT = 4;   // max connections per neuron
+const FIRE_DURATION  = 1.2;   // seconds for a neuron to fire and recover
+const PULSE_SPEED    = 2.8;   // world units per second along connection
+
+class Neuron {
+  constructor(id, position) {
+    this.id          = id;
+    this.position    = position;
+    this.connections = [];     // indices of connected neurons
+    this.fireTime    = -999;   // last time this neuron fired (clock.elapsedTime)
+    this.fireIntensity = 0;    // 0 = idle, 1 = peak fire
+    this.baseColor   = C_IDLE.clone();
+    this.currentColor = C_IDLE.clone();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GENERATE NEURONS IN BRAIN-LIKE ELLIPSOID
+// ─────────────────────────────────────────────────────────────────────────────
+const neurons = [];
+
+function brainPosition() {
+  // Rejection sampling inside a brain-shaped region
+  // Two hemisphere lobes slightly separated
+  const hemisphere = Math.random() > 0.5 ? 1 : -1;
+
+  let x, y, z;
+  let attempts = 0;
+  do {
+    // Ellipsoid: rx=8, ry=5, rz=6 with hemisphere offset
+    const r = Math.cbrt(Math.random());  // cube root for uniform volume fill
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+
+    x = r * 8.5 * Math.sin(phi) * Math.cos(theta) + hemisphere * 1.0;
+    y = r * 5.0 * Math.cos(phi);
+    z = r * 6.0 * Math.sin(phi) * Math.sin(theta);
+
+    // Hollow out center (corpus callosum gap)
+    const distFromCenter = Math.sqrt(x * x + z * z);
+    if (distFromCenter > 1.5 && Math.abs(y) < 5) break;
+    attempts++;
+  } while (attempts < 30);
+
+  return new THREE.Vector3(x, y, z);
+}
+
+for (let i = 0; i < NODE_COUNT; i++) {
+  neurons.push(new Neuron(i, brainPosition()));
+}
+
+// Build connections: connect each neuron to nearest neighbors
+for (let i = 0; i < NODE_COUNT; i++) {
+  const ni = neurons[i];
+  if (ni.connections.length >= CONNECTION_LIMIT) continue;
+
+  // Find nearest neurons
+  const distances = [];
+  for (let j = i + 1; j < NODE_COUNT; j++) {
+    const nj = neurons[j];
+    if (nj.connections.length >= CONNECTION_LIMIT) continue;
+    const d = ni.position.distanceTo(nj.position);
+    if (d < 6.5) distances.push({ j, d });
+  }
+  distances.sort((a, b) => a.d - b.d);
+
+  for (const { j } of distances.slice(0, CONNECTION_LIMIT - ni.connections.length)) {
+    const nj = neurons[j];
+    if (nj.connections.length >= CONNECTION_LIMIT) continue;
+    ni.connections.push(j);
+    nj.connections.push(i);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INSTANCED NEURON SPHERES
+// ─────────────────────────────────────────────────────────────────────────────
+const neuronGeo = new THREE.SphereGeometry(0.12, 12, 8);
+const neuronMat = new THREE.MeshPhysicalMaterial({
+  color: C_IDLE,
+  emissive: C_IDLE,
+  emissiveIntensity: 0.3,
+  roughness: 0.2,
+  metalness: 0.1,
+  envMapIntensity: 1.0,
+});
+
+// We'll use individual meshes (not instanced) so we can control each color independently
+// For 280 nodes this is fine — stays under draw call budget
+const neuronMeshes = [];
+const neuronMaterials = [];
+
+for (let i = 0; i < NODE_COUNT; i++) {
+  const mat = new THREE.MeshPhysicalMaterial({
+    color: C_IDLE,
+    emissive: C_IDLE.clone(),
+    emissiveIntensity: 0.25,
+    roughness: 0.15,
+    metalness: 0.05,
+  });
+  const mesh = new THREE.Mesh(neuronGeo, mat);
+  mesh.position.copy(neurons[i].position);
+
+  // Vary node sizes slightly for organic feel
+  const scale = 0.6 + Math.random() * 0.8;
+  mesh.scale.setScalar(scale);
+
+  scene.add(mesh);
+  neuronMeshes.push(mesh);
+  neuronMaterials.push(mat);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SYNAPTIC CONNECTIONS — Line geometry for all connections
+// ─────────────────────────────────────────────────────────────────────────────
+// Build edge list (avoid duplicates) + O(1) lookup map
+const edges = [];
+const edgeSet = new Set();
+const edgeLookup = new Map();  // "i_j" → edgeIndex (always min_max order)
+
+for (let i = 0; i < NODE_COUNT; i++) {
+  for (const j of neurons[i].connections) {
+    const key = Math.min(i, j) * 10000 + Math.max(i, j);
+    if (!edgeSet.has(key)) {
+      edgeSet.add(key);
+      const edgeIndex = edges.length;
+      edges.push([i, j]);
+      edgeLookup.set(key, edgeIndex);
+    }
+  }
+}
+
+function getEdgeIndex(a, b) {
+  const key = Math.min(a, b) * 10000 + Math.max(a, b);
+  return edgeLookup.get(key) ?? -1;
+}
+
+// Create line segments for all connections
+const linePositions = new Float32Array(edges.length * 2 * 3);
+const lineColors    = new Float32Array(edges.length * 2 * 3);
+
+const connectionColors = [];  // track each edge's current color intensity
+
+for (let e = 0; e < edges.length; e++) {
+  const [i, j] = edges[e];
+  const pi = neurons[i].position;
+  const pj = neurons[j].position;
+
+  linePositions[e * 6 + 0] = pi.x;
+  linePositions[e * 6 + 1] = pi.y;
+  linePositions[e * 6 + 2] = pi.z;
+  linePositions[e * 6 + 3] = pj.x;
+  linePositions[e * 6 + 4] = pj.y;
+  linePositions[e * 6 + 5] = pj.z;
+
+  // Idle color: very dim blue-gray
+  const idleR = 0.08, idleG = 0.14, idleB = 0.22;
+  lineColors[e * 6 + 0] = idleR;
+  lineColors[e * 6 + 1] = idleG;
+  lineColors[e * 6 + 2] = idleB;
+  lineColors[e * 6 + 3] = idleR;
+  lineColors[e * 6 + 4] = idleG;
+  lineColors[e * 6 + 5] = idleB;
+
+  connectionColors.push({ intensity: 0, fromFire: -1, toFire: -1, dir: 0 });
+}
+
+const lineGeo = new THREE.BufferGeometry();
+lineGeo.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+lineGeo.setAttribute('color', new THREE.BufferAttribute(lineColors, 3));
+
+const lineMat = new THREE.LineBasicMaterial({
+  vertexColors: true,
+  transparent: true,
+  opacity: 0.65,
+  linewidth: 1,  // Note: > 1 requires LineMaterial from addons (not needed here)
+});
+
+const lineSegments = new THREE.LineSegments(lineGeo, lineMat);
+scene.add(lineSegments);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ELECTRICAL PULSE PARTICLES
+// Sparks that travel along synapse connections when they fire
+// ─────────────────────────────────────────────────────────────────────────────
+const MAX_PULSES = 120;
+const pulses = [];
+
+const pulseGeo = new THREE.BufferGeometry();
+const pulsePositions = new Float32Array(MAX_PULSES * 3);
+const pulseColors    = new Float32Array(MAX_PULSES * 3);
+const pulseSizes     = new Float32Array(MAX_PULSES);
+
+pulseGeo.setAttribute('position', new THREE.BufferAttribute(pulsePositions, 3));
+pulseGeo.setAttribute('color',    new THREE.BufferAttribute(pulseColors, 3));
+pulseGeo.setAttribute('size',     new THREE.BufferAttribute(pulseSizes, 1));
+
+// Custom point material using gl_PointSize and round point rendering
+const pulseMat = new THREE.ShaderMaterial({
+  uniforms: {},
+  vertexShader: `
+    attribute vec3 color;
+    attribute float size;
+    varying vec3 vColor;
+    void main() {
+      vColor = color;
+      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = size * (350.0 / -mvPosition.z);
+      gl_Position = projectionMatrix * mvPosition;
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vColor;
+    void main() {
+      vec2 uv = gl_PointCoord - 0.5;
+      float d = dot(uv, uv);
+      if (d > 0.25) discard;
+      float alpha = 1.0 - smoothstep(0.1, 0.25, d);
+      // Hot core with colored halo
+      float core = 1.0 - smoothstep(0.0, 0.12, d);
+      vec3 finalColor = mix(vColor, vec3(1.0, 1.0, 0.95), core * 0.7);
+      gl_FragColor = vec4(finalColor, alpha * 0.95);
+    }
+  `,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  vertexColors: false,
+});
+
+const pulsePoints = new THREE.Points(pulseGeo, pulseMat);
+scene.add(pulsePoints);
+
+// Pulse pool management
+for (let i = 0; i < MAX_PULSES; i++) {
+  pulses.push({
+    active: false,
+    edgeIndex: -1,
+    t: 0,           // progress 0→1 along edge
+    speed: 0,
+    color: new THREE.Color(),
+    fromIndex: -1,
+    toIndex: -1,
+  });
+}
+
+function spawnPulse(edgeIndex, fromNeuron, toNeuron, color) {
+  for (let i = 0; i < MAX_PULSES; i++) {
+    if (!pulses[i].active) {
+      const p = pulses[i];
+      p.active    = true;
+      p.edgeIndex = edgeIndex;
+      p.t         = 0;
+      p.speed     = 0.6 + Math.random() * 0.5;
+      p.color.copy(color);
+      p.fromIndex = fromNeuron;
+      p.toIndex   = toNeuron;
+      return;
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AMBIENT VOLUMETRIC PARTICLES
+// Background atmosphere — floating micro-particles in the brain volume
+// ─────────────────────────────────────────────────────────────────────────────
+const AMBIENT_COUNT = 1800;
+const ambientGeo = new THREE.BufferGeometry();
+const ambientPos = new Float32Array(AMBIENT_COUNT * 3);
+const ambientCol = new Float32Array(AMBIENT_COUNT * 3);
+const ambientSz  = new Float32Array(AMBIENT_COUNT);
+const ambientVel = new Float32Array(AMBIENT_COUNT * 3);  // drift velocities
+
+for (let i = 0; i < AMBIENT_COUNT; i++) {
+  // Spherical uniform distribution inside brain volume
+  const r = Math.cbrt(Math.random()) * 12;
+  const theta = Math.random() * Math.PI * 2;
+  const phi   = Math.acos(2 * Math.random() - 1);
+  ambientPos[i * 3 + 0] = r * Math.sin(phi) * Math.cos(theta);
+  ambientPos[i * 3 + 1] = r * 0.6 * Math.cos(phi);
+  ambientPos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+
+  // Color: mix between very dark blue and faint orange
+  const t = Math.random();
+  if (t < 0.7) {
+    // Blue atmosphere
+    ambientCol[i * 3 + 0] = 0.05 + Math.random() * 0.1;
+    ambientCol[i * 3 + 1] = 0.12 + Math.random() * 0.12;
+    ambientCol[i * 3 + 2] = 0.25 + Math.random() * 0.2;
+  } else {
+    // Orange wisps
+    ambientCol[i * 3 + 0] = 0.3 + Math.random() * 0.3;
+    ambientCol[i * 3 + 1] = 0.1 + Math.random() * 0.1;
+    ambientCol[i * 3 + 2] = 0.02;
+  }
+
+  ambientSz[i] = 0.3 + Math.random() * 0.8;
+
+  // Random slow drift
+  const speed = 0.003 + Math.random() * 0.008;
+  const dTheta = Math.random() * Math.PI * 2;
+  ambientVel[i * 3 + 0] = Math.cos(dTheta) * speed;
+  ambientVel[i * 3 + 1] = (Math.random() - 0.5) * speed * 0.3;
+  ambientVel[i * 3 + 2] = Math.sin(dTheta) * speed;
+}
+
+ambientGeo.setAttribute('position', new THREE.BufferAttribute(ambientPos, 3));
+ambientGeo.setAttribute('color',    new THREE.BufferAttribute(ambientCol, 3));
+ambientGeo.setAttribute('size',     new THREE.BufferAttribute(ambientSz,  1));
+
+const ambientMat = new THREE.ShaderMaterial({
+  uniforms: {},
+  vertexShader: `
+    attribute vec3 color;
+    attribute float size;
+    varying vec3 vColor;
+    varying float vAlpha;
+    void main() {
+      vColor = color;
+      vAlpha = 0.18 + size * 0.08;
+      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = size * (280.0 / -mvPosition.z);
+      gl_Position = projectionMatrix * mvPosition;
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vColor;
+    varying float vAlpha;
+    void main() {
+      vec2 uv = gl_PointCoord - 0.5;
+      float d = dot(uv, uv);
+      if (d > 0.25) discard;
+      float alpha = vAlpha * (1.0 - smoothstep(0.05, 0.25, d));
+      gl_FragColor = vec4(vColor, alpha);
+    }
+  `,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+
+const ambientPoints = new THREE.Points(ambientGeo, ambientMat);
+scene.add(ambientPoints);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SPARK BURST EFFECT — when a neuron fires at peak intensity
+// ─────────────────────────────────────────────────────────────────────────────
+const MAX_SPARKS = 600;
+const sparkGeo = new THREE.BufferGeometry();
+const sparkPos  = new Float32Array(MAX_SPARKS * 3);
+const sparkCol  = new Float32Array(MAX_SPARKS * 3);
+const sparkSz   = new Float32Array(MAX_SPARKS);
+
+sparkGeo.setAttribute('position', new THREE.BufferAttribute(sparkPos, 3));
+sparkGeo.setAttribute('color',    new THREE.BufferAttribute(sparkCol, 3));
+sparkGeo.setAttribute('size',     new THREE.BufferAttribute(sparkSz, 1));
+
+const sparkMat = new THREE.ShaderMaterial({
+  uniforms: {},
+  vertexShader: `
+    attribute vec3 color;
+    attribute float size;
+    varying vec3 vColor;
+    void main() {
+      vColor = color;
+      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = size * (400.0 / -mvPosition.z);
+      gl_Position = projectionMatrix * mvPosition;
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vColor;
+    void main() {
+      vec2 uv = gl_PointCoord - 0.5;
+      float d = dot(uv, uv);
+      if (d > 0.25) discard;
+      float alpha = pow(1.0 - smoothstep(0.0, 0.25, d), 2.0);
+      gl_FragColor = vec4(vColor, alpha);
+    }
+  `,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+
+const sparkPoints = new THREE.Points(sparkGeo, sparkMat);
+scene.add(sparkPoints);
+
+const sparks = [];
+for (let i = 0; i < MAX_SPARKS; i++) {
+  sparks.push({
+    active: false,
+    pos: new THREE.Vector3(),
+    vel: new THREE.Vector3(),
+    life: 0,
+    maxLife: 0,
+    color: new THREE.Color(),
+  });
+}
+
+function spawnSparks(origin, color, count = 8) {
+  let spawned = 0;
+  for (let i = 0; i < MAX_SPARKS && spawned < count; i++) {
+    if (!sparks[i].active) {
+      const s = sparks[i];
+      s.active = true;
+      s.pos.copy(origin);
+      const speed = 0.04 + Math.random() * 0.12;
+      s.vel.set(
+        (Math.random() - 0.5) * speed,
+        (Math.random() - 0.5) * speed,
+        (Math.random() - 0.5) * speed
+      );
+      s.life = 0;
+      s.maxLife = 0.4 + Math.random() * 0.6;
+      s.color.copy(color);
+      spawned++;
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POSTPROCESSING — UnrealBloomPass for neural glow
+// ─────────────────────────────────────────────────────────────────────────────
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(W, H),
+  /*strength*/  1.4,
+  /*radius*/    0.6,
+  /*threshold*/ 0.15
+);
+composer.addPass(bloomPass);
+
+// OutputPass handles tone mapping + color conversion
+composer.addPass(new OutputPass());
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MOUSE INTERACTION
+// ─────────────────────────────────────────────────────────────────────────────
+const mouse       = new THREE.Vector2(0, 0);
+const mouseWorld  = new THREE.Vector3(0, 0, 0);
+const raycaster   = new THREE.Raycaster();
+
+// Invisible plane at z=0 for mouse world position
+const mousePlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+
+// Camera parallax target
+const cameraTarget = new THREE.Vector3(0, 0, 22);
+const cameraLookTarget = new THREE.Vector3(0, 0, 0);
+
+// Touch support
+let lastMouseActivationTime = 0;
+const MOUSE_ACTIVATION_COOLDOWN = 0.08;  // seconds between mouse-triggered fires
+
+function onMouseMove(e) {
+  const x = e.touches ? e.touches[0].clientX : e.clientX;
+  const y = e.touches ? e.touches[0].clientY : e.clientY;
+
+  mouse.x = (x / window.innerWidth) * 2 - 1;
+  mouse.y = -(y / window.innerHeight) * 2 + 1;
+
+  // Camera parallax — subtle perspective shift
+  cameraTarget.x = mouse.x * -1.8;
+  cameraTarget.y = mouse.y * -1.2;
+  cameraTarget.z = 22;
+
+  cameraLookTarget.x = mouse.x * 0.8;
+  cameraLookTarget.y = mouse.y * 0.5;
+}
+
+window.addEventListener('mousemove', onMouseMove);
+window.addEventListener('touchmove', onMouseMove, { passive: true });
+window.addEventListener('touchstart', onMouseMove, { passive: true });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NEURON FIRING SYSTEM
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Firing queue — neurons scheduled to fire
+const firingQueue = [];
+
+function fireNeuron(neuronIndex, time, propagate = true, depth = 0, color = null) {
+  const n = neurons[neuronIndex];
+
+  // Don't re-fire a recently fired neuron
+  if (time - n.fireTime < FIRE_DURATION * 0.7) return;
+
+  n.fireTime = time;
+
+  // Determine fire color: blue for initial, orange for propagated
+  const fireColor = color || (depth === 0 ? C_BLUE : (depth % 2 === 1 ? C_ORANGE : C_BLUE));
+
+  // Schedule color flash
+  firingQueue.push({ index: neuronIndex, time, color: fireColor.clone() });
+
+  // Spawn sparks at neuron position
+  spawnSparks(n.position, fireColor, 5 + depth * 2);
+
+  // Propagate to connected neurons with delay
+  if (propagate && depth < 4) {
+    const shuffled = [...n.connections].sort(() => Math.random() - 0.5);
+    const propagateCount = Math.min(2 + Math.floor(Math.random() * 2), shuffled.length);
+
+    for (let k = 0; k < propagateCount; k++) {
+      const targetIndex = shuffled[k];
+      const targetNeuron = neurons[targetIndex];
+      const dist = n.position.distanceTo(targetNeuron.position);
+      const travelTime = dist / PULSE_SPEED;
+
+      // Spawn pulse along connection (O(1) lookup)
+      const edgeIndex = getEdgeIndex(neuronIndex, targetIndex);
+      if (edgeIndex >= 0) {
+        spawnPulse(edgeIndex, neuronIndex, targetIndex, fireColor);
+      }
+
+      // Schedule downstream fire
+      setTimeout(() => {
+        fireNeuron(targetIndex, clock.getElapsedTime(), true, depth + 1,
+          fireColor === C_BLUE ? C_ORANGE : C_BLUE);
+      }, travelTime * 1000);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AMBIENT RANDOM FIRING
+// Random neurons fire on their own every ~200-600ms
+// ─────────────────────────────────────────────────────────────────────────────
+function scheduleAmbientFire() {
+  const neuronIndex = Math.floor(Math.random() * NODE_COUNT);
+  const delay = 200 + Math.random() * 500;
+  setTimeout(() => {
+    fireNeuron(neuronIndex, clock.getElapsedTime(), true, 0);
+    scheduleAmbientFire();
+  }, delay);
+}
+
+// Initial burst — fire several clusters at start for immediate visual impact
+function initialBurst() {
+  // Fire 8 random neurons to kick things off
+  for (let i = 0; i < 8; i++) {
+    setTimeout(() => {
+      const idx = Math.floor(Math.random() * NODE_COUNT);
+      fireNeuron(idx, 0, true, 0);
+    }, i * 150);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLOCK AND RENDER LOOP
+// ─────────────────────────────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+const tmpV  = new THREE.Vector3();
+let highQuality = true;
+
+// Reusable idle color to avoid per-frame GC
+const _blueIdle = new THREE.Color(0x0d1a2d);
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const dt  = clock.getDelta();
+  const t   = clock.getElapsedTime();
+
+  // ─── CAMERA PARALLAX ────────────────────────────────────────────────
+  camera.position.lerp(cameraTarget, 0.025);
+  camera.lookAt(cameraLookTarget);
+
+  // Slow ambient breathing rotation of the entire neural cloud
+  // Prime frequency ratios from Day 9 sprint — avoids mechanical looping
+  scene.rotation.y = Math.sin(t * 0.071) * 0.10 + Math.sin(t * 0.038) * 0.04;
+  scene.rotation.x = Math.sin(t * 0.053) * 0.04 + Math.sin(t * 0.029) * 0.02;
+
+  // ─── MOUSE WORLD POSITION ───────────────────────────────────────────
+  raycaster.setFromCamera(mouse, camera);
+  raycaster.ray.intersectPlane(mousePlane, mouseWorld);
+
+  // Mouse-proximity activation
+  if (t - lastMouseActivationTime > MOUSE_ACTIVATION_COOLDOWN) {
+    const MOUSE_RADIUS = 4.0;
+    for (let i = 0; i < NODE_COUNT; i++) {
+      const n = neurons[i];
+      // Transform neuron position into camera space for comparison
+      tmpV.copy(n.position).applyMatrix4(scene.matrixWorld);
+      const dx = tmpV.x - mouseWorld.x;
+      const dy = tmpV.y - mouseWorld.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < MOUSE_RADIUS && t - n.fireTime > FIRE_DURATION) {
+        const prob = (1.0 - dist / MOUSE_RADIUS) * 0.25;
+        if (Math.random() < prob) {
+          fireNeuron(i, t, true, 0, C_ORANGE);
+          lastMouseActivationTime = t;
+          break;
+        }
+      }
+    }
+  }
+
+  // ─── UPDATE NEURON MATERIALS ─────────────────────────────────────────
+  for (let i = 0; i < NODE_COUNT; i++) {
+    const n   = neurons[i];
+    const mat = neuronMaterials[i];
+    const age = t - n.fireTime;
+
+    if (age < FIRE_DURATION) {
+      // Fire cycle: ramp up 0→0.3s, hold 0.3→0.7s, decay 0.7→1.2s
+      let intensity;
+      const rampUp   = 0.3;
+      const hold     = 0.4;
+      const rampDown = FIRE_DURATION - rampUp - hold;
+
+      if (age < rampUp) {
+        intensity = age / rampUp;
+      } else if (age < rampUp + hold) {
+        intensity = 1.0;
+      } else {
+        intensity = 1.0 - (age - rampUp - hold) / rampDown;
+      }
+      intensity = Math.max(0, Math.min(1, intensity));
+
+      // Find what color this neuron fired with
+      const fc = firingQueue.find(f => f.index === i && f.time === n.fireTime);
+      const fireColor = fc ? fc.color : C_BLUE;
+
+      mat.emissive.copy(fireColor).multiplyScalar(intensity);
+      mat.emissiveIntensity = 0.3 + intensity * 3.5;
+      mat.color.lerpColors(C_IDLE, fireColor, intensity * 0.7);
+    } else {
+      // Idle: subtle pulsing
+      const pulse = Math.sin(t * 0.8 + i * 0.3) * 0.5 + 0.5;
+      mat.emissive.copy(_blueIdle);
+      mat.emissiveIntensity = 0.1 + pulse * 0.08;
+      mat.color.copy(C_IDLE);
+    }
+  }
+
+  // Clean old firing queue entries
+  const QUEUE_TTL = FIRE_DURATION * 2;
+  for (let i = firingQueue.length - 1; i >= 0; i--) {
+    if (t - firingQueue[i].time > QUEUE_TTL) firingQueue.splice(i, 1);
+  }
+
+  // ─── UPDATE CONNECTION LINE COLORS ───────────────────────────────────
+  const colorsArr = lineGeo.attributes.color.array;
+
+  for (let e = 0; e < edges.length; e++) {
+    const [ai, bi] = edges[e];
+    const na = neurons[ai];
+    const nb = neurons[bi];
+
+    const ageA = t - na.fireTime;
+    const ageB = t - nb.fireTime;
+    const firedA = ageA < FIRE_DURATION;
+    const firedB = ageB < FIRE_DURATION;
+
+    let r, g, b;
+    if (firedA || firedB) {
+      // Brighten connection when either endpoint fires
+      const intensityA = firedA ? Math.max(0, 1.0 - ageA / FIRE_DURATION) : 0;
+      const intensityB = firedB ? Math.max(0, 1.0 - ageB / FIRE_DURATION) : 0;
+      const intensity = Math.max(intensityA, intensityB);
+
+      // Blue fire connections
+      r = 0.08 + intensity * 0.16;
+      g = 0.14 + intensity * 0.45;
+      b = 0.22 + intensity * 0.65;
+    } else {
+      // Idle
+      r = 0.06; g = 0.10; b = 0.18;
+    }
+
+    colorsArr[e * 6 + 0] = r; colorsArr[e * 6 + 1] = g; colorsArr[e * 6 + 2] = b;
+    colorsArr[e * 6 + 3] = r; colorsArr[e * 6 + 4] = g; colorsArr[e * 6 + 5] = b;
+  }
+  lineGeo.attributes.color.needsUpdate = true;
+
+  // ─── UPDATE PULSES ────────────────────────────────────────────────────
+  let activePulseCount = 0;
+  const pPositions = pulseGeo.attributes.position.array;
+  const pColors    = pulseGeo.attributes.color.array;
+  const pSizes     = pulseGeo.attributes.size.array;
+
+  for (let i = 0; i < MAX_PULSES; i++) {
+    const p = pulses[i];
+    if (!p.active) {
+      // Park inactive pulses off-screen
+      pPositions[i * 3 + 0] = 9999;
+      pPositions[i * 3 + 1] = 9999;
+      pPositions[i * 3 + 2] = 9999;
+      pSizes[i] = 0;
+      continue;
+    }
+
+    p.t += dt * p.speed;
+
+    if (p.t >= 1.0) {
+      p.active = false;
+      pPositions[i * 3 + 0] = 9999;
+      pSizes[i] = 0;
+      continue;
+    }
+
+    const [ai, bi] = edges[p.edgeIndex];
+    const fromNeuron = neurons[p.fromIndex];
+    const toNeuron   = neurons[p.toIndex];
+
+    // Interpolate along edge
+    const px = fromNeuron.position.x + (toNeuron.position.x - fromNeuron.position.x) * p.t;
+    const py = fromNeuron.position.y + (toNeuron.position.y - fromNeuron.position.y) * p.t;
+    const pz = fromNeuron.position.z + (toNeuron.position.z - fromNeuron.position.z) * p.t;
+
+    pPositions[i * 3 + 0] = px;
+    pPositions[i * 3 + 1] = py;
+    pPositions[i * 3 + 2] = pz;
+
+    // Color shifts from blue→orange along the pulse travel
+    const pulseAge = p.t;
+    pColors[i * 3 + 0] = p.color.r + (1.0 - p.color.r) * pulseAge * 0.4;
+    pColors[i * 3 + 1] = p.color.g * (1.0 - pulseAge * 0.3);
+    pColors[i * 3 + 2] = p.color.b * (1.0 - pulseAge * 0.5);
+
+    pSizes[i] = 2.5 + Math.sin(pulseAge * Math.PI) * 1.5;
+    activePulseCount++;
+  }
+
+  pulseGeo.attributes.position.needsUpdate = true;
+  pulseGeo.attributes.color.needsUpdate = true;
+  pulseGeo.attributes.size.needsUpdate = true;
+
+  // ─── UPDATE SPARKS ────────────────────────────────────────────────────
+  const sPositions = sparkGeo.attributes.position.array;
+  const sColors    = sparkGeo.attributes.color.array;
+  const sSizes     = sparkGeo.attributes.size.array;
+
+  for (let i = 0; i < MAX_SPARKS; i++) {
+    const s = sparks[i];
+
+    if (!s.active) {
+      sPositions[i * 3 + 0] = 9999;
+      sSizes[i] = 0;
+      continue;
+    }
+
+    s.life += dt;
+    if (s.life >= s.maxLife) {
+      s.active = false;
+      sPositions[i * 3 + 0] = 9999;
+      sSizes[i] = 0;
+      continue;
+    }
+
+    // Update position
+    s.pos.x += s.vel.x;
+    s.pos.y += s.vel.y;
+    s.pos.z += s.vel.z;
+
+    // Decelerate
+    s.vel.multiplyScalar(0.96);
+
+    const lifeRatio = s.life / s.maxLife;
+
+    sPositions[i * 3 + 0] = s.pos.x;
+    sPositions[i * 3 + 1] = s.pos.y;
+    sPositions[i * 3 + 2] = s.pos.z;
+
+    // Fade out and shift from white-hot → colored → dark
+    const brightness = Math.pow(1.0 - lifeRatio, 1.5);
+    const hotCore = Math.max(0, 1.0 - lifeRatio * 3.0);
+
+    sColors[i * 3 + 0] = s.color.r * brightness + hotCore * 0.8;
+    sColors[i * 3 + 1] = s.color.g * brightness + hotCore * 0.7;
+    sColors[i * 3 + 2] = s.color.b * brightness + hotCore * 0.4;
+
+    sSizes[i] = (1.5 + hotCore * 2.0) * brightness;
+  }
+
+  sparkGeo.attributes.position.needsUpdate = true;
+  sparkGeo.attributes.color.needsUpdate = true;
+  sparkGeo.attributes.size.needsUpdate = true;
+
+  // ─── UPDATE AMBIENT PARTICLES ─────────────────────────────────────────
+  // Slow drift
+  for (let i = 0; i < AMBIENT_COUNT; i++) {
+    ambientPos[i * 3 + 0] += ambientVel[i * 3 + 0];
+    ambientPos[i * 3 + 1] += ambientVel[i * 3 + 1];
+    ambientPos[i * 3 + 2] += ambientVel[i * 3 + 2];
+
+    // Contain within brain volume (soft boundary)
+    const px = ambientPos[i * 3 + 0];
+    const py = ambientPos[i * 3 + 1];
+    const pz = ambientPos[i * 3 + 2];
+    const dist = Math.sqrt(px * px + (py / 0.6) * (py / 0.6) + pz * pz);
+    if (dist > 13) {
+      // Flip velocity inward
+      ambientVel[i * 3 + 0] *= -0.8;
+      ambientVel[i * 3 + 1] *= -0.8;
+      ambientVel[i * 3 + 2] *= -0.8;
+    }
+  }
+  ambientGeo.attributes.position.needsUpdate = true;
+
+  // ─── RENDER ──────────────────────────────────────────────────────────
+  composer.render();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RESIZE HANDLER
+// ─────────────────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+  camera.aspect = W / H;
+  camera.updateProjectionMatrix();
+  renderer.setSize(W, H);
+  composer.setSize(W, H);
+  bloomPass.resolution.set(W, H);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// QUALITY TOGGLE
+// ─────────────────────────────────────────────────────────────────────────────
+window.togglePerf = function() {
+  highQuality = !highQuality;
+  const btn = document.getElementById('perf-toggle');
+
+  if (highQuality) {
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    bloomPass.strength  = 1.4;
+    bloomPass.radius    = 0.6;
+    btn.textContent = 'QUALITY: HIGH';
+  } else {
+    renderer.setPixelRatio(1);
+    bloomPass.strength  = 1.0;
+    bloomPass.radius    = 0.4;
+    btn.textContent = 'QUALITY: LOW (FASTER)';
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLICK / TAP TO TRIGGER BURST
+// ─────────────────────────────────────────────────────────────────────────────
+window.addEventListener('click', (e) => {
+  // Find nearest neuron to click position
+  const mx = (e.clientX / window.innerWidth)  * 2 - 1;
+  const my = -(e.clientY / window.innerHeight) * 2 + 1;
+
+  raycaster.setFromCamera(new THREE.Vector2(mx, my), camera);
+  raycaster.ray.intersectPlane(mousePlane, mouseWorld);
+
+  // Find closest neuron to click
+  let minDist = Infinity;
+  let nearestIdx = 0;
+
+  for (let i = 0; i < NODE_COUNT; i++) {
+    const n = neurons[i];
+    tmpV.copy(n.position).applyMatrix4(scene.matrixWorld);
+    const dx = tmpV.x - mouseWorld.x;
+    const dy = tmpV.y - mouseWorld.y;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d < minDist) {
+      minDist = d;
+      nearestIdx = i;
+    }
+  }
+
+  // Big burst from nearest neuron
+  fireNeuron(nearestIdx, clock.getElapsedTime(), true, 0, C_ORANGE);
+  spawnSparks(neurons[nearestIdx].position, C_ORANGE, 20);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LAUNCH
+// ─────────────────────────────────────────────────────────────────────────────
+initialBurst();
+scheduleAmbientFire();
+animate();
+
+console.log('[PureBrain Neural 3D] Scene initialized');
+console.log(`[PureBrain Neural 3D] ${NODE_COUNT} neurons, ${edges.length} synaptic connections`);
+console.log('[PureBrain Neural 3D] Move mouse to activate neurons. Click for burst.');
+
+</script>
+</body>
+</html>

@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology Icon — Exact Static Recreation</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body {
+  width:100%; height:100%;
+  background:#000000;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+canvas {
+  display:block;
+}
+</style>
+</head>
+<body>
+<canvas id="c" width="500" height="500"></canvas>
+<script>
+// ============================================================
+//  PURE TECHNOLOGY ICON — EXACT STATIC RECREATION
+//
+//  Forensic analysis of the 2100x2100 RGBA source PNG:
+//    portal_20260322_151049_MA1.BI-1.2.4-002-211107-Icon-PT.png
+//
+//  KEY MEASUREMENTS (from pixel analysis):
+//  - 13 hexagonal wireframe rings, vertex-up orientation
+//  - Outermost ring vertex points straight UP (90°)
+//  - Each ring rotated 5° more than the one inside it
+//  - Rotation: ring[i] = 30° + i × 5°  (i=0 inner, i=12 outer)
+//  - Inner color: RGB(241, 66, 11) = #f14211
+//  - Outer color: RGB( 43,147,193) = #2b93c1
+//  - Linear gradient between them based on normalized radius
+//  - Inner void radius = 0.098 × outer_vertex_R
+//  - Spokes: vertex→same + vertex→next, creating the vortex fan
+//  - Mid-edge spokes added for outer half (normR > 0.45)
+//  - Line width: thin, ~1.1–1.7px at 500px size
+//  - Background: #000000 (pure black)
+//
+//  Canvas: 500×500
+//  Center: (250, 250)
+//  Outer hex vertex radius R: 210 px (42% of canvas)
+// ============================================================
+
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+
+const W  = 500;
+const H  = 500;
+const CX = 250;
+const CY = 250;
+const R  = 210;  // outer vertex radius in pixels
+
+// ---- ring normalized radii (from analysis of source PNG) ----
+// 13 rings from innermost (0.110) to outermost (0.970)
+const RING_NORMS = [
+  0.110,  // ring  0 — just outside the inner void
+  0.160,  // ring  1
+  0.220,  // ring  2
+  0.280,  // ring  3
+  0.335,  // ring  4
+  0.400,  // ring  5
+  0.460,  // ring  6
+  0.535,  // ring  7
+  0.615,  // ring  8
+  0.685,  // ring  9
+  0.755,  // ring 10
+  0.840,  // ring 11
+  0.970,  // ring 12 — outermost
+];
+
+const N = RING_NORMS.length; // 13
+
+// ---- rotation: ring[i] = 30° + i × 5° (in radians) ----
+// Outermost ring (i=12): 30 + 60 = 90° → vertex straight up ✓
+// Innermost ring (i=0): 30° → vertex at upper-right
+const DEG = Math.PI / 180;
+const BASE_ROT  = 30 * DEG;   // 30 degrees = PI/6
+const RING_STEP = 5  * DEG;   // 5 degrees per ring step
+
+function ringRotation(i) {
+  return BASE_ROT + i * RING_STEP;
+}
+
+// ---- color gradient ----
+// Pixel analysis of source PNG shows:
+//   innermost ring (normR=0.110) = pure RGB(241, 66, 11) orange
+//   outermost ring (normR=0.970) = pure RGB( 43,147,193) blue
+// Therefore we remap normR from [0.110, 0.970] → [0, 1] before interpolating.
+// This ensures inner ring = pure orange, outer ring = pure blue.
+const INNER_NORM = 0.110;
+const OUTER_NORM = 0.970;
+
+function normToT(normR) {
+  return (normR - INNER_NORM) / (OUTER_NORM - INNER_NORM);
+}
+
+function lerpColor(normR, alpha) {
+  const t = Math.max(0, Math.min(1, normToT(normR)));
+  const r = Math.round(241 + (43  - 241) * t);
+  const g = Math.round( 66 + (147 -  66) * t);
+  const b = Math.round( 11 + (193 -  11) * t);
+  if (alpha !== undefined) return `rgba(${r},${g},${b},${alpha})`;
+  return `rgb(${r},${g},${b})`;
+}
+
+// ---- hexagon vertex generator ----
+// rotation: angle of vertex 0 from positive-x axis (radians, CCW positive)
+// In canvas coords: Y grows downward, so CCW in math = CW visually
+function hexVerts(radius, rotation) {
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const a = rotation + (Math.PI * 2 * i) / 6;
+    pts.push({ x: radius * Math.cos(a), y: radius * Math.sin(a) });
+  }
+  return pts;
+}
+
+// ---- draw a single hexagonal wireframe ring ----
+function drawHexRing(radius, rotation, color, lineWidth, alpha) {
+  const v = hexVerts(radius, rotation);
+  ctx.beginPath();
+  ctx.moveTo(v[0].x, v[0].y);
+  for (let i = 1; i < 6; i++) ctx.lineTo(v[i].x, v[i].y);
+  ctx.closePath();
+  ctx.strokeStyle    = color;
+  ctx.lineWidth      = lineWidth;
+  ctx.globalAlpha    = alpha;
+  ctx.stroke();
+}
+
+// ---- draw primary vortex spokes between two consecutive rings ----
+// Inner ring: radius rA, rotation rotA
+// Outer ring: radius rB, rotation rotB
+// For each vertex i on inner ring:
+//   • Line to vertex  i    on outer ring (straight connection)
+//   • Line to vertex (i+1) on outer ring (the vortex "lean")
+// The second type is thinner (×0.7 lineWidth)
+function drawVortexSpokes(rA, rotA, rB, rotB, tA, tB, lineWidth, alpha) {
+  const vA = hexVerts(rA, rotA);
+  const vB = hexVerts(rB, rotB);
+
+  for (let i = 0; i < 6; i++) {
+    const pA  = vA[i];
+    const pB0 = vB[i % 6];
+    const pB1 = vB[(i + 1) % 6];
+
+    // --- straight spoke: vertex i → vertex i ---
+    const g0 = ctx.createLinearGradient(pA.x, pA.y, pB0.x, pB0.y);
+    g0.addColorStop(0, lerpColor(tA, alpha));
+    g0.addColorStop(1, lerpColor(tB, alpha));
+    ctx.beginPath();
+    ctx.moveTo(pA.x, pA.y);
+    ctx.lineTo(pB0.x, pB0.y);
+    ctx.strokeStyle = g0;
+    ctx.lineWidth   = lineWidth;
+    ctx.globalAlpha = 1;
+    ctx.stroke();
+
+    // --- diagonal spoke: vertex i → vertex (i+1) — THE VORTEX LEAN ---
+    const g1 = ctx.createLinearGradient(pA.x, pA.y, pB1.x, pB1.y);
+    g1.addColorStop(0, lerpColor(tA, alpha));
+    g1.addColorStop(1, lerpColor(tB, alpha));
+    ctx.beginPath();
+    ctx.moveTo(pA.x, pA.y);
+    ctx.lineTo(pB1.x, pB1.y);
+    ctx.strokeStyle = g1;
+    ctx.lineWidth   = lineWidth * 0.7;
+    ctx.globalAlpha = 1;
+    ctx.stroke();
+  }
+}
+
+// ---- draw mid-edge spokes (denser weave, outer rings only) ----
+// Connects the midpoint of each edge on the inner ring to the
+// midpoint of the corresponding edge on the outer ring.
+// Used only for rings with normR > 0.45 (creates denser blue/transition zone)
+function drawMidSpokes(rA, rotA, rB, rotB, tA, tB, lineWidth, alpha) {
+  function edgeMidpoints(r, rot) {
+    const v = hexVerts(r, rot);
+    return v.map((p, i) => {
+      const q = v[(i + 1) % 6];
+      return { x: (p.x + q.x) * 0.5, y: (p.y + q.y) * 0.5 };
+    });
+  }
+  const mA = edgeMidpoints(rA, rotA);
+  const mB = edgeMidpoints(rB, rotB);
+  for (let i = 0; i < 6; i++) {
+    const g = ctx.createLinearGradient(mA[i].x, mA[i].y, mB[i].x, mB[i].y);
+    g.addColorStop(0, lerpColor(tA, alpha));
+    g.addColorStop(1, lerpColor(tB, alpha));
+    ctx.beginPath();
+    ctx.moveTo(mA[i].x, mA[i].y);
+    ctx.lineTo(mB[i].x, mB[i].y);
+    ctx.strokeStyle = g;
+    ctx.lineWidth   = lineWidth * 0.5;
+    ctx.globalAlpha = 1;
+    ctx.stroke();
+  }
+}
+
+// ============================================================
+//  MAIN DRAW — static, no animation
+// ============================================================
+function draw() {
+  // ---- clear to pure black ----
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, W, H);
+
+  // ---- translate to center ----
+  ctx.save();
+  ctx.translate(CX, CY);
+
+  // ---- draw all ring connections and ring outlines ----
+  // Draw from outermost to innermost (so inner rings appear on top of outer)
+  // BUT spokes are drawn BEFORE rings so rings overlap spokes slightly
+
+  // Pre-compute radii and rotations
+  const radii     = RING_NORMS.map(n => n * R);
+  const rotations = RING_NORMS.map((n, i) => ringRotation(i));
+
+  // ---- pass 1: subtle glow bloom (drawn at larger lineWidth, low alpha) ----
+  // This gives the slight luminous halo visible in the original
+  ctx.save();
+  ctx.shadowBlur = 8;
+  for (let i = 0; i < N; i++) {
+    const normR  = RING_NORMS[i];
+    const radius = radii[i];
+    const color  = lerpColor(normR);
+    const lw     = (W * 0.0022 + W * 0.001 * normR) * 2.5;
+    ctx.shadowColor = color;
+    drawHexRing(radius, rotations[i], color, lw, 0.12);
+  }
+  ctx.restore();
+  ctx.shadowBlur = 0;
+
+  // ---- pass 2: main draw (outer to inner) ----
+  ctx.globalAlpha = 1;
+
+  for (let i = N - 1; i >= 0; i--) {
+    const normR  = RING_NORMS[i];
+    const radius = radii[i];
+    const color  = lerpColor(normR);
+
+    // Line width: slightly thicker at outer edge, thinner at center
+    const lw = W * 0.0022 + W * 0.0012 * normR;
+
+    // ---- spokes to next ring outward ----
+    if (i < N - 1) {
+      const jNormR  = RING_NORMS[i + 1];
+      const jRadius = radii[i + 1];
+      const tMid    = (normR + jNormR) * 0.5;
+      const spokeLW = lw * 0.7;
+
+      // Opacity: fuller toward outer rings
+      const spokeAlpha = 0.55 + 0.45 * normR;
+
+      drawVortexSpokes(
+        radius,    rotations[i],
+        jRadius,   rotations[i + 1],
+        normR,     jNormR,
+        spokeLW,   spokeAlpha
+      );
+
+      // Mid-edge spokes for outer half only (normR > 0.45)
+      if (normR > 0.45) {
+        drawMidSpokes(
+          radius,    rotations[i],
+          jRadius,   rotations[i + 1],
+          normR,     jNormR,
+          spokeLW * 0.55,  spokeAlpha * 0.65
+        );
+      }
+    }
+
+    // ---- draw the hex ring outline itself ----
+    drawHexRing(radius, rotations[i], color, lw, 1.0);
+  }
+
+  // ---- inner void — pure black circle ----
+  // Measured: void radius = 0.098 × outer vertex radius in the source PNG
+  const VOID_R = R * 0.098;  // ~20.6 px at R=210
+
+  // Slight orange glow around the void edge (visible in source image)
+  const glowGrad = ctx.createRadialGradient(0, 0, VOID_R * 0.5, 0, 0, VOID_R * 1.8);
+  glowGrad.addColorStop(0.0, 'rgba(241,66,11,0.00)');
+  glowGrad.addColorStop(0.4, 'rgba(241,66,11,0.22)');
+  glowGrad.addColorStop(0.7, 'rgba(241,66,11,0.10)');
+  glowGrad.addColorStop(1.0, 'rgba(241,66,11,0.00)');
+  ctx.globalAlpha = 1;
+  ctx.beginPath();
+  ctx.arc(0, 0, VOID_R * 1.8, 0, Math.PI * 2);
+  ctx.fillStyle = glowGrad;
+  ctx.fill();
+
+  // Hard black void (no content, pure black circle)
+  ctx.globalAlpha = 1;
+  ctx.beginPath();
+  ctx.arc(0, 0, VOID_R, 0, Math.PI * 2);
+  ctx.fillStyle = '#000000';
+  ctx.fill();
+
+  ctx.restore();
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur  = 0;
+}
+
+draw();
+</script>
+</body>
+</html>

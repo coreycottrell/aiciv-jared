@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 18: Iridescent Thin-Film Interference</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #060606; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+canvas { display: block; width: 100vw; height: 100vh; }
+#info {
+  position: fixed; top: 20px; left: 20px; color: rgba(255,255,255,0.6);
+  font-size: 13px; z-index: 10; pointer-events: none;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+}
+#info h1 { font-size: 16px; color: #2a93c1; margin-bottom: 4px; }
+#info p { margin-bottom: 2px; }
+</style>
+</head>
+<body>
+<div id="info">
+  <h1>Thin-Film Interference / Soap Bubble</h1>
+  <p>Move mouse to rotate view</p>
+  <p>Scroll to zoom</p>
+</div>
+<canvas id="c"></canvas>
+<script>
+// ============================================================
+// Night 18 — Experiment 1: Iridescent Thin-Film Interference
+//
+// Physics: When light hits a thin film (soap bubble, oil slick),
+// it reflects from both the outer and inner surfaces. The two
+// reflected waves interfere constructively or destructively
+// depending on:
+//   - Film thickness (d)
+//   - Viewing angle (theta) — Fresnel
+//   - Wavelength of light (lambda)
+//
+// Path difference = 2 * n * d * cos(theta_refracted)
+// Constructive when path_diff = m * lambda
+//
+// We simulate this by computing spectral interference for
+// multiple wavelengths and converting to RGB.
+// ============================================================
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias: true, alpha: false });
+if (!gl) { alert('WebGL2 required'); }
+
+let W, H;
+function resize() {
+  W = canvas.width = window.innerWidth * devicePixelRatio;
+  H = canvas.height = window.innerHeight * devicePixelRatio;
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  gl.viewport(0, 0, W, H);
+}
+resize();
+window.addEventListener('resize', resize);
+
+let mx = 0.5, my = 0.5, zoom = 3.5;
+canvas.addEventListener('mousemove', e => {
+  mx = e.clientX / window.innerWidth;
+  my = e.clientY / window.innerHeight;
+});
+canvas.addEventListener('wheel', e => {
+  zoom = Math.max(1.5, Math.min(8.0, zoom + e.deltaY * 0.005));
+  e.preventDefault();
+}, { passive: false });
+
+// --- Shader compilation ---
+function createShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(s));
+    return null;
+  }
+  return s;
+}
+function createProgram(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, vs);
+  gl.attachShader(p, fs);
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+    console.error(gl.getProgramInfoLog(p));
+    return null;
+  }
+  return p;
+}
+
+// --- Vertex shader (fullscreen quad) ---
+const vertSrc = `#version 300 es
+in vec2 a_pos;
+out vec2 v_uv;
+void main() {
+  v_uv = a_pos * 0.5 + 0.5;
+  gl_Position = vec4(a_pos, 0.0, 1.0);
+}`;
+
+// --- Fragment shader: Raymarched thin-film iridescence ---
+const fragSrc = `#version 300 es
+precision highp float;
+
+in vec2 v_uv;
+out vec4 fragColor;
+
+uniform float u_time;
+uniform vec2 u_resolution;
+uniform vec2 u_mouse;
+uniform float u_zoom;
+
+#define PI 3.14159265
+#define MAX_STEPS 120
+#define MAX_DIST 20.0
+#define SURF_DIST 0.001
+
+// PureBrain brand
+const vec3 BRAND_BLUE = vec3(0.165, 0.576, 0.757);
+const vec3 BRAND_ORANGE = vec3(0.945, 0.259, 0.043);
+
+// Rotation matrix
+mat3 rotY(float a) {
+  float c = cos(a), s = sin(a);
+  return mat3(c,0,s, 0,1,0, -s,0,c);
+}
+mat3 rotX(float a) {
+  float c = cos(a), s = sin(a);
+  return mat3(1,0,0, 0,c,-s, 0,s,c);
+}
+
+// SDF: sphere
+float sdSphere(vec3 p, float r) { return length(p) - r; }
+
+// SDF: scene — main bubble + 2 smaller orbiting bubbles
+float map(vec3 p) {
+  float d = sdSphere(p, 1.2);
+
+  // Two smaller orbiting bubbles
+  float angle1 = u_time * 0.4;
+  float angle2 = u_time * 0.3 + PI;
+  vec3 p1 = p - vec3(cos(angle1)*2.2, sin(u_time*0.5)*0.4, sin(angle1)*2.2);
+  vec3 p2 = p - vec3(cos(angle2)*1.8, sin(u_time*0.7+1.0)*0.3, sin(angle2)*1.8);
+
+  float d1 = sdSphere(p1, 0.45);
+  float d2 = sdSphere(p2, 0.35);
+
+  d = min(d, d1);
+  d = min(d, d2);
+  return d;
+}
+
+// Normal via central differences
+vec3 getNormal(vec3 p) {
+  vec2 e = vec2(0.001, 0.0);
+  return normalize(vec3(
+    map(p+e.xyy) - map(p-e.xyy),
+    map(p+e.yxy) - map(p-e.yxy),
+    map(p+e.yyx) - map(p-e.yyx)
+  ));
+}
+
+// Raymarching
+float raymarch(vec3 ro, vec3 rd) {
+  float t = 0.0;
+  for (int i = 0; i < MAX_STEPS; i++) {
+    vec3 p = ro + rd * t;
+    float d = map(p);
+    if (d < SURF_DIST) return t;
+    if (t > MAX_DIST) break;
+    t += d;
+  }
+  return -1.0;
+}
+
+// ============================================================
+// Thin-film interference: spectral computation
+//
+// Given a film thickness d and viewing angle cosTheta,
+// compute the reflected color by integrating over the
+// visible spectrum (380nm - 780nm).
+//
+// For each wavelength:
+//   optical_path_diff = 2 * n_film * d * cos(theta_t)
+//   phase = 2*PI * optical_path_diff / lambda
+//   reflectance ~ sin^2(phase/2) (simplified)
+//
+// Then convert wavelength to RGB and weight by reflectance.
+// ============================================================
+
+// Attempt to approximate CIE curves for wavelength->RGB
+vec3 wavelengthToRGB(float lambda) {
+  // lambda in nm (380-780)
+  float t;
+  vec3 rgb = vec3(0.0);
+
+  // Red
+  if (lambda >= 580.0 && lambda < 780.0) {
+    t = (lambda - 580.0) / (780.0 - 580.0);
+    rgb.r = 1.0 - t * t;
+  } else if (lambda >= 510.0 && lambda < 580.0) {
+    t = (lambda - 510.0) / (580.0 - 510.0);
+    rgb.r = t * t;
+  }
+
+  // Green
+  if (lambda >= 440.0 && lambda < 580.0) {
+    t = (lambda - 440.0) / (580.0 - 440.0);
+    rgb.g = sin(t * PI);
+  }
+
+  // Blue
+  if (lambda >= 380.0 && lambda < 510.0) {
+    t = (lambda - 380.0) / (510.0 - 380.0);
+    rgb.b = sin(t * PI);
+  }
+
+  return rgb;
+}
+
+vec3 thinFilmColor(float cosTheta, float thickness) {
+  // Film refractive index (soap = ~1.33)
+  float n_film = 1.33;
+
+  // Snell's law: sin(theta_t) = sin(theta_i) / n_film
+  float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+  float sinTheta_t = sinTheta / n_film;
+  float cosTheta_t = sqrt(max(0.0, 1.0 - sinTheta_t * sinTheta_t));
+
+  // Optical path difference
+  float opd = 2.0 * n_film * thickness * cosTheta_t;
+
+  // Integrate over visible spectrum
+  vec3 color = vec3(0.0);
+  float total = 0.0;
+
+  // Sample 16 wavelengths across visible spectrum
+  for (int i = 0; i < 16; i++) {
+    float lambda = 380.0 + float(i) * 25.0; // nm
+    float lambda_um = lambda * 0.001; // convert to micrometers for OPD
+
+    // Phase difference (in units consistent with OPD in nm)
+    float phase = 2.0 * PI * opd / lambda;
+
+    // Reflectance from thin film (simplified Fabry-Perot)
+    // R = 4 * r^2 * sin^2(phase/2) / (1 - r^2)^2
+    // For thin soap film, simplified:
+    float r = 0.04; // Fresnel reflectance at normal for n=1.33
+    float R = 4.0 * r * pow(sin(phase * 0.5), 2.0) / pow(1.0 + r, 2.0);
+
+    vec3 w_rgb = wavelengthToRGB(lambda);
+    color += w_rgb * R;
+    total += R;
+  }
+
+  if (total > 0.001) color /= total;
+
+  // Boost saturation and brightness for visual impact
+  color = pow(color, vec3(0.7));
+  color *= 2.5;
+
+  return color;
+}
+
+// Fresnel reflectance (Schlick approximation)
+float fresnelSchlick(float cosTheta, float F0) {
+  return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+}
+
+// Environment cubemap approximation
+vec3 envMap(vec3 rd) {
+  // Gradient sky with brand colors
+  float y = rd.y * 0.5 + 0.5;
+  vec3 sky = mix(
+    vec3(0.02, 0.02, 0.04),
+    BRAND_BLUE * 0.3,
+    pow(y, 2.0)
+  );
+
+  // Fake HDRI: bright spots
+  float sun1 = pow(max(dot(rd, normalize(vec3(1.0, 0.8, 0.5))), 0.0), 64.0);
+  float sun2 = pow(max(dot(rd, normalize(vec3(-0.5, 0.3, -1.0))), 0.0), 32.0);
+  sky += vec3(1.0, 0.95, 0.8) * sun1 * 3.0;
+  sky += BRAND_ORANGE * sun2 * 1.5;
+
+  // Additional light sources for interesting reflections
+  float light3 = pow(max(dot(rd, normalize(vec3(0.0, -1.0, 0.3))), 0.0), 16.0);
+  sky += BRAND_BLUE * light3 * 0.8;
+
+  return sky;
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - u_resolution * 0.5) / u_resolution.y;
+
+  // Camera
+  float camAngleY = (u_mouse.x - 0.5) * PI * 2.0;
+  float camAngleX = (u_mouse.y - 0.5) * PI * 0.5;
+
+  vec3 ro = vec3(0.0, 0.0, u_zoom);
+  ro = rotX(camAngleX) * rotY(camAngleY) * ro;
+
+  vec3 target = vec3(0.0, 0.0, 0.0);
+  vec3 fwd = normalize(target - ro);
+  vec3 right = normalize(cross(fwd, vec3(0.0, 1.0, 0.0)));
+  vec3 up = cross(right, fwd);
+
+  vec3 rd = normalize(fwd + uv.x * right + uv.y * up);
+
+  // Raymarch
+  float t = raymarch(ro, rd);
+
+  vec3 col;
+
+  if (t > 0.0) {
+    vec3 p = ro + rd * t;
+    vec3 n = getNormal(p);
+
+    // Viewing angle (for thin-film and Fresnel)
+    float NdotV = max(dot(n, -rd), 0.0);
+
+    // Film thickness varies across surface
+    // Use position + time for animated thickness variation
+    float thickness = 300.0 + 150.0 * sin(p.x * 3.0 + u_time * 0.5)
+                              + 100.0 * sin(p.y * 4.0 + u_time * 0.3)
+                              + 80.0 * sin(p.z * 5.0 + u_time * 0.7);
+    // Gravity-driven thickness for soap bubble realism
+    // Thinner at top, thicker at bottom
+    thickness += (1.0 - p.y) * 100.0;
+
+    // Clamp to physical range (50nm - 800nm for visible interference)
+    thickness = clamp(thickness, 50.0, 800.0);
+
+    // Compute thin-film iridescent color
+    vec3 iridescence = thinFilmColor(NdotV, thickness);
+
+    // Fresnel for reflection strength
+    float fresnel = fresnelSchlick(NdotV, 0.04);
+
+    // Reflection
+    vec3 reflDir = reflect(rd, n);
+    vec3 reflection = envMap(reflDir);
+
+    // Refraction for transparency (soap bubble is mostly transparent)
+    vec3 refrDir = refract(rd, n, 1.0/1.33);
+    vec3 transmitted = envMap(refrDir) * 0.3;
+
+    // Combine: iridescent reflection + transmitted light
+    // At grazing angles (high fresnel), more iridescent reflection
+    // At normal incidence, more transparency
+    col = mix(transmitted, reflection * iridescence * 3.0, fresnel * 0.8 + 0.2);
+
+    // Add rainbow shimmer at grazing angles
+    col += iridescence * fresnel * 1.5;
+
+    // Subtle rim glow with brand color
+    float rim = pow(1.0 - NdotV, 4.0);
+    col += mix(BRAND_BLUE, BRAND_ORANGE, sin(u_time * 0.5) * 0.5 + 0.5) * rim * 0.4;
+
+    // Specular highlights from env lights
+    float spec1 = pow(max(dot(reflDir, normalize(vec3(1.0, 0.8, 0.5))), 0.0), 128.0);
+    float spec2 = pow(max(dot(reflDir, normalize(vec3(-0.5, 0.3, -1.0))), 0.0), 64.0);
+    col += vec3(1.0, 0.98, 0.9) * spec1 * 2.0;
+    col += BRAND_ORANGE * spec2 * 1.0;
+
+  } else {
+    // Background
+    col = envMap(rd) * 0.15;
+
+    // Subtle grid on floor
+    if (rd.y < -0.01) {
+      float floorT = -ro.y / rd.y;
+      vec3 floorP = ro + rd * floorT;
+      float grid = smoothstep(0.02, 0.0, abs(fract(floorP.x) - 0.5));
+      grid += smoothstep(0.02, 0.0, abs(fract(floorP.z) - 0.5));
+      float fade = exp(-floorT * 0.15);
+      col += BRAND_BLUE * grid * 0.05 * fade;
+    }
+  }
+
+  // Tone mapping (ACES approximation)
+  col = col / (col + vec3(1.0));
+
+  // Subtle bloom around bright areas
+  col = pow(col, vec3(0.9));
+
+  // Vignette
+  vec2 vUV = v_uv * 2.0 - 1.0;
+  col *= 1.0 - dot(vUV, vUV) * 0.3;
+
+  // Gamma
+  col = pow(col, vec3(1.0 / 2.2));
+
+  fragColor = vec4(col, 1.0);
+}`;
+
+// --- Setup ---
+const vs = createShader(gl.VERTEX_SHADER, vertSrc);
+const fs = createShader(gl.FRAGMENT_SHADER, fragSrc);
+const program = createProgram(vs, fs);
+
+const posLoc = gl.getAttribLocation(program, 'a_pos');
+const timeLoc = gl.getUniformLocation(program, 'u_time');
+const resLoc = gl.getUniformLocation(program, 'u_resolution');
+const mouseLoc = gl.getUniformLocation(program, 'u_mouse');
+const zoomLoc = gl.getUniformLocation(program, 'u_zoom');
+
+// Fullscreen quad
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+gl.enableVertexAttribArray(posLoc);
+gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+// Render loop
+const start = performance.now();
+function frame() {
+  const t = (performance.now() - start) * 0.001;
+
+  gl.useProgram(program);
+  gl.uniform1f(timeLoc, t);
+  gl.uniform2f(resLoc, W, H);
+  gl.uniform2f(mouseLoc, mx, my);
+  gl.uniform1f(zoomLoc, zoom);
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  requestAnimationFrame(frame);
+}
+frame();
+</script>
+</body>
+</html>

@@ -1,0 +1,960 @@
+<!-- PureSurf Dashboard Panels: Workflows + Smart Navigate -->
+<!-- Inject into surf.purebrain.ai dashboard -->
+
+<style>
+/* Panel-specific styles (uses existing dashboard CSS vars + classes) */
+.panel-section { margin-bottom: 24px; }
+.panel-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text2, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border, #1e293b);
+}
+
+/* Form Controls */
+.ps-input, .ps-textarea, .ps-select {
+  width: 100%;
+  background: var(--bg2, #111827);
+  border: 1px solid var(--border, #1e293b);
+  border-radius: 6px;
+  color: var(--text, #e2e8f0);
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+.ps-input:focus, .ps-textarea:focus, .ps-select:focus {
+  outline: none;
+  border-color: var(--blue, #3b82f6);
+}
+.ps-textarea { resize: vertical; min-height: 60px; }
+.ps-select { cursor: pointer; }
+
+.ps-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text2, #94a3b8);
+  margin-bottom: 4px;
+}
+.ps-field { margin-bottom: 12px; }
+
+/* Step Builder */
+.wf-step {
+  display: grid;
+  grid-template-columns: 140px 1fr 1fr 32px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  background: var(--bg3, #1a2236);
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+.wf-step-num {
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: var(--text3, #64748b);
+  display: none;
+}
+.wf-step .ps-input, .wf-step .ps-select {
+  padding: 6px 8px;
+  font-size: 12px;
+}
+.wf-remove-btn {
+  background: none;
+  border: none;
+  color: var(--red, #ef4444);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.wf-remove-btn:hover { background: rgba(239,68,68,0.15); }
+
+/* Workflow Cards */
+.wf-card {
+  background: var(--bg3, #1a2236);
+  border: 1px solid var(--border, #1e293b);
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 8px;
+  transition: border-color 0.2s;
+}
+.wf-card:hover { border-color: var(--blue, #3b82f6); }
+.wf-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+.wf-card-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text, #e2e8f0);
+}
+.wf-card-meta {
+  font-size: 11px;
+  color: var(--text3, #64748b);
+  margin-top: 2px;
+}
+.wf-card-desc {
+  font-size: 12px;
+  color: var(--text2, #94a3b8);
+  margin-bottom: 10px;
+}
+.wf-card-actions {
+  display: flex;
+  gap: 6px;
+}
+.wf-card-actions button {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 1px solid var(--border, #1e293b);
+  background: var(--bg2, #111827);
+  color: var(--text2, #94a3b8);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.wf-card-actions button:hover {
+  border-color: var(--blue, #3b82f6);
+  color: var(--text, #e2e8f0);
+}
+.wf-card-actions .wf-run-btn:hover {
+  background: var(--blue, #3b82f6);
+  color: #fff;
+  border-color: var(--blue, #3b82f6);
+}
+.wf-card-actions .wf-del-btn:hover {
+  background: var(--red, #ef4444);
+  color: #fff;
+  border-color: var(--red, #ef4444);
+}
+
+/* Status Badges */
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.status-idle { background: rgba(100,116,139,0.2); color: var(--text3, #64748b); }
+.status-running { background: rgba(59,130,246,0.2); color: var(--blue, #3b82f6); }
+.status-completed { background: rgba(34,197,94,0.2); color: var(--green, #22c55e); }
+.status-failed { background: rgba(239,68,68,0.2); color: var(--red, #ef4444); }
+
+/* Exec Log */
+.exec-row {
+  display: grid;
+  grid-template-columns: 1fr 100px 90px 70px 80px;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border, #1e293b);
+  align-items: center;
+}
+.exec-row:last-child { border-bottom: none; }
+.exec-header {
+  color: var(--text3, #64748b);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+/* Smart Nav */
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+.preset-btn {
+  padding: 10px 12px;
+  background: var(--bg3, #1a2236);
+  border: 1px solid var(--border, #1e293b);
+  border-radius: 6px;
+  color: var(--text2, #94a3b8);
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+  transition: all 0.2s;
+}
+.preset-btn:hover {
+  border-color: var(--orange, #f97316);
+  color: var(--text, #e2e8f0);
+}
+.preset-btn .preset-icon { font-size: 16px; display: block; margin-bottom: 4px; }
+
+/* Result Display */
+.nav-result {
+  background: var(--bg3, #1a2236);
+  border: 1px solid var(--border, #1e293b);
+  border-radius: 8px;
+  padding: 14px;
+  display: none;
+}
+.nav-result.active { display: block; }
+.nav-steps-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.nav-steps-list li {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border, #1e293b);
+  font-size: 12px;
+  color: var(--text2, #94a3b8);
+  display: flex;
+  gap: 8px;
+}
+.nav-steps-list li:last-child { border-bottom: none; }
+.step-num {
+  color: var(--blue, #3b82f6);
+  font-weight: 600;
+  min-width: 20px;
+}
+.thumb-gallery {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.thumb-gallery img {
+  width: 120px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border, #1e293b);
+  cursor: pointer;
+}
+.extracted-data {
+  background: var(--bg2, #111827);
+  border-radius: 6px;
+  padding: 10px;
+  font-family: monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  max-height: 200px;
+  overflow-y: auto;
+  color: var(--green, #22c55e);
+}
+
+/* History */
+.hist-row {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr 70px 90px 80px;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border, #1e293b);
+  cursor: pointer;
+  transition: background 0.15s;
+  align-items: center;
+}
+.hist-row:hover { background: var(--bg3, #1a2236); }
+.hist-header { cursor: default; }
+.hist-header:hover { background: transparent; }
+
+/* Modal */
+.ps-modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ps-modal {
+  background: var(--bg2, #111827);
+  border: 1px solid var(--border, #1e293b);
+  border-radius: 10px;
+  padding: 20px;
+  min-width: 360px;
+  max-width: 480px;
+}
+.ps-modal h3 {
+  margin: 0 0 14px;
+  font-size: 16px;
+  color: var(--text, #e2e8f0);
+}
+.ps-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* Slider */
+.ps-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ps-slider-wrap input[type=range] {
+  flex: 1;
+  accent-color: var(--orange, #f97316);
+}
+.ps-slider-val {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--orange, #f97316);
+  min-width: 24px;
+  text-align: center;
+}
+
+/* Spinner */
+.ps-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border, #1e293b);
+  border-top-color: var(--orange, #f97316);
+  border-radius: 50%;
+  animation: ps-spin 0.7s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+@keyframes ps-spin { to { transform: rotate(360deg); } }
+
+.text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.empty-state {
+  text-align: center;
+  padding: 24px;
+  color: var(--text3, #64748b);
+  font-size: 13px;
+}
+</style>
+
+<!-- ===== PANEL 1: WORKFLOWS ===== -->
+<div id="panel-workflows" class="card" style="display:none;">
+  <div class="card-header">
+    <h2>Workflows</h2>
+  </div>
+  <div style="padding: 16px;">
+
+    <!-- Section A: Create / Edit Workflow -->
+    <div class="panel-section">
+      <div class="panel-section-title" id="wf-form-title">Create New Workflow</div>
+      <input type="hidden" id="wf-edit-id" value="">
+      <div class="ps-field">
+        <label class="ps-label">Name</label>
+        <input class="ps-input" id="wf-name" placeholder="e.g., Login and Screenshot" />
+      </div>
+      <div class="ps-field">
+        <label class="ps-label">Description</label>
+        <textarea class="ps-textarea" id="wf-desc" placeholder="What this workflow does..." rows="2"></textarea>
+      </div>
+      <div class="ps-field">
+        <label class="ps-label">Steps</label>
+        <div id="wf-steps-container"></div>
+        <button class="btn btn-ghost" onclick="WF.addStep()" style="margin-top:6px; font-size:12px;">+ Add Step</button>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <button class="btn btn-primary" onclick="WF.save()">Save Workflow</button>
+        <button class="btn btn-ghost" onclick="WF.resetForm()" id="wf-cancel-btn" style="display:none;">Cancel Edit</button>
+      </div>
+    </div>
+
+    <!-- Section B: Saved Workflows -->
+    <div class="panel-section">
+      <div class="panel-section-title">Saved Workflows</div>
+      <div id="wf-list"></div>
+    </div>
+
+    <!-- Section C: Execution Log -->
+    <div class="panel-section">
+      <div class="panel-section-title">Recent Executions</div>
+      <div style="background: var(--bg2, #111827); border-radius: 8px; overflow: hidden;">
+        <div class="exec-row exec-header">
+          <span>Workflow</span><span>Session</span><span>Duration</span><span>Status</span><span>Time</span>
+        </div>
+        <div id="wf-exec-log"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PANEL 2: SMART NAVIGATE ===== -->
+<div id="panel-smart-nav" class="card" style="display:none;">
+  <div class="card-header">
+    <h2>Smart Navigate</h2>
+  </div>
+  <div style="padding: 16px;">
+
+    <!-- Section A: Navigate Form -->
+    <div class="panel-section">
+      <div class="panel-section-title">AI-Driven Navigation</div>
+      <div class="ps-field">
+        <label class="ps-label">Session</label>
+        <select class="ps-select" id="sn-session"></select>
+      </div>
+      <div class="ps-field">
+        <label class="ps-label">URL</label>
+        <input class="ps-input" id="sn-url" placeholder="https://example.com" />
+      </div>
+      <div class="ps-field">
+        <label class="ps-label">Goal</label>
+        <textarea class="ps-textarea" id="sn-goal" placeholder="e.g., Find the pricing page and extract all plan names and prices" rows="2"></textarea>
+      </div>
+      <div class="ps-field">
+        <label class="ps-label">Max Steps</label>
+        <div class="ps-slider-wrap">
+          <input type="range" id="sn-steps" min="1" max="20" value="5" oninput="document.getElementById('sn-steps-val').textContent=this.value" />
+          <span class="ps-slider-val" id="sn-steps-val">5</span>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="sn-go-btn" onclick="SN.navigate()">Navigate</button>
+    </div>
+
+    <!-- Section B: Presets -->
+    <div class="panel-section">
+      <div class="panel-section-title">Quick Launch</div>
+      <div class="preset-grid">
+        <button class="preset-btn" onclick="SN.preset('https://www.indiegogo.com','Check campaign stats, backers, funding amount, and days remaining')">
+          <span class="preset-icon">&#127942;</span>Check Indiegogo
+        </button>
+        <button class="preset-btn" onclick="SN.preset('https://www.linkedin.com','Compose and publish a new post')">
+          <span class="preset-icon">&#128221;</span>LinkedIn Post
+        </button>
+        <button class="preset-btn" onclick="SN.preset('','Take a full-page screenshot of the current page')">
+          <span class="preset-icon">&#128248;</span>Screenshot Page
+        </button>
+        <button class="preset-btn" onclick="SN.preset('','Find the pricing page and extract all plan names, prices, and features')">
+          <span class="preset-icon">&#128176;</span>Extract Pricing
+        </button>
+        <button class="preset-btn" onclick="SN.preset('','Scan the social feed, note top posts and engagement metrics')">
+          <span class="preset-icon">&#128200;</span>Scan Feed
+        </button>
+      </div>
+    </div>
+
+    <!-- Section C: Result Display -->
+    <div class="panel-section">
+      <div class="panel-section-title">Result</div>
+      <div class="nav-result" id="sn-result">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <span id="sn-result-status"></span>
+          <span id="sn-result-duration" style="font-size:11px; color:var(--text3,#64748b);"></span>
+        </div>
+        <div id="sn-result-steps" style="margin-bottom:10px;"></div>
+        <div id="sn-result-screenshots" style="margin-bottom:10px;"></div>
+        <div id="sn-result-data"></div>
+      </div>
+      <div class="empty-state" id="sn-no-result">Run a navigation to see results here</div>
+    </div>
+
+    <!-- Section D: History -->
+    <div class="panel-section">
+      <div class="panel-section-title">Navigation History</div>
+      <div style="background: var(--bg2, #111827); border-radius: 8px; overflow: hidden;">
+        <div class="hist-row hist-header exec-header">
+          <span>URL</span><span>Goal</span><span>Status</span><span>Time</span><span>Session</span>
+        </div>
+        <div id="sn-history"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const API = 'https://surf.purebrain.ai';
+  const KEY = localStorage.getItem('puresurf-api-key') || 'chy-baas-key-001';
+  const headers = {'X-API-Key': KEY, 'Content-Type': 'application/json'};
+
+  async function apiFetch(path, opts = {}) {
+    const res = await fetch(API + path, {
+      headers,
+      ...opts
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`${res.status}: ${text}`);
+    }
+    return res.status === 204 ? null : res.json();
+  }
+
+  function toast(msg, type = 'info') {
+    // Use dashboard toast if available, else simple alert
+    if (window.showToast) { window.showToast(msg, type); return; }
+    const t = document.createElement('div');
+    t.textContent = msg;
+    Object.assign(t.style, {
+      position:'fixed', bottom:'20px', right:'20px', padding:'10px 18px',
+      background: type === 'error' ? '#ef4444' : type === 'success' ? '#22c55e' : '#3b82f6',
+      color:'#fff', borderRadius:'8px', fontSize:'13px', zIndex:'9999',
+      boxShadow:'0 4px 12px rgba(0,0,0,0.3)', transition:'opacity 0.3s'
+    });
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3000);
+  }
+
+  function timeAgo(ts) {
+    if (!ts) return '-';
+    const d = new Date(ts);
+    const s = Math.floor((Date.now() - d) / 1000);
+    if (s < 60) return s + 's ago';
+    if (s < 3600) return Math.floor(s/60) + 'm ago';
+    if (s < 86400) return Math.floor(s/3600) + 'h ago';
+    return d.toLocaleDateString();
+  }
+
+  // ========== WORKFLOWS MODULE ==========
+  window.WF = {
+    stepCount: 0,
+    workflows: [],
+    execLog: JSON.parse(localStorage.getItem('wf-exec-log') || '[]'),
+
+    init() {
+      this.addStep();
+      this.loadWorkflows();
+      this.renderExecLog();
+    },
+
+    addStep(action = '', target = '', value = '') {
+      this.stepCount++;
+      const c = document.getElementById('wf-steps-container');
+      const div = document.createElement('div');
+      div.className = 'wf-step';
+      div.dataset.idx = this.stepCount;
+      div.innerHTML = `
+        <select class="ps-select wf-action">
+          <option value="navigate" ${action==='navigate'?'selected':''}>Navigate</option>
+          <option value="click" ${action==='click'?'selected':''}>Click</option>
+          <option value="type" ${action==='type'?'selected':''}>Type</option>
+          <option value="wait" ${action==='wait'?'selected':''}>Wait</option>
+          <option value="screenshot" ${action==='screenshot'?'selected':''}>Screenshot</option>
+        </select>
+        <input class="ps-input wf-target" placeholder="URL or selector" value="${this.esc(target)}" />
+        <input class="ps-input wf-value" placeholder="Value / seconds" value="${this.esc(value)}" />
+        <button class="wf-remove-btn" onclick="WF.removeStep(this)" title="Remove">&times;</button>
+      `;
+      c.appendChild(div);
+    },
+
+    removeStep(btn) {
+      const step = btn.closest('.wf-step');
+      step.remove();
+    },
+
+    getSteps() {
+      const steps = [];
+      document.querySelectorAll('#wf-steps-container .wf-step').forEach(s => {
+        steps.push({
+          action: s.querySelector('.wf-action').value,
+          target: s.querySelector('.wf-target').value,
+          value: s.querySelector('.wf-value').value
+        });
+      });
+      return steps;
+    },
+
+    async save() {
+      const name = document.getElementById('wf-name').value.trim();
+      const description = document.getElementById('wf-desc').value.trim();
+      const steps = this.getSteps();
+      if (!name) { toast('Workflow name is required', 'error'); return; }
+      if (steps.length === 0) { toast('Add at least one step', 'error'); return; }
+
+      const editId = document.getElementById('wf-edit-id').value;
+      try {
+        if (editId) {
+          await apiFetch(`/workflows/${editId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ name, description, steps })
+          });
+          toast('Workflow updated', 'success');
+        } else {
+          await apiFetch('/workflows', {
+            method: 'POST',
+            body: JSON.stringify({ name, description, steps })
+          });
+          toast('Workflow created', 'success');
+        }
+        this.resetForm();
+        this.loadWorkflows();
+      } catch (e) {
+        toast('Save failed: ' + e.message, 'error');
+      }
+    },
+
+    resetForm() {
+      document.getElementById('wf-name').value = '';
+      document.getElementById('wf-desc').value = '';
+      document.getElementById('wf-edit-id').value = '';
+      document.getElementById('wf-form-title').textContent = 'Create New Workflow';
+      document.getElementById('wf-cancel-btn').style.display = 'none';
+      document.getElementById('wf-steps-container').innerHTML = '';
+      this.stepCount = 0;
+      this.addStep();
+    },
+
+    async loadWorkflows() {
+      const el = document.getElementById('wf-list');
+      try {
+        const data = await apiFetch('/workflows');
+        this.workflows = Array.isArray(data) ? data : (data.workflows || []);
+        if (this.workflows.length === 0) {
+          el.innerHTML = '<div class="empty-state">No workflows yet. Create one above.</div>';
+          return;
+        }
+        el.innerHTML = this.workflows.map(w => `
+          <div class="wf-card" data-id="${w.id || w.workflow_id}">
+            <div class="wf-card-header">
+              <div>
+                <div class="wf-card-name">${this.esc(w.name)}</div>
+                <div class="wf-card-meta">${(w.steps||[]).length} steps &middot; ${timeAgo(w.created_at || w.created)}</div>
+              </div>
+              <span class="status-badge status-${(w.status||'idle').toLowerCase()}">${w.status||'idle'}</span>
+            </div>
+            ${w.description ? `<div class="wf-card-desc">${this.esc(w.description)}</div>` : ''}
+            <div class="wf-card-actions">
+              <button class="wf-run-btn" onclick="WF.promptRun('${w.id || w.workflow_id}')">Run</button>
+              <button onclick="WF.edit('${w.id || w.workflow_id}')">Edit</button>
+              <button class="wf-del-btn" onclick="WF.del('${w.id || w.workflow_id}','${this.esc(w.name)}')">Delete</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        el.innerHTML = `<div class="empty-state" style="color:var(--red)">Failed to load: ${e.message}</div>`;
+      }
+    },
+
+    edit(id) {
+      const w = this.workflows.find(x => (x.id || x.workflow_id) === id);
+      if (!w) return;
+      document.getElementById('wf-name').value = w.name;
+      document.getElementById('wf-desc').value = w.description || '';
+      document.getElementById('wf-edit-id').value = id;
+      document.getElementById('wf-form-title').textContent = 'Edit Workflow';
+      document.getElementById('wf-cancel-btn').style.display = '';
+      document.getElementById('wf-steps-container').innerHTML = '';
+      this.stepCount = 0;
+      (w.steps || []).forEach(s => this.addStep(s.action, s.target, s.value));
+      document.getElementById('wf-name').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    },
+
+    async del(id, name) {
+      if (!confirm(`Delete workflow "${name}"?`)) return;
+      try {
+        await apiFetch(`/workflows/${id}`, { method: 'DELETE' });
+        toast('Workflow deleted', 'success');
+        this.loadWorkflows();
+      } catch (e) {
+        toast('Delete failed: ' + e.message, 'error');
+      }
+    },
+
+    async promptRun(wfId) {
+      let sessions;
+      try {
+        const data = await apiFetch('/sessions');
+        sessions = Array.isArray(data) ? data : (data.sessions || []);
+      } catch (e) {
+        toast('Cannot load sessions: ' + e.message, 'error');
+        return;
+      }
+      if (sessions.length === 0) { toast('No active sessions. Create one first.', 'error'); return; }
+
+      const overlay = document.createElement('div');
+      overlay.className = 'ps-modal-overlay';
+      overlay.innerHTML = `
+        <div class="ps-modal">
+          <h3>Run Workflow</h3>
+          <div class="ps-field">
+            <label class="ps-label">Select Session</label>
+            <select class="ps-select" id="wf-run-session">
+              ${sessions.map(s => `<option value="${s.session_id || s.id}">${s.session_id || s.id} (${s.device || s.browser || 'browser'})</option>`).join('')}
+            </select>
+          </div>
+          <div class="ps-modal-actions">
+            <button class="btn btn-ghost" onclick="this.closest('.ps-modal-overlay').remove()">Cancel</button>
+            <button class="btn btn-primary" id="wf-run-confirm">Run</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+      document.getElementById('wf-run-confirm').onclick = async () => {
+        const sid = document.getElementById('wf-run-session').value;
+        overlay.remove();
+        await this.runWorkflow(wfId, sid);
+      };
+    },
+
+    async runWorkflow(wfId, sid) {
+      const w = this.workflows.find(x => (x.id || x.workflow_id) === wfId);
+      const wName = w ? w.name : wfId;
+      toast(`Running "${wName}"...`, 'info');
+      const start = Date.now();
+      try {
+        const result = await apiFetch(`/sessions/${sid}/workflow`, {
+          method: 'POST',
+          body: JSON.stringify({ workflow_id: wfId })
+        });
+        const dur = ((Date.now() - start) / 1000).toFixed(1);
+        this.logExec(wName, sid, dur, 'completed', result);
+        toast(`Workflow "${wName}" completed`, 'success');
+        this.loadWorkflows();
+      } catch (e) {
+        const dur = ((Date.now() - start) / 1000).toFixed(1);
+        this.logExec(wName, sid, dur, 'failed', e.message);
+        toast(`Workflow failed: ${e.message}`, 'error');
+      }
+    },
+
+    logExec(name, session, duration, status, output) {
+      this.execLog.unshift({
+        name, session, duration: duration + 's', status,
+        output: typeof output === 'string' ? output : JSON.stringify(output).slice(0, 120),
+        time: new Date().toISOString()
+      });
+      this.execLog = this.execLog.slice(0, 5);
+      localStorage.setItem('wf-exec-log', JSON.stringify(this.execLog));
+      this.renderExecLog();
+    },
+
+    renderExecLog() {
+      const el = document.getElementById('wf-exec-log');
+      if (this.execLog.length === 0) {
+        el.innerHTML = '<div class="empty-state">No executions yet</div>';
+        return;
+      }
+      el.innerHTML = this.execLog.map(e => `
+        <div class="exec-row" title="${this.esc(e.output || '')}">
+          <span class="text-truncate">${this.esc(e.name)}</span>
+          <span class="text-truncate" style="font-family:monospace;font-size:11px;">${this.esc(e.session)}</span>
+          <span>${e.duration}</span>
+          <span><span class="status-badge status-${e.status}">${e.status}</span></span>
+          <span style="color:var(--text3,#64748b)">${timeAgo(e.time)}</span>
+        </div>
+      `).join('');
+    },
+
+    esc(s) {
+      if (!s) return '';
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+  };
+
+  // ========== SMART NAVIGATE MODULE ==========
+  window.SN = {
+    history: JSON.parse(localStorage.getItem('sn-history') || '[]'),
+    navigating: false,
+
+    async init() {
+      await this.loadSessions();
+      this.renderHistory();
+    },
+
+    async loadSessions() {
+      const sel = document.getElementById('sn-session');
+      try {
+        const data = await apiFetch('/sessions');
+        const sessions = Array.isArray(data) ? data : (data.sessions || []);
+        sel.innerHTML = sessions.length === 0
+          ? '<option value="">No sessions available</option>'
+          : sessions.map(s => `<option value="${s.session_id || s.id}">${s.session_id || s.id} (${s.device || s.browser || 'browser'})</option>`).join('');
+      } catch (e) {
+        sel.innerHTML = '<option value="">Failed to load sessions</option>';
+      }
+    },
+
+    preset(url, goal) {
+      if (url) document.getElementById('sn-url').value = url;
+      document.getElementById('sn-goal').value = goal;
+      document.getElementById('sn-goal').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    },
+
+    async navigate() {
+      if (this.navigating) return;
+      const sid = document.getElementById('sn-session').value;
+      const url = document.getElementById('sn-url').value.trim();
+      const goal = document.getElementById('sn-goal').value.trim();
+      const maxSteps = parseInt(document.getElementById('sn-steps').value);
+
+      if (!sid) { toast('Select a session first', 'error'); return; }
+      if (!goal) { toast('Enter a goal', 'error'); return; }
+
+      this.navigating = true;
+      const btn = document.getElementById('sn-go-btn');
+      btn.innerHTML = '<span class="ps-spinner"></span>Navigating...';
+      btn.disabled = true;
+
+      document.getElementById('sn-result').classList.add('active');
+      document.getElementById('sn-no-result').style.display = 'none';
+      document.getElementById('sn-result-status').innerHTML = '<span class="ps-spinner"></span> Running...';
+      document.getElementById('sn-result-duration').textContent = '';
+      document.getElementById('sn-result-steps').innerHTML = '';
+      document.getElementById('sn-result-screenshots').innerHTML = '';
+      document.getElementById('sn-result-data').innerHTML = '';
+
+      const start = Date.now();
+      try {
+        const body = { goal, max_steps: maxSteps };
+        if (url) body.url = url;
+        const result = await apiFetch(`/sessions/${sid}/smart-navigate`, {
+          method: 'POST',
+          body: JSON.stringify(body)
+        });
+        const dur = ((Date.now() - start) / 1000).toFixed(1);
+        this.showResult(result, dur);
+        this.addHistory(url, goal, 'completed', dur, sid, result);
+        toast('Navigation complete', 'success');
+      } catch (e) {
+        const dur = ((Date.now() - start) / 1000).toFixed(1);
+        document.getElementById('sn-result-status').innerHTML =
+          '<span class="status-badge status-failed">Failed</span> ' + this.esc(e.message);
+        document.getElementById('sn-result-duration').textContent = dur + 's';
+        this.addHistory(url, goal, 'failed', dur, sid, null);
+        toast('Navigation failed: ' + e.message, 'error');
+      } finally {
+        this.navigating = false;
+        btn.textContent = 'Navigate';
+        btn.disabled = false;
+      }
+    },
+
+    showResult(result, dur) {
+      // Status
+      const status = result.status || 'completed';
+      document.getElementById('sn-result-status').innerHTML =
+        `<span class="status-badge status-${status}">${status}</span>` +
+        (result.reason ? ` <span style="font-size:12px;color:var(--text2)">${this.esc(result.reason)}</span>` : '');
+      document.getElementById('sn-result-duration').textContent = dur + 's';
+
+      // Steps
+      const steps = result.steps || result.actions || [];
+      if (steps.length > 0) {
+        document.getElementById('sn-result-steps').innerHTML = `
+          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px;">Steps Taken</div>
+          <ul class="nav-steps-list">
+            ${steps.map((s, i) => `<li><span class="step-num">${i+1}.</span><span>${this.esc(typeof s === 'string' ? s : (s.description || s.action || JSON.stringify(s)))}</span></li>`).join('')}
+          </ul>
+        `;
+      }
+
+      // Screenshots
+      const shots = result.screenshots || [];
+      if (shots.length > 0) {
+        document.getElementById('sn-result-screenshots').innerHTML = `
+          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px;">Screenshots</div>
+          <div class="thumb-gallery">
+            ${shots.map(s => {
+              const src = typeof s === 'string' ? s : (s.url || s.path || '');
+              return `<img src="${src}" alt="Screenshot" onclick="window.open('${src}','_blank')" />`;
+            }).join('')}
+          </div>
+        `;
+      }
+
+      // Extracted data
+      const data = result.data || result.extracted || result.result;
+      if (data) {
+        const formatted = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+        document.getElementById('sn-result-data').innerHTML = `
+          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px;">Extracted Data</div>
+          <div class="extracted-data">${this.esc(formatted)}</div>
+        `;
+      }
+    },
+
+    addHistory(url, goal, status, duration, session, result) {
+      this.history.unshift({
+        url: url || '(current page)',
+        goal, status, duration: duration + 's',
+        session, time: new Date().toISOString(),
+        result: result ? JSON.stringify(result).slice(0, 500) : null
+      });
+      this.history = this.history.slice(0, 10);
+      localStorage.setItem('sn-history', JSON.stringify(this.history));
+      this.renderHistory();
+    },
+
+    renderHistory() {
+      const el = document.getElementById('sn-history');
+      if (this.history.length === 0) {
+        el.innerHTML = '<div class="empty-state">No navigation history</div>';
+        return;
+      }
+      el.innerHTML = this.history.map((h, i) => `
+        <div class="hist-row" onclick="SN.expandHistory(${i})" title="Click to expand">
+          <span class="text-truncate">${this.esc(h.url)}</span>
+          <span class="text-truncate">${this.esc(h.goal)}</span>
+          <span><span class="status-badge status-${h.status}">${h.status}</span></span>
+          <span style="color:var(--text3)">${timeAgo(h.time)}</span>
+          <span style="font-family:monospace;font-size:11px;" class="text-truncate">${this.esc(h.session)}</span>
+        </div>
+        <div id="sn-hist-detail-${i}" style="display:none; padding:8px 10px; background:var(--bg3,#1a2236); border-bottom:1px solid var(--border,#1e293b);">
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">Duration: ${h.duration} | Session: ${h.session}</div>
+          ${h.result ? `<div class="extracted-data" style="max-height:120px;">${this.esc(h.result)}</div>` : '<div style="font-size:12px;color:var(--text3)">No result data</div>'}
+        </div>
+      `).join('');
+    },
+
+    expandHistory(idx) {
+      const el = document.getElementById('sn-hist-detail-' + idx);
+      el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    },
+
+    esc(s) {
+      if (!s) return '';
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+  };
+
+  // ========== INITIALIZATION ==========
+  // Auto-init when panels become visible
+  const observer = new MutationObserver(() => {
+    const wfPanel = document.getElementById('panel-workflows');
+    const snPanel = document.getElementById('panel-smart-nav');
+    if (wfPanel && wfPanel.style.display !== 'none' && !wfPanel.dataset.init) {
+      wfPanel.dataset.init = '1';
+      WF.init();
+    }
+    if (snPanel && snPanel.style.display !== 'none' && !snPanel.dataset.init) {
+      snPanel.dataset.init = '1';
+      SN.init();
+    }
+  });
+  observer.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['style'] });
+
+  // Also init immediately if already visible or on DOMContentLoaded
+  function tryInit() {
+    const wfPanel = document.getElementById('panel-workflows');
+    const snPanel = document.getElementById('panel-smart-nav');
+    if (wfPanel && wfPanel.style.display !== 'none' && !wfPanel.dataset.init) {
+      wfPanel.dataset.init = '1';
+      WF.init();
+    }
+    if (snPanel && snPanel.style.display !== 'none' && !snPanel.dataset.init) {
+      snPanel.dataset.init = '1';
+      SN.init();
+    }
+  }
+  if (document.readyState === 'complete') tryInit();
+  else document.addEventListener('DOMContentLoaded', tryInit);
+
+  // Expose manual init for dashboard tab switching
+  window.initWorkflowsPanel = () => { if (!document.getElementById('panel-workflows').dataset.init) { document.getElementById('panel-workflows').dataset.init='1'; WF.init(); } };
+  window.initSmartNavPanel = () => { if (!document.getElementById('panel-smart-nav').dataset.init) { document.getElementById('panel-smart-nav').dataset.init='1'; SN.init(); } };
+})();
+</script>

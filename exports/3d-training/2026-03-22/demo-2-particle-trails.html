@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Particle Trails — CPU Ring Buffer — Night 4</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #060608; overflow: hidden; width: 100vw; height: 100vh; }
+  canvas { display: block; }
+  #info {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    color: rgba(255,255,255,0.4); font: 11px/1.6 'SF Mono', monospace;
+    text-align: center; pointer-events: none; letter-spacing: 0.04em;
+  }
+  #info span { color: rgba(42,147,193,0.8); }
+  #stats {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    color: rgba(255,255,255,0.3); font: 10px 'SF Mono', monospace;
+    text-align: center; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="info">
+  <span>PARTICLE TRAILS</span> — CPU ring buffer · 3,000 particles · 24-position history · curl noise advection
+</div>
+<div id="stats" id="stats">particles: 3000 · trail: 24 · curl noise 3D</div>
+<canvas id="c"></canvas>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const PARTICLE_COUNT = 3000;
+const TRAIL_LENGTH   = 24;    // positions stored in ring buffer
+const BOUNDS         = 3.5;   // bounding sphere radius — particles respawn outside
+const CURL_SPEED     = 0.55;  // advection speed
+const DT             = 0.016; // fixed timestep for physics
+
+const PB_BLUE   = new THREE.Color(0x2a93c1);
+const PB_ORANGE = new THREE.Color(0xf1420b);
+const BG_COLOR  = '#060608';
+
+// ─── Simple noise functions (no lib needed) ───────────────────────────────────
+function hash1(n) {
+  let x = Math.sin(n) * 43758.5453123;
+  return x - Math.floor(x);
+}
+
+// 3D value noise (CPU)
+function noise3(x, y, z) {
+  const ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
+  const fx = x - ix, fy = y - iy, fz = z - iz;
+  // Quintic smoothstep
+  const ux = fx*fx*fx*(fx*(fx*6-15)+10);
+  const uy = fy*fy*fy*(fy*(fy*6-15)+10);
+  const uz = fz*fz*fz*(fz*(fz*6-15)+10);
+  function h(nx, ny, nz) { return hash1(nx + ny * 57 + nz * 131); }
+  return (
+    h(ix,   iy,   iz  ) * (1-ux) * (1-uy) * (1-uz) +
+    h(ix+1, iy,   iz  ) *    ux  * (1-uy) * (1-uz) +
+    h(ix,   iy+1, iz  ) * (1-ux) *    uy  * (1-uz) +
+    h(ix+1, iy+1, iz  ) *    ux  *    uy  * (1-uz) +
+    h(ix,   iy,   iz+1) * (1-ux) * (1-uy) *    uz  +
+    h(ix+1, iy,   iz+1) *    ux  * (1-uy) *    uz  +
+    h(ix,   iy+1, iz+1) * (1-ux) *    uy  *    uz  +
+    h(ix+1, iy+1, iz+1) *    ux  *    uy  *    uz
+  );
+}
+
+// 3D Curl noise — divergence-free flow field
+// Standard: curl = (dFz/dy - dFy/dz, dFx/dz - dFz/dx, dFy/dx - dFx/dy)
+const EPS = 0.008;
+function curlNoise(x, y, z, t) {
+  // Three independent noise functions with different phase offsets + slow time drift
+  const n1 = (px, py, pz) => noise3(px,        py + t * 0.10, pz + 1.71);
+  const n2 = (px, py, pz) => noise3(px + 3.11,  py + t * 0.08, pz);
+  const n3 = (px, py, pz) => noise3(px + 1.5,   py + 5.3,      pz + t * 0.09);
+
+  return {
+    x: (n3(x,y+EPS,z) - n3(x,y-EPS,z)) / (2*EPS) - (n2(x,y,z+EPS) - n2(x,y,z-EPS)) / (2*EPS),
+    y: (n1(x,y,z+EPS) - n1(x,y,z-EPS)) / (2*EPS) - (n3(x+EPS,y,z) - n3(x-EPS,y,z)) / (2*EPS),
+    z: (n2(x+EPS,y,z) - n2(x-EPS,y,z)) / (2*EPS) - (n1(x,y+EPS,z) - n1(x,y-EPS,z)) / (2*EPS),
+  };
+}
+
+// ─── Particle System ──────────────────────────────────────────────────────────
+// Each particle has:
+//   - history[TRAIL_LENGTH]: ring buffer of Vector3 positions
+//   - headIdx: index of the newest position in the ring
+//   - life, maxLife: respawn timing
+//   - color: 0 = blue, 1 = orange
+//   - speed: individual speed multiplier
+
+class Particle {
+  constructor(idx) {
+    this.history  = new Array(TRAIL_LENGTH).fill(null).map(() => new THREE.Vector3());
+    this.headIdx  = 0;
+    this.life     = Math.random() * 80; // stagger initial lives
+    this.maxLife  = 80 + Math.random() * 120;
+    this.color    = idx < PARTICLE_COUNT * 0.7 ? 0 : 1; // 70% blue, 30% orange
+    this.speed    = 0.5 + Math.random() * 1.0;
+    this.spawn();
+  }
+
+  spawn() {
+    // Random position on sphere surface (force start at boundary)
+    const theta = Math.random() * Math.PI * 2;
+    const phi   = Math.acos(2 * Math.random() - 1);
+    const r     = BOUNDS * (0.3 + Math.random() * 0.7);
+    const x = r * Math.sin(phi) * Math.cos(theta);
+    const y = r * Math.sin(phi) * Math.sin(theta);
+    const z = r * Math.cos(phi);
+    // Fill all history with spawn position
+    for (let i = 0; i < TRAIL_LENGTH; i++) {
+      this.history[i].set(x, y, z);
+    }
+    this.headIdx = 0;
+    this.life    = 0;
+    this.maxLife = 80 + Math.random() * 120;
+  }
+
+  // Step position by dt using curl noise field
+  step(t) {
+    const head = this.history[this.headIdx];
+    const curl = curlNoise(head.x * 0.6, head.y * 0.6, head.z * 0.6, t);
+    // Advance ring buffer pointer
+    this.headIdx = (this.headIdx + 1) % TRAIL_LENGTH;
+    const next   = this.history[this.headIdx];
+    // Euler integration
+    next.set(
+      head.x + curl.x * DT * this.speed * CURL_SPEED,
+      head.y + curl.y * DT * this.speed * CURL_SPEED,
+      head.z + curl.z * DT * this.speed * CURL_SPEED
+    );
+    this.life++;
+    // Respawn if too old or out of bounds
+    if (this.life > this.maxLife || next.length() > BOUNDS * 1.3) {
+      this.spawn();
+    }
+  }
+
+  // Write trail positions into flat arrays for GPU rendering
+  // segments: TRAIL_LENGTH-1 line segments per particle
+  // Each segment = 2 vertices: (from, to)
+  writeToBuffers(
+    posArr,       // x,y,z * 2 per segment
+    alphaArr,     // 2 per segment
+    colorArr,     // r,g,b * 2 per segment
+    segOffset     // which segment index to start writing at
+  ) {
+    const isBlue  = this.color === 0;
+    const r_blue = 0.165, g_blue = 0.576, b_blue = 0.757;
+    const r_org  = 0.945, g_org  = 0.259, b_org  = 0.043;
+    const lifeFraction = Math.min(1.0, this.life / 20); // fade in during first 20 frames
+
+    for (let s = 0; s < TRAIL_LENGTH - 1; s++) {
+      // Age fraction along trail: 0 = oldest point, 1 = newest
+      const tFrac   = s / (TRAIL_LENGTH - 1);
+      const tFrac1  = (s + 1) / (TRAIL_LENGTH - 1);
+      const alpha0  = tFrac  * lifeFraction * 0.85;
+      const alpha1  = tFrac1 * lifeFraction * 0.85;
+
+      // Get the actual positions from ring buffer
+      // Head (newest) is at headIdx; going backwards = older positions
+      // Oldest is at (headIdx + 1) % TRAIL_LENGTH
+      const i0 = (this.headIdx + 1 + s) % TRAIL_LENGTH;
+      const i1 = (this.headIdx + 1 + s + 1) % TRAIL_LENGTH;
+      const p0 = this.history[i0];
+      const p1 = this.history[i1];
+
+      const base = (segOffset + s) * 6;
+      posArr[base]   = p0.x; posArr[base+1] = p0.y; posArr[base+2] = p0.z;
+      posArr[base+3] = p1.x; posArr[base+4] = p1.y; posArr[base+5] = p1.z;
+
+      const aBase = (segOffset + s) * 2;
+      alphaArr[aBase]   = alpha0;
+      alphaArr[aBase+1] = alpha1;
+
+      const cBase = (segOffset + s) * 6;
+      // Color varies slightly toward trail tip: tip is brighter/hotter
+      const tHeat = tFrac * tFrac; // quadratic brighten toward newest
+      if (isBlue) {
+        // Blue: slight desaturate at tail, pure blue at tip
+        colorArr[cBase]   = r_blue * 0.6 * alpha0; colorArr[cBase+1] = g_blue * 0.85 * alpha0; colorArr[cBase+2] = b_blue * alpha0;
+        colorArr[cBase+3] = r_blue + tHeat * 0.15; colorArr[cBase+4] = g_blue + tHeat * 0.05;  colorArr[cBase+5] = b_blue;
+      } else {
+        // Orange: tail fades to red, tip to orange-white
+        colorArr[cBase]   = r_org * 0.8; colorArr[cBase+1] = g_org * 0.4; colorArr[cBase+2] = 0.0;
+        colorArr[cBase+3] = r_org + tHeat * 0.05; colorArr[cBase+4] = g_org + tHeat * 0.2; colorArr[cBase+5] = b_org * tHeat;
+      }
+    }
+  }
+}
+
+// ─── Allocate particles ───────────────────────────────────────────────────────
+const particles = new Array(PARTICLE_COUNT).fill(null).map((_, i) => new Particle(i));
+
+// Each particle produces (TRAIL_LENGTH-1) segments, each segment = 2 verts
+const SEGS_PER_PARTICLE = TRAIL_LENGTH - 1;
+const TOTAL_SEGMENTS    = PARTICLE_COUNT * SEGS_PER_PARTICLE;
+const TOTAL_VERTS       = TOTAL_SEGMENTS * 2;
+
+const posArr   = new Float32Array(TOTAL_VERTS * 3);
+const alphaArr = new Float32Array(TOTAL_VERTS);
+const colorArr = new Float32Array(TOTAL_VERTS * 3);
+
+// ─── Three.js Scene ───────────────────────────────────────────────────────────
+const canvas   = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x060608, 1.0);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.01, 50);
+camera.position.set(0, 0, 8);
+
+// Background fBm plane
+const bgMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  fragmentShader: `
+    varying vec2 vUv;
+    uniform float uTime;
+    float h(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+    float n(vec2 p) { vec2 i=floor(p),f=fract(p),u=f*f*(3.-2.*f); return mix(mix(h(i),h(i+vec2(1,0)),u.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),u.x),u.y); }
+    void main() {
+      vec2 uv = vUv * 2.5 - 1.25;
+      float v = n(uv + uTime * 0.04) * 0.5 + n(uv * 2.0 - uTime * 0.03) * 0.25 + n(uv * 4.0 + uTime * 0.02) * 0.125;
+      vec3 c = vec3(0.012, 0.016, 0.028) + vec3(0.016, 0.03, 0.048) * v;
+      float vig = 1.0 - smoothstep(0.4, 1.0, length(vUv-0.5));
+      gl_FragColor = vec4(c * vig, 1.0);
+    }
+  `,
+  side: THREE.FrontSide, depthWrite: false,
+});
+const bgPlane = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), bgMat);
+bgPlane.position.z = -5;
+bgPlane.renderOrder = -1;
+scene.add(bgPlane);
+
+// ─── Trail Geometry (LineSegments — most efficient for many line pairs) ────────
+const trailGeo  = new THREE.BufferGeometry();
+const posBuf    = new THREE.BufferAttribute(posArr,   3);
+const colorBuf  = new THREE.BufferAttribute(colorArr, 3);
+const alphaBuf  = new THREE.BufferAttribute(alphaArr, 1);
+posBuf.setUsage(THREE.DynamicDrawUsage);
+colorBuf.setUsage(THREE.DynamicDrawUsage);
+alphaBuf.setUsage(THREE.DynamicDrawUsage);
+trailGeo.setAttribute('position', posBuf);
+trailGeo.setAttribute('color',    colorBuf);
+trailGeo.setAttribute('alpha',    alphaBuf);
+
+// Custom shader: vertex colors + per-vertex alpha
+const trailMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: `
+    attribute float alpha;
+    varying float vAlpha;
+    varying vec3  vColor;
+    void main() {
+      vAlpha = alpha;
+      vColor = color;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    varying float vAlpha;
+    varying vec3  vColor;
+    void main() {
+      if (vAlpha < 0.01) discard;
+      gl_FragColor = vec4(vColor, vAlpha);
+    }
+  `,
+  vertexColors: true,
+  transparent:  true,
+  depthWrite:   false,
+  blending:     THREE.AdditiveBlending,
+});
+const trailLines = new THREE.LineSegments(trailGeo, trailMat);
+scene.add(trailLines);
+
+// ─── Central glass orb (the attractor / subject the trails orbit) ─────────────
+// Particles naturally flow around this center — gives the scene a subject
+const orbGeo = new THREE.SphereGeometry(0.55, 128, 128);
+const orbMat = new THREE.MeshPhysicalMaterial({
+  transmission:   1.0,
+  thickness:      0.6,
+  roughness:      0.04,
+  ior:            1.48,
+  iridescence:    0.35,
+  color:          new THREE.Color(0x2a93c1).multiplyScalar(0.8),
+  envMapIntensity: 2.5,
+  depthWrite: false,
+});
+const pmremGen = new THREE.PMREMGenerator(renderer);
+const probeRT  = new THREE.WebGLCubeRenderTarget(256, { generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
+const probeCam = new THREE.CubeCamera(0.1, 20, probeRT);
+const probeScene = new THREE.Scene();
+probeScene.background = new THREE.Color(0x030406);
+[[0,4,4,0xffffff,5],[−4,2,2,0x2a93c1,3],[5,-3,-10,0xf1420b,4]].forEach(([x,y,z,c,i]) => {
+  const l = new THREE.PointLight(c,i,20); l.position.set(x,y,z); probeScene.add(l);
+});
+probeScene.add(probeCam);
+probeCam.update(renderer, probeScene);
+orbMat.envMap = pmremGen.fromCubemap(probeRT.texture).texture;
+
+const orbMesh = new THREE.Mesh(orbGeo, orbMat);
+scene.add(orbMesh);
+
+// Emissive glow shell around orb
+const glowGeo = new THREE.SphereGeometry(0.62, 64, 64);
+const glowMat = new THREE.MeshBasicMaterial({
+  color: 0x2a93c1, transparent: true, opacity: 0.08,
+  side: THREE.BackSide, depthWrite: false, blending: THREE.AdditiveBlending,
+});
+scene.add(new THREE.Mesh(glowGeo, glowMat));
+
+// Halo texture
+const haloTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(128,128,0,128,128,128);
+  g.addColorStop(0,    'rgba(42,147,193,0.25)');
+  g.addColorStop(0.4,  'rgba(42,147,193,0.08)');
+  g.addColorStop(0.7,  'rgba(42,147,193,0.02)');
+  g.addColorStop(1.0,  'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.fillRect(0,0,256,256);
+  return new THREE.CanvasTexture(c);
+})();
+const haloMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(3.0, 3.0),
+  new THREE.MeshBasicMaterial({ map: haloTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })
+);
+haloMesh.position.z = -0.3;
+scene.add(haloMesh);
+
+// Point light at center (colors the nearby trail particles)
+const orbLight = new THREE.PointLight(0x2a93c1, 3.0, 6);
+scene.add(orbLight);
+
+// ─── Post-processing ──────────────────────────────────────────────────────────
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.55, 0.35, 0.82);
+composer.addPass(bloom);
+const gradePass = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 } },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uTime; varying vec2 vUv;
+    void main() {
+      vec2 uv = vUv;
+      float d = length(uv - 0.5);
+      float ca = d * d * 0.005;
+      float r = texture2D(tDiffuse, uv + vec2(ca,0.0)).r;
+      float g = texture2D(tDiffuse, uv).g;
+      float b = texture2D(tDiffuse, uv - vec2(ca,0.0)).b;
+      vec3 col = vec3(r,g,b);
+      col *= mix(0.55, 1.0, 1.0 - smoothstep(0.3, 0.85, d));
+      float noise = fract(sin(dot(uv + uTime * 0.01, vec2(12.9898,78.233)))*43758.5453);
+      col += (noise-0.5) * 0.014;
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `,
+});
+composer.addPass(gradePass);
+composer.addPass(new OutputPass());
+
+// ─── Mouse ────────────────────────────────────────────────────────────────────
+const mouse = { x: 0, y: 0, tx: 0, ty: 0 };
+document.addEventListener('mousemove', (e) => {
+  mouse.tx = (e.clientX / innerWidth  - 0.5) * 2;
+  mouse.ty = (e.clientY / innerHeight - 0.5) * -2;
+});
+
+// ─── Resize ───────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+
+// ─── Animation ────────────────────────────────────────────────────────────────
+let t = 0;
+let lastTs = performance.now();
+
+// Performance monitor
+let frameCount = 0, fpsTimer = 0;
+const statsEl = document.getElementById('stats');
+
+function animate(ts) {
+  requestAnimationFrame(animate);
+  const dt = Math.min((ts - lastTs) * 0.001, 0.05);
+  lastTs = ts;
+  t += dt;
+
+  frameCount++;
+  fpsTimer += dt;
+  if (fpsTimer > 1.0) {
+    const fps = Math.round(frameCount / fpsTimer);
+    if (statsEl) statsEl.textContent = `particles: ${PARTICLE_COUNT} · trail: ${TRAIL_LENGTH} · fps: ${fps}`;
+    frameCount = 0; fpsTimer = 0;
+  }
+
+  // Smooth mouse
+  mouse.x += (mouse.tx - mouse.x) * 0.05;
+  mouse.y += (mouse.ty - mouse.y) * 0.05;
+
+  // Step all particles + write to buffers
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    particles[i].step(t);
+    particles[i].writeToBuffers(posArr, alphaArr, colorArr, i * SEGS_PER_PARTICLE);
+  }
+
+  // Upload to GPU
+  posBuf.needsUpdate   = true;
+  colorBuf.needsUpdate = true;
+  alphaBuf.needsUpdate = true;
+
+  // Orb animation
+  orbMesh.rotation.y = t * 0.18;
+  orbMesh.rotation.x = t * 0.11;
+  orbMat.ior = 1.44 + 0.06 * Math.sin(t * 1.1) + 0.03 * Math.sin(t * 2.7);
+
+  // Camera gentle orbit + mouse tilt
+  camera.position.x = Math.sin(t * 0.07) * 0.8 + mouse.x * 0.5;
+  camera.position.y = Math.cos(t * 0.05) * 0.5 + mouse.y * 0.3;
+  camera.position.z = 8;
+  camera.lookAt(0, 0, 0);
+
+  bgMat.uniforms.uTime.value = t;
+  gradePass.uniforms.uTime.value = t;
+  orbLight.intensity = 2.5 + 0.8 * Math.sin(t * 1.3);
+
+  // Scene group slow rotation (trails rotate as whole)
+  trailLines.rotation.y = t * 0.04;
+  trailLines.rotation.x = Math.sin(t * 0.032) * 0.12;
+
+  composer.render();
+}
+animate(performance.now());
+</script>
+</body>
+</html>

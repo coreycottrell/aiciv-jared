@@ -3,7 +3,7 @@ name: conflict-resolver
 description: Disagreement resolution and constructive dialectic specialist
 tools: [Read, Write, Grep, Glob]
 skills: [pair-consensus-dialectic, verification-before-completion, memory-first-protocol]
-model: sonnet-4-5
+model: opus
 created: 2025-10-03
 ---
 

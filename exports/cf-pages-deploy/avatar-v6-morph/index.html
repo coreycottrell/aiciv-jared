@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-WTDXL4VJ');</script>
+<!-- End Google Tag Manager -->
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+(function(c,l,a,r,i,t,y){
+    c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+    t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+    y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+})(window, document, "clarity", "script", "viy9bnc56x");
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aether Avatar — Liquid Morph</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #080a12;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas {
+    width: 200px; height: 200px;
+    border-radius: 50%;
+    display: block;
+  }
+</style>
+
+<!-- UNIVERSAL REFERRAL CODE CAPTURE — 90-day cookie + localStorage -->
+<script>
+(function() {
+  // Read ?ref= or ?code= from URL
+  var params = new URLSearchParams(window.location.search);
+  var ref = params.get('ref') || params.get('code');
+  
+  if (ref && /^[A-Za-z0-9-]{4,16}$/.test(ref)) {
+    // Store in localStorage
+    try { localStorage.setItem('pb_ref', ref); } catch(e) {}
+    // Store in cookie (90-day expiry, all paths, SameSite=Lax)
+    var expires = new Date();
+    expires.setDate(expires.getDate() + 90);
+    document.cookie = 'pb_ref=' + encodeURIComponent(ref) + '; expires=' + expires.toUTCString() + '; path=/; SameSite=Lax';
+    // Fire click tracking (non-blocking)
+    try {
+      fetch('https://app.purebrain.ai/api/referral/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referral_code: ref.toUpperCase() }),
+        keepalive: true
+      }).catch(function(){});
+    } catch(e) {}
+  }
+  
+  // Global helper: read stored referral code at payment time
+  // Checks URL first, then localStorage, then cookie
+  window.getPbRef = function() {
+    // 1. Check current URL
+    var p = new URLSearchParams(window.location.search);
+    var urlRef = p.get('ref') || p.get('code');
+    if (urlRef && /^[A-Za-z0-9-]{4,16}$/.test(urlRef)) return urlRef;
+    // 2. Check localStorage
+    try {
+      var ls = localStorage.getItem('pb_ref');
+      if (ls && /^[A-Za-z0-9-]{4,16}$/.test(ls)) return ls;
+    } catch(e) {}
+    // 3. Check cookie
+    var match = document.cookie.match(/(?:^|;)\s*pb_ref=([^;]+)/);
+    if (match) {
+      var decoded = decodeURIComponent(match[1]);
+      if (/^[A-Za-z0-9-]{4,16}$/.test(decoded)) return decoded;
+    }
+    return null;
+  };
+})();
+</script>
+
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-WTDXL4VJ"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+<canvas id="c" width="400" height="400"></canvas>
+<script>
+(function() {
+  const canvas = document.getElementById('c');
+  const gl = canvas.getContext('webgl', { antialias: true, alpha: true });
+  if (!gl) { document.body.innerHTML = '<p style="color:#fff">WebGL not supported</p>'; return; }
+
+  const vsSource = `
+attribute vec2 aPos;
+void main() { gl_Position = vec4(aPos, 0.0, 1.0); }
+`;
+
+  /* Liquid metal morphing blob — SDF ray march with metallic shading */
+  const fsSource = `
+precision highp float;
+uniform float uTime;
+uniform vec2 uMouse;
+uniform vec2 uRes;
+
+/* ----- Value noise (fast, GLSL ES 1.0 safe) ----- */
+float hash(vec3 p) {
+  p = fract(p * 0.3183099 + 0.1); p *= 17.0;
+  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+float vnoise(vec3 x) {
+  vec3 i = floor(x); vec3 f = fract(x);
+  f = f*f*(3.0-2.0*f);
+  return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),f.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),
+             mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z);
+}
+float fbm(vec3 p) {
+  float v=0.0; float a=0.5;
+  for(int i=0;i<5;i++){v+=a*vnoise(p);p*=2.2;a*=0.5;}
+  return v;
+}
+
+/* ----- Smooth union for blob merging ----- */
+float smin(float a, float b, float k) {
+  float h = clamp(0.5 + 0.5*(b-a)/k, 0.0, 1.0);
+  return mix(b, a, h) - k*h*(1.0-h);
+}
+
+/* ----- SDF of the morphing blob ----- */
+float sdBlob(vec3 p, float t) {
+  /* Primary sphere */
+  float s = length(p) - 0.82;
+
+  /* Time-varying lobe positions — pre-named, no dynamic indexing */
+  vec3 l0 = vec3(sin(t*0.43)*0.55, cos(t*0.37)*0.38, sin(t*0.61+1.1)*0.42);
+  vec3 l1 = vec3(cos(t*0.57+0.8)*0.50, sin(t*0.44+1.4)*0.48, cos(t*0.73)*0.35);
+  vec3 l2 = vec3(sin(t*0.71+2.1)*0.38, cos(t*0.53+0.5)*0.55, sin(t*0.48+2.4)*0.44);
+  vec3 l3 = vec3(cos(t*0.39+1.7)*0.48, sin(t*0.66+1.1)*0.34, cos(t*0.82+0.3)*0.51);
+
+  /* Lobe sizes breathe gently */
+  float r0 = 0.35 + 0.08*sin(t*1.1);
+  float r1 = 0.32 + 0.09*sin(t*0.9+0.7);
+  float r2 = 0.30 + 0.07*sin(t*1.3+1.4);
+  float r3 = 0.28 + 0.10*sin(t*0.8+2.1);
+
+  float b0 = length(p - l0) - r0;
+  float b1 = length(p - l1) - r1;
+  float b2 = length(p - l2) - r2;
+  float b3 = length(p - l3) - r3;
+
+  /* Smooth union of all lobes */
+  float k = 0.40;
+  float merged = smin(s, b0, k);
+  merged = smin(merged, b1, k);
+  merged = smin(merged, b2, k);
+  merged = smin(merged, b3, k);
+
+  /* High-freq surface ripple (liquid metal surface tension effect) */
+  float ripple = fbm(p * 4.2 + t * 0.25) * 0.045;
+  /* Medium wave */
+  float wave = fbm(p * 2.1 - t * 0.18) * 0.025;
+
+  return merged + ripple + wave;
+}
+
+/* ----- Gradient normal (finite differences) ----- */
+vec3 calcNormal(vec3 p, float t) {
+  float eps = 0.006;
+  return normalize(vec3(
+    sdBlob(p + vec3(eps,0,0), t) - sdBlob(p - vec3(eps,0,0), t),
+    sdBlob(p + vec3(0,eps,0), t) - sdBlob(p - vec3(0,eps,0), t),
+    sdBlob(p + vec3(0,0,eps), t) - sdBlob(p - vec3(0,0,eps), t)
+  ));
+}
+
+/* ----- GGX specular ----- */
+float ggxSpec(float NdH, float rough) {
+  float a2 = rough*rough*rough*rough;
+  float d = NdH*NdH*(a2-1.0)+1.0;
+  return a2/(3.14159*d*d + 0.0001);
+}
+
+/* ----- Fresnel Schlick ----- */
+vec3 fresnelSch(float cosT, vec3 F0) {
+  return F0 + (1.0-F0)*pow(clamp(1.0-cosT,0.0,1.0),5.0);
+}
+
+/* ----- Environment map for liquid metal ----- */
+vec3 metalEnv(vec3 r) {
+  float y = r.y;
+  /* Dark atmospheric background */
+  vec3 col = mix(vec3(0.02, 0.03, 0.07), vec3(0.06, 0.10, 0.20), max(y+0.3, 0.0)*2.0);
+  /* Strong key light — warm white from above-right */
+  vec3 kD = normalize(vec3(0.5, 0.9, 0.4));
+  float kL = pow(max(dot(r, kD), 0.0), 64.0);
+  col += vec3(1.0, 0.97, 0.93) * kL * 2.8;
+  /* PureBrain blue fill from left */
+  vec3 bD = normalize(vec3(-0.8, 0.2, 0.55));
+  float bL = pow(max(dot(r, bD), 0.0), 20.0);
+  col += vec3(0.16, 0.58, 0.76) * bL * 1.4;
+  /* PureBrain orange rim from below-right */
+  vec3 oD = normalize(vec3(0.7, -0.5, -0.5));
+  float oL = pow(max(dot(r, oD), 0.0), 16.0);
+  col += vec3(0.94, 0.26, 0.04) * oL * 1.1;
+  /* Floor darkening */
+  if(y < 0.0) col *= 0.3 + 0.7*exp(y*2.0);
+  return col;
+}
+
+void main() {
+  vec2 fc = gl_FragCoord.xy;
+  vec2 ndc = (fc / uRes) * 2.0 - 1.0;
+  ndc.x *= uRes.x / uRes.y;
+
+  /* Mouse influence */
+  vec2 mNorm = (uMouse / uRes - 0.5) * 2.0;
+  float tiltY = mNorm.x * 0.45;
+  float tiltX = mNorm.y * 0.35;
+
+  float t = uTime * 0.72;
+
+  /* Slow continuous auto-rotation */
+  tiltY += t * 0.15;
+
+  vec3 ro = vec3(0.0, 0.0, 3.2);
+  vec3 rd = normalize(vec3(ndc, -1.8));
+
+  /* Camera rotation */
+  float cy = cos(tiltY), sy = sin(tiltY);
+  rd = vec3(cy*rd.x+sy*rd.z, rd.y, -sy*rd.x+cy*rd.z);
+  float cx = cos(tiltX), sx = sin(tiltX);
+  rd = vec3(rd.x, cx*rd.y-sx*rd.z, sx*rd.y+cx*rd.z);
+
+  /* Also rotate the scene the same amount so the blob tumbles */
+  vec3 ro2 = ro;
+  ro2 = vec3(cy*ro2.x+sy*ro2.z, ro2.y, -sy*ro2.x+cy*ro2.z);
+  ro2 = vec3(ro2.x, cx*ro2.y-sx*ro2.z, sx*ro2.y+cx*ro2.z);
+
+  /* Ray march */
+  float dist = 0.0;
+  float d = 0.0;
+  bool hit = false;
+  const int STEPS = 60;
+  for(int i=0; i<STEPS; i++) {
+    vec3 p = ro2 + dist*rd;
+    d = sdBlob(p, t);
+    if(d < 0.003) { hit = true; break; }
+    if(dist > 5.5) break;
+    dist += d * 0.85;
+  }
+
+  if(!hit) {
+    gl_FragColor = vec4(0.0);
+    return;
+  }
+
+  vec3 pos = ro2 + dist*rd;
+  vec3 N = calcNormal(pos, t);
+  vec3 V = -rd;
+  float NdV = max(dot(N, V), 0.001);
+
+  /* Reflection ray */
+  vec3 refl = reflect(rd, N);
+  vec3 envCol = metalEnv(refl);
+
+  /* Liquid metal F0 — slightly warm silver-platinum */
+  vec3 F0 = vec3(0.82, 0.80, 0.82);
+
+  /* Modulate with time-animated iridescence */
+  float iriT = fbm(pos * 6.0 + uTime * 0.1) * 3.14159 * 2.0;
+  vec3 iriShift = vec3(sin(iriT), sin(iriT + 2.09), sin(iriT + 4.19)) * 0.06;
+  F0 += iriShift;
+
+  vec3 F = fresnelSch(NdV, F0);
+  vec3 col = envCol * F;
+
+  /* Specular highlights — key, fill, rim */
+  vec3 kD = normalize(vec3(0.5, 0.9, 0.4));
+  float NdHk = max(dot(N, normalize(V + kD)), 0.0);
+  col += vec3(1.0, 0.98, 0.95) * ggxSpec(NdHk, 0.06) * 0.2;
+
+  vec3 bD = normalize(vec3(-0.8, 0.2, 0.55));
+  float NdHb = max(dot(N, normalize(V + bD)), 0.0);
+  col += vec3(0.16, 0.58, 0.76) * ggxSpec(NdHb, 0.10) * 0.12;
+
+  vec3 oD = normalize(vec3(0.7, -0.5, -0.5));
+  float NdHo = max(dot(N, normalize(V + oD)), 0.0);
+  col += vec3(0.94, 0.26, 0.04) * ggxSpec(NdHo, 0.08) * (1.0 - NdV) * 0.18;
+
+  /* Iridescent color shift on surface — liquid metal films */
+  float iridT = fbm(pos * 4.5 - uTime * 0.14) * 3.14159 * 4.0;
+  vec3 filmCol = vec3(
+    0.5 + 0.5*sin(iridT),
+    0.5 + 0.5*sin(iridT + 2.09),
+    0.5 + 0.5*sin(iridT + 4.19)
+  );
+  float filmStr = (1.0 - NdV) * 0.3 * smoothstep(0.3, 0.7, NdV);
+  col = mix(col, col * filmCol * 1.5, filmStr);
+
+  /* Ae monogram — bright etching visible in the metal surface */
+  /* Use world-space pos projected to front-face UV */
+  vec2 sigilP = pos.xy / 0.95 * 1.2;
+  /* A: two legs + crossbar */
+  float dAL = abs(sigilP.x*0.8 + sigilP.y*0.6) - 0.022;
+  float dAR = abs(-sigilP.x*0.8 + sigilP.y*0.6) - 0.022;
+  float dABar = abs(sigilP.y - 0.08) - 0.016 + max(0.0, abs(sigilP.x) - 0.14);
+  float dA = min(min(dAL, dAR), dABar);
+  /* E: stem + 3 bars */
+  float dEStem = abs(sigilP.x - 0.16) - 0.016 + max(0.0, abs(sigilP.y) - 0.35);
+  float dETop = abs(sigilP.y - 0.33) - 0.016 + max(0.0, max(sigilP.x-0.28, -sigilP.x));
+  float dEMid = abs(sigilP.y) - 0.016 + max(0.0, max(sigilP.x-0.24, -sigilP.x));
+  float dEBot = abs(sigilP.y + 0.33) - 0.016 + max(0.0, max(sigilP.x-0.28, -sigilP.x));
+  float dE = min(min(dEStem, dETop), min(dEMid, dEBot));
+  float sigil = min(dA, dE);
+  /* Only show on front-facing surface */
+  float frontFace = smoothstep(-0.2, 0.3, pos.z);
+  float sigilGlow = smoothstep(0.012, -0.012, sigil) * NdV * frontFace;
+  /* Engraved: bright metallic highlight in the groove */
+  col = mix(col, vec3(1.0, 0.97, 0.95) * 2.0, sigilGlow * 0.5);
+
+  /* Gradient ring — animated hue shift around equator */
+  float eqDist = abs(pos.y) / 0.96;
+  float ringWidth = 0.08;
+  float ringMask = smoothstep(ringWidth, 0.0, abs(eqDist - 0.92)) * (1.0 - NdV);
+  float ringAng = atan(pos.z, pos.x);
+  float ringT = fract(ringAng / (2.0 * 3.14159) - uTime * 0.06);
+  vec3 ringCol = mix(vec3(0.16, 0.58, 0.76), vec3(0.94, 0.26, 0.04), ringT);
+  col = mix(col, ringCol * 3.0, ringMask * 0.6);
+
+  /* Ambient occlusion approximation: darken deep crevices */
+  float ao = smoothstep(0.0, 0.12, d + 0.003) * 0.4 + 0.6;
+  col *= ao;
+
+  /* Tone map ACES */
+  col = col*(2.51*col+0.03)/(col*(2.43*col+0.59)+0.14);
+  col = clamp(col, 0.0, 1.0);
+
+  /* Circular fade at edge for avatar crop */
+  float edgeDist = length(pos.xy);
+  float edgeFade = smoothstep(1.05, 0.92, edgeDist);
+
+  gl_FragColor = vec4(col, edgeFade);
+}
+`;
+
+  function compile(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      console.error(gl.getShaderInfoLog(s));
+      return null;
+    }
+    return s;
+  }
+
+  const vs = compile(gl.VERTEX_SHADER, vsSource);
+  const fs = compile(gl.FRAGMENT_SHADER, fsSource);
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    console.error(gl.getProgramInfoLog(prog));
+    return;
+  }
+
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+  const aPos = gl.getAttribLocation(prog, 'aPos');
+  const uTime = gl.getUniformLocation(prog, 'uTime');
+  const uMouse = gl.getUniformLocation(prog, 'uMouse');
+  const uRes = gl.getUniformLocation(prog, 'uRes');
+
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+  let mx = canvas.width / 2, my = canvas.height / 2;
+  let tmx = mx, tmy = my;
+
+  document.addEventListener('mousemove', e => {
+    const r = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / r.width;
+    const scaleY = canvas.height / r.height;
+    tmx = (e.clientX - r.left) * scaleX;
+    tmy = (e.clientY - r.top) * scaleY;
+  });
+
+  function render(now) {
+    now *= 0.001;
+    mx += (tmx - mx) * 0.04;
+    my += (tmy - my) * 0.04;
+
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.useProgram(prog);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+    gl.uniform1f(uTime, now);
+    gl.uniform2f(uMouse, mx, canvas.height - my);
+    gl.uniform2f(uRes, canvas.width, canvas.height);
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    requestAnimationFrame(render);
+  }
+  requestAnimationFrame(render);
+})();
+</script>
+</body>
+</html>

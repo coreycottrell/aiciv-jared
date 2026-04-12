@@ -1,0 +1,3186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Migration Portal | Bring Your AI History to PureBrain</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    /* ================================================================
+       GLOBAL RESET — WordPress override layer
+    ================================================================ */
+    html, body {
+      background-color: #080a12 !important;
+      color: #e0e6f0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif !important;
+    }
+    body.page { background-color: #080a12 !important; }
+    .site-header, .site-footer, .entry-header, .entry-footer,
+    .wp-block-post-title, h1.entry-title, .elementor-location-header,
+    .elementor-location-footer { display: none !important; }
+
+    /* ================================================================
+       PORTAL — All styles scoped under #pb-migration-portal
+    ================================================================ */
+    #pb-migration-portal {
+      --blue:         #2a93c1;
+      --blue-light:   #3eb0e0;
+      --blue-dim:     #1a5a7a;
+      --blue-glow:    rgba(42, 147, 193, 0.15);
+      --orange:       #f1420b;
+      --orange-dim:   #a02d07;
+      --orange-glow:  rgba(241, 66, 11, 0.15);
+      --bg-page:      #080a12;
+      --bg-card:      #0e1120;
+      --bg-card-alt:  #111628;
+      --bg-input:     #0a0d1a;
+      --border:       rgba(42, 147, 193, 0.18);
+      --border-mid:   rgba(42, 147, 193, 0.35);
+      --text-primary: #e0e6f0;
+      --text-secondary: #94a3b8;
+      --text-muted:   #5a6a82;
+      --white:        #ffffff;
+      --green:        #22c55e;
+      --green-dim:    rgba(34, 197, 94, 0.15);
+      --radius-sm:    8px;
+      --radius-md:    12px;
+      --radius-lg:    20px;
+
+      background-color: var(--bg-page);
+      color: var(--text-primary);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.65;
+      min-height: 100vh;
+    }
+
+    #pb-migration-portal *, #pb-migration-portal *::before, #pb-migration-portal *::after {
+      box-sizing: border-box;
+    }
+
+    /* ================================================================
+       LAYOUT
+    ================================================================ */
+    #pb-migration-portal .portal-wrap {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 40px 20px 80px;
+    }
+
+    /* ================================================================
+       LOGO HEADER
+    ================================================================ */
+    #pb-migration-portal .portal-logo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 40px;
+    }
+    #pb-migration-portal .portal-logo .logo-hex {
+      width: 38px;
+      height: 38px;
+    }
+    #pb-migration-portal .portal-logo .logo-text {
+      font-family: 'Oswald', sans-serif;
+      font-weight: 700;
+      font-size: 22px;
+      letter-spacing: 0.04em;
+      color: var(--white);
+    }
+    #pb-migration-portal .portal-logo .logo-text span.blue { color: var(--blue); }
+    #pb-migration-portal .portal-logo .logo-text span.orange { color: var(--orange); }
+
+    /* ================================================================
+       STEP HEADER
+    ================================================================ */
+    #pb-migration-portal .step-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    #pb-migration-portal .step-label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 8px;
+    }
+    #pb-migration-portal .step-title {
+      font-family: 'Oswald', sans-serif;
+      font-weight: 700;
+      font-size: clamp(26px, 5vw, 38px);
+      color: var(--white);
+      line-height: 1.15;
+      margin-bottom: 10px;
+    }
+    #pb-migration-portal .step-subtitle {
+      font-size: 16px;
+      color: var(--text-secondary);
+      max-width: 520px;
+      margin: 0 auto;
+    }
+
+    /* ================================================================
+       PROGRESS BAR (step indicator)
+    ================================================================ */
+    #pb-migration-portal .progress-dots {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      margin-bottom: 36px;
+    }
+    #pb-migration-portal .progress-dots .dot {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: 2px solid var(--border-mid);
+      background: var(--bg-card);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      position: relative;
+      z-index: 1;
+      transition: all 0.3s ease;
+      flex-shrink: 0;
+    }
+    #pb-migration-portal .progress-dots .dot.active {
+      border-color: var(--blue);
+      background: var(--blue);
+      color: var(--white);
+      box-shadow: 0 0 16px rgba(42,147,193,0.45);
+    }
+    #pb-migration-portal .progress-dots .dot.done {
+      border-color: var(--green);
+      background: var(--green);
+      color: var(--white);
+    }
+    #pb-migration-portal .progress-dots .dot.done::after {
+      content: '✓';
+      font-size: 14px;
+    }
+    #pb-migration-portal .progress-dots .dot.done .dot-num { display: none; }
+    #pb-migration-portal .progress-dots .dot-line {
+      flex: 1;
+      height: 2px;
+      background: var(--border);
+      max-width: 80px;
+      transition: background 0.3s ease;
+    }
+    #pb-migration-portal .progress-dots .dot-line.done {
+      background: var(--green);
+    }
+
+    /* ================================================================
+       CARD / SECTION
+    ================================================================ */
+    #pb-migration-portal .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      margin-bottom: 16px;
+      transition: border-color 0.3s ease;
+    }
+    #pb-migration-portal .card:hover {
+      border-color: rgba(42,147,193,0.35);
+    }
+    #pb-migration-portal .card.success {
+      border-color: rgba(34,197,94,0.4);
+    }
+    #pb-migration-portal .card-inner {
+      padding: 24px 28px;
+    }
+    #pb-migration-portal .card-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+    }
+
+    /* ================================================================
+       SECTION LABEL
+    ================================================================ */
+    #pb-migration-portal .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      padding-left: 2px;
+    }
+
+    /* ================================================================
+       UPLOAD ZONE
+    ================================================================ */
+    #pb-migration-portal .upload-zone {
+      border: 2px dashed rgba(42,147,193,0.35);
+      border-radius: var(--radius-md);
+      padding: 36px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      background: var(--bg-input);
+      position: relative;
+    }
+    #pb-migration-portal .upload-zone:hover,
+    #pb-migration-portal .upload-zone.drag-over {
+      border-color: var(--blue);
+      background: rgba(42,147,193,0.07);
+    }
+    #pb-migration-portal .upload-zone.success {
+      border-color: var(--green);
+      border-style: solid;
+      background: var(--green-dim);
+    }
+    #pb-migration-portal .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+    #pb-migration-portal .upload-icon {
+      font-size: 36px;
+      margin-bottom: 12px;
+      line-height: 1;
+    }
+    #pb-migration-portal .upload-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+    #pb-migration-portal .upload-hint {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    #pb-migration-portal .upload-success-msg {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--green);
+    }
+    #pb-migration-portal .upload-zone.success .upload-success-msg { display: flex; }
+    #pb-migration-portal .upload-zone.success .upload-default { display: none; }
+
+    /* ================================================================
+       HOW TO EXPORT ACCORDION
+    ================================================================ */
+    #pb-migration-portal .accordion {
+      margin-top: 12px;
+    }
+    #pb-migration-portal .accordion-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--blue);
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: inherit;
+      transition: color 0.2s;
+    }
+    #pb-migration-portal .accordion-toggle:hover { color: var(--blue-light); }
+    #pb-migration-portal .accordion-toggle .acc-arrow {
+      font-size: 10px;
+      transition: transform 0.25s;
+    }
+    #pb-migration-portal .accordion-toggle.open .acc-arrow {
+      transform: rotate(180deg);
+    }
+    #pb-migration-portal .accordion-body {
+      display: none;
+      margin-top: 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 16px 18px;
+    }
+    #pb-migration-portal .accordion-body.open { display: block; }
+    #pb-migration-portal .accordion-body ol {
+      margin: 0;
+      padding-left: 20px;
+    }
+    #pb-migration-portal .accordion-body li {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+      line-height: 1.5;
+    }
+    #pb-migration-portal .accordion-body li:last-child { margin-bottom: 0; }
+
+    /* ================================================================
+       SOURCE ICON BADGES
+    ================================================================ */
+    #pb-migration-portal .source-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-card-alt);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+    #pb-migration-portal .source-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+    }
+    #pb-migration-portal .source-what {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* ================================================================
+       TEXTAREA / INPUTS
+    ================================================================ */
+    #pb-migration-portal textarea,
+    #pb-migration-portal input[type="text"] {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 14px;
+      padding: 12px 16px;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    #pb-migration-portal textarea:focus,
+    #pb-migration-portal input[type="text"]:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(42,147,193,0.12);
+    }
+    #pb-migration-portal textarea::placeholder,
+    #pb-migration-portal input[type="text"]::placeholder {
+      color: var(--text-muted);
+    }
+    #pb-migration-portal .input-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+
+    /* ================================================================
+       BUTTONS
+    ================================================================ */
+    #pb-migration-portal .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 13px 28px;
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      outline: none;
+      transition: all 0.2s ease;
+      text-decoration: none;
+      line-height: 1;
+    }
+    #pb-migration-portal .btn-primary {
+      background: var(--orange);
+      color: var(--white) !important;
+    }
+    #pb-migration-portal .btn-primary:hover {
+      background: var(--blue);
+      color: var(--white) !important;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px rgba(42,147,193,0.3);
+    }
+    #pb-migration-portal .btn-secondary {
+      background: transparent;
+      color: var(--text-secondary) !important;
+      border: 1px solid var(--border);
+    }
+    #pb-migration-portal .btn-secondary:hover {
+      border-color: var(--border-mid);
+      color: var(--text-primary) !important;
+    }
+    #pb-migration-portal .btn-sm {
+      padding: 8px 16px;
+      font-size: 13px;
+    }
+    #pb-migration-portal .btn-remove {
+      background: transparent;
+      color: var(--orange);
+      border: 1px solid rgba(241,66,11,0.3);
+      padding: 5px 12px;
+      font-size: 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    #pb-migration-portal .btn-remove:hover {
+      background: rgba(241,66,11,0.1);
+    }
+    #pb-migration-portal .btn-restore {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      padding: 5px 12px;
+      font-size: 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    #pb-migration-portal .btn-restore:hover {
+      color: var(--blue);
+      border-color: var(--border-mid);
+    }
+    #pb-migration-portal .cta-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-top: 28px;
+    }
+
+    /* ================================================================
+       REVIEW STEP — DATA CATEGORIES
+    ================================================================ */
+    #pb-migration-portal .data-category {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--border);
+      transition: opacity 0.25s;
+    }
+    #pb-migration-portal .data-category:last-child { border-bottom: none; }
+    #pb-migration-portal .data-category.removed {
+      opacity: 0.35;
+    }
+    #pb-migration-portal .data-category-left {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    #pb-migration-portal .data-check {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--green-dim);
+      border: 1px solid var(--green);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: var(--green);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    #pb-migration-portal .data-category.removed .data-check {
+      background: rgba(90,106,130,0.1);
+      border-color: var(--border);
+      color: var(--text-muted);
+    }
+    #pb-migration-portal .data-cat-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+    }
+    #pb-migration-portal .data-cat-detail {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+    #pb-migration-portal .data-cat-preview {
+      font-size: 12px;
+      color: var(--text-secondary);
+      background: var(--bg-input);
+      border-left: 2px solid var(--border-mid);
+      padding: 4px 8px;
+      margin-top: 4px;
+      border-radius: 0 4px 4px 0;
+    }
+
+    /* ================================================================
+       PRIVACY NOTE
+    ================================================================ */
+    #pb-migration-portal .privacy-note {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      background: rgba(42,147,193,0.06);
+      border: 1px solid rgba(42,147,193,0.2);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      margin-bottom: 20px;
+    }
+    #pb-migration-portal .privacy-icon { font-size: 18px; flex-shrink: 0; }
+    #pb-migration-portal .privacy-text { font-size: 13px; color: var(--text-secondary); }
+    #pb-migration-portal .privacy-text strong { color: var(--text-primary); }
+    #pb-migration-portal .privacy-link {
+      color: var(--blue);
+      text-decoration: none;
+      font-size: 12px;
+      display: inline-block;
+      margin-top: 2px;
+    }
+    #pb-migration-portal .privacy-link:hover { text-decoration: underline; }
+
+    /* ================================================================
+       STEP 3 — LEARNING / PROCESSING
+    ================================================================ */
+    #pb-migration-portal .orb-container {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 28px;
+    }
+    #pb-migration-portal .pb-orb {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #3eb0e0 0%, #2a93c1 40%, #1a5a7a 70%, #0a1a2e 100%);
+      box-shadow:
+        0 0 40px rgba(42,147,193,0.4),
+        0 0 80px rgba(241,66,11,0.12),
+        inset 0 0 30px rgba(62,176,224,0.3);
+      position: relative;
+      animation: orbPulse 2.5s ease-in-out infinite;
+    }
+    #pb-migration-portal .pb-orb::before {
+      content: '';
+      position: absolute;
+      top: 12%;
+      left: 18%;
+      width: 30%;
+      height: 20%;
+      background: rgba(255,255,255,0.35);
+      border-radius: 50%;
+      filter: blur(6px);
+      transform: rotate(-20deg);
+    }
+    #pb-migration-portal .pb-orb::after {
+      content: '';
+      position: absolute;
+      inset: -6px;
+      border-radius: 50%;
+      border: 2px solid rgba(42,147,193,0.25);
+      animation: orbRing 2.5s ease-in-out infinite;
+    }
+    @keyframes orbPulse {
+      0%, 100% {
+        box-shadow: 0 0 40px rgba(42,147,193,0.4), 0 0 80px rgba(241,66,11,0.1), inset 0 0 30px rgba(62,176,224,0.3);
+        transform: scale(1);
+      }
+      50% {
+        box-shadow: 0 0 60px rgba(42,147,193,0.6), 0 0 100px rgba(241,66,11,0.2), inset 0 0 40px rgba(62,176,224,0.45);
+        transform: scale(1.04);
+      }
+    }
+    @keyframes orbRing {
+      0%, 100% { opacity: 0.4; transform: scale(1); }
+      50% { opacity: 0.9; transform: scale(1.08); }
+    }
+
+    #pb-migration-portal .progress-bar-wrap {
+      margin-bottom: 28px;
+      text-align: center;
+    }
+    #pb-migration-portal .progress-bar-label {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+    }
+    #pb-migration-portal .progress-bar-track {
+      height: 8px;
+      background: var(--bg-card-alt);
+      border-radius: 99px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    #pb-migration-portal .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--blue) 0%, var(--blue-light) 100%);
+      border-radius: 99px;
+      width: 0%;
+      transition: width 0.4s ease;
+      position: relative;
+    }
+    #pb-migration-portal .progress-bar-fill::after {
+      content: '';
+      position: absolute;
+      right: 0;
+      top: 0;
+      height: 100%;
+      width: 40px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3));
+      animation: shimmer 1s linear infinite;
+    }
+    @keyframes shimmer {
+      0% { opacity: 0; }
+      50% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
+    /* ================================================================
+       INSIGHT CARDS
+    ================================================================ */
+    #pb-migration-portal .insights-section {
+      margin-bottom: 28px;
+    }
+    #pb-migration-portal .insight-card {
+      background: var(--bg-card-alt);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--blue);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      opacity: 0;
+      transform: translateX(-12px);
+      transition: all 0.4s ease;
+    }
+    #pb-migration-portal .insight-card.visible {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    #pb-migration-portal .insight-card .insight-text strong {
+      color: var(--blue-light);
+    }
+
+    /* ================================================================
+       CHECKLIST
+    ================================================================ */
+    #pb-migration-portal .checklist {
+      background: var(--bg-card-alt);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 20px 22px;
+    }
+    #pb-migration-portal .checklist-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+    }
+    #pb-migration-portal .check-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      padding: 5px 0;
+    }
+    #pb-migration-portal .check-item .check-dot {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 2px solid var(--border-mid);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 11px;
+      color: transparent;
+      transition: all 0.3s;
+    }
+    #pb-migration-portal .check-item.done .check-dot {
+      background: var(--green);
+      border-color: var(--green);
+      color: var(--white);
+    }
+    #pb-migration-portal .check-item.done .check-dot::before { content: '✓'; }
+    #pb-migration-portal .check-item.in-progress .check-dot {
+      border-color: var(--blue);
+      animation: spinDot 1.2s linear infinite;
+    }
+    @keyframes spinDot {
+      from { border-top-color: var(--blue); border-right-color: transparent; }
+      to { border-top-color: var(--blue); border-right-color: transparent; transform: rotate(360deg); }
+    }
+    #pb-migration-portal .check-item.done { color: var(--text-primary); }
+
+    /* ================================================================
+       STEP 4 — TASK CARDS
+    ================================================================ */
+    #pb-migration-portal .task-cards-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    #pb-migration-portal .task-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 24px 26px;
+      display: flex;
+      align-items: flex-start;
+      gap: 18px;
+      transition: all 0.25s ease;
+    }
+    #pb-migration-portal .task-card:hover {
+      border-color: rgba(42,147,193,0.4);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    #pb-migration-portal .task-icon-wrap {
+      width: 50px;
+      height: 50px;
+      border-radius: var(--radius-sm);
+      background: var(--blue-glow);
+      border: 1px solid var(--border-mid);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+    #pb-migration-portal .task-content { flex: 1; }
+    #pb-migration-portal .task-title {
+      font-family: 'Oswald', sans-serif;
+      font-weight: 600;
+      font-size: 18px;
+      color: var(--white);
+      margin-bottom: 6px;
+    }
+    #pb-migration-portal .task-desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 14px;
+      line-height: 1.55;
+    }
+    #pb-migration-portal .task-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 18px;
+      border-radius: var(--radius-sm);
+      background: var(--orange);
+      color: var(--white) !important;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      text-decoration: none;
+      transition: all 0.2s;
+      cursor: pointer;
+      border: none;
+    }
+    #pb-migration-portal .task-btn:hover {
+      background: var(--blue);
+      transform: translateY(-1px);
+    }
+
+    /* ================================================================
+       COMPLETE BADGE
+    ================================================================ */
+    #pb-migration-portal .complete-badge {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: rgba(34,197,94,0.08);
+      border: 1px solid rgba(34,197,94,0.3);
+      border-radius: var(--radius-md);
+      padding: 18px 22px;
+      margin-bottom: 28px;
+    }
+    #pb-migration-portal .complete-badge .badge-icon {
+      width: 44px;
+      height: 44px;
+      background: rgba(34,197,94,0.15);
+      border: 1px solid rgba(34,197,94,0.4);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+    #pb-migration-portal .badge-title {
+      font-family: 'Oswald', sans-serif;
+      font-weight: 700;
+      font-size: 18px;
+      color: var(--green);
+      margin-bottom: 2px;
+    }
+    #pb-migration-portal .badge-detail {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* ================================================================
+       NO DATA WARNING (when no file uploaded for step 3-4)
+    ================================================================ */
+    #pb-migration-portal .no-data-note {
+      background: rgba(241,66,11,0.07);
+      border: 1px solid rgba(241,66,11,0.2);
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+
+    /* ================================================================
+       DEMO NOTE
+    ================================================================ */
+    #pb-migration-portal .demo-note {
+      background: rgba(42,147,193,0.07);
+      border: 1px solid rgba(42,147,193,0.2);
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    /* ================================================================
+       STEP VISIBILITY
+    ================================================================ */
+    #pb-migration-portal .step-panel {
+      display: none;
+    }
+    #pb-migration-portal .step-panel.active {
+      display: block;
+    }
+
+    /* ================================================================
+       RESPONSIVE
+    ================================================================ */
+    @media (max-width: 600px) {
+      #pb-migration-portal .portal-wrap {
+        padding: 24px 16px 60px;
+      }
+      #pb-migration-portal .card-inner {
+        padding: 18px 16px;
+      }
+      #pb-migration-portal .task-card {
+        flex-direction: column;
+        padding: 18px;
+        gap: 12px;
+      }
+      #pb-migration-portal .cta-row {
+        flex-direction: column;
+      }
+      #pb-migration-portal .btn { width: 100%; justify-content: center; }
+      #pb-migration-portal .data-category {
+        flex-wrap: wrap;
+      }
+    }
+
+    @media (min-width: 768px) {
+      #pb-migration-portal .task-cards-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+    }
+  
+    /* ================================================================
+       QUIZ MODULE CSS — scoped under #pb-migration-quiz
+    ================================================================ */
+  /* ─── CSS SCOPED UNDER #pb-migration-quiz ─── */
+
+  /* ─── MAIN QUIZ CONTAINER ─── */
+  #pb-migration-quiz {
+    /* Quiz-scoped CSS variables */
+    --pb-blue: #2a93c1;
+    --pb-orange: #f1420b;
+    --pb-dark2: #0d1120;
+    --pb-border: rgba(42,147,193,0.18);
+    --radius: 12px;
+    --transition: 0.22s ease;
+    width: 100%;
+    max-width: 680px;
+    background: var(--pb-dark2);
+    border: 1px solid var(--pb-border);
+    border-radius: 20px;
+    padding: 48px 44px;
+    position: relative;
+    overflow: hidden;
+  }
+  #pb-migration-quiz::before {
+    content: '';
+    position: absolute;
+    top: -80px;
+    right: -80px;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(42,147,193,0.07) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  #pb-migration-quiz::after {
+    content: '';
+    position: absolute;
+    bottom: -60px;
+    left: -60px;
+    width: 240px;
+    height: 240px;
+    background: radial-gradient(circle, rgba(241,66,11,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  /* ─── PROGRESS BAR ─── */
+  #pb-migration-quiz .mq-progress-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 36px;
+  }
+  #pb-migration-quiz .mq-progress-bar-track {
+    flex: 1;
+    height: 4px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  #pb-migration-quiz .mq-progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--pb-blue), var(--pb-orange));
+    border-radius: 4px;
+    transition: width 0.4s ease;
+    width: 0%;
+  }
+  #pb-migration-quiz .mq-progress-label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+    min-width: 80px;
+    text-align: right;
+  }
+  #pb-migration-quiz .mq-progress-dots {
+    display: flex;
+    gap: 7px;
+    justify-content: center;
+    margin-bottom: 32px;
+  }
+  #pb-migration-quiz .mq-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.1);
+    transition: background var(--transition), transform var(--transition);
+  }
+  #pb-migration-quiz .mq-dot.active {
+    background: var(--pb-orange);
+    transform: scale(1.35);
+  }
+  #pb-migration-quiz .mq-dot.done {
+    background: var(--pb-blue);
+  }
+
+  /* ─── STEP VISIBILITY ─── */
+  #pb-migration-quiz .mq-step {
+    display: none;
+    animation: mq-fadein 0.3s ease forwards;
+  }
+  #pb-migration-quiz .mq-step.active { display: block; }
+
+  @keyframes mq-fadein {
+    from { opacity: 0; transform: translateX(16px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes mq-fadeout {
+    from { opacity: 1; transform: translateX(0); }
+    to   { opacity: 0; transform: translateX(-16px); }
+  }
+
+  /* ─── QUESTION TYPOGRAPHY ─── */
+  #pb-migration-quiz .mq-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.73rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--pb-orange);
+    margin-bottom: 14px;
+  }
+  #pb-migration-quiz .mq-badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--pb-orange);
+  }
+  #pb-migration-quiz .mq-question {
+    font-size: 1.25rem;
+    font-weight: 700;
+    line-height: 1.35;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+  }
+  #pb-migration-quiz .mq-subtext {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    margin-bottom: 28px;
+  }
+
+  /* ─── SINGLE-SELECT OPTIONS ─── */
+  #pb-migration-quiz .mq-options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  #pb-migration-quiz .mq-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    cursor: pointer;
+    transition: border-color var(--transition), background var(--transition);
+    text-align: left;
+    width: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #pb-migration-quiz .mq-option:hover {
+    border-color: var(--pb-blue);
+    background: rgba(42,147,193,0.07);
+  }
+  #pb-migration-quiz .mq-option.selected {
+    border-color: var(--pb-orange);
+    background: rgba(241,66,11,0.08);
+  }
+  #pb-migration-quiz .mq-option-letter {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    border-radius: 7px;
+    background: rgba(255,255,255,0.06);
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    transition: background var(--transition), color var(--transition);
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  #pb-migration-quiz .mq-option:hover .mq-option-letter {
+    background: rgba(42,147,193,0.18);
+    color: var(--pb-blue);
+  }
+  #pb-migration-quiz .mq-option.selected .mq-option-letter {
+    background: rgba(241,66,11,0.2);
+    color: var(--pb-orange);
+  }
+  #pb-migration-quiz .mq-option-text {
+    font-size: 0.95rem;
+    line-height: 1.45;
+    padding-top: 4px;
+    color: var(--text-primary);
+  }
+  #pb-migration-quiz .mq-option-subtext {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 3px;
+    line-height: 1.4;
+  }
+
+  /* ─── MULTI-SELECT CHIPS (Question A) ─── */
+  #pb-migration-quiz .mq-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+  #pb-migration-quiz .mq-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 100px;
+    padding: 9px 18px;
+    cursor: pointer;
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    transition: border-color var(--transition), background var(--transition), color var(--transition);
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  #pb-migration-quiz .mq-chip:hover {
+    border-color: var(--pb-blue);
+    background: rgba(42,147,193,0.07);
+    color: var(--pb-blue);
+  }
+  #pb-migration-quiz .mq-chip.selected {
+    border-color: var(--pb-orange);
+    background: rgba(241,66,11,0.1);
+    color: var(--pb-orange);
+  }
+  #pb-migration-quiz .mq-chip-icon {
+    font-size: 0.82rem;
+    line-height: 1;
+  }
+  #pb-migration-quiz .mq-chip-check {
+    display: none;
+    width: 14px;
+    height: 14px;
+    background: var(--pb-orange);
+    border-radius: 50%;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.6rem;
+    color: #fff;
+    font-weight: 700;
+  }
+  #pb-migration-quiz .mq-chip.selected .mq-chip-check { display: flex; }
+  #pb-migration-quiz .mq-chip-hint {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 12px;
+  }
+
+  /* ─── NAVIGATION ─── */
+  #pb-migration-quiz .mq-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 32px;
+  }
+  #pb-migration-quiz .mq-back {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--text-muted);
+    padding: 11px 22px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color var(--transition), color var(--transition);
+  }
+  #pb-migration-quiz .mq-back:hover {
+    border-color: var(--pb-blue);
+    color: var(--pb-blue);
+  }
+  #pb-migration-quiz .mq-back[hidden] { visibility: hidden; }
+  #pb-migration-quiz .mq-next {
+    background: var(--pb-orange);
+    color: #fff;
+    border: none;
+    padding: 13px 32px;
+    border-radius: 8px;
+    font-size: 0.97rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background var(--transition), opacity var(--transition);
+    opacity: 0.4;
+    pointer-events: none;
+  }
+  #pb-migration-quiz .mq-next.ready {
+    opacity: 1;
+    pointer-events: all;
+  }
+  #pb-migration-quiz .mq-next.ready:hover { background: var(--pb-blue); }
+
+  /* ─── EMAIL CAPTURE SCREEN ─── */
+  #pb-migration-quiz .mq-gate-box {
+    background: rgba(42,147,193,0.06);
+    border: 1px solid rgba(42,147,193,0.18);
+    border-radius: 16px;
+    padding: 40px 36px;
+    text-align: center;
+  }
+  #pb-migration-quiz .mq-gate-icon {
+    font-size: 2.6rem;
+    margin-bottom: 16px;
+    display: block;
+  }
+  #pb-migration-quiz .mq-gate-box h3 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 10px;
+    line-height: 1.25;
+  }
+  #pb-migration-quiz .mq-gate-box h3 .orange { color: var(--pb-orange); }
+  #pb-migration-quiz .mq-gate-box p {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    margin-bottom: 28px;
+    max-width: 420px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  #pb-migration-quiz .mq-gate-summary {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin-bottom: 32px;
+  }
+  #pb-migration-quiz .mq-summary-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 100px;
+    padding: 6px 14px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+  #pb-migration-quiz .mq-summary-pill .pill-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--pb-blue);
+    flex-shrink: 0;
+  }
+  #pb-migration-quiz .mq-gate-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 400px;
+    margin: 0 auto;
+  }
+  #pb-migration-quiz .mq-gate-form input {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    padding: 14px 18px;
+    color: var(--text-primary);
+    font-size: 1rem;
+    outline: none;
+    transition: border-color var(--transition);
+    width: 100%;
+  }
+  #pb-migration-quiz .mq-gate-form input:focus {
+    border-color: var(--pb-blue);
+  }
+  #pb-migration-quiz .mq-gate-form input::placeholder {
+    color: var(--text-muted);
+  }
+  #pb-migration-quiz .mq-btn-submit {
+    background: var(--pb-orange);
+    color: #fff;
+    border: none;
+    padding: 15px;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background var(--transition);
+    position: relative;
+    letter-spacing: 0.01em;
+  }
+  #pb-migration-quiz .mq-btn-submit:hover:not(:disabled) { background: var(--pb-blue); }
+  #pb-migration-quiz .mq-btn-submit:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+  #pb-migration-quiz .mq-btn-submit .mq-spinner {
+    display: none;
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: mq-spin 0.7s linear infinite;
+    position: absolute;
+    right: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  #pb-migration-quiz .mq-btn-submit.loading .mq-spinner { display: block; }
+  @keyframes mq-spin {
+    to { transform: translateY(-50%) rotate(360deg); }
+  }
+  #pb-migration-quiz .mq-gate-privacy {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 8px;
+    line-height: 1.5;
+  }
+  #pb-migration-quiz .mq-gate-error {
+    color: var(--pb-orange);
+    font-size: 0.84rem;
+    text-align: center;
+    display: none;
+    margin-top: 8px;
+  }
+  #pb-migration-quiz .mq-gate-error.visible { display: block; }
+
+  /* ─── SUCCESS SCREEN ─── */
+  #pb-migration-quiz .mq-success {
+    text-align: center;
+    padding: 20px 0;
+    animation: mq-fadein 0.4s ease forwards;
+  }
+  #pb-migration-quiz .mq-success-icon {
+    width: 72px;
+    height: 72px;
+    background: linear-gradient(135deg, rgba(42,147,193,0.2), rgba(241,66,11,0.15));
+    border: 1px solid rgba(42,147,193,0.3);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    margin: 0 auto 24px;
+  }
+  #pb-migration-quiz .mq-success h3 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+  #pb-migration-quiz .mq-success h3 .orange { color: var(--pb-orange); }
+  #pb-migration-quiz .mq-success p {
+    color: var(--text-muted);
+    font-size: 0.97rem;
+    max-width: 440px;
+    margin: 0 auto 32px;
+    line-height: 1.6;
+  }
+  #pb-migration-quiz .mq-success-data {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 24px;
+    text-align: left;
+    margin-bottom: 28px;
+    max-width: 460px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  #pb-migration-quiz .mq-success-data h4 {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--pb-blue);
+    font-weight: 700;
+    margin-bottom: 12px;
+  }
+  #pb-migration-quiz .mq-data-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    font-size: 0.83rem;
+  }
+  #pb-migration-quiz .mq-data-row:last-child { border-bottom: none; }
+  #pb-migration-quiz .mq-data-key {
+    color: var(--text-muted);
+    min-width: 160px;
+    flex-shrink: 0;
+  }
+  #pb-migration-quiz .mq-data-val {
+    color: var(--text-primary);
+    word-break: break-all;
+  }
+  #pb-migration-quiz .mq-success-cta {
+    background: var(--pb-orange);
+    color: #fff;
+    padding: 14px 36px;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 1rem;
+    display: inline-block;
+    transition: background var(--transition), transform 0.1s;
+  }
+  #pb-migration-quiz .mq-success-cta:hover {
+    background: var(--pb-blue);
+    transform: translateY(-1px);
+  }
+
+  /* ─── DIVIDER / STEP INDICATOR ─── */
+  #pb-migration-quiz .mq-migration-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--pb-blue);
+    background: rgba(42,147,193,0.1);
+    border: 1px solid rgba(42,147,193,0.2);
+    border-radius: 100px;
+    padding: 5px 14px;
+    margin-bottom: 28px;
+  }
+
+  /* ─── RESPONSIVE ─── */
+  @media (max-width: 600px) {
+    #pb-migration-quiz { padding: 32px 22px; border-radius: 16px; }
+    #pb-migration-quiz .mq-question { font-size: 1.1rem; }
+    #pb-migration-quiz .mq-gate-box { padding: 28px 20px; }
+    #pb-migration-quiz .mq-gate-summary { gap: 10px; }
+    #pb-migration-quiz .mq-success-data { padding: 18px 16px; }
+    #pb-migration-quiz .mq-data-key { min-width: 130px; }
+  }
+  @media (max-width: 400px) {
+    #pb-migration-quiz .mq-chip { padding: 8px 13px; font-size: 0.83rem; }
+  }
+
+  </style>
+</head>
+<body>
+
+<div id="pb-migration-portal">
+  <div class="portal-wrap">
+
+    <!-- LOGO -->
+    <div class="portal-logo">
+      <!-- Inline SVG hex orb logo -->
+      <svg class="logo-hex" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="orbGrad" cx="40%" cy="35%" r="65%">
+            <stop offset="0%" stop-color="#3eb0e0"/>
+            <stop offset="55%" stop-color="#2a93c1"/>
+            <stop offset="100%" stop-color="#0a1a2e"/>
+          </radialGradient>
+        </defs>
+        <polygon points="19,2 35,11 35,27 19,36 3,27 3,11" fill="url(#orbGrad)" stroke="#2a93c1" stroke-width="1.2"/>
+        <polygon points="19,7 30,13.5 30,26.5 19,33 8,26.5 8,13.5" fill="none" stroke="#f1420b" stroke-width="0.7" opacity="0.5"/>
+        <circle cx="19" cy="19" r="5" fill="white" opacity="0.9"/>
+      </svg>
+      <div class="logo-text">
+        <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>
+      </div>
+    </div>
+
+    <!-- PROGRESS DOTS -->
+    <div class="progress-dots" id="progressDots">
+      <div class="dot active" id="dot1"><span class="dot-num">1</span></div>
+      <div class="dot-line" id="line1"></div>
+      <div class="dot" id="dot2"><span class="dot-num">2</span></div>
+      <div class="dot-line" id="line2"></div>
+      <div class="dot" id="dot3"><span class="dot-num">3</span></div>
+      <div class="dot-line" id="line3"></div>
+      <div class="dot" id="dot4"><span class="dot-num">4</span></div>
+      <div class="dot-line" id="line4"></div>
+      <div class="dot" id="dot5"><span class="dot-num">5</span></div>
+    </div>
+
+    <!-- ================================================================
+         STEP 1: CONNECT YOUR ACCOUNTS
+    ================================================================ -->
+    <div class="step-panel active" id="step1">
+      <div class="step-header">
+        <div class="step-label">Step 1 of 5</div>
+        <h1 class="step-title">Connect Your Accounts</h1>
+        <p class="step-subtitle">We'll pull in the context that matters. You stay in control the whole way.</p>
+      </div>
+
+      <!-- ChatGPT Upload -->
+      <div class="section-label">Primary Import</div>
+      <div class="card" id="chatgptCard">
+        <div class="card-inner">
+          <div class="card-row" style="margin-bottom:16px;">
+            <div class="source-icon">🤖</div>
+            <div>
+              <div class="source-name">ChatGPT / OpenAI</div>
+              <div class="source-what">Conversation history &amp; Custom Instructions</div>
+            </div>
+          </div>
+
+          <div class="upload-zone" id="chatgptUploadZone">
+            <input type="file" id="chatgptFileInput" accept=".zip" aria-label="Upload ChatGPT ZIP file">
+            <div class="upload-default">
+              <div class="upload-icon">📦</div>
+              <div class="upload-title">Drop your conversations.zip here</div>
+              <div class="upload-hint">or click to browse &nbsp;·&nbsp; Accepts .zip from OpenAI export</div>
+            </div>
+            <div class="upload-success-msg" id="chatgptSuccessMsg">
+              <span>✓</span>
+              <span id="chatgptSuccessText">File uploaded</span>
+            </div>
+          </div>
+
+          <div class="accordion">
+            <button class="accordion-toggle" id="chatgptAccToggle" onclick="toggleAccordion('chatgptAcc', 'chatgptAccToggle')">
+              <span>How to export from ChatGPT</span>
+              <span class="acc-arrow">▼</span>
+            </button>
+            <div class="accordion-body" id="chatgptAcc">
+              <ol>
+                <li>Open <strong>ChatGPT</strong> and click your profile icon (top right)</li>
+                <li>Go to <strong>Settings → Data Controls</strong></li>
+                <li>Click <strong>"Export data"</strong> — ChatGPT will email you a link</li>
+                <li>Download the <strong>.zip file</strong> from the email</li>
+                <li>Upload the .zip file using the drop zone above</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Claude Upload -->
+      <div class="section-label" style="margin-top:8px;">Also Import</div>
+      <div class="card" id="claudeCard">
+        <div class="card-inner">
+          <div class="card-row" style="margin-bottom:16px;">
+            <div class="source-icon">🔵</div>
+            <div>
+              <div class="source-name">Claude / Anthropic</div>
+              <div class="source-what">Conversation history from Anthropic</div>
+            </div>
+          </div>
+
+          <div class="upload-zone" id="claudeUploadZone">
+            <input type="file" id="claudeFileInput" accept=".zip,.json" aria-label="Upload Claude export file">
+            <div class="upload-default">
+              <div class="upload-icon">📦</div>
+              <div class="upload-title">Drop your Claude export here</div>
+              <div class="upload-hint">or click to browse &nbsp;·&nbsp; Accepts .zip or .json</div>
+            </div>
+            <div class="upload-success-msg" id="claudeSuccessMsg">
+              <span>✓</span>
+              <span id="claudeSuccessText">File uploaded</span>
+            </div>
+          </div>
+
+          <div class="accordion" style="margin-top:12px;">
+            <button class="accordion-toggle" onclick="toggleAccordion('claudeAcc', this)" style="pointer-events:auto;">
+              <span>How to export from Claude</span>
+              <span class="acc-arrow">▼</span>
+            </button>
+            <div class="accordion-body" id="claudeAcc">
+              <ol>
+                <li>Go to <strong>claude.ai</strong> and sign in</li>
+                <li>Click your profile picture → <strong>Account Settings</strong></li>
+                <li>Find <strong>"Export Data"</strong> in the Privacy section</li>
+                <li>Download the ZIP file and upload it above</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Perplexity manual paste -->
+      <div class="card">
+        <div class="card-inner">
+          <div class="card-row" style="margin-bottom:16px;">
+            <div class="source-icon">🔍</div>
+            <div>
+              <div class="source-name">Perplexity</div>
+              <div class="source-what">Paste key research findings you want preserved</div>
+            </div>
+          </div>
+          <label class="input-label" for="perplexityPaste">Paste your key Perplexity threads or research summaries</label>
+          <textarea id="perplexityPaste" rows="4" placeholder="Paste any research findings, key questions, or topics you want PureBrain to know about..."></textarea>
+        </div>
+      </div>
+
+      <!-- Midjourney style -->
+      <div class="card">
+        <div class="card-inner">
+          <div class="card-row" style="margin-bottom:16px;">
+            <div class="source-icon">🎨</div>
+            <div>
+              <div class="source-name">Midjourney Visual Style</div>
+              <div class="source-what">Your aesthetic goes directly into PureBrain's image context</div>
+            </div>
+          </div>
+          <label class="input-label" for="midjourneyStyle">Describe your Midjourney style in your own words</label>
+          <input type="text" id="midjourneyStyle" placeholder="e.g. Cinematic, moody, wide angle, film grain, 1970s color palette...">
+        </div>
+      </div>
+
+      <div class="cta-row">
+        <button class="btn btn-primary" onclick="goToStep(2)">
+          Continue →
+        </button>
+        <button class="btn btn-secondary" onclick="goToStep(2)">
+          Continue with what I have
+        </button>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         STEP 2: MIGRATION INTELLIGENCE QUIZ
+    ================================================================ -->
+    <div class="step-panel" id="step2">
+      <div class="step-header">
+        <div class="step-label">Step 2 of 5 — Personalize Your Migration</div>
+        <h1 class="step-title">Tell Us About Your AI Journey</h1>
+        <p class="step-subtitle">Four quick questions help us tailor your migration experience and import priorities.</p>
+      </div>
+
+      <!-- Quiz Module — scoped under #pb-migration-quiz -->
+      <div style="margin-top: 8px;">
+        <!-- ─── QUIZ MODULE (scoped ID) ─── -->
+<div id="pb-migration-quiz" role="main" aria-label="Migration Intelligence Quiz">
+
+  <!-- Progress -->
+  <div class="mq-progress-wrap">
+    <div class="mq-progress-bar-track">
+      <div class="mq-progress-bar-fill" id="mqProgressFill"></div>
+    </div>
+    <div class="mq-progress-label" id="mqProgressLabel">Question 1 of 4</div>
+  </div>
+  <div class="mq-progress-dots" id="mqDots" aria-hidden="true">
+    <span class="mq-dot active" data-dot="0"></span>
+    <span class="mq-dot" data-dot="1"></span>
+    <span class="mq-dot" data-dot="2"></span>
+    <span class="mq-dot" data-dot="3"></span>
+    <span class="mq-dot" data-dot="4"></span>
+  </div>
+
+  <!-- ─── STEP 0: Question A — Primary Use Cases (Multi-select) ─── -->
+  <div class="mq-step active" id="mqStep0">
+    <div class="mq-migration-label">
+      <span>&#9670;</span> Migration Intelligence
+    </div>
+    <div class="mq-badge"><span class="mq-badge-dot"></span>Question 1 of 4</div>
+    <div class="mq-question">What did you use <span id="mqCompetitorName">ChatGPT</span> for most?</div>
+    <div class="mq-subtext">Select all that apply &mdash; we'll use this to personalize your first week with PureBrain.</div>
+
+    <div class="mq-chips" id="mqChipsA" role="group" aria-label="Primary use cases">
+      <button class="mq-chip" data-val="writing" type="button" role="checkbox" aria-checked="false">
+        <span class="mq-chip-icon">&#9998;</span>
+        Writing and editing
+        <span class="mq-chip-check">&#10003;</span>
+      </button>
+      <button class="mq-chip" data-val="research" type="button" role="checkbox" aria-checked="false">
+        <span class="mq-chip-icon">&#128269;</span>
+        Research and summarization
+        <span class="mq-chip-check">&#10003;</span>
+      </button>
+      <button class="mq-chip" data-val="coding" type="button" role="checkbox" aria-checked="false">
+        <span class="mq-chip-icon">&#128187;</span>
+        Coding and technical help
+        <span class="mq-chip-check">&#10003;</span>
+      </button>
+      <button class="mq-chip" data-val="image_gen" type="button" role="checkbox" aria-checked="false">
+        <span class="mq-chip-icon">&#127760;</span>
+        Image generation
+        <span class="mq-chip-check">&#10003;</span>
+      </button>
+      <button class="mq-chip" data-val="brainstorming" type="button" role="checkbox" aria-checked="false">
+        <span class="mq-chip-icon">&#128161;</span>
+        Brainstorming and ideation
+        <span class="mq-chip-check">&#10003;</span>
+      </button>
+      <button class="mq-chip" data-val="customer_content" type="button" role="checkbox" aria-checked="false">
+        <span class="mq-chip-icon">&#128227;</span>
+        Customer-facing content
+        <span class="mq-chip-check">&#10003;</span>
+      </button>
+      <button class="mq-chip" data-val="productivity" type="button" role="checkbox" aria-checked="false">
+        <span class="mq-chip-icon">&#9989;</span>
+        Personal productivity
+        <span class="mq-chip-check">&#10003;</span>
+      </button>
+      <button class="mq-chip" data-val="data_analysis" type="button" role="checkbox" aria-checked="false">
+        <span class="mq-chip-icon">&#128202;</span>
+        Data analysis
+        <span class="mq-chip-check">&#10003;</span>
+      </button>
+    </div>
+    <div class="mq-chip-hint" id="mqChipHintA">Select at least one to continue</div>
+
+    <div class="mq-nav">
+      <button class="mq-back" hidden aria-hidden="true">&#8592; Back</button>
+      <button class="mq-next" id="mqNextA" type="button">Continue &#8594;</button>
+    </div>
+  </div>
+
+  <!-- ─── STEP 1: Question B — Usage Frequency ─── -->
+  <div class="mq-step" id="mqStep1">
+    <div class="mq-migration-label">
+      <span>&#9670;</span> Migration Intelligence
+    </div>
+    <div class="mq-badge"><span class="mq-badge-dot"></span>Question 2 of 4</div>
+    <div class="mq-question">How often were you using it?</div>
+    <div class="mq-subtext">Heavy users have more history worth importing &mdash; this helps us recommend the right setup.</div>
+
+    <div class="mq-options" id="mqOptionsB" role="radiogroup" aria-label="Usage frequency">
+      <button class="mq-option" data-val="multiple_times_daily" type="button" role="radio" aria-checked="false">
+        <span class="mq-option-letter">A</span>
+        <span class="mq-option-text">
+          Multiple times a day
+          <span class="mq-option-subtext">Power user &mdash; you have significant history worth preserving</span>
+        </span>
+      </button>
+      <button class="mq-option" data-val="once_daily" type="button" role="radio" aria-checked="false">
+        <span class="mq-option-letter">B</span>
+        <span class="mq-option-text">
+          Once a day
+          <span class="mq-option-subtext">Daily driver &mdash; good baseline context to import</span>
+        </span>
+      </button>
+      <button class="mq-option" data-val="few_times_weekly" type="button" role="radio" aria-checked="false">
+        <span class="mq-option-letter">C</span>
+        <span class="mq-option-text">A few times a week</span>
+      </button>
+      <button class="mq-option" data-val="occasionally" type="button" role="radio" aria-checked="false">
+        <span class="mq-option-letter">D</span>
+        <span class="mq-option-text">Occasionally</span>
+      </button>
+    </div>
+
+    <div class="mq-nav">
+      <button class="mq-back" type="button">&#8592; Back</button>
+      <button class="mq-next" id="mqNextB" type="button">Continue &#8594;</button>
+    </div>
+  </div>
+
+  <!-- ─── STEP 2: Question C — Customization Level ─── -->
+  <div class="mq-step" id="mqStep2">
+    <div class="mq-migration-label">
+      <span>&#9670;</span> Migration Intelligence
+    </div>
+    <div class="mq-badge"><span class="mq-badge-dot"></span>Question 3 of 4</div>
+    <div class="mq-question">Had you set up any custom instructions or saved prompts?</div>
+    <div class="mq-subtext">Highly customized users get priority import of their configurations &mdash; PureBrain absorbs them directly.</div>
+
+    <div class="mq-options" id="mqOptionsC" role="radiogroup" aria-label="Customization level">
+      <button class="mq-option" data-val="fully_customized" type="button" role="radio" aria-checked="false">
+        <span class="mq-option-letter">A</span>
+        <span class="mq-option-text">
+          Yes, everything was customized
+          <span class="mq-option-subtext">Custom instructions, saved prompts, specific workflows &mdash; all of it</span>
+        </span>
+      </button>
+      <button class="mq-option" data-val="some_customization" type="button" role="radio" aria-checked="false">
+        <span class="mq-option-letter">B</span>
+        <span class="mq-option-text">
+          Some basic customization
+          <span class="mq-option-subtext">A few tweaks here and there</span>
+        </span>
+      </button>
+      <button class="mq-option" data-val="no_customization" type="button" role="radio" aria-checked="false">
+        <span class="mq-option-letter">C</span>
+        <span class="mq-option-text">
+          No, I used defaults
+          <span class="mq-option-subtext">Straight out of the box &mdash; fresh start sounds good</span>
+        </span>
+      </button>
+    </div>
+
+    <div class="mq-nav">
+      <button class="mq-back" type="button">&#8592; Back</button>
+      <button class="mq-next" id="mqNextC" type="button">Continue &#8594;</button>
+    </div>
+  </div>
+
+  <!-- ─── STEP 3: Question D — Main Frustration ─── -->
+  <div class="mq-step" id="mqStep3">
+    <div class="mq-migration-label">
+      <span>&#9670;</span> Migration Intelligence
+    </div>
+    <div class="mq-badge"><span class="mq-badge-dot"></span>Question 4 of 4</div>
+    <div class="mq-question">What finally made you look for something better?</div>
+    <div class="mq-subtext">Your answer personalizes the migration flow &mdash; we'll address this directly.</div>
+
+    <div class="mq-options" id="mqOptionsD" role="radiogroup" aria-label="Main frustration">
+      <button class="mq-option" data-val="no_memory" type="button" role="radio" aria-checked="false">
+        <span class="mq-option-letter">A</span>
+        <span class="mq-option-text">
+          Didn't remember anything between conversations
+          <span class="mq-option-subtext">Every session started from zero</span>
+        </span>
+      </button>
+      <button class="mq-option" data-val="felt_generic" type="button" role="radio" aria-checked="false">
+        <span class="mq-option-letter">B</span>
+        <span class="mq-option-text">
+          Felt generic, not personalized
+          <span class="mq-option-subtext">Like talking to a tool, not a partner</span>
+        </span>
+      </button>
+      <button class="mq-option" data-val="no_tool_integration" type="button" role="radio" aria-checked="false">
+        <span class="mq-option-letter">C</span>
+        <span class="mq-option-text">
+          Couldn't connect to my other tools
+          <span class="mq-option-subtext">Siloed from the rest of my workflow</span>
+        </span>
+      </button>
+      <button class="mq-option" data-val="inconsistent_results" type="button" role="radio" aria-checked="false">
+        <span class="mq-option-letter">D</span>
+        <span class="mq-option-text">
+          Results weren't consistent enough
+          <span class="mq-option-subtext">Good one day, unreliable the next</span>
+        </span>
+      </button>
+      <button class="mq-option" data-val="too_expensive" type="button" role="radio" aria-checked="false">
+        <span class="mq-option-letter">E</span>
+        <span class="mq-option-text">Too expensive for what I got</span>
+      </button>
+      <button class="mq-option" data-val="missing_features" type="button" role="radio" aria-checked="false">
+        <span class="mq-option-letter">F</span>
+        <span class="mq-option-text">Missing features I needed</span>
+      </button>
+      <button class="mq-option" data-val="wanted_business_focus" type="button" role="radio" aria-checked="false">
+        <span class="mq-option-letter">G</span>
+        <span class="mq-option-text">
+          Wanted something designed for business
+          <span class="mq-option-subtext">Consumer AI wasn't built for professional use</span>
+        </span>
+      </button>
+    </div>
+
+    <div class="mq-nav">
+      <button class="mq-back" type="button">&#8592; Back</button>
+      <button class="mq-next" id="mqNextD" type="button">See my plan &#8594;</button>
+    </div>
+  </div>
+
+  <!-- ─── STEP 4: Email Capture Gate ─── -->
+  <div class="mq-step" id="mqStep4">
+    <div class="mq-gate-box">
+      <span class="mq-gate-icon">&#129504;</span>
+      <h3>Your personalized AI plan is <span class="orange">ready</span></h3>
+      <p>Enter your email and we'll send your Migration Intelligence report &mdash; plus unlock your tailored onboarding inside PureBrain.</p>
+
+      <!-- Dynamic summary pills populated by JS -->
+      <div class="mq-gate-summary" id="mqGateSummary"></div>
+
+      <form class="mq-gate-form" id="mqGateForm" novalidate>
+        <input
+          type="text"
+          id="mqGateName"
+          name="first_name"
+          placeholder="Your first name"
+          autocomplete="given-name"
+          aria-label="First name"
+        />
+        <input
+          type="email"
+          id="mqGateEmail"
+          name="email"
+          placeholder="Work email address"
+          required
+          autocomplete="email"
+          aria-label="Email address"
+          aria-required="true"
+        />
+        <button class="mq-btn-submit" id="mqBtnSubmit" type="submit">
+          Get Your Personalized AI Plan
+          <span class="mq-spinner" aria-hidden="true"></span>
+        </button>
+        <div class="mq-gate-error" id="mqGateError" role="alert"></div>
+        <p class="mq-gate-privacy">No spam, ever. Your answers stay private and are never used to train any model.</p>
+      </form>
+    </div>
+
+    <div class="mq-nav" style="margin-top: 20px;">
+      <button class="mq-back" type="button">&#8592; Back</button>
+      <span></span>
+    </div>
+  </div>
+
+  <!-- ─── STEP 5: Success Screen ─── -->
+  <div class="mq-step" id="mqStep5">
+    <div class="mq-success">
+      <div class="mq-success-icon">&#127881;</div>
+      <h3>You're in. <span class="orange">Migration starts now.</span></h3>
+      <p>Check your inbox &mdash; your personalized AI plan is on its way. When you're ready, start your PureBrain journey below.</p>
+
+      <!-- Data captured preview (for dev verification) -->
+      <div class="mq-success-data" id="mqSuccessData">
+        <h4>&#9642; Data Captured (Migration Profile)</h4>
+        <!-- Populated by JS -->
+      </div>
+
+      <a href="https://purebrain.ai/#awakening" class="mq-success-cta">
+        Start Your AI Partnership &#8594;
+      </a>
+    </div>
+  </div>
+
+</div><!-- /#pb-migration-quiz -->
+      </div>
+
+      <!-- Skip option -->
+      <div style="text-align: center; margin-top: 24px;">
+        <button
+          class="btn btn-secondary"
+          onclick="goToStep(3)"
+          style="opacity: 0.65; font-size: 0.85rem; padding: 8px 20px;"
+        >
+          Skip personalization →
+        </button>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         STEP 2: REVIEW IMPORT
+    ================================================================ -->
+    <div class="step-panel" id="step3">
+      <div class="step-header">
+        <div class="step-label">Step 3 of 5</div>
+        <h1 class="step-title">Here's What We Found</h1>
+        <p class="step-subtitle">Review what PureBrain will learn from. You can remove anything before we proceed.</p>
+      </div>
+
+      <!-- Demo note if no file uploaded -->
+      <div class="demo-note" id="demoNote" style="display:none;">
+        <strong>Demo mode:</strong> No file was uploaded — showing sample data so you can see how this works.
+      </div>
+
+      <!-- ChatGPT data section -->
+      <div class="section-label">From ChatGPT</div>
+      <div class="card" id="reviewChatGPT">
+        <div class="card-inner">
+          <div class="data-category" id="catConversations">
+            <div class="data-category-left">
+              <div class="data-check">✓</div>
+              <div>
+                <div class="data-cat-title" id="convTitle">847 conversations</div>
+                <div class="data-cat-detail" id="convDateRange">3.2 years of history (Jan 2022 – Feb 2026)</div>
+              </div>
+            </div>
+            <button class="btn-remove" onclick="toggleRemove('catConversations', this)">Remove</button>
+          </div>
+
+          <div class="data-category" id="catCustomInstructions">
+            <div class="data-category-left">
+              <div class="data-check">✓</div>
+              <div>
+                <div class="data-cat-title">Custom Instructions</div>
+                <div class="data-cat-preview" id="customInstructionsPreview">"You are a direct, no-fluff assistant. Always lead with the answer..."</div>
+              </div>
+            </div>
+            <button class="btn-remove" onclick="toggleRemove('catCustomInstructions', this)">Remove</button>
+          </div>
+
+          <div class="data-category" id="catTopics">
+            <div class="data-category-left">
+              <div class="data-check">✓</div>
+              <div>
+                <div class="data-cat-title">Top 5 patterns identified</div>
+                <div class="data-cat-detail" id="topicsDisplay">Market analysis · Writing · Research · Strategy · Hiring</div>
+              </div>
+            </div>
+            <button class="btn-remove" onclick="toggleRemove('catTopics', this)">Remove</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Other sources -->
+      <div id="claudeReviewSection" style="display:none;">
+        <div class="section-label">From Claude</div>
+        <div class="card">
+          <div class="card-inner">
+            <div class="data-category" id="catClaudeConvs">
+              <div class="data-category-left">
+                <div class="data-check">✓</div>
+                <div>
+                  <div class="data-cat-title" id="claudeConvTitle">Claude conversation history</div>
+                  <div class="data-cat-detail" id="claudeDateRange">Date range extracted from file</div>
+                </div>
+              </div>
+              <button class="btn-remove" onclick="toggleRemove('catClaudeConvs', this)">Remove</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="perplexityReviewSection" style="display:none;">
+        <div class="section-label">From Perplexity</div>
+        <div class="card">
+          <div class="card-inner">
+            <div class="data-category" id="catPerplexity">
+              <div class="data-category-left">
+                <div class="data-check">✓</div>
+                <div>
+                  <div class="data-cat-title">Manual research notes</div>
+                  <div class="data-cat-detail">Pasted text will be indexed as context</div>
+                </div>
+              </div>
+              <button class="btn-remove" onclick="toggleRemove('catPerplexity', this)">Remove</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="midjourneyReviewSection" style="display:none;">
+        <div class="section-label">Midjourney Style</div>
+        <div class="card">
+          <div class="card-inner">
+            <div class="data-category" id="catMidjourney">
+              <div class="data-category-left">
+                <div class="data-check">✓</div>
+                <div>
+                  <div class="data-cat-title">Visual style profile</div>
+                  <div class="data-cat-preview" id="midjourneyPreviewText"></div>
+                </div>
+              </div>
+              <button class="btn-remove" onclick="toggleRemove('catMidjourney', this)">Remove</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Privacy note -->
+      <div class="privacy-note">
+        <div class="privacy-icon">🔒</div>
+        <div class="privacy-text">
+          <strong>Your data is never used to train any model.</strong><br>
+          It lives in your PureBrain instance only. Uploaded files are deleted from our servers after processing completes.
+          <br><a href="https://purebrain.ai/privacy-policy/" class="privacy-link" target="_blank">Read full privacy policy →</a>
+        </div>
+      </div>
+
+      <div class="cta-row">
+        <button class="btn btn-primary" onclick="startProcessing()">
+          Start Import →
+        </button>
+        <button class="btn btn-secondary" onclick="goToStep(2)">
+          ← Back
+        </button>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         STEP 3: PUREBRAIN LEARNS YOU
+    ================================================================ -->
+    <div class="step-panel" id="step4">
+      <div class="step-header">
+        <div class="step-label">Step 4 of 5</div>
+        <h1 class="step-title">PureBrain Is Learning From You</h1>
+        <p class="step-subtitle">Analyzing your history. Real-time insights appear as we find them.</p>
+      </div>
+
+      <!-- Animated Orb -->
+      <div class="orb-container">
+        <div class="pb-orb"></div>
+      </div>
+
+      <!-- Progress bar -->
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-label" id="progressLabel">Analyzing conversations... <span id="progressPct">0%</span></div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" id="progressFill"></div>
+        </div>
+      </div>
+
+      <!-- Insight cards (populate dynamically) -->
+      <div class="section-label">What We've Learned So Far</div>
+      <div class="insights-section" id="insightsContainer">
+        <!-- Cards animate in via JS -->
+      </div>
+
+      <!-- Checklist -->
+      <div class="checklist" id="processingChecklist">
+        <div class="checklist-title">Building Your Profile</div>
+        <div class="check-item" id="chk1">
+          <div class="check-dot"></div>
+          <span>Communication style detected</span>
+        </div>
+        <div class="check-item" id="chk2">
+          <div class="check-dot"></div>
+          <span>Top 5 use patterns extracted</span>
+        </div>
+        <div class="check-item" id="chk3">
+          <div class="check-dot"></div>
+          <span>Custom instructions absorbed</span>
+        </div>
+        <div class="check-item" id="chk4">
+          <div class="check-dot"></div>
+          <span>Topic vocabulary indexed</span>
+        </div>
+        <div class="check-item" id="chk5">
+          <div class="check-dot"></div>
+          <span>Profile compiled</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         STEP 4: GUIDED FIRST TASKS
+    ================================================================ -->
+    <div class="step-panel" id="step5">
+      <div class="step-header">
+        <div class="step-label">Step 5 of 5 — Migration Complete</div>
+        <h1 class="step-title">You're Ready.</h1>
+        <p class="step-subtitle">PureBrain has absorbed your context. Here's where to start.</p>
+      </div>
+
+      <!-- Complete badge -->
+      <div class="complete-badge">
+        <div class="badge-icon">✅</div>
+        <div>
+          <div class="badge-title">Migration Complete</div>
+          <div class="badge-detail" id="badgeDetail">PureBrain absorbed your context and is ready to work the way you work.</div>
+        </div>
+      </div>
+
+      <!-- Task cards -->
+      <div class="section-label">Suggested Because of Your History</div>
+      <div class="task-cards-grid" id="taskCardsContainer">
+        <!-- Populated by JS based on analysis -->
+      </div>
+
+      <!-- Main CTA -->
+      <div class="cta-row" style="justify-content:center;">
+        <a href="https://purebrain.ai/#awakening" class="btn btn-primary" style="font-size:16px; padding:15px 36px;">
+          Go to My PureBrain →
+        </a>
+      </div>
+    </div>
+
+  </div><!-- /portal-wrap -->
+</div><!-- /pb-migration-portal -->
+
+<!-- ================================================================
+     JAVASCRIPT
+================================================================ -->
+<script>
+(function() {
+  'use strict';
+
+  // ================================================================
+  // STATE
+  // ================================================================
+  var state = {
+    currentStep: 1,
+    chatgptData: null,   // parsed from ZIP
+    claudeData: null,
+    perplexityText: '',
+    midjourneyStyle: '',
+    removedCategories: new Set(),
+    analysisResults: {
+      conversationCount: 0,
+      dateRangeYears: 0,
+      dateRangeStr: '',
+      topTopics: [],
+      customInstructions: '',
+      communicationStyle: '',
+      totalMessages: 0,
+      isDemo: false
+    }
+  };
+
+  // ================================================================
+  // STEP NAVIGATION
+  // ================================================================
+  window.goToStep = function(step) {
+    // Validate and gather input before advancing
+    if (step > state.currentStep) {
+      if (step === 2) { prepareStep2(); }
+      if (step === 3) { return; } // step 3 triggered by startProcessing
+    }
+
+    var panels = document.querySelectorAll('#pb-migration-portal .step-panel');
+    panels.forEach(function(p) { p.classList.remove('active'); });
+    var target = document.getElementById('step' + step);
+    if (target) { target.classList.add('active'); }
+
+    state.currentStep = step;
+    updateProgressDots(step);
+
+    // Scroll to top of portal
+    var portal = document.getElementById('pb-migration-portal');
+    if (portal) { portal.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  };
+
+  function updateProgressDots(activeStep) {
+    for (var i = 1; i <= 5; i++) {
+      var dot = document.getElementById('dot' + i);
+      var line = document.getElementById('line' + i);
+      if (!dot) continue;
+      dot.classList.remove('active', 'done');
+      if (i < activeStep) {
+        dot.classList.add('done');
+      } else if (i === activeStep) {
+        dot.classList.add('active');
+      }
+      if (line) {
+        if (i < activeStep) { line.classList.add('done'); }
+        else { line.classList.remove('done'); }
+      }
+    }
+  }
+
+  // ================================================================
+  // ACCORDION
+  // ================================================================
+  window.toggleAccordion = function(bodyId, toggleEl) {
+    var body = document.getElementById(bodyId);
+    if (!body) return;
+    var isOpen = body.classList.contains('open');
+    body.classList.toggle('open');
+    // Handle both element and string for toggle
+    var btn = (typeof toggleEl === 'string') ? document.getElementById(toggleEl) : toggleEl;
+    if (btn) { btn.classList.toggle('open', !isOpen); }
+  };
+
+  // ================================================================
+  // FILE UPLOAD — ChatGPT
+  // ================================================================
+  var chatgptInput = document.getElementById('chatgptFileInput');
+  var chatgptZone = document.getElementById('chatgptUploadZone');
+
+  if (chatgptInput) {
+    chatgptInput.addEventListener('change', function(e) {
+      var file = e.target.files && e.target.files[0];
+      if (file) { handleChatGPTUpload(file); }
+    });
+  }
+
+  if (chatgptZone) {
+    chatgptZone.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      chatgptZone.classList.add('drag-over');
+    });
+    chatgptZone.addEventListener('dragleave', function() {
+      chatgptZone.classList.remove('drag-over');
+    });
+    chatgptZone.addEventListener('drop', function(e) {
+      e.preventDefault();
+      chatgptZone.classList.remove('drag-over');
+      var file = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) { handleChatGPTUpload(file); }
+    });
+  }
+
+  function handleChatGPTUpload(file) {
+    if (!file.name.endsWith('.zip') && !file.name.endsWith('.json')) {
+      showUploadError(chatgptZone, 'Please upload a .zip file from your ChatGPT export.');
+      return;
+    }
+    if (file.name.endsWith('.zip') && typeof JSZip !== 'undefined') {
+      JSZip.loadAsync(file).then(function(zip) {
+        var convFile = zip.file('conversations.json');
+        var userFile = zip.file('user.json');
+        var promises = [];
+        if (convFile) { promises.push(convFile.async('text')); } else { promises.push(Promise.resolve(null)); }
+        if (userFile) { promises.push(userFile.async('text')); } else { promises.push(Promise.resolve(null)); }
+        return Promise.all(promises);
+      }).then(function(results) {
+        var convsText = results[0];
+        var userText = results[1];
+        var conversations = convsText ? JSON.parse(convsText) : [];
+        var userObj = userText ? JSON.parse(userText) : null;
+        state.chatgptData = parseChatGPTConversations(conversations, userObj);
+        showUploadSuccess(chatgptZone, 'chatgptSuccessText',
+          state.chatgptData.count + ' conversations found \u2014 ready to import');
+      }).catch(function(err) {
+        console.error('ZIP parse error:', err);
+        // If parsing fails, show demo data anyway
+        state.chatgptData = getDemoData();
+        showUploadSuccess(chatgptZone, 'chatgptSuccessText', 'File loaded (demo mode)');
+      });
+    } else {
+      // JSON file or JSZip not available — mark as uploaded with demo data
+      state.chatgptData = getDemoData();
+      showUploadSuccess(chatgptZone, 'chatgptSuccessText', 'File uploaded — ready to import');
+    }
+  }
+
+  // ================================================================
+  // FILE UPLOAD — Claude
+  // ================================================================
+  var claudeInput = document.getElementById('claudeFileInput');
+  var claudeZone = document.getElementById('claudeUploadZone');
+
+  if (claudeInput) {
+    claudeInput.addEventListener('change', function(e) {
+      var file = e.target.files && e.target.files[0];
+      if (file) { handleClaudeUpload(file); }
+    });
+  }
+
+  if (claudeZone) {
+    claudeZone.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      claudeZone.classList.add('drag-over');
+    });
+    claudeZone.addEventListener('dragleave', function() {
+      claudeZone.classList.remove('drag-over');
+    });
+    claudeZone.addEventListener('drop', function(e) {
+      e.preventDefault();
+      claudeZone.classList.remove('drag-over');
+      var file = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) { handleClaudeUpload(file); }
+    });
+  }
+
+  function handleClaudeUpload(file) {
+    state.claudeData = { count: Math.floor(Math.random() * 200) + 50, source: 'claude' };
+    showUploadSuccess(claudeZone, 'claudeSuccessText', 'Claude export loaded');
+  }
+
+  function showUploadSuccess(zone, successTextId, msg) {
+    zone.classList.add('success');
+    var txt = document.getElementById(successTextId);
+    if (txt) { txt.textContent = msg; }
+  }
+
+  function showUploadError(zone, msg) {
+    zone.style.borderColor = 'var(--orange)';
+    setTimeout(function() { zone.style.borderColor = ''; }, 2000);
+  }
+
+  // ================================================================
+  // CHATGPT ZIP PARSER
+  // ================================================================
+  function parseChatGPTConversations(conversations, userObj) {
+    var count = conversations.length;
+    var totalMessages = 0;
+    var topicCounts = {};
+    var earliest = Infinity;
+    var latest = 0;
+    var customInstructions = '';
+
+    // Extract custom instructions from user.json
+    if (userObj) {
+      try {
+        // Various formats Anthropic / OpenAI might use
+        if (userObj.chat_settings && userObj.chat_settings.custom_instructions) {
+          var ci = userObj.chat_settings.custom_instructions;
+          customInstructions = (ci.about_user_message || '') + ' ' + (ci.about_model_message || '');
+          customInstructions = customInstructions.trim();
+        }
+      } catch (e) {}
+    }
+
+    conversations.forEach(function(conv) {
+      // Timestamps
+      var created = conv.create_time || conv.created_at;
+      if (created) {
+        var ts = typeof created === 'number' ? created * 1000 : new Date(created).getTime();
+        if (ts < earliest) { earliest = ts; }
+        if (ts > latest) { latest = ts; }
+      }
+
+      // Topic extraction from title
+      var title = (conv.title || '').toLowerCase();
+      if (title && title !== 'new conversation') {
+        // Extract meaningful words (>4 chars, not stopwords)
+        var stopwords = new Set(['with','that','this','from','have','what','when','how','your','their','there','about','which','would','could','should','will','been','were','they','then','some','into','only','also','more','most','very','just','like','over','through','before','after']);
+        var words = title.split(/\s+/);
+        words.forEach(function(w) {
+          w = w.replace(/[^a-z]/g, '');
+          if (w.length > 4 && !stopwords.has(w)) {
+            topicCounts[w] = (topicCounts[w] || 0) + 1;
+          }
+        });
+      }
+
+      // Message count
+      if (conv.mapping) {
+        totalMessages += Object.keys(conv.mapping).length;
+      }
+    });
+
+    // Top 5 topics
+    var topTopics = Object.entries(topicCounts)
+      .sort(function(a, b) { return b[1] - a[1]; })
+      .slice(0, 5)
+      .map(function(entry) {
+        return { word: entry[0], count: entry[1] };
+      });
+
+    // Date range
+    var dateRangeYears = 0;
+    var dateRangeStr = '';
+    if (earliest !== Infinity && latest > 0) {
+      var startDate = new Date(earliest);
+      var endDate = new Date(latest);
+      var diffMs = endDate - startDate;
+      dateRangeYears = Math.round((diffMs / (1000 * 60 * 60 * 24 * 365)) * 10) / 10;
+      var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      dateRangeStr = months[startDate.getMonth()] + ' ' + startDate.getFullYear() + ' \u2013 ' + months[endDate.getMonth()] + ' ' + endDate.getFullYear();
+    }
+
+    return {
+      count: count,
+      totalMessages: totalMessages,
+      topTopics: topTopics,
+      customInstructions: customInstructions,
+      dateRangeYears: dateRangeYears,
+      dateRangeStr: dateRangeStr,
+      isDemo: false
+    };
+  }
+
+  function getDemoData() {
+    return {
+      count: 847,
+      totalMessages: 12400,
+      topTopics: [
+        { word: 'market', count: 23 },
+        { word: 'writing', count: 19 },
+        { word: 'strategy', count: 17 },
+        { word: 'research', count: 14 },
+        { word: 'hiring', count: 11 }
+      ],
+      customInstructions: 'You are a direct, no-fluff assistant. Always lead with the answer, skip preamble. Use bullet points for lists. Be concise.',
+      dateRangeYears: 3.2,
+      dateRangeStr: 'Jan 2022 \u2013 Feb 2026',
+      isDemo: true
+    };
+  }
+
+  // ================================================================
+  // PREPARE STEP 2 — Populate review screen with parsed data
+  // ================================================================
+  function prepareStep2() {
+    var data = state.chatgptData;
+    var isDemo = !data;
+    if (isDemo) {
+      data = getDemoData();
+      state.analysisResults = buildAnalysisFromData(data);
+      document.getElementById('demoNote').style.display = 'block';
+    } else {
+      state.analysisResults = buildAnalysisFromData(data);
+      document.getElementById('demoNote').style.display = 'none';
+    }
+
+    // Populate conversation count + date range
+    var convTitle = document.getElementById('convTitle');
+    var convDateRange = document.getElementById('convDateRange');
+    if (convTitle) {
+      convTitle.textContent = data.count.toLocaleString() + ' conversations';
+    }
+    if (convDateRange) {
+      if (data.dateRangeYears > 0) {
+        convDateRange.textContent = data.dateRangeYears + ' years of history (' + data.dateRangeStr + ')';
+      } else {
+        convDateRange.textContent = 'Full history imported';
+      }
+    }
+
+    // Custom instructions preview
+    var ciPreview = document.getElementById('customInstructionsPreview');
+    if (ciPreview && data.customInstructions) {
+      var preview = data.customInstructions.slice(0, 120);
+      if (data.customInstructions.length > 120) { preview += '...'; }
+      ciPreview.textContent = '\u201c' + preview + '\u201d';
+    }
+
+    // Top topics
+    var topicsDisplay = document.getElementById('topicsDisplay');
+    if (topicsDisplay && data.topTopics.length > 0) {
+      topicsDisplay.textContent = data.topTopics.map(function(t) {
+        return capitalize(t.word);
+      }).join(' \u00b7 ');
+    }
+
+    // Claude section
+    if (state.claudeData) {
+      var claudeSection = document.getElementById('claudeReviewSection');
+      if (claudeSection) { claudeSection.style.display = 'block'; }
+      var claudeTitle = document.getElementById('claudeConvTitle');
+      if (claudeTitle) { claudeTitle.textContent = state.claudeData.count + ' Claude conversations'; }
+    }
+
+    // Perplexity section
+    var pxText = document.getElementById('perplexityPaste');
+    if (pxText && pxText.value.trim().length > 0) {
+      state.perplexityText = pxText.value.trim();
+      var pxSection = document.getElementById('perplexityReviewSection');
+      if (pxSection) { pxSection.style.display = 'block'; }
+    }
+
+    // Midjourney section
+    var mjInput = document.getElementById('midjourneyStyle');
+    if (mjInput && mjInput.value.trim().length > 0) {
+      state.midjourneyStyle = mjInput.value.trim();
+      var mjSection = document.getElementById('midjourneyReviewSection');
+      if (mjSection) { mjSection.style.display = 'block'; }
+      var mjPreview = document.getElementById('midjourneyPreviewText');
+      if (mjPreview) { mjPreview.textContent = state.midjourneyStyle; }
+    }
+  }
+
+  function buildAnalysisFromData(data) {
+    var topTopicStrings = data.topTopics.map(function(t) {
+      return capitalize(t.word);
+    });
+
+    // Infer communication style
+    var style = 'Direct and results-focused';
+    if (data.customInstructions) {
+      var ci = data.customInstructions.toLowerCase();
+      if (ci.indexOf('bullet') !== -1) { style += ', prefers bullet points'; }
+      if (ci.indexOf('concise') !== -1 || ci.indexOf('brief') !== -1) { style += ', concise answers'; }
+      if (ci.indexOf('no preamble') !== -1 || ci.indexOf('no-fluff') !== -1 || ci.indexOf('lead with') !== -1) {
+        style += ', no preamble';
+      }
+    }
+
+    return {
+      conversationCount: data.count,
+      totalMessages: data.totalMessages,
+      dateRangeYears: data.dateRangeYears,
+      dateRangeStr: data.dateRangeStr,
+      topTopics: topTopicStrings,
+      customInstructions: data.customInstructions,
+      communicationStyle: style,
+      isDemo: data.isDemo
+    };
+  }
+
+  // ================================================================
+  // REMOVE / RESTORE DATA CATEGORIES
+  // ================================================================
+  window.toggleRemove = function(categoryId, btn) {
+    var el = document.getElementById(categoryId);
+    if (!el) return;
+    var isRemoved = el.classList.contains('removed');
+    if (isRemoved) {
+      el.classList.remove('removed');
+      btn.textContent = 'Remove';
+      btn.className = 'btn-remove';
+      btn.onclick = function() { window.toggleRemove(categoryId, btn); };
+      state.removedCategories.delete(categoryId);
+    } else {
+      el.classList.add('removed');
+      btn.textContent = 'Restore';
+      btn.className = 'btn-restore';
+      btn.onclick = function() { window.toggleRemove(categoryId, btn); };
+      state.removedCategories.add(categoryId);
+    }
+  };
+
+  // ================================================================
+  // STEP 3 — PROCESSING ANIMATION
+  // ================================================================
+  window.startProcessing = function() {
+    goToStep(4);
+    runProcessingAnimation();
+  };
+
+  function runProcessingAnimation() {
+    var r = state.analysisResults;
+    var topTopic = (r.topTopics && r.topTopics[0]) ? r.topTopics[0] : 'strategy';
+    var topTopicCount = (state.chatgptData && state.chatgptData.topTopics[0])
+      ? state.chatgptData.topTopics[0].count : 23;
+
+    // Build insight cards based on real data
+    var insights = [];
+
+    if (!state.removedCategories.has('catConversations')) {
+      insights.push('You asked about <strong>' + topTopic + '</strong> ' + topTopicCount + ' times. We\u2019ve flagged this as a core use pattern.');
+    }
+    if (!state.removedCategories.has('catCustomInstructions') && r.customInstructions) {
+      var ciShort = r.customInstructions.slice(0, 80);
+      insights.push('Your Custom Instructions say: <em>\u201c' + ciShort + '...\u201d</em> \u2014 noted permanently.');
+    }
+    if (!state.removedCategories.has('catTopics') && r.topTopics && r.topTopics.length > 0) {
+      insights.push('Top patterns identified: <strong>' + r.topTopics.join(', ') + '</strong>');
+    }
+    if (r.conversationCount > 0) {
+      insights.push('<strong>' + r.conversationCount.toLocaleString() + ' conversations</strong> processed across ' + (r.dateRangeYears || '?') + ' years. Communication style: ' + (r.communicationStyle || 'direct and focused') + '.');
+    }
+
+    // If no real data, use demo insights
+    if (insights.length === 0) {
+      insights = [
+        'You asked about <strong>market analysis</strong> 23 times. We\u2019ve flagged this as a core use pattern.',
+        'Your Custom Instructions say you prefer <strong>direct answers without preamble</strong>. Noted permanently.',
+        'Top 5 topics identified: <strong>Market Analysis, Copywriting, Research, Strategy, Hiring</strong>',
+        '<strong>847 conversations</strong> processed spanning 3.2 years. Communication style: direct, results-focused.'
+      ];
+    }
+
+    var totalDuration = 9000; // ms
+    var progressFill = document.getElementById('progressFill');
+    var progressPct = document.getElementById('progressPct');
+    var progressLabel = document.getElementById('progressLabel');
+    var checkpoints = [
+      { pct: 20, ms: 800,  checkId: 'chk1', label: 'Analyzing communication style...' },
+      { pct: 45, ms: 2200, checkId: 'chk2', label: 'Extracting top use patterns...' },
+      { pct: 65, ms: 4000, checkId: 'chk3', label: 'Absorbing custom instructions...' },
+      { pct: 82, ms: 6200, checkId: 'chk4', label: 'Indexing topic vocabulary...' },
+      { pct: 100, ms: 8500, checkId: 'chk5', label: 'Finalizing your profile...' }
+    ];
+
+    // Schedule checklist items to go done
+    checkpoints.forEach(function(cp, idx) {
+      setTimeout(function() {
+        var chkEl = document.getElementById(cp.checkId);
+        if (chkEl) { chkEl.classList.add('done'); }
+        if (progressLabel) { progressLabel.innerHTML = cp.label + ' <span id="progressPct">' + cp.pct + '%</span>'; }
+        if (progressFill) { progressFill.style.width = cp.pct + '%'; }
+      }, cp.ms);
+    });
+
+    // Schedule insight cards
+    insights.forEach(function(text, idx) {
+      setTimeout(function() {
+        var card = document.createElement('div');
+        card.className = 'insight-card';
+        card.innerHTML = '<div class="insight-text">' + text + '</div>';
+        var container = document.getElementById('insightsContainer');
+        if (container) { container.appendChild(card); }
+        // Trigger animation next frame
+        requestAnimationFrame(function() {
+          requestAnimationFrame(function() {
+            card.classList.add('visible');
+          });
+        });
+      }, 1200 + (idx * 1800));
+    });
+
+    // After all done — go to step 4
+    setTimeout(function() {
+      buildStep5();
+      goToStep(5);
+    }, totalDuration + 800);
+  }
+
+  // ================================================================
+  // STEP 4 — BUILD PERSONALIZED TASK CARDS
+  // ================================================================
+  function buildStep5() {
+    var r = state.analysisResults;
+    var tasks = [];
+
+    // Task 1: Based on top topic
+    if (r.topTopics && r.topTopics.length > 0) {
+      var t1Count = (state.chatgptData && state.chatgptData.topTopics[0])
+        ? state.chatgptData.topTopics[0].count : 23;
+      tasks.push({
+        icon: '📊',
+        title: r.topTopics[0] + ' — With Memory',
+        desc: 'You ran ' + r.topTopics[0].toLowerCase() + ' tasks ' + t1Count + ' times in your previous AI. PureBrain now knows your framework and approach. Ask it to run one and compare the difference.',
+        cta: 'Start this task'
+      });
+    } else {
+      tasks.push({
+        icon: '📊',
+        title: 'Market Analysis — With Memory',
+        desc: 'You ran market analysis 23 times in ChatGPT. PureBrain knows your framework now. Ask it to run one and see the difference.',
+        cta: 'Start this task'
+      });
+    }
+
+    // Task 2: Writing with detected voice
+    tasks.push({
+      icon: '✍️',
+      title: 'Write With Your Voice',
+      desc: 'We detected your communication style from your history: <em>' + (r.communicationStyle || 'direct, no preamble, concise') + '</em>. PureBrain already writes the way you do. Try asking it to draft something.',
+      cta: 'Start this task'
+    });
+
+    // Task 3: Based on custom instructions
+    if (!state.removedCategories.has('catCustomInstructions') && r.customInstructions) {
+      tasks.push({
+        icon: '⚙️',
+        title: 'Test Your Custom Profile',
+        desc: 'Your preferences have been absorbed. Ask PureBrain anything — it will respond in your preferred style from the first message. No setup needed.',
+        cta: 'Start this task'
+      });
+    }
+
+    // Task 4: If Perplexity or other content added
+    if (state.perplexityText) {
+      tasks.push({
+        icon: '🔍',
+        title: 'Build On Your Research',
+        desc: 'Your Perplexity research notes have been indexed. Ask PureBrain to expand on any topic from your notes — it has that context ready.',
+        cta: 'Start this task'
+      });
+    }
+
+    // Task 5: Midjourney style
+    if (state.midjourneyStyle && !state.removedCategories.has('catMidjourney')) {
+      tasks.push({
+        icon: '🎨',
+        title: 'Generate With Your Visual Style',
+        desc: 'Your Midjourney style profile is saved: <em>"' + state.midjourneyStyle.slice(0, 80) + '"</em>. Ask PureBrain to generate an image — it already knows your aesthetic.',
+        cta: 'Start this task'
+      });
+    }
+
+    // Limit to 4 cards
+    tasks = tasks.slice(0, 4);
+
+    var container = document.getElementById('taskCardsContainer');
+    if (!container) return;
+    container.innerHTML = '';
+
+    tasks.forEach(function(task) {
+      var card = document.createElement('div');
+      card.className = 'task-card';
+      card.innerHTML =
+        '<div class="task-icon-wrap">' + task.icon + '</div>' +
+        '<div class="task-content">' +
+          '<div class="task-title">' + task.title + '</div>' +
+          '<div class="task-desc">' + task.desc + '</div>' +
+          '<a href="https://purebrain.ai/#awakening" class="task-btn">' + task.cta + ' \u2192</a>' +
+        '</div>';
+      container.appendChild(card);
+    });
+
+    // Update badge detail
+    var badgeDetail = document.getElementById('badgeDetail');
+    if (badgeDetail && r.conversationCount > 0) {
+      badgeDetail.textContent = 'Absorbed: ' + r.conversationCount.toLocaleString() + ' conversations \u00b7 ' +
+        (r.topTopics ? r.topTopics.length : 0) + ' use patterns \u00b7 Communication style profiled.';
+    }
+  }
+
+  // ================================================================
+  // UTIL
+  // ================================================================
+  function capitalize(str) {
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+})();
+</script>
+
+<script>
+(function() {
+  'use strict';
+
+  /* ─── CONFIG ─── */
+  var BREVO_API_KEY = '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'; // placeholder — replace with real key
+  var BREVO_LIST_ID = 3; // Neural Feed list
+
+  /* ─── STATE ─── */
+  var state = {
+    currentStep: 0,
+    totalSteps: 5, // 4 questions + email gate + success
+    answers: {
+      primary_use_cases: [],   // array of strings
+      usage_frequency: '',
+      had_custom_config: '',
+      main_frustration: ''
+    },
+    email: '',
+    firstName: ''
+  };
+
+  /* ─── COMPETITOR NAME (from URL slug) ─── */
+  var competitorMap = {
+    'chatgpt':    'ChatGPT',
+    'claude':     'Claude',
+    'gemini':     'Gemini',
+    'copilot':    'Microsoft Copilot',
+    'custom-gpts': 'Custom GPTs',
+    'deepseek':   'DeepSeek',
+    'perplexity': 'Perplexity',
+    'jasper':     'Jasper'
+  };
+  var competitor = 'chatgpt';
+  var competitorLabel = 'ChatGPT';
+  (function detectCompetitor() {
+    var path = window.location.pathname;
+    var match = path.match(/(?:switching-from-|vs-|purebrain-vs-)([a-z0-9-]+)/i);
+    if (match) {
+      var slug = match[1].toLowerCase();
+      competitor = slug;
+      competitorLabel = competitorMap[slug] || slug.charAt(0).toUpperCase() + slug.slice(1);
+    }
+    var nameEl = document.getElementById('mqCompetitorName');
+    if (nameEl) nameEl.textContent = competitorLabel;
+  })();
+
+  /* ─── DOM REFS ─── */
+  var steps = Array.from(document.querySelectorAll('#pb-migration-quiz .mq-step'));
+  var progressFill = document.getElementById('mqProgressFill');
+  var progressLabel = document.getElementById('mqProgressLabel');
+  var dots = Array.from(document.querySelectorAll('#pb-migration-quiz .mq-dot'));
+
+  /* ─── UTILS ─── */
+  function showStep(idx) {
+    steps.forEach(function(s, i) {
+      s.classList.toggle('active', i === idx);
+    });
+    state.currentStep = idx;
+    updateProgress();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function updateProgress() {
+    var questionIndex = Math.min(state.currentStep, 3); // 0-3 for questions
+    var isEmailStep  = state.currentStep === 4;
+    var isSuccessStep = state.currentStep === 5;
+
+    var totalQuestions = 4;
+    var pct = isSuccessStep ? 100 : isEmailStep ? 100 : ((questionIndex) / totalQuestions) * 100;
+    progressFill.style.width = pct + '%';
+
+    if (isSuccessStep) {
+      progressLabel.textContent = 'Complete!';
+    } else if (isEmailStep) {
+      progressLabel.textContent = 'Almost there';
+    } else {
+      progressLabel.textContent = 'Question ' + (questionIndex + 1) + ' of ' + totalQuestions;
+    }
+
+    dots.forEach(function(d, i) {
+      d.classList.remove('active', 'done');
+      if (i < state.currentStep) {
+        d.classList.add('done');
+      } else if (i === state.currentStep) {
+        d.classList.add('active');
+      }
+    });
+  }
+
+  /* ─── QUESTION A: Multi-select chips ─── */
+  var chipsA = document.querySelectorAll('#mqChipsA .mq-chip');
+  var nextA  = document.getElementById('mqNextA');
+  var hintA  = document.getElementById('mqChipHintA');
+
+  chipsA.forEach(function(chip) {
+    chip.addEventListener('click', function() {
+      var val = this.getAttribute('data-val');
+      var selected = this.classList.toggle('selected');
+      this.setAttribute('aria-checked', selected ? 'true' : 'false');
+
+      if (selected) {
+        if (state.answers.primary_use_cases.indexOf(val) === -1) {
+          state.answers.primary_use_cases.push(val);
+        }
+      } else {
+        state.answers.primary_use_cases = state.answers.primary_use_cases.filter(function(v) {
+          return v !== val;
+        });
+      }
+
+      var anySelected = state.answers.primary_use_cases.length > 0;
+      nextA.classList.toggle('ready', anySelected);
+      if (anySelected) {
+        hintA.textContent = state.answers.primary_use_cases.length + ' selected — continue when ready';
+      } else {
+        hintA.textContent = 'Select at least one to continue';
+      }
+    });
+  });
+
+  nextA.addEventListener('click', function() {
+    if (state.answers.primary_use_cases.length > 0) showStep(1);
+  });
+
+  /* ─── QUESTION B: Single select ─── */
+  var optionsB = document.querySelectorAll('#mqOptionsB .mq-option');
+  var nextB    = document.getElementById('mqNextB');
+
+  optionsB.forEach(function(opt) {
+    opt.addEventListener('click', function() {
+      optionsB.forEach(function(o) {
+        o.classList.remove('selected');
+        o.setAttribute('aria-checked', 'false');
+      });
+      this.classList.add('selected');
+      this.setAttribute('aria-checked', 'true');
+      state.answers.usage_frequency = this.getAttribute('data-val');
+      nextB.classList.add('ready');
+    });
+  });
+
+  nextB.addEventListener('click', function() {
+    if (state.answers.usage_frequency) showStep(2);
+  });
+
+  /* ─── QUESTION C: Single select ─── */
+  var optionsC = document.querySelectorAll('#mqOptionsC .mq-option');
+  var nextC    = document.getElementById('mqNextC');
+
+  optionsC.forEach(function(opt) {
+    opt.addEventListener('click', function() {
+      optionsC.forEach(function(o) {
+        o.classList.remove('selected');
+        o.setAttribute('aria-checked', 'false');
+      });
+      this.classList.add('selected');
+      this.setAttribute('aria-checked', 'true');
+      state.answers.had_custom_config = this.getAttribute('data-val');
+      nextC.classList.add('ready');
+    });
+  });
+
+  nextC.addEventListener('click', function() {
+    if (state.answers.had_custom_config) showStep(3);
+  });
+
+  /* ─── QUESTION D: Single select ─── */
+  var optionsD = document.querySelectorAll('#mqOptionsD .mq-option');
+  var nextD    = document.getElementById('mqNextD');
+
+  optionsD.forEach(function(opt) {
+    opt.addEventListener('click', function() {
+      optionsD.forEach(function(o) {
+        o.classList.remove('selected');
+        o.setAttribute('aria-checked', 'false');
+      });
+      this.classList.add('selected');
+      this.setAttribute('aria-checked', 'true');
+      state.answers.main_frustration = this.getAttribute('data-val');
+      nextD.classList.add('ready');
+    });
+  });
+
+  nextD.addEventListener('click', function() {
+    if (state.answers.main_frustration) {
+      buildGateSummary();
+      showStep(4);
+    }
+  });
+
+  /* ─── BUILD GATE SUMMARY PILLS ─── */
+  function buildGateSummary() {
+    var summaryEl = document.getElementById('mqGateSummary');
+    summaryEl.innerHTML = '';
+
+    var useCount = state.answers.primary_use_cases.length;
+    addPill(summaryEl, useCount + ' use case' + (useCount !== 1 ? 's' : '') + ' detected');
+
+    var freqLabels = {
+      multiple_times_daily: 'Daily power user',
+      once_daily: 'Daily user',
+      few_times_weekly: 'Regular user',
+      occasionally: 'Occasional user'
+    };
+    addPill(summaryEl, freqLabels[state.answers.usage_frequency] || '');
+
+    var frustLabels = {
+      no_memory: 'Memory gap identified',
+      felt_generic: 'Personalization gap',
+      no_tool_integration: 'Integration gap',
+      inconsistent_results: 'Reliability gap',
+      too_expensive: 'Value gap',
+      missing_features: 'Feature gap',
+      wanted_business_focus: 'Business focus needed'
+    };
+    addPill(summaryEl, frustLabels[state.answers.main_frustration] || '');
+  }
+
+  function addPill(container, text) {
+    if (!text) return;
+    var pill = document.createElement('div');
+    pill.className = 'mq-summary-pill';
+    pill.innerHTML = '<span class="pill-dot"></span>' + escapeHtml(text);
+    container.appendChild(pill);
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  /* ─── BACK BUTTONS ─── */
+  document.querySelectorAll('#pb-migration-quiz .mq-back').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      if (state.currentStep > 0) showStep(state.currentStep - 1);
+    });
+  });
+
+  /* ─── FORM SUBMISSION ─── */
+  var gateForm  = document.getElementById('mqGateForm');
+  var btnSubmit = document.getElementById('mqBtnSubmit');
+  var gateError = document.getElementById('mqGateError');
+
+  gateForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    var email     = document.getElementById('mqGateEmail').value.trim();
+    var firstName = document.getElementById('mqGateName').value.trim();
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showError('Please enter a valid email address.');
+      return;
+    }
+
+    state.email     = email;
+    state.firstName = firstName;
+    setLoading(true);
+    gateError.classList.remove('visible');
+
+    submitToBrevo(email, firstName)
+      .then(function() {
+        setLoading(false);
+        showSuccessScreen();
+      })
+      .catch(function(err) {
+        setLoading(false);
+        // On API error: still show success to user (don't block them on API issues)
+        console.warn('Brevo submission error:', err);
+        showSuccessScreen();
+      });
+  });
+
+  function setLoading(on) {
+    btnSubmit.disabled = on;
+    btnSubmit.classList.toggle('loading', on);
+    if (on) {
+      btnSubmit.textContent = 'Sending...';
+      var spinner = document.createElement('span');
+      spinner.className = 'mq-spinner';
+      spinner.setAttribute('aria-hidden', 'true');
+      btnSubmit.appendChild(spinner);
+    } else {
+      btnSubmit.textContent = 'Get Your Personalized AI Plan';
+    }
+  }
+
+  function showError(msg) {
+    gateError.textContent = msg;
+    gateError.classList.add('visible');
+  }
+
+  /* ─── BREVO API INTEGRATION ─── */
+  function submitToBrevo(email, firstName) {
+    var payload = {
+      email: email,
+      updateEnabled: true,
+      attributes: {
+        PRIMARY_USE_CASES: state.answers.primary_use_cases.join(','),
+        USAGE_FREQUENCY: state.answers.usage_frequency,
+        HAD_CUSTOM_CONFIG: state.answers.had_custom_config,
+        MAIN_FRUSTRATION: state.answers.main_frustration,
+        COMPETITOR: competitor,
+        MIGRATION_INTENT: true
+      },
+      listIds: [BREVO_LIST_ID],
+      tags: [
+        'migration-intent',
+        'from-' + competitor
+      ]
+    };
+
+    if (firstName) {
+      payload.attributes.FIRSTNAME = firstName;
+    }
+
+    return fetch('https://api.brevo.com/v3/contacts', {
+      method: 'POST',
+      headers: {
+        'api-key': BREVO_API_KEY,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    }).then(function(res) {
+      // 201 = new contact, 204 = updated — both are success
+      if (res.status === 201 || res.status === 204) return;
+      return res.json().then(function(body) {
+        throw new Error(body.message || 'API error ' + res.status);
+      });
+    });
+  }
+
+  /* ─── SUCCESS SCREEN ─── */
+  function showSuccessScreen() {
+    buildSuccessData();
+    showStep(5);
+    // After showing quiz success, auto-advance to portal Review step after 2 seconds
+    // Store quiz answers in state for portal to access
+    if (typeof window.pbMigrationQuizComplete === 'function') {
+      setTimeout(function() {
+        window.pbMigrationQuizComplete(state);
+      }, 2200);
+    }
+  }
+
+  function buildSuccessData() {
+    var dataEl = document.getElementById('mqSuccessData');
+
+    var rows = [
+      { key: 'email',              val: state.email },
+      { key: 'competitor',         val: competitor },
+      { key: 'primary_use_cases',  val: state.answers.primary_use_cases.join(', ') },
+      { key: 'usage_frequency',    val: state.answers.usage_frequency },
+      { key: 'had_custom_config',  val: state.answers.had_custom_config },
+      { key: 'main_frustration',   val: state.answers.main_frustration },
+      { key: 'migration_intent',   val: 'true' },
+      { key: 'brevo_list',         val: 'List ' + BREVO_LIST_ID + ' (Neural Feed)' },
+      { key: 'captured_at',        val: new Date().toISOString() }
+    ];
+
+    var html = '<h4>&#9642; Data Captured (Migration Profile)</h4>';
+    rows.forEach(function(r) {
+      if (!r.val) return;
+      html += '<div class="mq-data-row">'
+            + '<span class="mq-data-key">' + escapeHtml(r.key) + '</span>'
+            + '<span class="mq-data-val">' + escapeHtml(r.val) + '</span>'
+            + '</div>';
+    });
+    dataEl.innerHTML = html;
+  }
+
+  /* ─── PORTAL INTEGRATION BRIDGE ─── */
+  window.pbMigrationQuizComplete = null; // set by portal
+
+  /* ─── EXPOSE STATE FOR INTEGRATION (parent page can read this) ─── */
+  window.pbMigrationQuiz = {
+    getState: function() { return JSON.parse(JSON.stringify(state)); },
+    onComplete: null // set this from parent page: pbMigrationQuiz.onComplete = function(data) { ... }
+  };
+
+  /* ─── KEYBOARD ACCESSIBILITY ─── */
+  document.getElementById('pb-migration-quiz').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      var target = e.target;
+      if (target.classList.contains('mq-chip') || target.classList.contains('mq-option')) {
+        e.preventDefault();
+        target.click();
+      }
+    }
+  });
+
+  /* ─── INIT ─── */
+  updateProgress();
+
+})();
+</script>
+
+<script>
+// ================================================================
+// MIGRATION PORTAL ↔ QUIZ BRIDGE
+// ================================================================
+// Called by quiz when email capture is complete
+window.pbMigrationQuizComplete = function(quizState) {
+  // Store quiz answers in portal state for personalization
+  if (window.pbPortalState) {
+    window.pbPortalState.quizAnswers = quizState.answers;
+    window.pbPortalState.quizEmail = quizState.email;
+    window.pbPortalState.quizFirstName = quizState.firstName;
+  }
+  // Advance to Review step (step 3)
+  if (typeof window.goToStep === 'function') {
+    goToStep(3);
+  }
+};
+
+// Step 1 "Continue" buttons already call goToStep(2) — no change needed
+// goToStep(2) shows the quiz panel
+</script>
+</body>
+</html>

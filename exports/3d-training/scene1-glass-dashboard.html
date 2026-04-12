@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glass Dashboard Widget — Day 11 | PureBrain</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #060606;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  canvas { display: block; }
+  #info {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.35);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    text-align: center;
+    pointer-events: none;
+  }
+  #label {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.18);
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="label">Gleb Mastery — Day 11 — Glass Dashboard Widget</div>
+<canvas id="c"></canvas>
+<div id="info">Drag to orbit &nbsp;·&nbsp; Scroll to zoom</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ─── Brand Constants ───────────────────────────────────────────────────────
+const BLUE   = new THREE.Color('#2a93c1');
+const ORANGE = new THREE.Color('#f1420b');
+const DARK   = '#060606';
+
+// ─── Renderer ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+// ─── Scene + Camera ───────────────────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x060606, 0.055);
+
+const camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.1, 80);
+camera.position.set(0, 0, 7);
+
+// ─── Controls ─────────────────────────────────────────────────────────────
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance = 3;
+controls.maxDistance = 14;
+controls.maxPolarAngle = Math.PI * 0.58;
+controls.target.set(0, 0, 0);
+
+// ─── Procedural PMREM Environment ─────────────────────────────────────────
+const pmrem = new THREE.PMREMGenerator(renderer);
+pmrem.compileCubemapShader();
+const probeScene = new THREE.Scene();
+const kl = new THREE.PointLight(0x6ec6ff, 10, 40);  kl.position.set(5, 8, 4);
+const fl = new THREE.PointLight(0x2a93c1, 5,  30);  fl.position.set(-6, 2, 3);
+const rl = new THREE.PointLight(0xf1420b, 3,  25);  rl.position.set(2, -2, -6);
+const bl = new THREE.PointLight(0xffffff, 1.5, 20); bl.position.set(0, -5, 0);
+probeScene.add(kl, fl, rl, bl);
+const envTex = pmrem.fromScene(probeScene).texture;
+scene.environment = envTex;
+pmrem.dispose();
+
+// ─── Scene lighting ───────────────────────────────────────────────────────
+const ambientLight = new THREE.AmbientLight(0x0a0a1a, 1.8);
+scene.add(ambientLight);
+
+const keyLight = new THREE.DirectionalLight(0x7ad4ff, 3.5);
+keyLight.position.set(4, 8, 5);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(1024, 1024);
+keyLight.shadow.radius = 4;
+scene.add(keyLight);
+
+const rimLight = new THREE.PointLight(0xf1420b, 2.2, 12);
+rimLight.position.set(-2, -1.5, -3);
+scene.add(rimLight);
+
+const fillLight = new THREE.PointLight(0x2a93c1, 1.5, 18);
+fillLight.position.set(-4, 3, 2);
+scene.add(fillLight);
+
+// ─── Glass Card Helper ────────────────────────────────────────────────────
+function makeGlassCard(w, h, depth, ior = 1.48, roughness = 0.04, color = '#aaddff') {
+  const geo = new THREE.BoxGeometry(w, h, depth, 1, 1, 1);
+  // Bevel the corners by rounding UV — approximation via smooth normals
+  const mat = new THREE.MeshPhysicalMaterial({
+    transmission: 1.0,
+    thickness: depth * 0.9,
+    roughness,
+    ior,
+    iridescence: 0.35,
+    iridescenceIOR: 1.38,
+    iridescenceThicknessRange: [80, 350],
+    clearcoat: 0.75,
+    clearcoatRoughness: 0.02,
+    color: new THREE.Color(color),
+    attenuationColor: BLUE,
+    attenuationDistance: 1.8,
+    envMapIntensity: 3.2,
+    reflectivity: 0.92,
+    specularIntensity: 1.0,
+    specularColor: new THREE.Color('#C8A84A'),
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  return mesh;
+}
+
+// ─── Main Dashboard Card ──────────────────────────────────────────────────
+const mainCard = makeGlassCard(3.8, 2.4, 0.12, 1.50, 0.03);
+scene.add(mainCard);
+
+// Card edge glow ring (orange emissive rim light)
+const edgeGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(3.8, 2.4, 0.12));
+const edgeMat = new THREE.LineBasicMaterial({ color: 0xf1420b, transparent: true, opacity: 0.15 });
+const edgeLines = new THREE.LineSegments(edgeGeo, edgeMat);
+mainCard.add(edgeLines);
+
+// ─── Data Bar System ──────────────────────────────────────────────────────
+// Bars are rendered as emissive quads inside the glass card
+const BAR_COUNT = 6;
+const barGroup = new THREE.Group();
+barGroup.position.z = 0.02; // slightly inside the card front face
+
+const barData = [
+  { label: 'AI Adoption', value: 0.78, color: 0x2a93c1 },
+  { label: 'Model Perf',  value: 0.92, color: 0x3ab8e0 },
+  { label: 'Team Sync',   value: 0.61, color: 0xf1420b },
+  { label: 'API Calls',   value: 0.84, color: 0x2a93c1 },
+  { label: 'Cost Savings',value: 0.71, color: 0xffa040 },
+  { label: 'NPS Score',   value: 0.95, color: 0x3ab8e0 },
+];
+
+const maxBarWidth = 2.8;
+const barHeight = 0.10;
+const barSpacing = 0.28;
+const startY = 0.70;
+
+const bars = [];
+barData.forEach((d, i) => {
+  const barWidth = d.value * maxBarWidth;
+  const geo = new THREE.PlaneGeometry(barWidth, barHeight);
+  const mat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(d.color),
+    transparent: true,
+    opacity: 0.72,
+  });
+  const bar = new THREE.Mesh(geo, mat);
+  bar.position.set(-maxBarWidth / 2 + barWidth / 2 - 0.05, startY - i * barSpacing, 0.001);
+  barGroup.add(bar);
+  bars.push({ mesh: bar, targetValue: d.value, currentValue: 0, maxW: maxBarWidth, color: d.color, mat });
+
+  // Track gutter (background bar)
+  const trackGeo = new THREE.PlaneGeometry(maxBarWidth, barHeight * 0.3);
+  const trackMat = new THREE.MeshBasicMaterial({ color: 0x1a2a3a, transparent: true, opacity: 0.4 });
+  const track = new THREE.Mesh(trackGeo, trackMat);
+  track.position.set(-0.05, startY - i * barSpacing, 0);
+  barGroup.add(track);
+
+  // Dot at bar end
+  const dotGeo = new THREE.CircleGeometry(0.05, 12);
+  const dotMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(d.color), transparent: true, opacity: 0.9 });
+  const dot = new THREE.Mesh(dotGeo, dotMat);
+  dot.position.set(-maxBarWidth / 2 + barWidth - 0.05, startY - i * barSpacing, 0.003);
+  barGroup.add(dot);
+  bar.userData.dot = dot;
+  bar.userData.dotMat = dotMat;
+});
+
+mainCard.add(barGroup);
+
+// ─── Particle Micro-Texture ───────────────────────────────────────────────
+// Floating micro-particles around the card
+const MICRO_COUNT = 400;
+const microPos = new Float32Array(MICRO_COUNT * 3);
+const microCol = new Float32Array(MICRO_COUNT * 3);
+const microSizes = new Float32Array(MICRO_COUNT);
+
+for (let i = 0; i < MICRO_COUNT; i++) {
+  // Concentrate near the card volume
+  const spread = 2.5;
+  microPos[i*3]   = (Math.random() - 0.5) * spread * 1.6;
+  microPos[i*3+1] = (Math.random() - 0.5) * spread;
+  microPos[i*3+2] = (Math.random() - 0.5) * spread * 0.5;
+  microSizes[i] = 0.8 + Math.random() * 1.4;
+  // Blue-orange gradient distribution
+  if (Math.random() < 0.6) {
+    microCol[i*3] = 0.16; microCol[i*3+1] = 0.57; microCol[i*3+2] = 0.76;
+  } else {
+    microCol[i*3] = 0.94; microCol[i*3+1] = 0.26; microCol[i*3+2] = 0.04;
+  }
+}
+
+const microGeo = new THREE.BufferGeometry();
+microGeo.setAttribute('position', new THREE.BufferAttribute(microPos, 3));
+microGeo.setAttribute('color', new THREE.BufferAttribute(microCol, 3));
+microGeo.setAttribute('size', new THREE.BufferAttribute(microSizes, 1));
+
+const microMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 },
+    uPixelRatio: { value: renderer.getPixelRatio() },
+  },
+  vertexShader: `
+    attribute float size;
+    attribute vec3 color;
+    uniform float uTime;
+    varying vec3 vColor;
+    void main() {
+      vColor = color;
+      vec3 pos = position;
+      // Gentle drift animation
+      float id = float(gl_VertexID);
+      pos.y += sin(uTime * 0.4 + id * 0.73) * 0.04;
+      pos.x += cos(uTime * 0.3 + id * 0.53) * 0.02;
+      vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+      gl_Position = projectionMatrix * mvPos;
+      gl_PointSize = size * (200.0 / -mvPos.z);
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vColor;
+    void main() {
+      vec2 uv = gl_PointCoord - 0.5;
+      float d = length(uv);
+      if (d > 0.5) discard;
+      float alpha = (1.0 - d * 2.0) * 0.45;
+      gl_FragColor = vec4(vColor * 1.8, alpha);
+    }
+  `,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  transparent: true,
+  vertexColors: true,
+});
+
+const microParticles = new THREE.Points(microGeo, microMat);
+scene.add(microParticles);
+
+// ─── Floating Sub-Cards ───────────────────────────────────────────────────
+// Smaller glass panels orbiting/floating around main card
+const subCardGroup = new THREE.Group();
+scene.add(subCardGroup);
+
+const subCardDefs = [
+  { w: 1.0, h: 0.6, d: 0.08, pos: [2.4, 0.6, -0.3],  rot: [0, -0.25, 0],    ior: 1.55 },
+  { w: 0.9, h: 0.5, d: 0.08, pos: [-2.4, -0.4, -0.2], rot: [0, 0.20, 0.05], ior: 1.52 },
+  { w: 0.7, h: 0.4, d: 0.07, pos: [2.2, -0.8, 0.2],   rot: [0.1, -0.15, 0], ior: 1.48 },
+];
+
+subCardDefs.forEach(def => {
+  const card = makeGlassCard(def.w, def.h, def.d, def.ior, 0.06, '#bbddff');
+  card.position.set(...def.pos);
+  card.rotation.set(...def.rot);
+  // Mini metric indicator dots
+  for (let k = 0; k < 3; k++) {
+    const dotGeo = new THREE.CircleGeometry(0.04, 8);
+    const dotMat = new THREE.MeshBasicMaterial({
+      color: k === 0 ? 0x2a93c1 : k === 1 ? 0xf1420b : 0x3ab8e0,
+      transparent: true, opacity: 0.8,
+    });
+    const dot = new THREE.Mesh(dotGeo, dotMat);
+    dot.position.set(-def.w/2 + 0.1 + k * 0.12, def.h/2 - 0.10, def.d/2 + 0.001);
+    card.add(dot);
+  }
+  subCardGroup.add(card);
+  card.userData = { basePos: [...def.pos], baseRot: [...def.rot], floatId: Math.random() * 100 };
+});
+
+// ─── Emissive Accent Lines ────────────────────────────────────────────────
+// Horizontal scan lines across card face (data/UI feel)
+const scanLines = [];
+[-0.85, -0.57, -0.29, -0.01].forEach((y, i) => {
+  const geo = new THREE.PlaneGeometry(3.5, 0.003);
+  const mat = new THREE.MeshBasicMaterial({
+    color: i % 2 === 0 ? 0x2a93c1 : 0xf1420b,
+    transparent: true,
+    opacity: 0.12,
+  });
+  const line = new THREE.Mesh(geo, mat);
+  line.position.set(0, y, 0.07);
+  mainCard.add(line);
+  scanLines.push({ mesh: line, mat, baseY: y });
+});
+
+// ─── Corner Glow Orbs ─────────────────────────────────────────────────────
+// Small glowing sphere in each corner
+const cornerPositions = [[-1.8, 1.1], [1.8, 1.1], [-1.8, -1.1], [1.8, -1.1]];
+cornerPositions.forEach(([x, y], i) => {
+  const geo = new THREE.SphereGeometry(0.045, 16, 16);
+  const mat = new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0x2a93c1 : 0xf1420b });
+  const orb = new THREE.Mesh(geo, mat);
+  orb.position.set(x, y, 0.07);
+  mainCard.add(orb);
+});
+
+// ─── Postprocessing ───────────────────────────────────────────────────────
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloom = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.55, 0.45, 0.80
+);
+composer.addPass(bloom);
+
+// Chromatic Aberration + Vignette
+const caVigPass = new ShaderPass({
+  uniforms: {
+    tDiffuse: { value: null },
+    uTime:    { value: 0 },
+    uCA:      { value: 0.0028 },
+    uVig:     { value: 0.68 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uCA;
+    uniform float uVig;
+    varying vec2 vUv;
+    void main() {
+      vec2 center = vUv - 0.5;
+      float dist = length(center);
+      vec2 caDir = normalize(center + vec2(0.001)) * uCA;
+      vec3 col;
+      col.r = texture2D(tDiffuse, vUv + caDir).r;
+      col.g = texture2D(tDiffuse, vUv).g;
+      col.b = texture2D(tDiffuse, vUv - caDir).b;
+      float vig = 1.0 - smoothstep(0.4, 1.2, dist * uVig);
+      gl_FragColor = vec4(col * vig, 1.0);
+    }
+  `,
+});
+composer.addPass(caVigPass);
+composer.addPass(new OutputPass());
+
+// ─── Animation State ──────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+let phase1 = 0, phase2 = 0, phase3 = 0;
+let barAnimProgress = 0;
+
+// ─── Render Loop ──────────────────────────────────────────────────────────
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  const elapsed = clock.getElapsedTime();
+
+  // Multi-frequency float (prime ratios, Gleb method)
+  phase1 += dt * 0.55;
+  phase2 += dt * 0.38;
+  phase3 += dt * 0.22;
+
+  const floatY = Math.sin(phase1) * 0.075 + Math.sin(phase2) * 0.025;
+  const floatX = Math.sin(phase3) * 0.014;
+
+  mainCard.position.y = floatY;
+  mainCard.position.x = floatX;
+  mainCard.rotation.x = Math.sin(phase3 * 0.7) * 0.008;
+  mainCard.rotation.z = Math.sin(phase2 * 0.9) * 0.005;
+
+  // Bar data animation (grow in on first ~2 seconds)
+  if (barAnimProgress < 1.0) {
+    barAnimProgress = Math.min(barAnimProgress + dt * 0.5, 1.0);
+    bars.forEach(b => {
+      const easedProgress = barAnimProgress < 0.5
+        ? 4 * barAnimProgress * barAnimProgress * barAnimProgress
+        : 1 - Math.pow(-2 * barAnimProgress + 2, 3) / 2; // ease-in-out cubic
+      b.currentValue = b.targetValue * easedProgress;
+      const barWidth = b.currentValue * b.maxW;
+      b.mesh.geometry.dispose();
+      b.mesh.geometry = new THREE.PlaneGeometry(Math.max(barWidth, 0.01), 0.10);
+      b.mesh.position.x = -b.maxW / 2 + barWidth / 2 - 0.05;
+      if (b.mesh.userData.dot) {
+        b.mesh.userData.dot.position.x = -b.maxW / 2 + barWidth - 0.05;
+      }
+    });
+  }
+
+  // Bar pulse animation (after fully grown)
+  bars.forEach((b, i) => {
+    const pulse = 0.65 + Math.sin(elapsed * 1.2 + i * 1.05) * 0.12;
+    b.mat.opacity = pulse;
+  });
+
+  // Sub-card floating
+  subCardGroup.children.forEach((card, i) => {
+    const fid = card.userData.floatId;
+    card.position.y = card.userData.basePos[1] + Math.sin(elapsed * 0.42 + fid) * 0.06;
+    card.rotation.y = card.userData.baseRot[1] + Math.sin(elapsed * 0.28 + fid * 0.7) * 0.03;
+  });
+
+  // Scan line shimmer
+  scanLines.forEach((sl, i) => {
+    sl.mat.opacity = 0.06 + Math.sin(elapsed * 0.8 + i * 0.9) * 0.04;
+  });
+
+  // Micro-particle time
+  microMat.uniforms.uTime.value = elapsed;
+  caVigPass.uniforms.uTime.value = elapsed;
+
+  controls.update();
+  composer.render();
+}
+
+animate();
+
+// ─── Resize ───────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  const W = window.innerWidth, H = window.innerHeight;
+  camera.aspect = W / H;
+  camera.updateProjectionMatrix();
+  renderer.setSize(W, H);
+  composer.setSize(W, H);
+  bloom.resolution.set(W, H);
+});
+</script>
+</body>
+</html>

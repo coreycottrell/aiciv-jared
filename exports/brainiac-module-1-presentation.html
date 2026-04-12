@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brainiac — Master Mind Module #1: Foundations</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Oswald:wght@400;500;600;700&display=swap');
+
+  :root {
+    --blue: #2a93c1;
+    --orange: #f1420b;
+    --dark: #080a12;
+    --dark2: #0d1020;
+    --dark3: #111526;
+    --white: #ffffff;
+    --light: #c8d6e5;
+    --muted: #6b7fa3;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: var(--dark);
+    color: var(--white);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* ─── SLIDESHOW ─── */
+  .slideshow {
+    width: 100%;
+    height: 100vh;
+    position: relative;
+  }
+
+  .slide {
+    display: none;
+    width: 100%;
+    height: 100vh;
+    position: absolute;
+    top: 0; left: 0;
+    background: var(--dark);
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 60px;
+    animation: fadeIn 0.4s ease;
+  }
+
+  .slide.active { display: flex; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ─── LOGO ─── */
+  .logo {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 700;
+    font-size: 1.1rem;
+    letter-spacing: 0.06em;
+    position: absolute;
+    top: 28px;
+    left: 48px;
+  }
+  .logo .blue  { color: var(--blue); }
+  .logo .orange { color: var(--orange); }
+
+  /* ─── SLIDE COUNTER ─── */
+  .slide-counter {
+    position: absolute;
+    bottom: 30px;
+    right: 48px;
+    font-size: 0.8rem;
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  /* ─── NAV ARROWS ─── */
+  .nav-btn {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(42,147,193,0.12);
+    border: 1px solid rgba(42,147,193,0.3);
+    color: var(--blue);
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    font-size: 1.3rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s, border-color 0.2s;
+    z-index: 100;
+  }
+  .nav-btn:hover {
+    background: rgba(42,147,193,0.25);
+    border-color: var(--blue);
+  }
+  #prev-btn { left: 20px; }
+  #next-btn { right: 20px; }
+
+  /* ─── PROGRESS BAR ─── */
+  .progress-bar {
+    position: fixed;
+    bottom: 0; left: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--blue), var(--orange));
+    transition: width 0.4s ease;
+    z-index: 200;
+  }
+
+  /* ─── SLIDE: TITLE ─── */
+  .slide-title {
+    text-align: center;
+  }
+  .slide-title .module-tag {
+    display: inline-block;
+    background: rgba(42,147,193,0.15);
+    border: 1px solid rgba(42,147,193,0.4);
+    color: var(--blue);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 6px 18px;
+    border-radius: 20px;
+    margin-bottom: 28px;
+  }
+  .slide-title h1 {
+    font-family: 'Oswald', sans-serif;
+    font-size: clamp(2.8rem, 6vw, 5rem);
+    font-weight: 700;
+    line-height: 1.08;
+    letter-spacing: -0.01em;
+    margin-bottom: 20px;
+  }
+  .slide-title h1 .highlight { color: var(--orange); }
+  .slide-title .subtitle {
+    font-size: 1.2rem;
+    color: var(--light);
+    font-weight: 400;
+    max-width: 520px;
+    margin: 0 auto 40px;
+    line-height: 1.6;
+  }
+  .slide-title .byline {
+    color: var(--muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+
+  /* ─── DIVIDER LINE ─── */
+  .accent-line {
+    width: 60px;
+    height: 3px;
+    background: linear-gradient(90deg, var(--blue), var(--orange));
+    border-radius: 2px;
+    margin: 20px auto;
+  }
+
+  /* ─── SLIDE: CONTENT ─── */
+  .slide-content {
+    width: 100%;
+    max-width: 860px;
+    text-align: left;
+  }
+
+  .section-number {
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--orange);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-number::after {
+    content: '';
+    display: inline-block;
+    width: 30px;
+    height: 2px;
+    background: var(--orange);
+    border-radius: 1px;
+  }
+
+  .slide-content h2 {
+    font-family: 'Oswald', sans-serif;
+    font-size: clamp(2rem, 4.5vw, 3.4rem);
+    font-weight: 700;
+    line-height: 1.1;
+    margin-bottom: 28px;
+    color: var(--white);
+  }
+  .slide-content h2 .blue { color: var(--blue); }
+  .slide-content h2 .orange { color: var(--orange); }
+
+  .point-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .point-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    font-size: 1.05rem;
+    line-height: 1.55;
+    color: var(--light);
+    font-weight: 400;
+  }
+  .point-list li .dot {
+    flex-shrink: 0;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--blue);
+    margin-top: 8px;
+  }
+  .point-list li strong { color: var(--white); font-weight: 700; }
+  .point-list li .tag-orange { color: var(--orange); font-weight: 700; }
+
+  /* ─── CALLOUT BOX ─── */
+  .callout {
+    background: rgba(42,147,193,0.08);
+    border-left: 3px solid var(--blue);
+    border-radius: 0 8px 8px 0;
+    padding: 18px 22px;
+    margin-top: 28px;
+    font-size: 1rem;
+    color: var(--light);
+    line-height: 1.6;
+  }
+  .callout.orange-callout {
+    background: rgba(241,66,11,0.08);
+    border-color: var(--orange);
+  }
+  .callout strong { color: var(--white); }
+
+  /* ─── COMPOUND TIMELINE ─── */
+  .timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 20px;
+  }
+  .timeline-row {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+  .timeline-label {
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--muted);
+    width: 90px;
+    flex-shrink: 0;
+    text-align: right;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .timeline-bar-wrap {
+    flex: 1;
+    background: rgba(255,255,255,0.06);
+    border-radius: 4px;
+    height: 30px;
+    overflow: hidden;
+    position: relative;
+  }
+  .timeline-bar {
+    height: 100%;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    padding-left: 12px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--white);
+    letter-spacing: 0.03em;
+    transition: width 0.8s ease;
+  }
+
+  /* ─── GRID LAYOUT ─── */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-top: 8px;
+  }
+  .card {
+    background: var(--dark3);
+    border: 1px solid rgba(42,147,193,0.18);
+    border-radius: 10px;
+    padding: 22px;
+  }
+  .card h3 {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--blue);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .card p {
+    font-size: 0.92rem;
+    color: var(--light);
+    line-height: 1.6;
+  }
+
+  /* ─── PRO TIPS ─── */
+  .pro-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 8px;
+  }
+  .pro-tip {
+    background: var(--dark3);
+    border: 1px solid rgba(241,66,11,0.2);
+    border-radius: 8px;
+    padding: 16px 18px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .pro-tip .icon {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .pro-tip span {
+    font-size: 0.9rem;
+    color: var(--light);
+    line-height: 1.5;
+  }
+  .pro-tip span strong { color: var(--white); }
+
+  /* ─── CLOSING SLIDE ─── */
+  .slide-closing {
+    text-align: center;
+  }
+  .slide-closing h2 {
+    font-family: 'Oswald', sans-serif;
+    font-size: clamp(2rem, 5vw, 4rem);
+    font-weight: 700;
+    line-height: 1.1;
+    margin-bottom: 20px;
+  }
+  .slide-closing h2 .blue { color: var(--blue); }
+  .slide-closing h2 .orange { color: var(--orange); }
+  .slide-closing p {
+    font-size: 1.1rem;
+    color: var(--light);
+    max-width: 500px;
+    margin: 0 auto 32px;
+    line-height: 1.6;
+  }
+  .badge-row {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+  .badge {
+    background: rgba(42,147,193,0.12);
+    border: 1px solid rgba(42,147,193,0.35);
+    color: var(--blue);
+    border-radius: 20px;
+    padding: 8px 20px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .badge.orange {
+    background: rgba(241,66,11,0.12);
+    border-color: rgba(241,66,11,0.35);
+    color: var(--orange);
+  }
+
+  /* ─── KEYBOARD HINT ─── */
+  .key-hint {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.75rem;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .key-hint kbd {
+    background: var(--dark3);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-family: monospace;
+    font-size: 0.75rem;
+    color: var(--light);
+  }
+</style>
+</head>
+<body>
+
+<div class="slideshow" id="slideshow">
+
+  <!-- ══════════════════ SLIDE 1: TITLE ══════════════════ -->
+  <div class="slide slide-title active" id="slide-1">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="module-tag">Master Mind Series</div>
+    <h1>Brainiac<br><span class="highlight">Module #1</span></h1>
+    <div class="accent-line"></div>
+    <p class="subtitle">Foundations: How to think with your AI — and get exponentially more value from Day 1</p>
+    <p class="byline">Your PureBrain Orientation &nbsp;·&nbsp; 2026</p>
+    <div class="slide-counter" id="counter">1 / 11</div>
+  </div>
+
+  <!-- ══════════════════ SLIDE 2: AGENDA ══════════════════ -->
+  <div class="slide" id="slide-2">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Today's Session</div>
+      <h2>10 Things That Change<br>How You Work <span class="blue">Forever</span></h2>
+      <div class="two-col" style="margin-top:24px;">
+        <div class="card">
+          <h3>Part 1 — Your AI Brain</h3>
+          <p>Persistent Memory · BOOPs · Context Windows · How to Talk to Your AI</p>
+        </div>
+        <div class="card">
+          <h3>Part 2 — Partnership Skills</h3>
+          <p>Rubber Ducking · Status Check-ins · Delegation Practices</p>
+        </div>
+        <div class="card">
+          <h3>Part 3 — The Compound Effect</h3>
+          <p>Day 1 vs Month 6 vs Year 1 — why starting NOW matters</p>
+        </div>
+        <div class="card">
+          <h3>Part 4 — Power User Mode</h3>
+          <p>Pro tips + what's coming in Module #2</p>
+        </div>
+      </div>
+    </div>
+    <div class="slide-counter" id="counter">2 / 11</div>
+  </div>
+
+  <!-- ══════════════════ SLIDE 3: PERSISTENT MEMORY ══════════════════ -->
+  <div class="slide" id="slide-3">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Section 01</div>
+      <h2>Your AI Has <span class="blue">Persistent Memory</span></h2>
+      <ul class="point-list">
+        <li><span class="dot"></span><span>Unlike ChatGPT or vanilla Claude — <strong>your PureBrain remembers you</strong> across every session</span></li>
+        <li><span class="dot"></span><span>It knows your name, your business, your communication style, your goals</span></li>
+        <li><span class="dot"></span><span><strong>Every conversation builds on the last.</strong> You never start from zero again.</span></li>
+        <li><span class="dot"></span><span>The more context you share, the <strong>more valuable it becomes</strong></span></li>
+      </ul>
+      <div class="callout">
+        <strong>The rule:</strong> You only have to say something ONCE. Your AI files it, remembers it, and uses it going forward. Stop repeating yourself.
+      </div>
+    </div>
+    <div class="slide-counter">3 / 11</div>
+  </div>
+
+  <!-- ══════════════════ SLIDE 4: BOOPs ══════════════════ -->
+  <div class="slide" id="slide-4">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Section 02</div>
+      <h2><span class="orange">BOOPs</span> — Your AI Never Clocks Out</h2>
+      <ul class="point-list">
+        <li><span class="dot"></span><span><strong><span class="tag-orange">B</span>ackground <span class="tag-orange">O</span>perational <span class="tag-orange">O</span>ptimization <span class="tag-orange">P</span>rotocols</strong> — automatic check-ins that run on schedule</span></li>
+        <li><span class="dot"></span><span>Your AI handles <strong>routine operations autonomously</strong> — research, monitoring, maintenance</span></li>
+        <li><span class="dot"></span><span>Think of it as an employee who works 24/7 without needing micromanagement</span></li>
+        <li><span class="dot"></span><span>BOOPs keep your systems running even <strong>when you're not watching</strong></span></li>
+      </ul>
+      <div class="callout orange-callout">
+        <strong>What this means for you:</strong> Set it up once, let it run. Your AI is optimizing your business in the background right now.
+      </div>
+    </div>
+    <div class="slide-counter">4 / 11</div>
+  </div>
+
+  <!-- ══════════════════ SLIDE 5: CONTEXT WINDOWS ══════════════════ -->
+  <div class="slide" id="slide-5">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Section 03</div>
+      <h2>Context Windows <span class="blue">&</span> Compacting</h2>
+      <ul class="point-list">
+        <li><span class="dot"></span><span>Your AI has a <strong>context window</strong> — like short-term memory for a single conversation</span></li>
+        <li><span class="dot"></span><span>When it fills up, your AI <strong>"compacts"</strong> — summarizes and keeps going without losing a beat</span></li>
+        <li><span class="dot"></span><span>Your <strong>long-term memory persists</strong> even when context resets — WHO you are never disappears</span></li>
+      </ul>
+      <div class="two-col" style="margin-top:22px;">
+        <div class="card">
+          <h3>Short-Term Memory</h3>
+          <p>Current conversation context. Refreshes when full. Like RAM — temporary, but fast.</p>
+        </div>
+        <div class="card">
+          <h3>Long-Term Memory</h3>
+          <p>Your profile, preferences, history. Permanent. Never resets. This is what makes PureBrain different.</p>
+        </div>
+      </div>
+    </div>
+    <div class="slide-counter">5 / 11</div>
+  </div>
+
+  <!-- ══════════════════ SLIDE 6: HOW TO TALK TO YOUR AI ══════════════════ -->
+  <div class="slide" id="slide-6">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Section 04</div>
+      <h2>How to <span class="orange">Talk</span> to Your AI</h2>
+      <ul class="point-list">
+        <li><span class="dot"></span><span><strong>Be specific</strong> about what you want — vague in, vague out</span></li>
+        <li><span class="dot"></span><span><strong>Share context freely</strong> — your AI stores it, uses it, and gets smarter with every detail</span></li>
+        <li><span class="dot"></span><span><strong>Don't repeat yourself</strong> session to session — it already knows your business</span></li>
+        <li><span class="dot"></span><span><strong>Go deeper, not wider</strong> — follow up and push back, don't just move on</span></li>
+        <li><span class="dot"></span><span>Your AI learns <strong>YOUR vocabulary</strong> over time — it starts speaking your language</span></li>
+      </ul>
+      <div class="callout">
+        <strong>The mindset shift:</strong> Stop treating it like a search engine. Start treating it like a brilliant colleague who has been paying close attention.
+      </div>
+    </div>
+    <div class="slide-counter">6 / 11</div>
+  </div>
+
+  <!-- ══════════════════ SLIDE 7: RUBBER DUCKING ══════════════════ -->
+  <div class="slide" id="slide-7">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Section 05</div>
+      <h2>Rubber Ducking — <span class="blue">Think Out Loud</span></h2>
+      <ul class="point-list">
+        <li><span class="dot"></span><span>Explain your problem to your AI as if teaching someone from scratch</span></li>
+        <li><span class="dot"></span><span><strong>The act of explaining often reveals the solution</strong> — this is documented psychology</span></li>
+        <li><span class="dot"></span><span>Your AI asks <strong>clarifying questions</strong> that sharpen your thinking</span></li>
+        <li><span class="dot"></span><span>It's not just answering — it's a <strong>thinking partner</strong> challenging your assumptions</span></li>
+      </ul>
+      <div class="callout orange-callout">
+        <strong>Try this today:</strong> Next time you're stuck on a business decision, just start typing: "Here's what I'm trying to figure out..." and see what happens.
+      </div>
+    </div>
+    <div class="slide-counter">7 / 11</div>
+  </div>
+
+  <!-- ══════════════════ SLIDE 8: STATUS & DELEGATION ══════════════════ -->
+  <div class="slide" id="slide-8">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Sections 06 + 07</div>
+      <h2>Status Monitoring <span class="blue">&</span> Delegation</h2>
+      <div class="two-col" style="margin-top:16px;">
+        <div>
+          <p style="color:var(--blue);font-weight:700;margin-bottom:14px;font-family:'Oswald',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-size:0.9rem;">Status Check-Ins</p>
+          <ul class="point-list">
+            <li><span class="dot"></span><span>Ask your AI what it's been working on</span></li>
+            <li><span class="dot"></span><span>Request project status updates</span></li>
+            <li><span class="dot"></span><span>It can <strong>proactively flag issues</strong> before they become problems</span></li>
+            <li><span class="dot"></span><span>Think daily standups with your AI</span></li>
+          </ul>
+        </div>
+        <div>
+          <p style="color:var(--orange);font-weight:700;margin-bottom:14px;font-family:'Oswald',sans-serif;letter-spacing:0.06em;text-transform:uppercase;font-size:0.9rem;">Delegation</p>
+          <ul class="point-list">
+            <li><span class="dot"></span><span>Give your AI <strong>ownership</strong> of recurring tasks</span></li>
+            <li><span class="dot"></span><span>Tell it WHAT — let it figure out HOW</span></li>
+            <li><span class="dot"></span><span>Start small, build trust, expand scope</span></li>
+            <li><span class="dot"></span><span>Clear on <strong>outcomes</strong>, not steps</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="slide-counter">8 / 11</div>
+  </div>
+
+  <!-- ══════════════════ SLIDE 9: THE COMPOUND EFFECT ══════════════════ -->
+  <div class="slide" id="slide-9">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Section 08</div>
+      <h2>The <span class="orange">Compound</span> Effect</h2>
+      <div class="timeline">
+        <div class="timeline-row">
+          <span class="timeline-label">Week 1</span>
+          <div class="timeline-bar-wrap">
+            <div class="timeline-bar" style="width:20%;background:linear-gradient(90deg,#1d5f7a,#2a93c1);">Learning you</div>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <span class="timeline-label">Month 1</span>
+          <div class="timeline-bar-wrap">
+            <div class="timeline-bar" style="width:40%;background:linear-gradient(90deg,#2a93c1,#1e7ba8);">Anticipating your needs</div>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <span class="timeline-label">Month 3</span>
+          <div class="timeline-bar-wrap">
+            <div class="timeline-bar" style="width:65%;background:linear-gradient(90deg,#c94a1a,#f1420b);">Genuinely irreplaceable</div>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <span class="timeline-label">Month 6+</span>
+          <div class="timeline-bar-wrap">
+            <div class="timeline-bar" style="width:92%;background:linear-gradient(90deg,#f1420b,#c94a1a);">Knows your biz better than most employees</div>
+          </div>
+        </div>
+      </div>
+      <div class="callout" style="margin-top:22px;">
+        <strong>The earlier you start, the bigger your advantage.</strong> Your competitors will spend years building what you're building right now.
+      </div>
+    </div>
+    <div class="slide-counter">9 / 11</div>
+  </div>
+
+  <!-- ══════════════════ SLIDE 10: PRO TIPS ══════════════════ -->
+  <div class="slide" id="slide-10">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Section 09</div>
+      <h2>Pro Tips for <span class="blue">Power Users</span></h2>
+      <div class="pro-grid">
+        <div class="pro-tip">
+          <span class="icon">🌅</span>
+          <span><strong>Morning Briefings</strong> — Start every day with an AI status rundown</span>
+        </div>
+        <div class="pro-tip">
+          <span class="icon">⚖️</span>
+          <span><strong>Decision Support</strong> — Use your AI for pros/cons and analysis before big calls</span>
+        </div>
+        <div class="pro-tip">
+          <span class="icon">✍️</span>
+          <span><strong>Your Voice</strong> — Have it draft emails, posts, and proposals in YOUR tone</span>
+        </div>
+        <div class="pro-tip">
+          <span class="icon">📅</span>
+          <span><strong>Ops Automation</strong> — Calendar, email, social — delegate the routine</span>
+        </div>
+        <div class="pro-tip">
+          <span class="icon">❓</span>
+          <span><strong>"What am I missing?"</strong> — Ask this regularly. It will surprise you.</span>
+        </div>
+        <div class="pro-tip">
+          <span class="icon">🔁</span>
+          <span><strong>Recurring ownership</strong> — Assign repeating tasks once. Let it run.</span>
+        </div>
+      </div>
+    </div>
+    <div class="slide-counter">10 / 11</div>
+  </div>
+
+  <!-- ══════════════════ SLIDE 11: CLOSING / WHAT'S NEXT ══════════════════ -->
+  <div class="slide slide-closing" id="slide-11">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <h2>You're Now a <span class="blue">Brain</span><span class="orange">iac</span></h2>
+    <div class="accent-line"></div>
+    <p>You have the foundations. Now go build the habit. Every conversation you have makes your AI smarter, faster, and more valuable to your business.</p>
+    <div class="badge-row">
+      <div class="badge">Module #1 Complete</div>
+      <div class="badge orange">Coming: Module #2</div>
+    </div>
+    <div style="margin-top:36px;">
+      <p style="font-size:0.9rem;color:var(--muted);margin-bottom:12px;">Module #2 Preview</p>
+      <ul class="point-list" style="text-align:left;max-width:480px;margin:0 auto;">
+        <li><span class="dot"></span><span>Advanced prompting techniques for business outcomes</span></li>
+        <li><span class="dot"></span><span>Building custom workflows with your AI</span></li>
+        <li><span class="dot"></span><span>Community features and shared intelligence</span></li>
+        <li><span class="dot"></span><span>The Brainiac community — learn from each other</span></li>
+      </ul>
+    </div>
+    <div class="slide-counter">11 / 11</div>
+  </div>
+
+</div>
+
+<!-- Navigation -->
+<button class="nav-btn" id="prev-btn" onclick="changeSlide(-1)">&#8592;</button>
+<button class="nav-btn" id="next-btn" onclick="changeSlide(1)">&#8594;</button>
+<div class="progress-bar" id="progress"></div>
+<div class="key-hint">
+  <kbd>&#8592;</kbd> prev &nbsp;&nbsp; <kbd>&#8594;</kbd> next &nbsp;&nbsp; <kbd>Space</kbd> advance &nbsp;&nbsp; <kbd>F</kbd> fullscreen
+</div>
+
+<script>
+  const totalSlides = 11;
+  let current = 1;
+
+  function showSlide(n) {
+    const all = document.querySelectorAll('.slide');
+    all.forEach(s => s.classList.remove('active'));
+    document.getElementById('slide-' + n).classList.add('active');
+    document.getElementById('progress').style.width = ((n / totalSlides) * 100) + '%';
+    current = n;
+  }
+
+  function changeSlide(dir) {
+    let next = current + dir;
+    if (next < 1) next = 1;
+    if (next > totalSlides) next = totalSlides;
+    showSlide(next);
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); changeSlide(1); }
+    if (e.key === 'ArrowLeft')  { changeSlide(-1); }
+    if (e.key === 'f' || e.key === 'F') {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+      else document.exitFullscreen();
+    }
+  });
+
+  // Touch support
+  let touchStartX = 0;
+  document.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; });
+  document.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    if (Math.abs(dx) > 50) changeSlide(dx < 0 ? 1 : -1);
+  });
+
+  showSlide(1);
+</script>
+</body>
+</html>

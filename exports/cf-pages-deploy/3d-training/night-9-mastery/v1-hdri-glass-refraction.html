@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 9 V1 — HDRI Glass Refraction</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #020305; overflow: hidden; }
+  canvas { display: block; }
+  #info {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    color: rgba(255,255,255,0.10);
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    z-index: 10;
+    pointer-events: none;
+  }
+  #fps {
+    position: fixed;
+    top: 12px;
+    right: 16px;
+    font-family: monospace;
+    color: rgba(42,147,193,0.2);
+    font-size: 10px;
+    z-index: 10;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="info">Night 9 V1 — HDRI Glass Refraction — Real Environment Reflections</div>
+<div id="fps">--</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ─── STUDY: HDRI Environment Glass ───
+// Gap: Real-world asset integration (HDRI environments)
+// Technique: Procedural equirectangular HDRI generation + physical glass refraction
+// Gleb Reference: His product shots use studio HDRI for natural reflections
+// We generate a procedural HDRI to avoid external asset dependencies
+
+const BLUE = new THREE.Color(0x2a93c1);
+const ORANGE = new THREE.Color(0xf1420b);
+const NEAR_BLACK = new THREE.Color(0x020305);
+
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 0.3, 5);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+document.body.appendChild(renderer.domElement);
+
+// ─── Procedural HDRI Generation ───
+// Creates a studio-like environment map with warm key, cool fill, rim light
+function generateProceduralHDRI(size = 512) {
+  const data = new Float32Array(size * size / 2 * 4);
+  const width = size;
+  const height = size / 2;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+
+      // Spherical coordinates
+      const u = x / width;
+      const v = y / height;
+      const phi = u * Math.PI * 2;
+      const theta = v * Math.PI;
+
+      // Direction vector
+      const dx = Math.sin(theta) * Math.cos(phi);
+      const dy = Math.cos(theta);
+      const dz = Math.sin(theta) * Math.sin(phi);
+
+      // Base: very dark ambient
+      let r = 0.003, g = 0.004, b = 0.008;
+
+      // Key light — warm, upper right (Gleb's primary: soft warm from above-right)
+      const keyDir = new THREE.Vector3(0.5, 0.7, 0.3).normalize();
+      const keyDot = Math.max(0, dx * keyDir.x + dy * keyDir.y + dz * keyDir.z);
+      const keyIntensity = Math.pow(keyDot, 64) * 8.0; // Sharp, bright
+      r += keyIntensity * 1.0;
+      g += keyIntensity * 0.85;
+      b += keyIntensity * 0.7;
+
+      // Fill light — cool blue, lower left (Gleb's secondary: subtle blue fill)
+      const fillDir = new THREE.Vector3(-0.6, -0.2, -0.5).normalize();
+      const fillDot = Math.max(0, dx * fillDir.x + dy * fillDir.y + dz * fillDir.z);
+      const fillIntensity = Math.pow(fillDot, 32) * 2.5;
+      r += fillIntensity * 0.15;
+      g += fillIntensity * 0.35;
+      b += fillIntensity * 0.8;
+
+      // Rim light — orange accent, behind (Gleb's rim: warm edge definition)
+      const rimDir = new THREE.Vector3(0.0, 0.1, -0.9).normalize();
+      const rimDot = Math.max(0, dx * rimDir.x + dy * rimDir.y + dz * rimDir.z);
+      const rimIntensity = Math.pow(rimDot, 48) * 4.0;
+      r += rimIntensity * 0.9;
+      g += rimIntensity * 0.3;
+      b += rimIntensity * 0.05;
+
+      // Ground reflection — subtle gradient at bottom hemisphere
+      if (dy < -0.1) {
+        const groundFade = Math.pow(Math.abs(dy), 2) * 0.05;
+        r += groundFade * 0.4;
+        g += groundFade * 0.45;
+        b += groundFade * 0.55;
+      }
+
+      // Horizon glow — subtle warm band
+      const horizonGlow = Math.exp(-Math.pow((dy - 0.0) * 8, 2)) * 0.08;
+      r += horizonGlow * 0.6;
+      g += horizonGlow * 0.4;
+      b += horizonGlow * 0.2;
+
+      data[i] = r;
+      data[i + 1] = g;
+      data[i + 2] = b;
+      data[i + 3] = 1;
+    }
+  }
+
+  const texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat, THREE.FloatType);
+  texture.mapping = THREE.EquirectangularReflectionMapping;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+const envMap = generateProceduralHDRI(1024);
+scene.environment = envMap;
+scene.background = NEAR_BLACK;
+
+// ─── Main Hero: Thick Glass Torus Knot ───
+const heroGeo = new THREE.TorusKnotGeometry(1.0, 0.35, 200, 40, 2, 3);
+const heroMat = new THREE.MeshPhysicalMaterial({
+  color: new THREE.Color(0x88bbdd),
+  metalness: 0.0,
+  roughness: 0.02,
+  transmission: 0.95,
+  thickness: 2.5,         // Thick glass = visible refraction
+  ior: 1.45,              // Crown glass IOR
+  envMapIntensity: 1.5,
+  clearcoat: 1.0,
+  clearcoatRoughness: 0.05,
+  attenuationColor: new THREE.Color(0x2a93c1),
+  attenuationDistance: 3.0,
+  specularIntensity: 1.0,
+  specularColor: new THREE.Color(0xffffff),
+});
+const hero = new THREE.Mesh(heroGeo, heroMat);
+hero.position.set(-0.3, 0, 0);
+scene.add(hero);
+
+// ─── Secondary: Small Chrome Sphere (counterbalance) ───
+const chromeSphereGeo = new THREE.SphereGeometry(0.2, 64, 64);
+const chromeMat = new THREE.MeshPhysicalMaterial({
+  color: new THREE.Color(0xffffff),
+  metalness: 1.0,
+  roughness: 0.03,
+  envMapIntensity: 2.0,
+});
+const chromeSphere = new THREE.Mesh(chromeSphereGeo, chromeMat);
+chromeSphere.position.set(2.0, -0.8, 0.5);
+scene.add(chromeSphere);
+
+// ─── Accent: Orange Emissive Pip ───
+const pipGeo = new THREE.SphereGeometry(0.06, 32, 32);
+const pipMat = new THREE.MeshPhysicalMaterial({
+  color: ORANGE,
+  emissive: ORANGE,
+  emissiveIntensity: 3.0,
+  metalness: 0.0,
+  roughness: 0.8,
+});
+const pip = new THREE.Mesh(pipGeo, pipMat);
+pip.position.set(1.6, 0.5, -0.3);
+scene.add(pip);
+
+// ─── Ground Plane: Reflective ───
+const groundGeo = new THREE.PlaneGeometry(30, 30);
+const groundMat = new THREE.MeshPhysicalMaterial({
+  color: new THREE.Color(0x060810),
+  metalness: 0.8,
+  roughness: 0.15,
+  envMapIntensity: 0.5,
+});
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -1.6;
+scene.add(ground);
+
+// ─── Post-Processing ───
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(innerWidth, innerHeight),
+  0.4,   // Restrained bloom
+  0.6,
+  0.7
+);
+composer.addPass(bloomPass);
+
+// Chromatic aberration + film grain
+const caShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uOffset: { value: 0.0006 },
+    uTime: { value: 0 },
+    uGrain: { value: 0.035 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uOffset;
+    uniform float uTime;
+    uniform float uGrain;
+    varying vec2 vUv;
+
+    float random(vec2 co) {
+      return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+    }
+
+    void main() {
+      vec2 dir = vUv - 0.5;
+      float dist = length(dir);
+      float caStrength = uOffset * smoothstep(0.0, 0.7, dist);
+
+      float r = texture2D(tDiffuse, vUv + dir * caStrength).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vUv - dir * caStrength).b;
+
+      vec3 color = vec3(r, g, b);
+
+      // Film grain
+      float grain = random(vUv * uTime) * uGrain;
+      color += grain - uGrain * 0.5;
+
+      // Vignette — subtle, centered slightly above middle
+      float vig = 1.0 - smoothstep(0.3, 1.1, length((vUv - vec2(0.5, 0.45)) * vec2(1.2, 1.0)));
+      color *= mix(0.5, 1.0, vig);
+
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `
+};
+const caPass = new ShaderPass(caShader);
+composer.addPass(caPass);
+composer.addPass(new OutputPass());
+
+// ─── Mouse Tracking ───
+const mouse = new THREE.Vector2(0, 0);
+const targetMouse = new THREE.Vector2(0, 0);
+window.addEventListener('mousemove', (e) => {
+  targetMouse.x = (e.clientX / innerWidth) * 2 - 1;
+  targetMouse.y = -(e.clientY / innerHeight) * 2 + 1;
+});
+
+// ─── Resize ───
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+
+// ─── Animation Loop ───
+const clock = new THREE.Clock();
+let frameCount = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  mouse.lerp(targetMouse, 0.04);
+
+  // Hero: slow rotation + subtle breathing
+  hero.rotation.x = t * 0.08 + mouse.y * 0.15;
+  hero.rotation.y = t * 0.12 + mouse.x * 0.15;
+  hero.scale.setScalar(1.0 + Math.sin(t * 0.5) * 0.015);
+
+  // Chrome sphere: gentle orbit
+  chromeSphere.position.x = 2.0 + Math.sin(t * 0.3) * 0.15;
+  chromeSphere.position.y = -0.8 + Math.cos(t * 0.4) * 0.1;
+
+  // Pip: slow drift
+  pip.position.x = 1.6 + Math.sin(t * 0.5 + 1) * 0.2;
+  pip.position.y = 0.5 + Math.cos(t * 0.3) * 0.15;
+
+  // Camera: subtle response to mouse
+  camera.position.x = mouse.x * 0.3;
+  camera.position.y = 0.3 + mouse.y * 0.2;
+  camera.lookAt(0, 0, 0);
+
+  caPass.uniforms.uTime.value = t * 100;
+
+  composer.render();
+
+  // FPS counter
+  frameCount++;
+  if (frameCount % 30 === 0) {
+    document.getElementById('fps').textContent = Math.round(1 / clock.getDelta()) || '--';
+  }
+}
+animate();
+</script>
+</body>
+</html>

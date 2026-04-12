@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PUREBRAIN.AI — Logo Animation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #000000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+    font-family: 'Oswald', 'Arial Narrow', sans-serif;
+  }
+
+  #scene {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+  }
+
+  #canvas-wrap {
+    position: relative;
+    width: 300px;
+    height: 300px;
+  }
+
+  canvas {
+    display: block;
+    width: 300px;
+    height: 300px;
+    /* Glow via filter — subtle, not nuclear */
+    filter: drop-shadow(0 0 18px rgba(42, 147, 193, 0.35)) drop-shadow(0 0 40px rgba(42, 147, 193, 0.15));
+    transition: filter 0.6s ease;
+  }
+
+  canvas.orange-pulse {
+    filter: drop-shadow(0 0 20px rgba(241, 66, 11, 0.4)) drop-shadow(0 0 50px rgba(241, 66, 11, 0.15));
+  }
+
+  /* Particle canvas — floats behind the logo, pointer-events none */
+  #particle-canvas {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    width: 500px;
+    height: 500px;
+    opacity: 0;
+    transition: opacity 1.2s ease;
+    z-index: 0;
+  }
+
+  #particle-canvas.visible {
+    opacity: 1;
+  }
+
+  #logo-canvas {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── Text container ── */
+  #text-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 0;
+    height: 60px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .letter {
+    display: inline-block;
+    font-size: 48px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    opacity: 0;
+    transform: translateY(16px);
+    /* Each letter gets its transition-delay applied via JS */
+    transition: opacity 0.35s ease, transform 0.35s ease;
+  }
+
+  .letter.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Color classes for letter segments */
+  .blue  { color: #2a93c1; }
+  .orange { color: #f1420b; }
+  .white { color: #ffffff; }
+
+  /* ── Replay button ── */
+  #replay-btn {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    padding: 8px 18px;
+    font-family: 'Oswald', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.35);
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s, background 0.2s;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #replay-btn.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  #replay-btn:hover {
+    color: #2a93c1;
+    border-color: rgba(42, 147, 193, 0.4);
+    background: rgba(42, 147, 193, 0.06);
+  }
+</style>
+</head>
+<body>
+
+<div id="scene">
+  <div id="canvas-wrap">
+    <canvas id="logo-canvas" width="600" height="600"></canvas>
+    <canvas id="particle-canvas" width="500" height="500"></canvas>
+  </div>
+
+  <!-- Text: PUREBR(blue) AI(orange) N(blue) .AI(white) -->
+  <div id="text-wrap">
+    <span class="letter blue" data-char="P">P</span>
+    <span class="letter blue" data-char="U">U</span>
+    <span class="letter blue" data-char="R">R</span>
+    <span class="letter blue" data-char="E">E</span>
+    <span class="letter blue" data-char="B">B</span>
+    <span class="letter blue" data-char="R">R</span>
+    <span class="letter orange" data-char="A">A</span>
+    <span class="letter orange" data-char="I">I</span>
+    <span class="letter blue" data-char="N">N</span>
+    <span class="letter white" data-char=".">.</span>
+    <span class="letter white" data-char="A">A</span>
+    <span class="letter white" data-char="I">I</span>
+  </div>
+</div>
+
+<button id="replay-btn">Replay</button>
+
+<script>
+// ─────────────────────────────────────────────
+// LOGO PARAMETERS (from logo-final-tuning.html)
+// ─────────────────────────────────────────────
+const PARAMS = {
+  hexRotOffset:    3,      // degrees between 3 hex units
+  numStrokes:      33,     // strokes per hex unit
+  twistPerLevel:   6.5,    // degrees twist per ring
+  shrinkRate:      7,      // % shrink per ring
+  densityBoost:    1.9,    // inner density multiplier
+  lineThickness:   1.3,    // px
+  voidRadius:      20,     // inner void px (on 600px canvas)
+  outerRadius:     225,    // outer hex radius (on 600px canvas)
+  lineOpacity:     0.86,
+  innerSolidify:   2.5,
+  transitionPoint: 11,     // % from outer where transition center falls
+  colorCurve:      3.5,    // sharpness
+  transitionDesat: 40,     // % grey in mid-zone
+  innerColorBoost: 30,     // % orange brightness boost
+  colorOuter:      '#2a93c1',
+  colorInner:      '#f1420b',
+};
+
+// ─────────────────────────────────────────────
+// CANVAS SETUP
+// ─────────────────────────────────────────────
+const canvas = document.getElementById('logo-canvas');
+const ctx = canvas.getContext('2d');
+const pCanvas = document.getElementById('particle-canvas');
+const pCtx = pCanvas.getContext('2d');
+
+const W = canvas.width;   // 600
+const H = canvas.height;  // 600
+const CX = W / 2;
+const CY = H / 2;
+
+// ─────────────────────────────────────────────
+// COLOR HELPERS
+// ─────────────────────────────────────────────
+function hexToRgb(hex) {
+  return [
+    parseInt(hex.slice(1,3),16),
+    parseInt(hex.slice(3,5),16),
+    parseInt(hex.slice(5,7),16)
+  ];
+}
+
+function computeColor(t, cOuter, cInner, tp, curve, desat, boost) {
+  let colorT;
+  const tpn = tp / 100;
+
+  if (t <= tpn) {
+    const n = t / tpn;
+    colorT = 0.5 * Math.pow(n, curve);
+  } else {
+    const n = (t - tpn) / (1 - tpn);
+    colorT = 0.5 + 0.5 * Math.pow(n, 1 / curve);
+  }
+
+  let r = Math.round(cOuter[0] + (cInner[0]-cOuter[0]) * colorT);
+  let g = Math.round(cOuter[1] + (cInner[1]-cOuter[1]) * colorT);
+  let b = Math.round(cOuter[2] + (cInner[2]-cOuter[2]) * colorT);
+
+  if (desat > 0) {
+    const midDist = Math.abs(colorT - 0.5) * 2;
+    const ds = (desat / 100) * Math.pow(1 - midDist, 2);
+    const grey = [110, 115, 125];
+    r = Math.round(r + (grey[0]-r)*ds);
+    g = Math.round(g + (grey[1]-g)*ds);
+    b = Math.round(b + (grey[2]-b)*ds);
+  }
+
+  if (boost > 0 && colorT > 0.6) {
+    const bs = (boost/100) * Math.pow((colorT - 0.6)/0.4, 1.5);
+    r = Math.min(255, Math.round(r + (255-r)*bs*0.3));
+  }
+
+  return [r, g, b];
+}
+
+function computeRadius(i, outerR, voidR, shrinkRate) {
+  return Math.max(outerR * Math.pow(1 - shrinkRate/100, i), voidR);
+}
+
+function hexVertices(cx, cy, radius, angleDeg) {
+  const a = angleDeg * Math.PI / 180;
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = a + (Math.PI / 3) * i + Math.PI / 6;
+    pts.push([cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)]);
+  }
+  return pts;
+}
+
+// ─────────────────────────────────────────────
+// STROKE CATALOG
+// Pre-compute all strokes for animation sequencing.
+// 3 hex units × 33 strokes each = 99 total strokes.
+// ─────────────────────────────────────────────
+const cOuter = hexToRgb(PARAMS.colorOuter);
+const cInner = hexToRgb(PARAMS.colorInner);
+const offsets = [0, PARAMS.hexRotOffset, -PARAMS.hexRotOffset];
+
+const allStrokes = [];  // { vertices, color, lineWidth, lineOpacity }
+
+for (let u = 0; u < 3; u++) {
+  const baseAngle = offsets[u];
+  for (let i = 0; i < PARAMS.numStrokes; i++) {
+    const t = i / Math.max(PARAMS.numStrokes - 1, 1);
+    const r = computeRadius(i, PARAMS.outerRadius, PARAMS.voidRadius, PARAMS.shrinkRate);
+    const angleDeg = baseAngle - PARAMS.twistPerLevel * i;
+    const [cr, cg, cb] = computeColor(t, cOuter, cInner,
+      PARAMS.transitionPoint, PARAMS.colorCurve, PARAMS.transitionDesat, PARAMS.innerColorBoost);
+
+    let strokeWidth = PARAMS.lineThickness;
+    let sOpacity = PARAMS.lineOpacity;
+    if (PARAMS.innerSolidify > 0 && t > 0.7) {
+      const solidT = (t - 0.7) / 0.3;
+      strokeWidth = PARAMS.lineThickness + PARAMS.innerSolidify * solidT;
+      sOpacity = Math.min(1, PARAMS.lineOpacity + 0.3 * solidT);
+    }
+
+    allStrokes.push({
+      vertices: hexVertices(CX, CY, r, angleDeg),
+      cr, cg, cb,
+      strokeWidth,
+      sOpacity
+    });
+  }
+}
+
+// ─────────────────────────────────────────────
+// DRAW FUNCTIONS
+// ─────────────────────────────────────────────
+function drawStroke(s, alpha = 1) {
+  ctx.save();
+  ctx.beginPath();
+  s.vertices.forEach(([x,y], idx) => idx === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y));
+  ctx.closePath();
+  ctx.strokeStyle = `rgb(${s.cr},${s.cg},${s.cb})`;
+  ctx.globalAlpha = s.sOpacity * alpha;
+  ctx.lineWidth = s.strokeWidth;
+
+  // Subtle glow on outer blue strokes
+  if (s.cr > 30 && s.cb > 100) {
+    ctx.shadowColor = `rgb(${s.cr},${s.cg},${s.cb})`;
+    ctx.shadowBlur = 6;
+  }
+
+  ctx.stroke();
+  ctx.restore();
+}
+
+function clearCanvas() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawVoid() {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(CX, CY, PARAMS.voidRadius, 0, Math.PI * 2);
+  ctx.fillStyle = '#000000';
+  ctx.globalAlpha = 1;
+  ctx.fill();
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────────
+// PARTICLES
+// ─────────────────────────────────────────────
+const particles = [];
+
+function spawnParticles() {
+  for (let i = 0; i < 60; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 80 + Math.random() * 140;
+    particles.push({
+      x: 250 + Math.cos(angle) * dist,
+      y: 250 + Math.sin(angle) * dist,
+      vx: (Math.random() - 0.5) * 0.25,
+      vy: (Math.random() - 0.5) * 0.25,
+      radius: 0.6 + Math.random() * 1.4,
+      alpha: 0.1 + Math.random() * 0.5,
+      // blue or orange
+      color: Math.random() > 0.65 ? [241, 66, 11] : [42, 147, 193],
+      life: 0.4 + Math.random() * 0.6,   // 0..1 current life
+      decay: 0.001 + Math.random() * 0.002,
+    });
+  }
+}
+
+function updateParticles() {
+  pCtx.clearRect(0, 0, 500, 500);
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= p.decay;
+    if (p.life <= 0) {
+      // respawn
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 80 + Math.random() * 140;
+      p.x = 250 + Math.cos(angle) * dist;
+      p.y = 250 + Math.sin(angle) * dist;
+      p.life = 0.4 + Math.random() * 0.6;
+    }
+    pCtx.save();
+    pCtx.globalAlpha = p.alpha * p.life;
+    pCtx.fillStyle = `rgb(${p.color[0]},${p.color[1]},${p.color[2]})`;
+    pCtx.beginPath();
+    pCtx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+    pCtx.fill();
+    pCtx.restore();
+  }
+}
+
+// ─────────────────────────────────────────────
+// BREATHING ANIMATION
+// Subtle scale pulse using canvas transform
+// ─────────────────────────────────────────────
+let breathPhase = 0;
+let breathActive = false;
+let particlesActive = false;
+let allStrokesDrawn = false;
+
+function drawBreathe(timestamp) {
+  if (!breathActive) return;
+
+  breathPhase += 0.016;  // ~1 cycle per ~6.3 seconds
+  const scale = 1 + 0.012 * Math.sin(breathPhase);
+  const alpha = 1 + 0.08 * Math.sin(breathPhase * 0.7);  // slight opacity pulse
+
+  clearCanvas();
+  ctx.save();
+  ctx.translate(CX, CY);
+  ctx.scale(scale, scale);
+  ctx.translate(-CX, -CY);
+
+  allStrokes.forEach(s => drawStroke(s, Math.min(1, alpha)));
+  drawVoid();
+
+  ctx.restore();
+
+  if (particlesActive) {
+    updateParticles();
+  }
+
+  requestAnimationFrame(drawBreathe);
+}
+
+// ─────────────────────────────────────────────
+// DRAW-IN ANIMATION
+// 99 strokes × ~30ms each ≈ 3 seconds total
+// ─────────────────────────────────────────────
+const DRAW_DURATION_MS = 3000;
+const STROKE_DELAY = DRAW_DURATION_MS / allStrokes.length;  // ~30ms per stroke
+
+function runDrawIn(onComplete) {
+  clearCanvas();
+
+  let drawn = 0;
+
+  function drawNext() {
+    if (drawn >= allStrokes.length) {
+      // Draw final void
+      drawVoid();
+      onComplete();
+      return;
+    }
+
+    // Draw all strokes up to and including 'drawn'
+    clearCanvas();
+    for (let i = 0; i <= drawn; i++) {
+      drawStroke(allStrokes[i]);
+    }
+    drawVoid();
+
+    drawn++;
+
+    // Ease timing: start slightly slower, ramp to faster for the final inner strokes
+    const progress = drawn / allStrokes.length;
+    const easedDelay = STROKE_DELAY * (1 + 0.4 * Math.cos(progress * Math.PI));
+
+    setTimeout(drawNext, easedDelay);
+  }
+
+  drawNext();
+}
+
+// ─────────────────────────────────────────────
+// TEXT REVEAL
+// Letters fade in from below, staggered 80ms each
+// ─────────────────────────────────────────────
+function revealText() {
+  const letters = document.querySelectorAll('.letter');
+  letters.forEach((el, i) => {
+    setTimeout(() => {
+      el.classList.add('visible');
+    }, i * 90);
+  });
+}
+
+function hideText() {
+  const letters = document.querySelectorAll('.letter');
+  letters.forEach(el => el.classList.remove('visible'));
+}
+
+// ─────────────────────────────────────────────
+// FULL ANIMATION SEQUENCE
+// ─────────────────────────────────────────────
+function runAnimation() {
+  // Reset state
+  breathActive = false;
+  particlesActive = false;
+  allStrokesDrawn = false;
+  particles.length = 0;
+  hideText();
+
+  const replayBtn = document.getElementById('replay-btn');
+  replayBtn.classList.remove('visible');
+
+  pCanvas.style.opacity = '0';
+  canvas.classList.remove('orange-pulse');
+
+  // Phase 1 (0-3s): Draw logo stroke by stroke
+  clearCanvas();
+
+  runDrawIn(() => {
+    // Phase 2 (3-5s): Logo complete — start breathing, add particles
+    allStrokesDrawn = true;
+    breathActive = true;
+    breathPhase = 0;
+
+    // Start particle system after a brief pause
+    setTimeout(() => {
+      spawnParticles();
+      particlesActive = true;
+      pCanvas.style.opacity = '1';
+    }, 400);
+
+    requestAnimationFrame(drawBreathe);
+
+    // Phase 3 (5-7s): Text reveal
+    setTimeout(() => {
+      revealText();
+    }, 2000);  // 2s after draw completes = 5s from start
+
+    // Phase 4 (7s+): Show replay button
+    setTimeout(() => {
+      replayBtn.classList.add('visible');
+    }, 4200);  // 4.2s after draw = 7.2s from start
+  });
+}
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+document.getElementById('replay-btn').addEventListener('click', () => {
+  runAnimation();
+});
+
+// Small delay to let fonts load
+setTimeout(runAnimation, 150);
+</script>
+</body>
+</html>

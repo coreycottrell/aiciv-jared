@@ -1,0 +1,1828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PUREBRAIN — Team Engagement Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --pb-blue: #2a93c1;
+      --pb-blue-dark: #1e6e92;
+      --pb-blue-light: #3ab0e8;
+      --pb-orange: #f1420b;
+      --pb-orange-dark: #c73408;
+      --pb-orange-light: #ff6434;
+      --bg-primary: #0d1117;
+      --bg-secondary: #161b22;
+      --bg-tertiary: #1c2128;
+      --bg-card: #1e242d;
+      --bg-hover: #252c36;
+      --text-primary: #e6edf3;
+      --text-secondary: #8b949e;
+      --text-muted: #6e7681;
+      --border-color: #30363d;
+      --border-light: #21262d;
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      --radius-xl: 24px;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
+      --shadow-lg: 0 8px 24px rgba(0,0,0,0.6);
+      --shadow-glow-blue: 0 0 20px rgba(42,147,193,0.2);
+      --shadow-glow-orange: 0 0 20px rgba(241,66,11,0.2);
+      --transition: all 0.2s ease;
+      --sidebar-w: 240px;
+    }
+
+    html { font-size: 16px; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+    ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--pb-blue); }
+
+    /* ===== ANIMATIONS ===== */
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%, 100% { opacity: .6; } 50% { opacity: 1; } }
+    @keyframes orbFloat { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-5px); } }
+    @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+    @keyframes toastIn { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes statusPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(42,147,193,0.6); } 50% { box-shadow: 0 0 0 5px rgba(42,147,193,0); } }
+    @keyframes spinnerRotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes aetherPulse { 0%, 100% { transform: translate(-50%,-50%) scale(1); } 50% { transform: translate(-50%,-50%) scale(1.08); } }
+    @keyframes aetherGlow { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+    @keyframes aetherRingRotate { from { transform: translate(-50%,-50%) rotate(0deg); } to { transform: translate(-50%,-50%) rotate(360deg); } }
+    @keyframes aetherRingRotate2 { from { transform: translate(-50%,-50%) rotate(0deg); } to { transform: translate(-50%,-50%) rotate(-360deg); } }
+    @keyframes aetherOrbit1 { from { transform: rotate(0deg) translateX(22px) rotate(0deg); } to { transform: rotate(360deg) translateX(22px) rotate(-360deg); } }
+    @keyframes aetherOrbit2 { from { transform: rotate(120deg) translateX(19px) rotate(-120deg); } to { transform: rotate(480deg) translateX(19px) rotate(-480deg); } }
+    @keyframes aetherOrbit3 { from { transform: rotate(240deg) translateX(16px) rotate(-240deg); } to { transform: rotate(600deg) translateX(16px) rotate(-600deg); } }
+
+    /* ===== LOGIN PAGE ===== */
+    .neural-canvas {
+      position: fixed; top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      z-index: 0; pointer-events: none; display: block;
+    }
+
+    .login-overlay {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px 16px;
+    }
+    .login-overlay.hidden { display: none; }
+
+    .login-card {
+      position: relative; z-index: 2;
+      width: 100%; max-width: 420px;
+      background: rgba(13, 17, 23, 0.72);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(42, 147, 193, 0.22);
+      border-radius: 24px;
+      padding: 40px 36px 32px;
+      box-shadow:
+        0 0 0 1px rgba(241, 66, 11, 0.06),
+        0 8px 32px rgba(0, 0, 0, 0.6),
+        0 0 60px rgba(42, 147, 193, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+    .login-card.visible { opacity: 1; transform: translateY(0); }
+    .login-card::before {
+      content: '';
+      position: absolute; top: 0; left: 20%; right: 20%; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(42,147,193,0.5), rgba(241,66,11,0.3), transparent);
+      border-radius: 50%;
+    }
+
+    /* AetherOrb CSS */
+    .login-orb-wrapper {
+      display: flex; justify-content: center; margin-bottom: 20px;
+      animation: orbFloat 4s ease-in-out infinite;
+    }
+    .aether-orb { position: relative; width: 80px; height: 80px; border-radius: 50%; }
+    .aether-orb__core {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 60%; height: 60%; border-radius: 50%;
+      background: linear-gradient(135deg, #f1420b 0%, #ed6626 30%, #2a93c1 70%, #3a60ab 100%);
+      box-shadow: 0 0 16px rgba(241,66,11,0.6), 0 0 32px rgba(42,147,193,0.3), inset 0 0 10px rgba(255,255,255,0.2);
+      animation: aetherPulse 4s ease-in-out infinite;
+    }
+    .aether-orb__glow {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%,-50%);
+      width: 90%; height: 90%; border-radius: 50%;
+      background: radial-gradient(circle, rgba(241,66,11,0.3) 0%, transparent 70%);
+      animation: aetherGlow 4s ease-in-out infinite;
+    }
+    .aether-orb__ring {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%,-50%);
+      width: 100%; height: 100%; border-radius: 50%;
+      border: 1.5px solid rgba(42,147,193,0.4);
+      animation: aetherRingRotate 8s linear infinite;
+    }
+    .aether-orb__ring::before {
+      content: ''; position: absolute; top: -4px; left: 50%;
+      width: 6px; height: 6px;
+      background: #2a93c1; border-radius: 50%;
+      box-shadow: 0 0 8px #2a93c1;
+      transform: translateX(-50%);
+    }
+    .aether-orb__ring--inner {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%,-50%);
+      width: 80%; height: 80%; border-radius: 50%;
+      border: 1px dashed rgba(241,66,11,0.3);
+      animation: aetherRingRotate2 12s linear infinite;
+    }
+    .aether-orb__particle {
+      position: absolute; top: 50%; left: 50%;
+      width: 4px; height: 4px; border-radius: 50%;
+    }
+    .aether-orb__particle--1 { background: #f1420b; box-shadow: 0 0 6px #f1420b; animation: aetherOrbit1 6s linear infinite; }
+    .aether-orb__particle--2 { background: #2a93c1; box-shadow: 0 0 6px #2a93c1; animation: aetherOrbit2 9s linear infinite reverse; }
+    .aether-orb__particle--3 { background: #ed6626; box-shadow: 0 0 6px #ed6626; animation: aetherOrbit3 11s linear infinite; }
+
+    /* Login Logo */
+    .login-logo { text-align: center; margin-bottom: 28px; }
+    .login-title {
+      font-family: 'Oswald', sans-serif; font-size: 32px; font-weight: 700;
+      letter-spacing: 0.06em; line-height: 1; margin-bottom: 6px;
+    }
+    .login-title__blue { color: #2a93c1; }
+    .login-title__orange { color: #f1420b; }
+    .login-subtitle {
+      font-size: 13px; color: var(--text-muted); letter-spacing: 0.05em;
+      text-transform: uppercase; margin-bottom: 10px;
+    }
+    .login-status-dot {
+      display: inline-flex; align-items: center; gap: 7px;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+      color: var(--pb-blue); text-transform: uppercase;
+    }
+    .status-pulse {
+      display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+      background: #2a93c1; animation: statusPulse 2s ease-in-out infinite;
+    }
+
+    /* Login Error */
+    .login-error {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(241,66,11,0.08); border: 1px solid rgba(241,66,11,0.3);
+      color: #ff6434; padding: 10px 14px; border-radius: 8px;
+      font-size: 13px; margin-bottom: 16px;
+    }
+    .login-error__icon {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 18px; height: 18px; min-width: 18px; border-radius: 50%;
+      background: rgba(241,66,11,0.2); font-size: 11px; font-weight: 700; color: #f1420b;
+    }
+
+    /* Login Form */
+    .login-form { display: flex; flex-direction: column; gap: 16px; }
+    .login-label {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 600; color: var(--text-secondary);
+      letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 8px;
+    }
+    .login-label__icon { color: var(--pb-blue); display: flex; align-items: center; }
+    .login-input {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(42,147,193,0.2);
+      border-radius: 10px; padding: 12px 16px;
+      font-size: 14px; color: var(--text-primary);
+      font-family: inherit;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+      outline: none;
+    }
+    .login-input::placeholder { color: var(--text-muted); }
+    .login-input:focus {
+      border-color: rgba(241,66,11,0.6);
+      background: rgba(255,255,255,0.06);
+      box-shadow: 0 0 0 3px rgba(241,66,11,0.08), 0 0 16px rgba(241,66,11,0.12);
+    }
+    .login-hint { margin-top: 7px; font-size: 11.5px; color: var(--text-muted); }
+    .login-hint code {
+      color: var(--pb-blue); background: rgba(42,147,193,0.1);
+      padding: 1px 6px; border-radius: 4px; font-size: 11px;
+    }
+    .login-btn-primary {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      width: 100%; padding: 13px 24px;
+      background: linear-gradient(135deg, #f1420b 0%, #ed6626 35%, #2a93c1 75%, #3a60ab 100%);
+      background-size: 200% 100%;
+      border: none; border-radius: 10px; color: white;
+      font-family: 'Oswald', sans-serif; font-size: 15px; font-weight: 600;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.2s ease, background-position 0.4s ease;
+      box-shadow: 0 4px 20px rgba(241,66,11,0.3), 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .login-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 28px rgba(241,66,11,0.4), 0 4px 12px rgba(42,147,193,0.2); background-position: right center; }
+    .login-btn-primary:active { transform: translateY(0); }
+    .login-btn-primary:disabled { opacity: 0.65; cursor: not-allowed; }
+    .login-btn-ghost {
+      display: flex; align-items: center; justify-content: center;
+      width: 100%; padding: 10px 16px;
+      background: transparent; border: 1px solid rgba(42,147,193,0.2);
+      border-radius: 10px; color: var(--text-secondary);
+      font-size: 13px; font-family: inherit; cursor: pointer;
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+    }
+    .login-btn-ghost:hover { border-color: rgba(42,147,193,0.5); color: var(--pb-blue); background: rgba(42,147,193,0.05); }
+    .login-spinner {
+      display: inline-block; width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3); border-top-color: white;
+      border-radius: 50%; animation: spinnerRotate 0.7s linear infinite;
+    }
+    .login-footer { margin-top: 24px; text-align: center; }
+    .login-footer__divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(42,147,193,0.2), rgba(241,66,11,0.1), transparent);
+      margin-bottom: 16px;
+    }
+    .login-footer__text { font-size: 12px; color: var(--text-muted); line-height: 1.6; margin-bottom: 4px; }
+    .login-footer__version { font-size: 11px; color: rgba(42,147,193,0.5); letter-spacing: 0.04em; }
+    @media (max-width: 480px) {
+      .login-card { padding: 28px 20px 24px; border-radius: 16px; }
+      .login-title { font-size: 26px; }
+      .aether-orb { width: 64px; height: 64px; }
+    }
+
+    /* ===== APP LAYOUT ===== */
+    .app-layout { display: flex; min-height: 100vh; }
+
+    /* Sidebar */
+    .sidebar {
+      width: var(--sidebar-w); background: var(--bg-secondary);
+      border-right: 1px solid var(--border-color);
+      display: flex; flex-direction: column;
+      position: fixed; top: 0; left: 0; height: 100vh;
+      z-index: 100; transition: var(--transition);
+    }
+    .sidebar-logo {
+      padding: 24px 20px; border-bottom: 1px solid var(--border-color);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--pb-blue), var(--pb-orange));
+      border-radius: var(--radius-sm);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 14px; font-family: 'Oswald', sans-serif;
+      color: white; flex-shrink: 0;
+    }
+    .logo-text { font-family: 'Oswald', sans-serif; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; }
+    .logo-text .blue { color: var(--pb-blue); }
+    .logo-text .orange { color: var(--pb-orange); }
+    .sidebar-nav { flex: 1; padding: 16px 12px; overflow-y: auto; }
+    .nav-section { margin-bottom: 24px; }
+    .nav-label {
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 1.2px; color: var(--text-muted); padding: 0 8px; margin-bottom: 8px;
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border-radius: var(--radius-sm);
+      color: var(--text-secondary); font-size: 14px; font-weight: 500;
+      cursor: pointer; transition: var(--transition); margin-bottom: 2px;
+      border: none; background: none; width: 100%; text-align: left;
+    }
+    .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .nav-item.active { background: rgba(42,147,193,0.15); color: var(--pb-blue); }
+    .nav-item .icon { font-size: 18px; width: 20px; text-align: center; }
+    .sidebar-footer { padding: 16px 12px; border-top: 1px solid var(--border-color); }
+    .user-card {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border-radius: var(--radius-sm);
+      cursor: pointer; transition: var(--transition);
+    }
+    .user-card:hover { background: var(--bg-hover); }
+    .avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--pb-blue), var(--pb-orange));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700; color: white; flex-shrink: 0;
+    }
+    .avatar.lg { width: 48px; height: 48px; font-size: 18px; }
+    .user-info { flex: 1; min-width: 0; }
+    .user-name { font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .user-role { font-size: 11px; color: var(--text-muted); }
+
+    /* Main Content */
+    .main-content { flex: 1; margin-left: var(--sidebar-w); min-height: 100vh; display: flex; flex-direction: column; }
+
+    /* Top Bar */
+    .topbar {
+      background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);
+      padding: 16px 32px; display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 50; backdrop-filter: blur(8px);
+    }
+    .topbar-title { font-size: 20px; font-weight: 700; color: var(--text-primary); }
+    .topbar-actions { display: flex; align-items: center; gap: 12px; }
+    .page-content { flex: 1; padding: 32px; max-width: 1100px; margin: 0 auto; width: 100%; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 20px; border-radius: var(--radius-sm);
+      font-size: 14px; font-weight: 600; cursor: pointer; border: none;
+      transition: var(--transition); text-decoration: none; white-space: nowrap;
+    }
+    .btn-primary { background: var(--pb-blue); color: white; }
+    .btn-primary:hover { background: var(--pb-blue-dark); box-shadow: var(--shadow-glow-blue); transform: translateY(-1px); }
+    .btn-orange { background: var(--pb-orange); color: white; }
+    .btn-orange:hover { background: var(--pb-orange-dark); box-shadow: var(--shadow-glow-orange); transform: translateY(-1px); }
+    .btn-ghost { background: transparent; color: var(--text-secondary); border: 1px solid var(--border-color); }
+    .btn-ghost:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--text-muted); }
+    .btn-sm { padding: 6px 14px; font-size: 13px; }
+    .btn-icon {
+      padding: 8px; border-radius: var(--radius-sm); background: var(--bg-hover);
+      color: var(--text-secondary); border: none; cursor: pointer;
+      transition: var(--transition); display: inline-flex; align-items: center;
+    }
+    .btn-icon:hover { background: var(--border-color); color: var(--text-primary); }
+
+    /* Cards */
+    .card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 20px; transition: var(--transition); }
+    .card:hover { border-color: var(--pb-blue); box-shadow: var(--shadow-glow-blue); }
+
+    /* Post Card */
+    .post-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 20px; transition: var(--transition); }
+    .post-card:hover { border-color: rgba(42,147,193,0.4); transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+    .post-header { display: flex; align-items: center; gap: 12px; padding: 16px 20px; }
+    .post-author-info { flex: 1; }
+    .post-author-name { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+    .post-meta { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px; }
+    .post-image { width: 100%; max-height: 400px; object-fit: cover; }
+    .post-body { padding: 16px 20px; }
+    .post-text { font-size: 15px; line-height: 1.7; color: var(--text-primary); margin-bottom: 12px; }
+
+    /* Tags */
+    .tag-list { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .tag { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; letter-spacing: 0.3px; }
+    .tag-safety { background: rgba(42,147,193,0.15); color: var(--pb-blue); border: 1px solid rgba(42,147,193,0.3); }
+    .tag-quality { background: rgba(139,92,246,0.15); color: #a78bfa; border: 1px solid rgba(139,92,246,0.3); }
+    .tag-efficiency { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
+    .tag-innovation { background: rgba(241,66,11,0.15); color: var(--pb-orange-light); border: 1px solid rgba(241,66,11,0.3); }
+    .tag-win { background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
+
+    /* Reactions */
+    .reactions-bar { display: flex; align-items: center; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--border-light); }
+    .reaction-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--border-color); background: transparent; color: var(--text-secondary); transition: var(--transition); }
+    .reaction-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--text-muted); }
+    .reaction-btn.active { background: rgba(42,147,193,0.15); color: var(--pb-blue); border-color: rgba(42,147,193,0.4); }
+    .reaction-count { font-size: 12px; }
+
+    /* Forms */
+    .form-group { margin-bottom: 20px; }
+    .form-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .form-input, .form-textarea, .form-select { width: 100%; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); padding: 12px 16px; font-size: 14px; font-family: inherit; transition: var(--transition); outline: none; }
+    .form-input:focus, .form-textarea:focus, .form-select:focus { border-color: var(--pb-blue); box-shadow: 0 0 0 3px rgba(42,147,193,0.15); }
+    .form-textarea { resize: vertical; min-height: 120px; line-height: 1.6; }
+
+    /* Drop Zone */
+    .drop-zone { border: 2px dashed var(--border-color); border-radius: var(--radius-md); padding: 40px 20px; text-align: center; cursor: pointer; transition: var(--transition); background: var(--bg-tertiary); }
+    .drop-zone:hover, .drop-zone.dragging { border-color: var(--pb-blue); background: rgba(42,147,193,0.05); }
+    .drop-zone-icon { font-size: 40px; margin-bottom: 12px; }
+    .drop-zone-text { font-size: 14px; color: var(--text-secondary); }
+    .drop-zone-text strong { color: var(--pb-blue); }
+
+    /* Dashboard Grid */
+    .dashboard-grid { display: grid; grid-template-columns: 1fr 300px; gap: 24px; align-items: start; }
+    .feed-column { min-width: 0; }
+    .sidebar-column { min-width: 0; }
+
+    /* Stats Cards */
+    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+    .stat-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 20px; text-align: center; }
+    .stat-value { font-size: 32px; font-weight: 700; font-family: 'Oswald', sans-serif; background: linear-gradient(135deg, var(--pb-blue), var(--pb-orange)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .stat-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+
+    /* Wins Board */
+    .wins-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+    .win-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); overflow: hidden; cursor: pointer; transition: var(--transition); }
+    .win-card:hover { border-color: var(--pb-blue); transform: translateY(-4px); box-shadow: var(--shadow-glow-blue); }
+    .win-card-header { background: linear-gradient(135deg, var(--pb-blue-dark), var(--pb-blue)); padding: 20px; position: relative; overflow: hidden; }
+    .win-card-header::after { content: ''; position: absolute; right: -20px; top: -20px; width: 80px; height: 80px; background: rgba(255,255,255,0.05); border-radius: 50%; }
+    .win-emoji { font-size: 28px; margin-bottom: 8px; }
+    .win-title { font-size: 16px; font-weight: 700; color: white; }
+    .win-impact { position: absolute; top: 16px; right: 16px; background: var(--pb-orange); color: white; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .win-card-body { padding: 16px; }
+    .win-description { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 12px; }
+    .win-stats { display: flex; gap: 12px; }
+    .win-stat { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-muted); }
+
+    /* Upload Section */
+    .upload-section { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 24px; margin-bottom: 24px; }
+    .upload-section h3 { font-size: 16px; font-weight: 700; margin-bottom: 16px; color: var(--text-primary); }
+    .files-list { margin-top: 16px; }
+    .file-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); margin-bottom: 8px; transition: var(--transition); }
+    .file-item:hover { border-color: var(--pb-blue); }
+    .file-icon { font-size: 20px; }
+    .file-info { flex: 1; }
+    .file-name { font-size: 14px; font-weight: 500; color: var(--text-primary); }
+    .file-meta { font-size: 12px; color: var(--text-muted); }
+    .gdrive-status { font-size: 11px; padding: 3px 8px; border-radius: 10px; font-weight: 600; }
+    .gdrive-synced { background: rgba(34,197,94,0.15); color: #4ade80; }
+    .gdrive-pending { background: rgba(251,191,36,0.15); color: #fbbf24; }
+
+    /* Widget */
+    .widget { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 20px; margin-bottom: 16px; }
+    .widget-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); margin-bottom: 16px; }
+    .leaderboard-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-light); }
+    .leaderboard-item:last-child { border-bottom: none; }
+    .rank { font-size: 12px; font-weight: 700; color: var(--text-muted); width: 20px; }
+    .rank-1 { color: #fbbf24; }
+    .rank-2 { color: #94a3b8; }
+    .rank-3 { color: #b45309; }
+    .leaderboard-name { flex: 1; font-size: 13px; font-weight: 500; }
+    .leaderboard-score { font-size: 13px; font-weight: 700; color: var(--pb-blue); }
+
+    /* GDrive Badge */
+    .gdrive-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(42,147,193,0.1); border: 1px solid rgba(42,147,193,0.3); border-radius: 20px; font-size: 11px; color: var(--pb-blue); font-weight: 600; }
+
+    /* Toast */
+    .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+    .toast { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px 18px; font-size: 14px; box-shadow: var(--shadow-lg); animation: toastIn 0.3s ease; max-width: 320px; }
+    .toast-success { border-left: 3px solid #4ade80; }
+    .toast-error { border-left: 3px solid var(--pb-orange); }
+    .toast-info { border-left: 3px solid var(--pb-blue); }
+
+    /* Divider */
+    .divider { height: 1px; background: var(--border-color); margin: 24px 0; }
+
+    /* Empty State */
+    .empty-state { text-align: center; padding: 60px 20px; }
+    .empty-state-icon { font-size: 48px; margin-bottom: 16px; }
+    .empty-state-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .empty-state-text { font-size: 14px; color: var(--text-muted); max-width: 300px; margin: 0 auto 24px; }
+
+    /* Loading */
+    .spinner { width: 20px; height: 20px; border: 2px solid var(--border-color); border-top-color: var(--pb-blue); border-radius: 50%; animation: spin 0.6s linear infinite; display: inline-block; }
+    .loading-screen { display: flex; align-items: center; justify-content: center; height: 200px; }
+
+    /* Modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); padding: 20px; }
+    .modal-overlay.hidden { display: none; }
+    .modal { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-xl); width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; animation: slideUp 0.2s ease; }
+    .modal-header { padding: 24px 24px 0; display: flex; align-items: center; justify-content: space-between; }
+    .modal-header h2 { font-size: 20px; font-weight: 700; }
+    .modal-body { padding: 24px; }
+    .modal-footer { padding: 0 24px 24px; display: flex; justify-content: flex-end; gap: 12px; }
+    .modal-close { background: none; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; padding: 4px 8px; border-radius: var(--radius-sm); transition: var(--transition); }
+    .modal-close:hover { color: var(--text-primary); background: var(--bg-hover); }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .sidebar { width: 60px; }
+      .sidebar-logo .logo-text, .nav-item span:not(.icon), .sidebar-footer .user-info { display: none; }
+      .nav-item { justify-content: center; }
+      .main-content { margin-left: 60px; }
+      .page-content { padding: 20px; }
+      .dashboard-grid { grid-template-columns: 1fr; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .wins-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 600px) {
+      .sidebar { display: none; }
+      .main-content { margin-left: 0; }
+      .topbar { padding: 12px 16px; }
+      .page-content { padding: 16px; }
+      .stats-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- LOGIN PAGE -->
+<canvas id="neuralCanvas" class="neural-canvas"></canvas>
+
+<div id="loginOverlay" class="login-overlay">
+  <div id="loginCard" class="login-card">
+    <!-- AetherOrb -->
+    <div class="login-orb-wrapper">
+      <div class="aether-orb">
+        <div class="aether-orb__glow"></div>
+        <div class="aether-orb__ring"></div>
+        <div class="aether-orb__ring--inner"></div>
+        <div class="aether-orb__core"></div>
+        <div class="aether-orb__particle aether-orb__particle--1"></div>
+        <div class="aether-orb__particle aether-orb__particle--2"></div>
+        <div class="aether-orb__particle aether-orb__particle--3"></div>
+      </div>
+    </div>
+
+    <!-- Logo -->
+    <div class="login-logo">
+      <h1 class="login-title">
+        <span class="login-title__blue">PUREBR</span><span class="login-title__orange">AI</span><span class="login-title__blue">N</span>
+      </h1>
+      <p class="login-subtitle">Team Engagement Hub</p>
+      <div class="login-status-dot">
+        <span class="status-pulse"></span>
+        COMMAND CENTER ONLINE
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div id="loginError" class="login-error" style="display:none;">
+      <span class="login-error__icon">!</span>
+      <span id="loginErrorText"></span>
+    </div>
+
+    <!-- Token Form -->
+    <form id="loginForm" class="login-form">
+      <div id="tokenGroup" class="form-group">
+        <label class="login-label">
+          <span class="login-label__icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          </span>
+          Access Token
+        </label>
+        <input type="text" id="tokenInput" class="login-input" placeholder="Enter your team access token" autocomplete="off">
+        <div class="login-hint">Demo: <code>team2025</code> · <code>safety2025</code> · <code>demo</code></div>
+      </div>
+
+      <div id="guestGroup" class="form-group" style="display:none;">
+        <label class="login-label">
+          <span class="login-label__icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+          </span>
+          Your Name
+        </label>
+        <input type="text" id="guestInput" class="login-input" placeholder="Enter your full name">
+      </div>
+
+      <button type="submit" id="loginBtn" class="login-btn-primary">
+        <span id="loginBtnText">Access Hub</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M5 12h14M12 5l7 7-7 7"/>
+        </svg>
+      </button>
+
+      <button type="button" id="toggleModeBtn" class="login-btn-ghost">
+        Join as Guest (no token)
+      </button>
+    </form>
+
+    <!-- Footer -->
+    <div class="login-footer">
+      <div class="login-footer__divider"></div>
+      <p class="login-footer__text">Share wins. Celebrate achievements. Drive improvement.</p>
+      <p class="login-footer__version">PureBrain Team Hub · v2.0</p>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN APP (hidden until logged in) -->
+<div id="appLayout" class="app-layout" style="display:none;">
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">PB</div>
+      <div class="logo-text">
+        <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>
+        <div style="font-size:10px;color:var(--text-muted);font-family:Inter;font-weight:400;">Hub</div>
+      </div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-label">Navigation</div>
+        <button class="nav-item active" data-view="dashboard" onclick="switchView('dashboard',this)">
+          <span class="icon">🏠</span><span>Dashboard</span>
+        </button>
+        <button class="nav-item" data-view="wins" onclick="switchView('wins',this)">
+          <span class="icon">🏆</span><span>Wins Board</span>
+        </button>
+        <button class="nav-item" data-view="upload" onclick="switchView('upload',this)">
+          <span class="icon">📁</span><span>Files &amp; Uploads</span>
+        </button>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Quick Actions</div>
+        <button class="nav-item" onclick="openCreateModal()">
+          <span class="icon">✏️</span><span>New Post</span>
+        </button>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="user-card" onclick="logout()" title="Logout">
+        <div class="avatar" id="sidebarAvatar">U</div>
+        <div class="user-info">
+          <div class="user-name" id="sidebarName">Team Member</div>
+          <div class="user-role" id="sidebarRole">Member · Logout</div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <!-- Top Bar -->
+    <div class="topbar">
+      <div class="topbar-title" id="topbarTitle">🏠 Team Dashboard</div>
+      <div class="topbar-actions">
+        <div class="gdrive-badge">
+          <span>☁️</span><span>Drive Connected</span>
+        </div>
+        <button class="btn btn-orange btn-sm" id="topbarNewPost" onclick="openCreateModal()">+ New Post</button>
+      </div>
+    </div>
+
+    <!-- Page Content -->
+    <div class="page-content">
+      <!-- Dashboard View -->
+      <div id="view-dashboard">
+        <div class="stats-grid" id="statsGrid"></div>
+        <div class="dashboard-grid">
+          <div class="feed-column">
+            <div id="dashFilterBar" style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;"></div>
+            <div id="dashFeed"></div>
+          </div>
+          <div class="sidebar-column">
+            <div class="widget">
+              <div class="widget-title">Top Contributors</div>
+              <div id="leaderboard"></div>
+            </div>
+            <div class="widget">
+              <div class="widget-title">Tag Distribution</div>
+              <div id="tagDistribution"></div>
+            </div>
+            <div class="widget">
+              <div class="widget-title">Drive Sync Status</div>
+              <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">
+                <span style="color:#4ade80;">●</span> Connected to Google Drive
+              </div>
+              <div style="font-size:12px;color:var(--text-muted);">
+                Last sync: just now<br>Files synced: 24<br>Folder: PureBrain Hub Files
+              </div>
+              <div class="gdrive-badge" style="margin-top:12px;">☁️ Auto-sync enabled</div>
+            </div>
+            <button class="btn btn-orange" style="width:100%;justify-content:center;" onclick="openCreateModal()">✨ Share a Win</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Wins Board View -->
+      <div id="view-wins" style="display:none;">
+        <div id="winsBoardHeader" style="background:linear-gradient(135deg,rgba(42,147,193,0.15),rgba(241,66,11,0.1));border:1px solid rgba(42,147,193,0.3);border-radius:var(--radius-xl);padding:28px 32px;margin-bottom:28px;display:flex;align-items:center;gap:32px;">
+          <div>
+            <div style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Team Wins Board</div>
+            <div style="font-family:Oswald,sans-serif;font-size:36px;font-weight:700;color:var(--text-primary);" id="winsTotalLabel">0 <span style="color:var(--pb-blue);">Wins</span> Celebrated</div>
+            <div style="font-size:13px;color:var(--text-muted);margin-top:4px;" id="winsTotalReactions">0 total reactions from the team</div>
+          </div>
+          <div style="margin-left:auto;display:flex;gap:16px;" id="winsCategoryStats"></div>
+        </div>
+        <div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap;align-items:center;">
+          <div id="winsFilterBar" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+          <div style="margin-left:auto;display:flex;gap:8px;">
+            <button class="btn btn-sm btn-primary" id="sortRecentBtn" onclick="setSortBy('recent')">Most Recent</button>
+            <button class="btn btn-sm btn-ghost" id="sortReactBtn" onclick="setSortBy('reactions')">Most Celebrated</button>
+          </div>
+        </div>
+        <div id="winsGrid" class="wins-grid"></div>
+      </div>
+
+      <!-- Files & Uploads View -->
+      <div id="view-upload" style="display:none;">
+        <div class="upload-section">
+          <h3>Upload Files to Team Hub</h3>
+          <div class="form-group">
+            <label class="form-label">Description (optional)</label>
+            <input type="text" id="fileDesc" class="form-input" placeholder="What is this file about?">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tag this file</label>
+            <div id="fileTagBtns" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+          </div>
+          <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()"
+            ondragover="event.preventDefault();this.classList.add('dragging')"
+            ondragleave="this.classList.remove('dragging')"
+            ondrop="handleFileDrop(event)">
+            <div class="drop-zone-icon">☁️</div>
+            <div class="drop-zone-text"><strong>Click to upload</strong> or drag and drop<br>All file types supported · Auto-syncs to Google Drive</div>
+          </div>
+          <input type="file" id="fileInput" style="display:none;" onchange="handleFileSelect(this.files[0])">
+          <div style="margin-top:12px;padding:10px 16px;background:rgba(42,147,193,0.08);border:1px solid rgba(42,147,193,0.2);border-radius:var(--radius-sm);font-size:13px;color:var(--text-secondary);display:flex;align-items:center;gap:8px;">
+            <span>☁️</span>
+            <span>Files auto-sync to <strong style="color:var(--pb-blue);">Google Drive / PureBrain Hub Files</strong> folder within seconds of upload.</span>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+            <h3 style="font-size:16px;font-weight:700;">Team Files (<span id="fileCount">0</span>)</h3>
+            <div id="filesFilterBar" style="display:flex;gap:6px;margin-left:auto;"></div>
+          </div>
+          <div id="filesList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CREATE POST MODAL -->
+<div id="createModal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>✏️ Share with Team</h2>
+      <button class="modal-close" onclick="closeCreateModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Author -->
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+        <div class="avatar lg" id="postAuthorAvatar">U</div>
+        <div>
+          <div style="font-size:16px;font-weight:700;" id="postAuthorName">Team Member</div>
+          <div style="font-size:13px;color:var(--text-muted);" id="postAuthorDept">Operations</div>
+        </div>
+      </div>
+
+      <!-- Win Toggle -->
+      <div id="winToggle" style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:var(--radius-sm);margin-bottom:20px;cursor:pointer;transition:var(--transition);" onclick="toggleWinFlag()">
+        <span style="font-size:20px;" id="winToggleIcon">📝</span>
+        <div>
+          <div style="font-size:14px;font-weight:600;color:var(--text-primary);" id="winToggleLabel">Mark as Team Win</div>
+          <div style="font-size:12px;color:var(--text-muted);">Wins appear on the Wins Board</div>
+        </div>
+        <div style="margin-left:auto;">
+          <div id="winToggleSwitch" style="width:42px;height:24px;background:var(--border-color);border-radius:12px;position:relative;transition:var(--transition);">
+            <div id="winToggleThumb" style="position:absolute;top:2px;left:2px;width:20px;height:20px;background:white;border-radius:50%;transition:var(--transition);"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Title (optional)</label>
+        <input type="text" id="postTitle" class="form-input" placeholder="Give your story a headline...">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Story / Update *</label>
+        <textarea id="postContent" class="form-textarea" style="min-height:160px;" placeholder="Share what happened, what the impact was, what others can learn..."></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Category Tags</label>
+        <div id="postTagBtns" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Photo / Image (optional)</label>
+        <div id="imagePreviewArea" style="display:none;position:relative;">
+          <img id="imagePreviewImg" src="" alt="Preview" style="width:100%;max-height:240px;object-fit:cover;border-radius:var(--radius-md);">
+          <button type="button" class="btn btn-ghost btn-sm" style="position:absolute;top:8px;right:8px;" onclick="removeImage()">Remove</button>
+        </div>
+        <div id="imageDropZone" class="drop-zone" onclick="document.getElementById('imageInput').click()"
+          ondragover="event.preventDefault();this.classList.add('dragging')"
+          ondragleave="this.classList.remove('dragging')"
+          ondrop="handleImageDrop(event)">
+          <div class="drop-zone-icon">📷</div>
+          <div class="drop-zone-text"><strong>Click to upload</strong> or drag and drop<br>PNG, JPG, GIF up to 10MB</div>
+        </div>
+        <input type="file" id="imageInput" accept="image/*" style="display:none;" onchange="handleImageSelect(this.files[0])">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeCreateModal()">Cancel</button>
+      <button class="btn btn-orange" id="submitPostBtn" onclick="submitPost()">🚀 Share with Team</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ===== DATA =====
+const DEMO_USERS = [
+  { token: 'team2025', name: 'Jared Sanborn', role: 'Admin', department: 'Leadership' },
+  { token: 'safety2025', name: 'Sarah K.', role: 'Safety Lead', department: 'Operations' },
+  { token: 'quality2025', name: 'Marcus T.', role: 'Quality Manager', department: 'Quality' },
+  { token: 'demo', name: 'Demo User', role: 'Member', department: 'General' },
+];
+
+const SAMPLE_POSTS = [
+  {
+    id: '1', title: 'Zero Incident Month - March 2025',
+    content: 'Proud to share that our team completed March with ZERO safety incidents! This is our third consecutive month. Key improvements: new pre-shift checklist, buddy system on the floor, and updated PPE protocols. Huge thanks to everyone for staying vigilant.',
+    author_name: 'Sarah K.', department: 'Safety', tags: ['Safety'], is_win: true,
+    created_at: new Date(Date.now() - 2*3600000).toISOString(),
+    reactions: { celebrate: 12, inspired: 8, learned: 3 }, userReactions: [],
+  },
+  {
+    id: '2', title: 'Process Efficiency Breakthrough',
+    content: 'We redesigned the intake workflow and cut processing time from 47 minutes down to 28 minutes per unit. That\'s a 40% efficiency gain! The key was eliminating the double-entry step and automating the routing logic.',
+    author_name: 'Marcus T.', department: 'Operations', tags: ['Efficiency', 'Innovation'], is_win: false,
+    created_at: new Date(Date.now() - 5*3600000).toISOString(),
+    reactions: { celebrate: 7, inspired: 15, learned: 11 }, userReactions: [],
+  },
+  {
+    id: '3', title: 'Customer Quality Score Hit 98.4%',
+    content: 'Q1 quality scores are in and we hit 98.4% - up from 94.1% last quarter! The root cause analysis workshops we ran in January really paid off. Team identified 3 systemic issues and we\'ve since patched all three.',
+    author_name: 'Jared Sanborn', department: 'Leadership', tags: ['Quality', 'Win'], is_win: true,
+    created_at: new Date(Date.now() - 24*3600000).toISOString(),
+    reactions: { celebrate: 23, inspired: 18, learned: 6 }, userReactions: [],
+  },
+  {
+    id: '4', title: '$120K Cost Savings Q1',
+    content: 'Waste reduction initiative eliminated $120K in material costs this quarter. Cross-department collaboration was key — ops, quality, and safety all aligned on the same target.',
+    author_name: 'David R.', department: 'Operations', tags: ['Efficiency'], is_win: true,
+    created_at: new Date(Date.now() - 48*3600000).toISOString(),
+    reactions: { celebrate: 18, inspired: 9, learned: 5 }, userReactions: [],
+  },
+  {
+    id: '5', title: 'AI Root Cause Tool Launch',
+    content: 'Deployed new AI-assisted root cause analysis tool — first in our region. Early results show 60% faster identification of root causes vs manual process.',
+    author_name: 'Tech Team', department: 'Innovation', tags: ['Innovation'], is_win: true,
+    created_at: new Date(Date.now() - 72*3600000).toISOString(),
+    reactions: { celebrate: 14, inspired: 22, learned: 16 }, userReactions: [],
+  },
+];
+
+const SAMPLE_FILES = [
+  { id:'f1', filename:'Safety SOP v3.pdf', mime_type:'application/pdf', size:2400000, tags:['Safety'], description:'Updated pre-shift safety checklist', uploader_name:'Sarah K.', created_at:new Date(Date.now()-2*3600000).toISOString(), gdrive_synced:true, gdrive_url:'#' },
+  { id:'f2', filename:'Q1 Quality Report.xlsx', mime_type:'application/vnd.ms-excel', size:890000, tags:['Quality'], description:'Full Q1 quality metrics and analysis', uploader_name:'Marcus T.', created_at:new Date(Date.now()-24*3600000).toISOString(), gdrive_synced:true, gdrive_url:'#' },
+  { id:'f3', filename:'Process Improvement Photos.zip', mime_type:'application/zip', size:15600000, tags:['Efficiency'], description:'Before/after photos from floor redesign', uploader_name:'David R.', created_at:new Date(Date.now()-3*86400000).toISOString(), gdrive_synced:false },
+];
+
+const LEADERBOARD = [
+  { name:'Marcus T.', dept:'Operations', score:47 },
+  { name:'Sarah K.', dept:'Safety', score:38 },
+  { name:'Jared Sanborn', dept:'Leadership', score:31 },
+  { name:'Lisa M.', dept:'Quality', score:24 },
+  { name:'David R.', dept:'Operations', score:19 },
+];
+
+const TAG_EMOJIS = { Safety:'🛡️', Quality:'✅', Efficiency:'⚡', Innovation:'💡' };
+const TAG_CLASSES = { Safety:'tag-safety', Quality:'tag-quality', Efficiency:'tag-efficiency', Innovation:'tag-innovation', Win:'tag-win' };
+const IMPACT_COLORS = { Critical:'var(--pb-orange)', High:'var(--pb-blue)', Medium:'#a78bfa', Low:'#4ade80' };
+const TAGS = ['Safety', 'Quality', 'Efficiency', 'Innovation'];
+
+// ===== STATE =====
+let currentUser = null;
+let posts = [...SAMPLE_POSTS];
+let files = [...SAMPLE_FILES];
+let currentView = 'dashboard';
+let dashFilter = 'all';
+let winsFilter = 'all';
+let winsSortBy = 'recent';
+let fileFilter = 'all';
+let selectedFileTags = [];
+let selectedPostTags = [];
+let isWin = false;
+let postImageData = null;
+let useToken = true;
+
+// ===== AUTH =====
+function initAuth() {
+  const saved = localStorage.getItem('pb_hub_user');
+  if (saved) {
+    try {
+      const u = JSON.parse(saved);
+      currentUser = u;
+      showApp();
+      return;
+    } catch(e) {}
+  }
+  showLogin();
+}
+
+function showLogin() {
+  document.getElementById('loginOverlay').classList.remove('hidden');
+  document.getElementById('appLayout').style.display = 'none';
+  setTimeout(() => document.getElementById('loginCard').classList.add('visible'), 50);
+}
+
+function showApp() {
+  document.getElementById('loginOverlay').classList.add('hidden');
+  document.getElementById('appLayout').style.display = 'flex';
+  updateUserUI();
+  renderAll();
+}
+
+function logout() {
+  currentUser = null;
+  localStorage.removeItem('pb_hub_user');
+  showLogin();
+  setTimeout(() => {
+    document.getElementById('loginCard').classList.remove('visible');
+    setTimeout(() => document.getElementById('loginCard').classList.add('visible'), 50);
+  }, 100);
+}
+
+function updateUserUI() {
+  if (!currentUser) return;
+  const initial = (currentUser.name || 'U')[0].toUpperCase();
+  document.getElementById('sidebarAvatar').textContent = initial;
+  document.getElementById('sidebarName').textContent = currentUser.name || 'Team Member';
+  document.getElementById('sidebarRole').textContent = (currentUser.role || 'Member') + ' · Logout';
+  document.getElementById('postAuthorAvatar').textContent = initial;
+  document.getElementById('postAuthorName').textContent = currentUser.name || 'Team Member';
+  document.getElementById('postAuthorDept').textContent = currentUser.department || 'Operations';
+}
+
+// ===== LOGIN FORM =====
+document.getElementById('toggleModeBtn').addEventListener('click', () => {
+  useToken = !useToken;
+  document.getElementById('tokenGroup').style.display = useToken ? '' : 'none';
+  document.getElementById('guestGroup').style.display = useToken ? 'none' : '';
+  document.getElementById('toggleModeBtn').textContent = useToken ? 'Join as Guest (no token)' : 'Use access token instead';
+  document.getElementById('loginError').style.display = 'none';
+});
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('loginBtn');
+  const errDiv = document.getElementById('loginError');
+  errDiv.style.display = 'none';
+  btn.disabled = true;
+  document.getElementById('loginBtnText').textContent = '';
+  btn.innerHTML = '<span class="login-spinner"></span><span>Verifying...</span>';
+
+  await new Promise(r => setTimeout(r, 600));
+
+  if (useToken) {
+    const tokenVal = document.getElementById('tokenInput').value.trim().toLowerCase();
+    const user = DEMO_USERS.find(u => u.token === tokenVal);
+    if (user) {
+      currentUser = user;
+      localStorage.setItem('pb_hub_user', JSON.stringify(user));
+      addToast('Welcome back, ' + user.name + '!', 'success');
+      showApp();
+    } else {
+      document.getElementById('loginErrorText').textContent = 'Invalid access token. Try: team2025 | safety2025 | demo';
+      errDiv.style.display = 'flex';
+    }
+  } else {
+    const name = document.getElementById('guestInput').value.trim();
+    if (name.length < 2) {
+      document.getElementById('loginErrorText').textContent = 'Please enter your name (2+ characters)';
+      errDiv.style.display = 'flex';
+    } else {
+      currentUser = { name, role: 'Member', department: 'General', token: 'guest' };
+      localStorage.setItem('pb_hub_user', JSON.stringify(currentUser));
+      addToast('Welcome, ' + name + '!', 'success');
+      showApp();
+    }
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<span id="loginBtnText">Access Hub</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
+});
+</script>
+<script>
+// ===== VIEW SWITCHING =====
+const VIEW_TITLES = { dashboard:'🏠 Team Dashboard', wins:'🏆 Wins Board', upload:'📁 Files & Uploads', create:'✏️ Create Post' };
+
+function switchView(view, btn) {
+  currentView = view;
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  document.getElementById('topbarTitle').textContent = VIEW_TITLES[view] || 'Hub';
+  ['dashboard','wins','upload'].forEach(v => {
+    document.getElementById('view-' + v).style.display = v === view ? '' : 'none';
+  });
+  document.getElementById('topbarNewPost').style.display = view === 'create' ? 'none' : '';
+  if (view === 'dashboard') renderDashboard();
+  if (view === 'wins') renderWins();
+  if (view === 'upload') renderFiles();
+}
+
+// ===== TOAST =====
+function addToast(message, type) {
+  type = type || 'info';
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = 'toast toast-' + type;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 3500);
+}
+
+// ===== TIME HELPER =====
+function timeAgo(dateStr) {
+  if (!dateStr) return 'just now';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + ' minutes ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + ' hours ago';
+  const days = Math.floor(hrs / 24);
+  return days + ' days ago';
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function getFileIcon(mimeType) {
+  if (!mimeType) return '📁';
+  if (mimeType.startsWith('image/')) return '🖼️';
+  if (mimeType === 'application/pdf') return '📄';
+  if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) return '📊';
+  if (mimeType.startsWith('text/')) return '📝';
+  if (mimeType.startsWith('video/')) return '🎬';
+  if (mimeType.startsWith('audio/')) return '🎵';
+  return '📁';
+}
+
+// ===== DASHBOARD =====
+function renderDashboard() {
+  renderStats();
+  renderFilterBar();
+  renderFeed();
+  renderLeaderboard();
+  renderTagDist();
+}
+
+function renderStats() {
+  const total = posts.length;
+  const wins = posts.filter(p => p.is_win).length;
+  const reactions = posts.reduce((s, p) => s + Object.values(p.reactions || {}).reduce((a, b) => a + b, 0), 0);
+  document.getElementById('statsGrid').innerHTML = [
+    ['Total Stories', total],
+    ['Team Wins', wins],
+    ['Total Reactions', reactions],
+  ].map(([label, val]) => `
+    <div class="stat-card">
+      <div class="stat-value">${val}</div>
+      <div class="stat-label">${label}</div>
+    </div>
+  `).join('');
+}
+
+function renderFilterBar() {
+  const filters = [
+    { key:'all', label:'All Posts' },
+    { key:'wins', label:'🏆 Wins' },
+    { key:'Safety', label:'🦺 Safety' },
+    { key:'Quality', label:'✅ Quality' },
+    { key:'Efficiency', label:'⚡ Efficiency' },
+    { key:'Innovation', label:'💡 Innovation' },
+  ];
+  document.getElementById('dashFilterBar').innerHTML = filters.map(f =>
+    `<button class="btn btn-sm ${dashFilter === f.key ? 'btn-primary' : 'btn-ghost'}" onclick="setDashFilter('${f.key}')">${f.label}</button>`
+  ).join('');
+}
+
+function setDashFilter(filter) {
+  dashFilter = filter;
+  renderFilterBar();
+  renderFeed();
+}
+
+function getFilteredPosts() {
+  if (dashFilter === 'wins') return posts.filter(p => p.is_win);
+  if (dashFilter === 'all') return posts;
+  return posts.filter(p => p.tags && p.tags.includes(dashFilter));
+}
+
+function renderFeed() {
+  const filtered = getFilteredPosts();
+  const feed = document.getElementById('dashFeed');
+  if (filtered.length === 0) {
+    feed.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-title">No posts yet</div><div class="empty-state-text">Be the first to share a win or story!</div><button class="btn btn-orange" onclick="openCreateModal()">Share Your Story</button></div>`;
+    return;
+  }
+  feed.innerHTML = filtered.map(post => renderPostCard(post)).join('');
+}
+
+function renderPostCard(post) {
+  const totalR = Object.values(post.reactions || {}).reduce((a, b) => a + b, 0);
+  const ts = timeAgo(post.created_at);
+  const tagHtml = (post.tags || []).map(t => `<span class="tag ${TAG_CLASSES[t] || 'tag-safety'}">${t}</span>`).join('');
+  const ur = post.userReactions || [];
+  const reactionBtns = [
+    { key:'celebrate', emoji:'🎉', label:'Celebrate' },
+    { key:'inspired', emoji:'💡', label:'Inspired' },
+    { key:'learned', emoji:'📚', label:'Learned' },
+  ].map(r => `<button class="reaction-btn ${ur.includes(r.key) ? 'active' : ''}" onclick="toggleReaction('${post.id}','${r.key}')" title="${r.label}"><span>${r.emoji}</span><span class="reaction-count">${post.reactions[r.key] || 0}</span></button>`).join('');
+  return `
+    <div class="post-card" id="post-${post.id}">
+      <div class="post-header">
+        <div class="avatar">${(post.author_name || 'U')[0].toUpperCase()}</div>
+        <div class="post-author-info">
+          <div class="post-author-name">${post.author_name || 'Team Member'}</div>
+          <div class="post-meta"><span>${post.department || 'Operations'}</span><span>·</span><span>${ts}</span></div>
+        </div>
+        ${post.is_win ? '<div class="tag tag-win" style="margin-left:auto;">🏆 Win</div>' : ''}
+      </div>
+      ${post.image_url ? `<img src="${post.image_url}" class="post-image" alt="Post image" onerror="this.style.display='none'">` : ''}
+      <div class="post-body">
+        ${post.title ? `<h3 style="font-size:17px;font-weight:700;margin-bottom:8px;color:var(--text-primary);">${post.title}</h3>` : ''}
+        <p class="post-text">${post.content}</p>
+        ${tagHtml ? `<div class="tag-list">${tagHtml}</div>` : ''}
+      </div>
+      <div class="reactions-bar">
+        ${reactionBtns}
+        <span style="margin-left:auto;font-size:12px;color:var(--text-muted);">${totalR} reactions</span>
+      </div>
+    </div>
+  `;
+}
+
+function toggleReaction(postId, type) {
+  const post = posts.find(p => p.id === postId);
+  if (!post) return;
+  if (!post.userReactions) post.userReactions = [];
+  const hasReacted = post.userReactions.includes(type);
+  if (hasReacted) {
+    post.userReactions = post.userReactions.filter(r => r !== type);
+    post.reactions[type] = Math.max(0, (post.reactions[type] || 0) - 1);
+  } else {
+    post.userReactions.push(type);
+    post.reactions[type] = (post.reactions[type] || 0) + 1;
+  }
+  if (currentView === 'dashboard') renderFeed();
+  if (currentView === 'wins') renderWins();
+}
+
+function renderLeaderboard() {
+  document.getElementById('leaderboard').innerHTML = LEADERBOARD.map((m, i) => `
+    <div class="leaderboard-item">
+      <div class="rank rank-${i+1}">#${i+1}</div>
+      <div class="avatar" style="width:28px;height:28px;font-size:11px;">${m.name[0]}</div>
+      <div class="leaderboard-name">
+        <div style="font-size:13px;font-weight:600;">${m.name}</div>
+        <div style="font-size:11px;color:var(--text-muted);">${m.dept}</div>
+      </div>
+      <div class="leaderboard-score">${m.score}pts</div>
+    </div>
+  `).join('');
+}
+
+function renderTagDist() {
+  const tagData = [
+    { tag:'Safety', count:8, cls:'tag-safety' },
+    { tag:'Quality', count:12, cls:'tag-quality' },
+    { tag:'Efficiency', count:9, cls:'tag-efficiency' },
+    { tag:'Innovation', count:6, cls:'tag-innovation' },
+  ];
+  document.getElementById('tagDistribution').innerHTML = tagData.map(item => `
+    <div style="margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span class="tag ${item.cls}">${item.tag}</span>
+        <span style="font-size:12px;color:var(--text-muted);">${item.count} posts</span>
+      </div>
+      <div style="height:4px;background:var(--bg-tertiary);border-radius:2px;overflow:hidden;">
+        <div style="height:100%;width:${(item.count/35)*100}%;background:var(--pb-blue);border-radius:2px;"></div>
+      </div>
+    </div>
+  `).join('');
+}
+</script>
+<script>
+// ===== WINS BOARD =====
+function renderWins() {
+  const wins = posts.filter(p => p.is_win);
+  const totalR = wins.reduce((s, w) => s + Object.values(w.reactions || {}).reduce((a, b) => a + b, 0), 0);
+  document.getElementById('winsTotalLabel').innerHTML = `${wins.length} <span style="color:var(--pb-blue);">Wins</span> Celebrated`;
+  document.getElementById('winsTotalReactions').textContent = totalR + ' total reactions from the team';
+
+  // Category stats
+  document.getElementById('winsCategoryStats').innerHTML = Object.entries(TAG_EMOJIS).map(([tag, emoji]) => {
+    const count = wins.filter(w => w.tags && w.tags.includes(tag)).length;
+    return `<div style="text-align:center;"><div style="font-size:24px;">${emoji}</div><div style="font-family:Oswald;font-size:20px;font-weight:700;color:var(--text-primary);">${count}</div><div style="font-size:11px;color:var(--text-muted);">${tag}</div></div>`;
+  }).join('');
+
+  // Filter bar
+  const filters = [
+    { key:'all', label:'All' },
+    { key:'Safety', label:'🛡️ Safety' },
+    { key:'Quality', label:'✅ Quality' },
+    { key:'Efficiency', label:'⚡ Efficiency' },
+    { key:'Innovation', label:'💡 Innovation' },
+  ];
+  document.getElementById('winsFilterBar').innerHTML = filters.map(f =>
+    `<button class="btn btn-sm ${winsFilter === f.key ? 'btn-primary' : 'btn-ghost'}" onclick="setWinsFilter('${f.key}')">${f.label}</button>`
+  ).join('');
+
+  // Sort buttons
+  document.getElementById('sortRecentBtn').className = 'btn btn-sm ' + (winsSortBy === 'recent' ? 'btn-primary' : 'btn-ghost');
+  document.getElementById('sortReactBtn').className = 'btn btn-sm ' + (winsSortBy === 'reactions' ? 'btn-primary' : 'btn-ghost');
+
+  // Filtered + sorted wins
+  let filtered = wins.filter(w => winsFilter === 'all' || (w.tags && w.tags.includes(winsFilter)));
+  filtered = [...filtered].sort((a, b) => {
+    if (winsSortBy === 'reactions') {
+      const ra = Object.values(a.reactions || {}).reduce((x, y) => x + y, 0);
+      const rb = Object.values(b.reactions || {}).reduce((x, y) => x + y, 0);
+      return rb - ra;
+    }
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+
+  const grid = document.getElementById('winsGrid');
+  if (filtered.length === 0) {
+    grid.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🏆</div><div class="empty-state-title">No wins yet for this filter</div><div class="empty-state-text">Start celebrating team achievements!</div></div>`;
+    return;
+  }
+
+  grid.innerHTML = filtered.map(win => {
+    const totalR = Object.values(win.reactions || {}).reduce((a, b) => a + b, 0);
+    const ts = timeAgo(win.created_at);
+    const impact = win.impact || (totalR > 15 ? 'Critical' : totalR > 8 ? 'High' : 'Medium');
+    const emoji = win.emoji || TAG_EMOJIS[win.tags && win.tags[0]] || '🏆';
+    const tagHtml = (win.tags || []).map(t => `<span class="tag ${TAG_CLASSES[t] || 'tag-win'}">${t}</span>`).join('');
+    return `
+      <div class="win-card">
+        <div class="win-card-header">
+          <div class="win-emoji">${emoji}</div>
+          <div class="win-title">${win.title || 'Team Win'}</div>
+          <div class="win-impact" style="background:${IMPACT_COLORS[impact] || 'var(--pb-orange)'};">${impact}</div>
+        </div>
+        <div class="win-card-body">
+          <p class="win-description">${win.content}</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">${tagHtml}</div>
+          <div class="win-stats">
+            <div class="win-stat"><span>👤</span><span>${win.author_name}</span></div>
+            <div class="win-stat"><span>🎉</span><span>${totalR} reactions</span></div>
+            <div class="win-stat" style="margin-left:auto;"><span style="font-size:11px;color:var(--text-muted);">${ts}</span></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function setWinsFilter(f) {
+  winsFilter = f;
+  renderWins();
+}
+
+function setSortBy(s) {
+  winsSortBy = s;
+  renderWins();
+}
+
+// ===== FILES =====
+function renderFiles() {
+  renderFileTagBtns();
+  renderFilesFilterBar();
+  renderFilesList();
+}
+
+function renderFileTagBtns() {
+  document.getElementById('fileTagBtns').innerHTML = TAGS.map(tag => {
+    const sel = selectedFileTags.includes(tag);
+    return `<button type="button" class="tag ${TAG_CLASSES[tag]}" style="cursor:pointer;opacity:${sel?1:0.5};transform:${sel?'scale(1.05)':'scale(1)'};transition:var(--transition);font-size:13px;padding:6px 14px;border:none;" onclick="toggleFileTag('${tag}')">${sel?'✓ ':''}${tag}</button>`;
+  }).join('');
+}
+
+function toggleFileTag(tag) {
+  if (selectedFileTags.includes(tag)) {
+    selectedFileTags = selectedFileTags.filter(t => t !== tag);
+  } else {
+    selectedFileTags.push(tag);
+  }
+  renderFileTagBtns();
+}
+
+function renderFilesFilterBar() {
+  const tags = ['all', ...TAGS];
+  document.getElementById('filesFilterBar').innerHTML = tags.map(tag =>
+    `<button class="btn btn-sm ${fileFilter === tag ? 'btn-primary' : 'btn-ghost'}" onclick="setFileFilter('${tag}')">${tag === 'all' ? 'All' : tag}</button>`
+  ).join('');
+}
+
+function setFileFilter(f) {
+  fileFilter = f;
+  renderFilesFilterBar();
+  renderFilesList();
+}
+
+function renderFilesList() {
+  const filtered = fileFilter === 'all' ? files : files.filter(f => f.tags && f.tags.includes(fileFilter));
+  document.getElementById('fileCount').textContent = filtered.length;
+  const container = document.getElementById('filesList');
+  if (filtered.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📂</div><div class="empty-state-title">No files uploaded yet</div><div class="empty-state-text">Upload SOPs, photos, reports, and documents to share with the team.</div></div>`;
+    return;
+  }
+  container.innerHTML = `<div class="files-list">${filtered.map(file => `
+    <div class="file-item">
+      <span class="file-icon">${getFileIcon(file.mime_type)}</span>
+      <div class="file-info">
+        <div class="file-name">${file.filename}</div>
+        <div class="file-meta">${file.uploader_name || 'Team'} · ${formatBytes(file.size)}${file.description ? ' · ' + file.description : ''}${file.tags && file.tags.length ? ' · ' + file.tags.map(t => '<span style="color:var(--pb-blue);font-size:11px;">#' + t + '</span>').join(' ') : ''}</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        ${file.gdrive_synced
+          ? `<a href="${file.gdrive_url || '#'}" target="_blank" class="gdrive-status gdrive-synced" style="text-decoration:none;">☁️ In Drive</a>`
+          : `<button class="gdrive-status gdrive-pending" style="cursor:pointer;border:none;background:rgba(251,191,36,0.15);" onclick="syncFile('${file.id}')">☁️ Sync</button>`
+        }
+        <button class="btn-icon" title="Download">⬇️</button>
+      </div>
+    </div>
+  `).join('')}</div>`;
+}
+
+function handleFileDrop(event) {
+  event.preventDefault();
+  document.getElementById('dropZone').classList.remove('dragging');
+  const f = event.dataTransfer.files[0];
+  if (f) doFileUpload(f);
+}
+
+function handleFileSelect(file) {
+  if (!file) return;
+  doFileUpload(file);
+}
+
+function doFileUpload(file) {
+  const dropZone = document.getElementById('dropZone');
+  dropZone.innerHTML = '<div class="spinner" style="width:32px;height:32px;margin:0 auto 12px;"></div><div class="drop-zone-text">Uploading and syncing to Drive...</div>';
+  setTimeout(() => {
+    const newFile = {
+      id: Date.now().toString(),
+      filename: file.name,
+      mime_type: file.type,
+      size: file.size,
+      tags: [...selectedFileTags],
+      description: document.getElementById('fileDesc').value,
+      uploader_name: currentUser ? currentUser.name : 'Team Member',
+      created_at: new Date().toISOString(),
+      gdrive_synced: false,
+    };
+    files.unshift(newFile);
+    document.getElementById('fileDesc').value = '';
+    selectedFileTags = [];
+    dropZone.innerHTML = '<div class="drop-zone-icon">☁️</div><div class="drop-zone-text"><strong>Click to upload</strong> or drag and drop<br>All file types supported · Auto-syncs to Google Drive</div>';
+    addToast('File ready: ' + file.name, 'success');
+    renderFilesList();
+    renderFileTagBtns();
+  }, 1200);
+}
+
+function syncFile(fileId) {
+  const file = files.find(f => f.id === fileId);
+  if (!file) return;
+  const btn = event.target;
+  btn.textContent = '⏳ Syncing...';
+  btn.disabled = true;
+  setTimeout(() => {
+    file.gdrive_synced = true;
+    file.gdrive_url = '#';
+    addToast('Synced to Google Drive!', 'success');
+    renderFilesList();
+  }, 1200);
+}
+</script>
+<script>
+// ===== CREATE POST MODAL =====
+function openCreateModal() {
+  const modal = document.getElementById('createModal');
+  modal.classList.remove('hidden');
+  isWin = false;
+  selectedPostTags = [];
+  postImageData = null;
+  document.getElementById('postTitle').value = '';
+  document.getElementById('postContent').value = '';
+  document.getElementById('winToggle').style.background = 'var(--bg-tertiary)';
+  document.getElementById('winToggle').style.border = '1px solid var(--border-color)';
+  document.getElementById('winToggleIcon').textContent = '📝';
+  document.getElementById('winToggleLabel').textContent = 'Mark as Team Win';
+  document.getElementById('winToggleLabel').style.color = 'var(--text-primary)';
+  document.getElementById('winToggleSwitch').style.background = 'var(--border-color)';
+  document.getElementById('winToggleThumb').style.left = '2px';
+  document.getElementById('imagePreviewArea').style.display = 'none';
+  document.getElementById('imageDropZone').style.display = '';
+  renderPostTagBtns();
+}
+
+function closeCreateModal() {
+  document.getElementById('createModal').classList.add('hidden');
+}
+
+function renderPostTagBtns() {
+  document.getElementById('postTagBtns').innerHTML = TAGS.map(tag => {
+    const sel = selectedPostTags.includes(tag);
+    return `<button type="button" class="tag ${TAG_CLASSES[tag]}" style="cursor:pointer;opacity:${sel?1:0.5};transform:${sel?'scale(1.05)':'scale(1)'};transition:var(--transition);font-size:13px;padding:6px 14px;" onclick="togglePostTag('${tag}')">${sel?'✓ ':''}${tag}</button>`;
+  }).join('');
+}
+
+function togglePostTag(tag) {
+  if (selectedPostTags.includes(tag)) {
+    selectedPostTags = selectedPostTags.filter(t => t !== tag);
+  } else {
+    selectedPostTags.push(tag);
+  }
+  renderPostTagBtns();
+}
+
+function toggleWinFlag() {
+  isWin = !isWin;
+  const bg = isWin ? 'rgba(251,191,36,0.08)' : 'var(--bg-tertiary)';
+  const border = isWin ? '1px solid rgba(251,191,36,0.3)' : '1px solid var(--border-color)';
+  document.getElementById('winToggle').style.background = bg;
+  document.getElementById('winToggle').style.border = border;
+  document.getElementById('winToggleIcon').textContent = isWin ? '🏆' : '📝';
+  document.getElementById('winToggleLabel').textContent = isWin ? 'Marking as a Team Win!' : 'Mark as Team Win';
+  document.getElementById('winToggleLabel').style.color = isWin ? '#fbbf24' : 'var(--text-primary)';
+  document.getElementById('winToggleSwitch').style.background = isWin ? '#fbbf24' : 'var(--border-color)';
+  document.getElementById('winToggleThumb').style.left = isWin ? '20px' : '2px';
+}
+
+function handleImageDrop(event) {
+  event.preventDefault();
+  document.getElementById('imageDropZone').classList.remove('dragging');
+  const f = event.dataTransfer.files[0];
+  if (f) selectImage(f);
+}
+
+function handleImageSelect(file) {
+  if (file) selectImage(file);
+}
+
+function selectImage(file) {
+  if (!file || !file.type.startsWith('image/')) {
+    addToast('Please select an image file', 'error');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    postImageData = e.target.result;
+    document.getElementById('imagePreviewImg').src = postImageData;
+    document.getElementById('imagePreviewArea').style.display = '';
+    document.getElementById('imageDropZone').style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeImage() {
+  postImageData = null;
+  document.getElementById('imagePreviewArea').style.display = 'none';
+  document.getElementById('imageDropZone').style.display = '';
+  document.getElementById('imageInput').value = '';
+}
+
+function submitPost() {
+  const content = document.getElementById('postContent').value.trim();
+  if (!content) {
+    addToast('Please write something to share', 'error');
+    return;
+  }
+  const btn = document.getElementById('submitPostBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:16px;height:16px;"></span> Posting...';
+
+  setTimeout(() => {
+    const newPost = {
+      id: Date.now().toString(),
+      title: document.getElementById('postTitle').value.trim() || '',
+      content,
+      tags: [...selectedPostTags],
+      is_win: isWin,
+      author_name: currentUser ? currentUser.name : 'Team Member',
+      department: currentUser ? currentUser.department : 'General',
+      created_at: new Date().toISOString(),
+      reactions: { celebrate: 0, inspired: 0, learned: 0 },
+      userReactions: [],
+      image_url: postImageData || null,
+    };
+    posts.unshift(newPost);
+    addToast('Post shared with the team!', 'success');
+    closeCreateModal();
+    btn.disabled = false;
+    btn.textContent = '🚀 Share with Team';
+    switchView('dashboard', document.querySelector('[data-view="dashboard"]'));
+    renderDashboard();
+  }, 800);
+}
+
+// Close modal on backdrop click
+document.getElementById('createModal').addEventListener('click', function(e) {
+  if (e.target === this) closeCreateModal();
+});
+
+// ===== RENDER ALL =====
+function renderAll() {
+  renderDashboard();
+}
+</script>
+<script>
+// ===== NEURAL CANVAS ANIMATION =====
+(function initNeuralCanvas() {
+  const canvas = document.getElementById('neuralCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+
+  const COLORS = {
+    orange: '#f1420b',
+    lightOrange: '#ed6626',
+    blue: '#2a93c1',
+    darkBlue: '#3a60ab',
+  };
+
+  function resize() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  let time = 0;
+
+  const rings = [
+    { radius: 180, segments: 60, speed: 0.002, width: 1, gap: 4 },
+    { radius: 160, segments: 40, speed: -0.003, width: 2, gap: 6 },
+    { radius: 140, segments: 24, speed: 0.004, width: 1.5, gap: 8 },
+    { radius: 100, segments: 12, speed: -0.005, width: 3, gap: 15 },
+  ];
+
+  function createParticles(cx, cy, S, count) {
+    return Array.from({ length: count }, () => ({
+      angle: Math.random() * Math.PI * 2,
+      radius: (80 + Math.random() * 100) * S,
+      speed: (0.001 + Math.random() * 0.002) * (Math.random() > 0.5 ? 1 : -1),
+      size: (1 + Math.random() * 2) * S,
+      alpha: 0.2 + Math.random() * 0.4,
+      color: Math.random() > 0.5 ? COLORS.orange : COLORS.blue,
+      trail: [],
+      maxTrail: 3 + Math.floor(Math.random() * 6),
+    }));
+  }
+
+  function updateParticles(particles, cx, cy, S) {
+    particles.forEach(p => {
+      const x = cx + Math.cos(p.angle) * p.radius;
+      const y = cy + Math.sin(p.angle) * p.radius;
+      p.trail.unshift({ x, y, alpha: p.alpha });
+      if (p.trail.length > p.maxTrail) p.trail.pop();
+      p.angle += p.speed;
+      p.radius += Math.sin(time * 0.02 + p.angle) * 0.3 * S;
+    });
+  }
+
+  function drawParticles(particles) {
+    particles.forEach(p => {
+      const x = p.trail.length > 0 ? p.trail[0].x : 0;
+      const y = p.trail.length > 0 ? p.trail[0].y : 0;
+      p.trail.forEach((point, i) => {
+        const trailAlpha = point.alpha * (1 - i / p.trail.length) * 0.5;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, p.size * (1 - i / p.trail.length * 0.5), 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = trailAlpha;
+        ctx.fill();
+      });
+      ctx.beginPath();
+      ctx.arc(x, y, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = p.alpha;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 10 * p.size;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+    });
+  }
+
+  function drawRings(cx, cy, S) {
+    rings.forEach((ring, ringIndex) => {
+      const baseRotation = time * ring.speed;
+      for (let i = 0; i < ring.segments; i++) {
+        const segmentAngle = (Math.PI * 2) / ring.segments;
+        const startAngle = baseRotation + i * segmentAngle;
+        const endAngle = startAngle + segmentAngle - (ring.gap * Math.PI / 180);
+        const t = i / ring.segments;
+        let r, g, b;
+        if (t < 0.5) { r = 241; g = 66 + t * 72; b = 11 + t * 30; }
+        else { const t2 = (t - 0.5) * 2; r = 237 - t2 * 195; g = 102 + t2 * 45; b = 38 + t2 * 155; }
+        const alpha = 0.3 + Math.sin(time * 0.02 + i * 0.5) * 0.2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, ring.radius * S, startAngle, endAngle);
+        ctx.strokeStyle = `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${alpha})`;
+        ctx.lineWidth = ring.width * S;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+      }
+      if (ringIndex === 0) {
+        for (let i = 0; i < 60; i++) {
+          const angle = baseRotation + (i * Math.PI * 2) / 60;
+          const innerR = ring.radius * S - 5 * S;
+          const outerR = ring.radius * S + (i % 5 === 0 ? 8 : 3) * S;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(angle) * innerR, cy + Math.sin(angle) * innerR);
+          ctx.lineTo(cx + Math.cos(angle) * outerR, cy + Math.sin(angle) * outerR);
+          ctx.strokeStyle = i % 5 === 0 ? 'rgba(42,147,193,0.6)' : 'rgba(42,147,193,0.2)';
+          ctx.lineWidth = (i % 5 === 0 ? 2 : 1) * S;
+          ctx.stroke();
+        }
+      }
+    });
+  }
+
+  function drawScanBeam(cx, cy, S) {
+    const scanAngle = time * 0.015;
+    const scanWidth = Math.PI / 8;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, 200 * S, scanAngle, scanAngle + scanWidth);
+    ctx.closePath();
+    if (ctx.createConicGradient) {
+      const gradient = ctx.createConicGradient(scanAngle, cx, cy);
+      gradient.addColorStop(0, 'rgba(241,66,11,0)');
+      gradient.addColorStop(0.02, 'rgba(241,66,11,0.3)');
+      gradient.addColorStop(0.05, 'rgba(42,147,193,0.09)');
+      gradient.addColorStop(0.1, 'rgba(42,147,193,0)');
+      gradient.addColorStop(1, 'rgba(241,66,11,0)');
+      ctx.fillStyle = gradient;
+    } else {
+      const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, 200 * S);
+      gradient.addColorStop(0, 'rgba(241,66,11,0.25)');
+      gradient.addColorStop(0.5, 'rgba(42,147,193,0.08)');
+      gradient.addColorStop(1, 'rgba(42,147,193,0)');
+      ctx.fillStyle = gradient;
+    }
+    ctx.fill();
+  }
+
+  function drawDataArcs(cx, cy, S) {
+    const arcs = [
+      { radius: 210, start: -0.5, length: 1.2, color: COLORS.orange },
+      { radius: 215, start: 2, length: 0.8, color: COLORS.blue },
+      { radius: 220, start: 4, length: 1.5, color: COLORS.lightOrange },
+    ];
+    arcs.forEach(arc => {
+      const animatedStart = arc.start + time * 0.005;
+      const pulseLength = arc.length + Math.sin(time * 0.03) * 0.2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, arc.radius * S, animatedStart, animatedStart + pulseLength);
+      ctx.strokeStyle = arc.color;
+      ctx.lineWidth = 3 * S;
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = 0.6;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    });
+  }
+
+  function drawCenterGlow(cx, cy, S) {
+    const baseSize = 80 * S;
+    const pulseSize = baseSize + Math.sin(time * 0.04) * 10 * S;
+    const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, pulseSize);
+    gradient.addColorStop(0, 'rgba(241,66,11,0.15)');
+    gradient.addColorStop(0.5, 'rgba(237,102,38,0.075)');
+    gradient.addColorStop(0.8, 'rgba(42,147,193,0.045)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.beginPath();
+    ctx.arc(cx, cy, pulseSize, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+  }
+
+  const bgNodes = Array.from({ length: 50 }, () => ({
+    x: Math.random(), y: Math.random(),
+    vx: (Math.random() - 0.5) * 0.0003,
+    vy: (Math.random() - 0.5) * 0.0003,
+    r: 1 + Math.random() * 2,
+    alpha: 0.1 + Math.random() * 0.3,
+    color: Math.random() > 0.5 ? COLORS.blue : COLORS.orange,
+  }));
+
+  function drawBgNodes(w, h) {
+    bgNodes.forEach(n => {
+      n.x = (n.x + n.vx + 1) % 1;
+      n.y = (n.y + n.vy + 1) % 1;
+      ctx.beginPath();
+      ctx.arc(n.x * w, n.y * h, n.r, 0, Math.PI * 2);
+      ctx.fillStyle = n.color;
+      ctx.globalAlpha = n.alpha;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i < bgNodes.length; i++) {
+      for (let j = i + 1; j < bgNodes.length; j++) {
+        const dx = (bgNodes[i].x - bgNodes[j].x) * w;
+        const dy = (bgNodes[i].y - bgNodes[j].y) * h;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 120) {
+          const alpha = (1 - dist / 120) * 0.12;
+          ctx.beginPath();
+          ctx.moveTo(bgNodes[i].x * w, bgNodes[i].y * h);
+          ctx.lineTo(bgNodes[j].x * w, bgNodes[j].y * h);
+          ctx.strokeStyle = COLORS.blue;
+          ctx.globalAlpha = alpha;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
+  }
+
+  let mainParticles = null;
+  const secondaryOrbs = [
+    { fx: 0.1, fy: 0.2, sScale: 0.45, particles: null },
+    { fx: 0.9, fy: 0.8, sScale: 0.35, particles: null },
+  ];
+
+  function getCtxDims() {
+    return { w: canvas.width / dpr, h: canvas.height / dpr };
+  }
+
+  function initParticles() {
+    const { w, h } = getCtxDims();
+    const S = Math.min(w, h) / 500;
+    mainParticles = createParticles(w / 2, h / 2, S, 60);
+    secondaryOrbs.forEach(orb => {
+      const cx = orb.fx * w;
+      const cy = orb.fy * h;
+      const oS = S * orb.sScale;
+      orb.particles = createParticles(cx, cy, oS, 20);
+    });
+  }
+  initParticles();
+
+  function animate() {
+    const { w, h } = getCtxDims();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    const bgGrad = ctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, Math.max(w,h)*0.8);
+    bgGrad.addColorStop(0, 'rgba(15,10,20,1)');
+    bgGrad.addColorStop(0.5, 'rgba(10,10,15,1)');
+    bgGrad.addColorStop(1, 'rgba(5,5,10,1)');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, w, h);
+
+    drawBgNodes(w, h);
+
+    const cx = w / 2;
+    const cy = h / 2;
+    const S = Math.min(w, h) / 500;
+
+    ctx.globalAlpha = 0.35;
+    secondaryOrbs.forEach(orb => {
+      const ox = orb.fx * w;
+      const oy = orb.fy * h;
+      const oS = S * orb.sScale;
+      if (orb.particles) {
+        updateParticles(orb.particles, ox, oy, oS);
+        drawCenterGlow(ox, oy, oS);
+        drawRings(ox, oy, oS);
+        drawParticles(orb.particles);
+      }
+    });
+    ctx.globalAlpha = 1;
+
+    drawScanBeam(cx, cy, S);
+    drawCenterGlow(cx, cy, S);
+    drawDataArcs(cx, cy, S);
+    drawRings(cx, cy, S);
+    if (mainParticles) {
+      updateParticles(mainParticles, cx, cy, S);
+      drawParticles(mainParticles);
+    }
+
+    time++;
+    requestAnimationFrame(animate);
+  }
+
+  animate();
+})();
+
+// ===== BOOT =====
+initAuth();
+</script>
+
+</body>
+</html>

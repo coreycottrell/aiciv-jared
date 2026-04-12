@@ -1,0 +1,564 @@
+<!-- ============================================================
+     PureSurf Orchestration Panel
+     Injectable snippet for PureSurf Dashboard
+     ============================================================ -->
+
+<!-- SIDEBAR NAV ITEM (add to sidebar navigation) -->
+<!--
+<div class="nav-item" data-panel="orchestration" onclick="switchPanel('orchestration')">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+  </svg>
+  Orchestration
+</div>
+-->
+
+<!-- PANEL CONTENT -->
+<div id="panel-orchestration" class="panel" style="display:none">
+
+  <!-- Section A: Active Sessions -->
+  <div class="card" id="orch-sessions-card">
+    <div class="card-header">
+      <h3>Active Sessions</h3>
+      <div class="card-actions">
+        <button class="btn btn-ghost" onclick="ORCH.selectAll()">Select All</button>
+        <button class="btn btn-ghost" onclick="ORCH.deselectAll()">Deselect All</button>
+        <button class="btn btn-ghost" onclick="ORCH.loadSessions()">Refresh</button>
+      </div>
+    </div>
+    <div id="orch-session-list" class="orch-session-list">
+      <div class="orch-empty">Loading sessions...</div>
+    </div>
+  </div>
+
+  <!-- Section B: Quick Sync Actions -->
+  <div class="card">
+    <div class="card-header"><h3>Quick Sync Actions</h3></div>
+    <div class="orch-sync-row">
+      <button class="btn btn-primary" onclick="ORCH.openNavigateModal()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M13 5l7 7-7 7"/></svg>
+        Navigate All
+      </button>
+      <button class="btn btn-primary" onclick="ORCH.screenshotAll()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        Screenshot All
+      </button>
+      <button class="btn orch-btn-danger" onclick="ORCH.closeAllSelected()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        Close Selected
+      </button>
+    </div>
+  </div>
+
+  <!-- Section C: Orchestration Builder -->
+  <div class="card">
+    <div class="card-header">
+      <h3>Orchestration Builder</h3>
+      <div class="card-actions">
+        <label class="orch-toggle">
+          <input type="checkbox" id="orch-jitter-toggle" checked>
+          <span class="orch-toggle-label">Natural timing</span>
+        </label>
+      </div>
+    </div>
+    <div id="orch-steps-list" class="orch-steps-list"></div>
+    <div class="orch-builder-actions">
+      <button class="btn btn-ghost" onclick="ORCH.addStep()">+ Add Step</button>
+      <button class="btn btn-primary" onclick="ORCH.runOrchestration()">Run Orchestration</button>
+    </div>
+  </div>
+
+  <!-- Section D: Execution Results -->
+  <div class="card">
+    <div class="card-header"><h3>Execution Results</h3></div>
+    <div id="orch-results" class="orch-results">
+      <div class="orch-empty">No orchestration results yet. Build and run a workflow above.</div>
+    </div>
+  </div>
+
+  <!-- Section E: Preset Orchestrations -->
+  <div class="card">
+    <div class="card-header"><h3>Preset Orchestrations</h3></div>
+    <div class="orch-presets-grid">
+      <div class="orch-preset" onclick="ORCH.loadPreset('social-amplify')">
+        <div class="orch-preset-icon" style="color:var(--orange)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+        </div>
+        <div class="orch-preset-info">
+          <strong>Social Campaign Amplification</strong>
+          <span>Profile A posts, B comments (3s), C shares (8s)</span>
+        </div>
+      </div>
+      <div class="orch-preset" onclick="ORCH.loadPreset('competitive-research')">
+        <div class="orch-preset-icon" style="color:var(--blue)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </div>
+        <div class="orch-preset-info">
+          <strong>Competitive Research</strong>
+          <span>3 sessions navigate to 3 competitor sites simultaneously</span>
+        </div>
+      </div>
+      <div class="orch-preset" onclick="ORCH.loadPreset('multi-platform')">
+        <div class="orch-preset-icon" style="color:var(--green, #22c55e)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <div class="orch-preset-info">
+          <strong>Multi-Platform Post</strong>
+          <span>Post same content to LinkedIn, Twitter, Instagram in sequence</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Navigate Modal -->
+  <div id="orch-nav-modal" class="orch-modal" style="display:none">
+    <div class="orch-modal-content">
+      <h3>Navigate All Selected Sessions</h3>
+      <input type="url" id="orch-nav-url" class="orch-input" placeholder="https://example.com">
+      <div class="orch-modal-actions">
+        <button class="btn btn-ghost" onclick="ORCH.closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="ORCH.executeNavigateAll()">Navigate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Screenshot Thumbnails Modal -->
+  <div id="orch-screenshot-modal" class="orch-modal" style="display:none">
+    <div class="orch-modal-content orch-modal-wide">
+      <h3>Screenshots</h3>
+      <div id="orch-screenshot-grid" class="orch-screenshot-grid"></div>
+      <div class="orch-modal-actions">
+        <button class="btn btn-ghost" onclick="ORCH.closeScreenshotModal()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  /* Orchestration Panel Styles */
+  #panel-orchestration .card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px; flex-wrap: wrap; gap: 8px;
+  }
+  #panel-orchestration .card-header h3 {
+    font-size: 15px; font-weight: 600; color: var(--text, #e2e8f0);
+  }
+  #panel-orchestration .card-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .orch-session-list { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; }
+  .orch-session-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; background: var(--bg, #0a0e1a); border: 1px solid var(--border, #1e293b);
+    border-radius: 6px; cursor: pointer; transition: border-color .15s;
+  }
+  .orch-session-item:hover { border-color: var(--blue, #3b82f6); }
+  .orch-session-item.selected { border-color: var(--blue, #3b82f6); background: rgba(59,130,246,.08); }
+  .orch-session-item input[type="checkbox"] { accent-color: var(--blue, #3b82f6); }
+  .orch-session-meta { flex: 1; display: flex; flex-direction: column; }
+  .orch-session-name { font-size: 13px; font-weight: 600; }
+  .orch-session-detail { font-size: 11px; color: var(--text-dim, #8892a8); }
+  .orch-status-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .orch-status-dot.active { background: var(--green, #22c55e); }
+  .orch-status-dot.idle { background: var(--yellow, #eab308); }
+  .orch-status-dot.stopped { background: var(--red, #ef4444); }
+  .orch-empty { padding: 24px; text-align: center; color: var(--text-dim, #8892a8); font-size: 13px; }
+
+  .orch-sync-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .orch-btn-danger {
+    background: transparent; color: var(--red, #ef4444); border: 1px solid var(--red, #ef4444);
+    padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;
+    display: inline-flex; align-items: center; gap: 6px; transition: background .15s;
+  }
+  .orch-btn-danger:hover { background: rgba(239,68,68,.12); }
+
+  .orch-steps-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .orch-step {
+    display: grid; grid-template-columns: 1fr 1fr 2fr 100px 32px;
+    gap: 8px; align-items: center; padding: 8px; background: var(--bg, #0a0e1a);
+    border: 1px solid var(--border, #1e293b); border-radius: 6px;
+  }
+  .orch-step select, .orch-step input {
+    background: var(--surface, #111827); color: var(--text, #e2e8f0);
+    border: 1px solid var(--border, #1e293b); border-radius: 4px;
+    padding: 6px 8px; font-size: 12px; width: 100%;
+  }
+  .orch-step select:focus, .orch-step input:focus { outline: none; border-color: var(--blue, #3b82f6); }
+  .orch-step-remove {
+    background: none; border: none; color: var(--red, #ef4444); cursor: pointer;
+    font-size: 16px; padding: 4px; border-radius: 4px; transition: background .15s;
+  }
+  .orch-step-remove:hover { background: rgba(239,68,68,.15); }
+
+  .orch-builder-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+  .orch-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; }
+  .orch-toggle input { accent-color: var(--blue, #3b82f6); }
+  .orch-toggle-label { color: var(--text-dim, #8892a8); }
+
+  .orch-results { max-height: 300px; overflow-y: auto; }
+  .orch-result-header {
+    display: flex; justify-content: space-between; padding: 8px 0; margin-bottom: 8px;
+    border-bottom: 1px solid var(--border, #1e293b); font-size: 13px;
+  }
+  .orch-result-item {
+    display: grid; grid-template-columns: 100px 1fr 70px 60px; gap: 8px;
+    padding: 6px 8px; font-size: 12px; border-left: 3px solid transparent; margin-bottom: 4px;
+  }
+  .orch-result-item.success { border-left-color: var(--green, #22c55e); }
+  .orch-result-item.failed { border-left-color: var(--red, #ef4444); }
+  .orch-result-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .orch-presets-grid { display: flex; flex-direction: column; gap: 8px; }
+  .orch-preset {
+    display: flex; align-items: center; gap: 12px; padding: 12px;
+    background: var(--bg, #0a0e1a); border: 1px solid var(--border, #1e293b);
+    border-radius: 6px; cursor: pointer; transition: border-color .15s;
+  }
+  .orch-preset:hover { border-color: var(--blue, #3b82f6); }
+  .orch-preset-info { display: flex; flex-direction: column; gap: 2px; }
+  .orch-preset-info strong { font-size: 13px; }
+  .orch-preset-info span { font-size: 11px; color: var(--text-dim, #8892a8); }
+
+  .orch-modal {
+    position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex;
+    align-items: center; justify-content: center; z-index: 1000;
+  }
+  .orch-modal-content {
+    background: var(--surface, #111827); border: 1px solid var(--border, #1e293b);
+    border-radius: 10px; padding: 24px; min-width: 360px; max-width: 480px;
+  }
+  .orch-modal-content h3 { margin-bottom: 16px; font-size: 15px; }
+  .orch-modal-wide { max-width: 720px; min-width: 480px; }
+  .orch-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .orch-input {
+    width: 100%; background: var(--bg, #0a0e1a); color: var(--text, #e2e8f0);
+    border: 1px solid var(--border, #1e293b); border-radius: 6px;
+    padding: 10px 12px; font-size: 13px;
+  }
+  .orch-input:focus { outline: none; border-color: var(--blue, #3b82f6); }
+
+  .orch-screenshot-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px; margin-top: 12px;
+  }
+  .orch-screenshot-thumb {
+    border: 1px solid var(--border, #1e293b); border-radius: 6px; overflow: hidden;
+    background: var(--bg, #0a0e1a);
+  }
+  .orch-screenshot-thumb img { width: 100%; display: block; }
+  .orch-screenshot-thumb .caption { padding: 6px 8px; font-size: 11px; color: var(--text-dim, #8892a8); }
+</style>
+
+<script>
+const ORCH = (() => {
+  const API = 'https://surf.purebrain.ai';
+  const getKey = () => localStorage.getItem('puresurf-api-key') || 'chy-baas-key-001';
+  const headers = () => ({ 'Content-Type': 'application/json', 'X-API-Key': getKey() });
+
+  let sessions = [];
+  let selectedIds = new Set();
+  let stepCounter = 0;
+
+  // --- API helpers ---
+  async function apiFetch(path, opts = {}) {
+    const res = await fetch(`${API}${path}`, { headers: headers(), ...opts });
+    if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+    return res.json();
+  }
+
+  // --- Section A: Sessions ---
+  async function loadSessions() {
+    const list = document.getElementById('orch-session-list');
+    list.innerHTML = '<div class="orch-empty">Loading...</div>';
+    try {
+      const data = await apiFetch('/sessions');
+      sessions = Array.isArray(data) ? data : (data.sessions || data.data || []);
+      renderSessions();
+    } catch (e) {
+      list.innerHTML = `<div class="orch-empty">Failed to load: ${e.message}</div>`;
+    }
+  }
+
+  function renderSessions() {
+    const list = document.getElementById('orch-session-list');
+    if (!sessions.length) { list.innerHTML = '<div class="orch-empty">No active sessions</div>'; return; }
+    list.innerHTML = sessions.map(s => {
+      const id = s.session_id || s.id;
+      const name = s.profile_name || s.name || id;
+      const device = s.device || s.browser || 'Chrome';
+      const status = s.status || 'active';
+      const checked = selectedIds.has(id) ? 'checked' : '';
+      const cls = selectedIds.has(id) ? ' selected' : '';
+      return `<div class="orch-session-item${cls}" onclick="ORCH.toggleSession('${id}')">
+        <input type="checkbox" ${checked} onclick="event.stopPropagation(); ORCH.toggleSession('${id}')">
+        <span class="orch-status-dot ${status}"></span>
+        <div class="orch-session-meta">
+          <span class="orch-session-name">${esc(name)}</span>
+          <span class="orch-session-detail">${esc(id)} | ${esc(device)}</span>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function toggleSession(id) {
+    selectedIds.has(id) ? selectedIds.delete(id) : selectedIds.add(id);
+    renderSessions();
+  }
+
+  function selectAll() { sessions.forEach(s => selectedIds.add(s.session_id || s.id)); renderSessions(); }
+  function deselectAll() { selectedIds.clear(); renderSessions(); }
+
+  function getSelectedIds() {
+    const ids = [...selectedIds];
+    if (!ids.length) { alert('No sessions selected'); return null; }
+    return ids;
+  }
+
+  // --- Section B: Quick Sync ---
+  function openNavigateModal() {
+    if (!getSelectedIds()) return;
+    document.getElementById('orch-nav-modal').style.display = 'flex';
+    document.getElementById('orch-nav-url').value = '';
+    document.getElementById('orch-nav-url').focus();
+  }
+
+  function closeModal() { document.getElementById('orch-nav-modal').style.display = 'none'; }
+
+  async function executeNavigateAll() {
+    const url = document.getElementById('orch-nav-url').value.trim();
+    if (!url) { alert('Enter a URL'); return; }
+    const ids = getSelectedIds();
+    if (!ids) return;
+    closeModal();
+    try {
+      const data = await apiFetch('/sessions/sync-action', {
+        method: 'POST',
+        body: JSON.stringify({ session_ids: ids, action: 'navigate', params: { url } })
+      });
+      showSyncResult('Navigate All', data);
+    } catch (e) { alert('Navigate failed: ' + e.message); }
+  }
+
+  async function screenshotAll() {
+    const ids = getSelectedIds();
+    if (!ids) return;
+    try {
+      const data = await apiFetch('/sessions/sync-action', {
+        method: 'POST',
+        body: JSON.stringify({ session_ids: ids, action: 'screenshot', params: {} })
+      });
+      showScreenshots(data);
+    } catch (e) { alert('Screenshot failed: ' + e.message); }
+  }
+
+  function showScreenshots(data) {
+    const grid = document.getElementById('orch-screenshot-grid');
+    const results = data.results || [];
+    grid.innerHTML = results.map(r => {
+      const thumb = r.screenshot_url || r.output || '';
+      const sid = r.session_id || '?';
+      if (thumb) {
+        return `<div class="orch-screenshot-thumb"><img src="${esc(thumb)}" alt="${esc(sid)}"><div class="caption">${esc(sid)}</div></div>`;
+      }
+      return `<div class="orch-screenshot-thumb"><div class="orch-empty" style="padding:40px 8px">No image</div><div class="caption">${esc(sid)}</div></div>`;
+    }).join('');
+    document.getElementById('orch-screenshot-modal').style.display = 'flex';
+  }
+
+  function closeScreenshotModal() { document.getElementById('orch-screenshot-modal').style.display = 'none'; }
+
+  async function closeAllSelected() {
+    const ids = getSelectedIds();
+    if (!ids) return;
+    if (!confirm(`Close ${ids.length} session(s)? This cannot be undone.`)) return;
+    let ok = 0, fail = 0;
+    for (const id of ids) {
+      try {
+        await apiFetch(`/sessions/${id}`, { method: 'DELETE' });
+        ok++;
+      } catch { fail++; }
+    }
+    alert(`Closed: ${ok}, Failed: ${fail}`);
+    selectedIds.clear();
+    loadSessions();
+  }
+
+  // --- Section C: Orchestration Builder ---
+  function sessionOptions() {
+    return sessions.map(s => {
+      const id = s.session_id || s.id;
+      const name = s.profile_name || s.name || id;
+      return `<option value="${id}">${esc(name)}</option>`;
+    }).join('');
+  }
+
+  function addStep(session_id, action, params, delay_ms) {
+    stepCounter++;
+    const el = document.createElement('div');
+    el.className = 'orch-step';
+    el.dataset.stepId = stepCounter;
+    el.innerHTML = `
+      <select class="step-session">${sessionOptions()}</select>
+      <select class="step-action" onchange="ORCH.updateParamPlaceholder(this)">
+        <option value="navigate">navigate</option>
+        <option value="click">click</option>
+        <option value="type">type</option>
+        <option value="screenshot">screenshot</option>
+        <option value="wait">wait</option>
+        <option value="evaluate">evaluate</option>
+      </select>
+      <input class="step-params" type="text" placeholder="URL, selector, or text...">
+      <input class="step-delay" type="number" min="0" max="10000" step="100" value="${delay_ms || 0}" placeholder="ms">
+      <button class="orch-step-remove" onclick="this.closest('.orch-step').remove()">&times;</button>
+    `;
+    if (session_id) el.querySelector('.step-session').value = session_id;
+    if (action) el.querySelector('.step-action').value = action;
+    if (params) el.querySelector('.step-params').value = params;
+    document.getElementById('orch-steps-list').appendChild(el);
+    updateParamPlaceholder(el.querySelector('.step-action'));
+  }
+
+  function updateParamPlaceholder(select) {
+    const input = select.closest('.orch-step').querySelector('.step-params');
+    const map = { navigate:'https://...', click:'CSS selector', type:'Text to type', screenshot:'(none)', wait:'Seconds', evaluate:'JS expression' };
+    input.placeholder = map[select.value] || '';
+  }
+
+  function collectSteps() {
+    const rows = document.querySelectorAll('#orch-steps-list .orch-step');
+    if (!rows.length) { alert('Add at least one step'); return null; }
+    const jitter = document.getElementById('orch-jitter-toggle').checked;
+    return [...rows].map(r => {
+      let delay = parseInt(r.querySelector('.step-delay').value) || 0;
+      if (jitter && delay > 0) delay += Math.floor(Math.random() * delay * 0.3);
+      const action = r.querySelector('.step-action').value;
+      const raw = r.querySelector('.step-params').value.trim();
+      let params = {};
+      if (action === 'navigate') params = { url: raw };
+      else if (action === 'click') params = { selector: raw };
+      else if (action === 'type') params = { text: raw };
+      else if (action === 'wait') params = { seconds: parseFloat(raw) || 1 };
+      else if (action === 'evaluate') params = { expression: raw };
+      return {
+        session_id: r.querySelector('.step-session').value,
+        action,
+        params,
+        delay_ms: delay
+      };
+    });
+  }
+
+  async function runOrchestration() {
+    const steps = collectSteps();
+    if (!steps) return;
+    const results = document.getElementById('orch-results');
+    results.innerHTML = '<div class="orch-empty">Running orchestration...</div>';
+    try {
+      const data = await apiFetch('/orchestrate', {
+        method: 'POST',
+        body: JSON.stringify({ steps })
+      });
+      renderResults(data);
+    } catch (e) {
+      results.innerHTML = `<div class="orch-empty" style="color:var(--red)">Orchestration failed: ${e.message}</div>`;
+    }
+  }
+
+  // --- Section D: Results ---
+  function renderResults(data) {
+    const el = document.getElementById('orch-results');
+    const total = data.total_steps || 0;
+    const ok = data.succeeded || 0;
+    const fail = data.failed || 0;
+    const results = data.results || [];
+    const rate = total ? Math.round((ok / total) * 100) : 0;
+    const totalDur = results.reduce((s, r) => s + (r.duration_ms || 0), 0);
+
+    let html = `<div class="orch-result-header">
+      <span>${total} steps | ${ok} succeeded | ${fail} failed | ${rate}% success</span>
+      <span>${totalDur}ms total</span>
+    </div>`;
+
+    html += results.map(r => {
+      const cls = r.status === 'success' ? 'success' : 'failed';
+      return `<div class="orch-result-item ${cls}">
+        <span title="${esc(r.session_id || '')}">${esc(r.session_id || '?')}</span>
+        <span>${esc(r.action || '')} ${esc(JSON.stringify(r.params || {}).slice(0, 60))}</span>
+        <span>${r.status || 'unknown'}</span>
+        <span>${r.duration_ms || 0}ms</span>
+      </div>`;
+    }).join('');
+
+    el.innerHTML = html;
+  }
+
+  function showSyncResult(label, data) {
+    const results = data.results || [];
+    const ok = results.filter(r => r.status === 'success').length;
+    const fail = results.length - ok;
+    renderResults({ total_steps: results.length, succeeded: ok, failed: fail, results });
+  }
+
+  // --- Section E: Presets ---
+  function loadPreset(name) {
+    document.getElementById('orch-steps-list').innerHTML = '';
+    const ids = sessions.map(s => s.session_id || s.id);
+
+    if (name === 'social-amplify') {
+      addStep(ids[0] || '', 'navigate', 'https://linkedin.com/feed', 0);
+      addStep(ids[0] || '', 'type', 'Your post content here', 1000);
+      addStep(ids[1] || '', 'navigate', 'https://linkedin.com/feed', 3000);
+      addStep(ids[1] || '', 'type', 'Great post! Very insightful.', 1000);
+      addStep(ids[2] || '', 'navigate', 'https://linkedin.com/feed', 8000);
+      addStep(ids[2] || '', 'click', '[data-control-name="share"]', 500);
+    } else if (name === 'competitive-research') {
+      addStep(ids[0] || '', 'navigate', 'https://competitor1.com', 0);
+      addStep(ids[1] || '', 'navigate', 'https://competitor2.com', 0);
+      addStep(ids[2] || '', 'navigate', 'https://competitor3.com', 0);
+      addStep(ids[0] || '', 'screenshot', '', 3000);
+      addStep(ids[1] || '', 'screenshot', '', 3000);
+      addStep(ids[2] || '', 'screenshot', '', 3000);
+    } else if (name === 'multi-platform') {
+      addStep(ids[0] || '', 'navigate', 'https://linkedin.com/feed', 0);
+      addStep(ids[0] || '', 'type', 'Your content here', 1000);
+      addStep(ids[1] || '', 'navigate', 'https://twitter.com/compose/tweet', 5000);
+      addStep(ids[1] || '', 'type', 'Your content here', 1000);
+      addStep(ids[2] || '', 'navigate', 'https://instagram.com', 5000);
+      addStep(ids[2] || '', 'click', '[aria-label="New post"]', 1000);
+    }
+  }
+
+  // --- Helpers ---
+  function esc(s) {
+    if (!s) return '';
+    const d = document.createElement('div');
+    d.textContent = String(s);
+    return d.innerHTML;
+  }
+
+  // --- Init ---
+  function init() { loadSessions(); }
+
+  // Auto-init when panel becomes visible
+  const observer = new MutationObserver(() => {
+    const panel = document.getElementById('panel-orchestration');
+    if (panel && panel.style.display !== 'none') { loadSessions(); observer.disconnect(); }
+  });
+  const panel = document.getElementById('panel-orchestration');
+  if (panel) observer.observe(panel, { attributes: true, attributeFilter: ['style'] });
+
+  // Also init if already visible
+  if (panel && panel.style.display !== 'none') init();
+
+  return {
+    loadSessions, toggleSession, selectAll, deselectAll,
+    openNavigateModal, closeModal, executeNavigateAll,
+    screenshotAll, closeScreenshotModal, closeAllSelected,
+    addStep, updateParamPlaceholder, runOrchestration,
+    loadPreset, init
+  };
+})();
+</script>

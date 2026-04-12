@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brainiac — Master Mind Module #3: Advanced Agent Delegation</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Oswald:wght@400;500;600;700&display=swap');
+
+  :root {
+    --blue: #2a93c1;
+    --orange: #f1420b;
+    --dark: #080a12;
+    --dark2: #0d1020;
+    --dark3: #111526;
+    --white: #ffffff;
+    --light: #c8d6e5;
+    --muted: #6b7fa3;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: var(--dark);
+    color: var(--white);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* ─── SLIDESHOW ─── */
+  .slideshow {
+    width: 100%;
+    height: 100vh;
+    position: relative;
+  }
+
+  .slide {
+    display: none;
+    width: 100%;
+    height: 100vh;
+    position: absolute;
+    top: 0; left: 0;
+    background: var(--dark);
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 60px;
+    animation: fadeIn 0.4s ease;
+  }
+
+  .slide.active { display: flex; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ─── LOGO ─── */
+  .logo {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 700;
+    font-size: 1.1rem;
+    letter-spacing: 0.06em;
+    position: absolute;
+    top: 28px;
+    left: 48px;
+  }
+  .logo .blue  { color: var(--blue); }
+  .logo .orange { color: var(--orange); }
+
+  /* ─── SLIDE COUNTER ─── */
+  .slide-counter {
+    position: absolute;
+    bottom: 30px;
+    right: 48px;
+    font-size: 0.8rem;
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  /* ─── NAV ARROWS ─── */
+  .nav-btn {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(42,147,193,0.12);
+    border: 1px solid rgba(42,147,193,0.3);
+    color: var(--blue);
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    font-size: 1.3rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s, border-color 0.2s;
+    z-index: 100;
+  }
+  .nav-btn:hover {
+    background: rgba(42,147,193,0.25);
+    border-color: var(--blue);
+  }
+  #prev-btn { left: 20px; }
+  #next-btn { right: 20px; }
+
+  /* ─── PROGRESS BAR ─── */
+  .progress-bar {
+    position: fixed;
+    bottom: 0; left: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--blue), var(--orange));
+    transition: width 0.4s ease;
+    z-index: 200;
+  }
+
+  /* ─── SLIDE: TITLE ─── */
+  .slide-title {
+    text-align: center;
+  }
+  .slide-title .module-tag {
+    display: inline-block;
+    background: rgba(42,147,193,0.15);
+    border: 1px solid rgba(42,147,193,0.4);
+    color: var(--blue);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 6px 18px;
+    border-radius: 20px;
+    margin-bottom: 28px;
+  }
+  .slide-title h1 {
+    font-family: 'Oswald', sans-serif;
+    font-size: clamp(2.8rem, 6vw, 5rem);
+    font-weight: 700;
+    line-height: 1.08;
+    letter-spacing: -0.01em;
+    margin-bottom: 20px;
+  }
+  .slide-title h1 .highlight { color: var(--orange); }
+  .slide-title .subtitle {
+    font-size: 1.2rem;
+    color: var(--light);
+    font-weight: 400;
+    max-width: 520px;
+    margin: 0 auto 40px;
+    line-height: 1.6;
+  }
+  .slide-title .byline {
+    color: var(--muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+
+  /* ─── DIVIDER LINE ─── */
+  .accent-line {
+    width: 60px;
+    height: 3px;
+    background: linear-gradient(90deg, var(--blue), var(--orange));
+    border-radius: 2px;
+    margin: 20px auto;
+  }
+
+  /* ─── SLIDE: CONTENT ─── */
+  .slide-content {
+    width: 100%;
+    max-width: 860px;
+    text-align: left;
+  }
+
+  .section-number {
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--orange);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-number::after {
+    content: '';
+    display: inline-block;
+    width: 30px;
+    height: 2px;
+    background: var(--orange);
+    border-radius: 1px;
+  }
+
+  .slide-content h2 {
+    font-family: 'Oswald', sans-serif;
+    font-size: clamp(2rem, 4.5vw, 3.4rem);
+    font-weight: 700;
+    line-height: 1.1;
+    margin-bottom: 28px;
+    color: var(--white);
+  }
+  .slide-content h2 .blue { color: var(--blue); }
+  .slide-content h2 .orange { color: var(--orange); }
+
+  .point-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .point-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    font-size: 1.05rem;
+    line-height: 1.55;
+    color: var(--light);
+    font-weight: 400;
+  }
+  .point-list li .dot {
+    flex-shrink: 0;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--blue);
+    margin-top: 8px;
+  }
+  .point-list li strong { color: var(--white); font-weight: 700; }
+  .point-list li .tag-orange { color: var(--orange); font-weight: 700; }
+
+  /* ─── CALLOUT BOX ─── */
+  .callout {
+    background: rgba(42,147,193,0.08);
+    border-left: 3px solid var(--blue);
+    border-radius: 0 8px 8px 0;
+    padding: 18px 22px;
+    margin-top: 28px;
+    font-size: 1rem;
+    color: var(--light);
+    line-height: 1.6;
+  }
+  .callout.orange-callout {
+    background: rgba(241,66,11,0.08);
+    border-color: var(--orange);
+  }
+  .callout strong { color: var(--white); }
+
+  /* ─── COMPOUND TIMELINE ─── */
+  .timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 20px;
+  }
+  .timeline-row {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+  .timeline-label {
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--muted);
+    width: 90px;
+    flex-shrink: 0;
+    text-align: right;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .timeline-bar-wrap {
+    flex: 1;
+    background: rgba(255,255,255,0.06);
+    border-radius: 4px;
+    height: 30px;
+    overflow: hidden;
+    position: relative;
+  }
+  .timeline-bar {
+    height: 100%;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    padding-left: 12px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--white);
+    letter-spacing: 0.03em;
+    transition: width 0.8s ease;
+  }
+
+  /* ─── GRID LAYOUT ─── */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-top: 8px;
+  }
+  .card {
+    background: var(--dark3);
+    border: 1px solid rgba(42,147,193,0.18);
+    border-radius: 10px;
+    padding: 22px;
+  }
+  .card h3 {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--blue);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .card p {
+    font-size: 0.92rem;
+    color: var(--light);
+    line-height: 1.6;
+  }
+  .card.orange-card {
+    border-color: rgba(241,66,11,0.25);
+  }
+  .card.orange-card h3 {
+    color: var(--orange);
+  }
+
+  /* ─── PRO TIPS ─── */
+  .pro-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 8px;
+  }
+  .pro-tip {
+    background: var(--dark3);
+    border: 1px solid rgba(241,66,11,0.2);
+    border-radius: 8px;
+    padding: 16px 18px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .pro-tip .icon {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .pro-tip span {
+    font-size: 0.9rem;
+    color: var(--light);
+    line-height: 1.5;
+  }
+  .pro-tip span strong { color: var(--white); }
+
+  /* ─── CLOSING SLIDE ─── */
+  .slide-closing {
+    text-align: center;
+  }
+  .slide-closing h2 {
+    font-family: 'Oswald', sans-serif;
+    font-size: clamp(2rem, 5vw, 4rem);
+    font-weight: 700;
+    line-height: 1.1;
+    margin-bottom: 20px;
+  }
+  .slide-closing h2 .blue { color: var(--blue); }
+  .slide-closing h2 .orange { color: var(--orange); }
+  .slide-closing p {
+    font-size: 1.1rem;
+    color: var(--light);
+    max-width: 500px;
+    margin: 0 auto 32px;
+    line-height: 1.6;
+  }
+  .badge-row {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+  .badge {
+    background: rgba(42,147,193,0.12);
+    border: 1px solid rgba(42,147,193,0.35);
+    color: var(--blue);
+    border-radius: 20px;
+    padding: 8px 20px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .badge.orange {
+    background: rgba(241,66,11,0.12);
+    border-color: rgba(241,66,11,0.35);
+    color: var(--orange);
+  }
+
+  /* ─── KEYBOARD HINT ─── */
+  .key-hint {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.75rem;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .key-hint kbd {
+    background: var(--dark3);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-family: monospace;
+    font-size: 0.75rem;
+    color: var(--light);
+  }
+
+  /* ─── CLEAR FRAMEWORK LETTER ─── */
+  .clear-letter {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--orange);
+    width: 32px;
+    flex-shrink: 0;
+    text-align: center;
+    margin-top: 2px;
+  }
+</style>
+</head>
+<body>
+
+<div class="slideshow" id="slideshow">
+
+  <!-- SLIDE 1: TITLE -->
+  <div class="slide slide-title active" id="slide-1">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="module-tag">Master Mind Series</div>
+    <h1>Brainiac<br><span class="highlight">Module #3</span></h1>
+    <div class="accent-line"></div>
+    <p class="subtitle">Advanced Agent Delegation: How to delegate like a CEO to your AI</p>
+    <p class="byline">PureBrain Training &nbsp;&middot;&nbsp; 2026</p>
+    <div class="slide-counter">1 / 11</div>
+  </div>
+
+  <!-- SLIDE 2: AGENDA -->
+  <div class="slide" id="slide-2">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Today's Session</div>
+      <h2>From Prompting to <span class="blue">Delegating</span></h2>
+      <div class="two-col" style="margin-top:24px;">
+        <div class="card">
+          <h3>Part 1 &mdash; Delegation Mindset</h3>
+          <p>Why delegation beats prompting &middot; The compound returns of letting go &middot; CEO vs operator thinking</p>
+        </div>
+        <div class="card">
+          <h3>Part 2 &mdash; The CLEAR Framework</h3>
+          <p>Context &middot; Limitations &middot; Examples &middot; Audience &middot; Result &mdash; the 5 elements of perfect delegation</p>
+        </div>
+        <div class="card">
+          <h3>Part 3 &mdash; Delegation Levels</h3>
+          <p>The 5 levels from task-by-task to autonomous operations &middot; Where you are now vs where you're going</p>
+        </div>
+        <div class="card">
+          <h3>Part 4 &mdash; Real-World Playbook</h3>
+          <p>Context loading &middot; Ownership vs instructions &middot; Recurring delegation &middot; Common mistakes &middot; Your action plan</p>
+        </div>
+      </div>
+    </div>
+    <div class="slide-counter">2 / 11</div>
+  </div>
+
+  <!-- SLIDE 3: WHY DELEGATION MATTERS -->
+  <div class="slide" id="slide-3">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Section 01</div>
+      <h2>Why <span class="orange">Delegation</span> Matters</h2>
+      <ul class="point-list">
+        <li><span class="dot"></span><span>Most people <strong>use</strong> their AI. Power users <strong>delegate</strong> to it.</span></li>
+        <li><span class="dot"></span><span>The difference: asking your AI to do something vs <strong>giving it ownership</strong></span></li>
+        <li><span class="dot"></span><span>Delegation = <strong>compound returns</strong>. Every task you delegate once saves you hundreds of hours over time.</span></li>
+        <li><span class="dot"></span><span>A CEO does not do the work &mdash; a CEO defines the outcome and trusts the team to deliver</span></li>
+        <li><span class="dot"></span><span>Your AI is <strong>your team</strong>. Treat it like one.</span></li>
+      </ul>
+      <div class="callout orange-callout">
+        <strong>The #1 skill that separates casual users from power users is NOT better prompts &mdash; it's better delegation.</strong>
+      </div>
+    </div>
+    <div class="slide-counter">3 / 11</div>
+  </div>
+
+  <!-- SLIDE 4: THE CLEAR FRAMEWORK -->
+  <div class="slide" id="slide-4">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Section 02</div>
+      <h2>The <span class="blue">CLEAR</span> Framework</h2>
+      <ul class="point-list" style="gap:18px;">
+        <li><span class="clear-letter">C</span><span><strong>Context</strong> &mdash; Give background. What's the situation? What have you tried? What matters?</span></li>
+        <li><span class="clear-letter">L</span><span><strong>Limitations</strong> &mdash; Set boundaries. Budget, timeline, tone, things to avoid.</span></li>
+        <li><span class="clear-letter">E</span><span><strong>Examples</strong> &mdash; Show what good looks like. Past work, competitors, reference material.</span></li>
+        <li><span class="clear-letter">A</span><span><strong>Audience</strong> &mdash; Who is this for? Customers, investors, your team, the public?</span></li>
+        <li><span class="clear-letter">R</span><span><strong>Result</strong> &mdash; Define the outcome. What does "done" look like? Be specific.</span></li>
+      </ul>
+      <div class="callout">
+        <strong>Every delegation that fails can be traced back to a missing CLEAR element.</strong> Before you delegate, run through all five. It takes 30 seconds and saves hours.
+      </div>
+    </div>
+    <div class="slide-counter">4 / 11</div>
+  </div>
+
+  <!-- SLIDE 5: THE 5 LEVELS OF AI DELEGATION -->
+  <div class="slide" id="slide-5">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Section 03</div>
+      <h2>The 5 Levels of <span class="orange">AI Delegation</span></h2>
+      <div class="timeline">
+        <div class="timeline-row">
+          <span class="timeline-label">Level 1</span>
+          <div class="timeline-bar-wrap">
+            <div class="timeline-bar" style="width:20%;background:linear-gradient(90deg,#1d5f7a,#2a93c1);">Task-by-Task</div>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <span class="timeline-label">Level 2</span>
+          <div class="timeline-bar-wrap">
+            <div class="timeline-bar" style="width:38%;background:linear-gradient(90deg,#2a93c1,#1e7ba8);">Batch Delegation</div>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <span class="timeline-label">Level 3</span>
+          <div class="timeline-bar-wrap">
+            <div class="timeline-bar" style="width:58%;background:linear-gradient(90deg,#1e7ba8,#c94a1a);">Process Ownership</div>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <span class="timeline-label">Level 4</span>
+          <div class="timeline-bar-wrap">
+            <div class="timeline-bar" style="width:78%;background:linear-gradient(90deg,#c94a1a,#f1420b);">Strategic Partnership</div>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <span class="timeline-label">Level 5</span>
+          <div class="timeline-bar-wrap">
+            <div class="timeline-bar" style="width:96%;background:linear-gradient(90deg,#f1420b,#c94a1a);">Autonomous Operations</div>
+          </div>
+        </div>
+      </div>
+      <div class="callout orange-callout" style="margin-top:22px;">
+        <strong>Most users are stuck at Level 1-2.</strong> By the end of today, you'll be operating at Level 3-4 &mdash; where the real leverage lives.
+      </div>
+    </div>
+    <div class="slide-counter">5 / 11</div>
+  </div>
+
+  <!-- SLIDE 6: CONTEXT LOADING -->
+  <div class="slide" id="slide-6">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Section 04</div>
+      <h2>Context Loading &mdash; <span class="blue">Feed Your AI</span></h2>
+      <ul class="point-list">
+        <li><span class="dot"></span><span>Your AI is only as good as the <strong>context you give it</strong></span></li>
+        <li><span class="dot"></span><span>Share your business docs, SOPs, brand voice, past decisions, client history</span></li>
+        <li><span class="dot"></span><span>The more your AI knows, <strong>the less you have to explain</strong> per task</span></li>
+      </ul>
+      <div class="two-col" style="margin-top:22px;">
+        <div class="card orange-card">
+          <h3>Without Context</h3>
+          <p>"Write me a follow-up email to a client." &mdash; Generic, robotic, needs 3 rounds of revision. You spend more time editing than writing it yourself.</p>
+        </div>
+        <div class="card">
+          <h3>With Context</h3>
+          <p>"Follow up with Sarah from Apex Corp. She was interested in our enterprise tier. Use my casual-professional tone. Reference our last call about their Q3 timeline." &mdash; Done in one shot.</p>
+        </div>
+      </div>
+      <div class="callout" style="margin-top:22px;">
+        <strong>Context is an investment, not overhead.</strong> Every piece of context you load today saves you explanation time on every future task.
+      </div>
+    </div>
+    <div class="slide-counter">6 / 11</div>
+  </div>
+
+  <!-- SLIDE 7: OWNERSHIP VS INSTRUCTIONS -->
+  <div class="slide" id="slide-7">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Section 05</div>
+      <h2><span class="orange">Ownership</span> vs Instructions</h2>
+      <ul class="point-list">
+        <li><span class="dot"></span><span>Stop giving <strong>step-by-step instructions</strong>. Start giving <strong>outcomes</strong>.</span></li>
+        <li><span class="dot"></span><span>When you micromanage the how, you cap your AI at your own efficiency</span></li>
+        <li><span class="dot"></span><span>When you delegate the outcome, your AI can surprise you with better approaches</span></li>
+      </ul>
+      <div class="two-col" style="margin-top:22px;">
+        <div class="card orange-card">
+          <h3>Instructions (Linear)</h3>
+          <p>"Write a 500-word blog post about X. Use Y format. Start with a hook. Include 3 subheadings. End with a CTA." &mdash; You're doing the thinking. Your AI is just typing.</p>
+        </div>
+        <div class="card">
+          <h3>Ownership (Exponential)</h3>
+          <p>"I need a blog post about X. You know my voice, my audience, and what performs. Own it." &mdash; Your AI applies everything it's learned about what works for YOU.</p>
+        </div>
+      </div>
+      <div class="callout orange-callout" style="margin-top:22px;">
+        <strong>Instructions scale linearly. Ownership scales exponentially.</strong> The best delegation sounds like you're talking to a trusted VP, not reading from a script.
+      </div>
+    </div>
+    <div class="slide-counter">7 / 11</div>
+  </div>
+
+  <!-- SLIDE 8: RECURRING DELEGATION -->
+  <div class="slide" id="slide-8">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Section 06</div>
+      <h2>Recurring <span class="blue">Delegation</span></h2>
+      <ul class="point-list">
+        <li><span class="dot"></span><span>Set-and-forget tasks your AI handles <strong>automatically</strong></span></li>
+        <li><span class="dot"></span><span>The <strong>"Delegate Once" principle:</strong> If you do it more than twice, delegate it permanently</span></li>
+        <li><span class="dot"></span><span>Your AI gets <strong>better each time</strong> it runs a recurring task &mdash; it learns your patterns</span></li>
+      </ul>
+      <div class="pro-grid" style="margin-top:22px;">
+        <div class="pro-tip">
+          <span class="icon" style="color:var(--blue);">&#9679;</span>
+          <span><strong>Morning Briefings</strong> &mdash; Daily status on your business, inbox, and priorities</span>
+        </div>
+        <div class="pro-tip">
+          <span class="icon" style="color:var(--blue);">&#9679;</span>
+          <span><strong>Email Drafts</strong> &mdash; Pre-written responses waiting for your approval</span>
+        </div>
+        <div class="pro-tip">
+          <span class="icon" style="color:var(--blue);">&#9679;</span>
+          <span><strong>Meeting Prep</strong> &mdash; Background research and talking points before every call</span>
+        </div>
+        <div class="pro-tip">
+          <span class="icon" style="color:var(--blue);">&#9679;</span>
+          <span><strong>Social Content</strong> &mdash; Drafted posts aligned with your brand calendar</span>
+        </div>
+        <div class="pro-tip">
+          <span class="icon" style="color:var(--blue);">&#9679;</span>
+          <span><strong>Client Follow-Ups</strong> &mdash; Timely touchpoints that never fall through the cracks</span>
+        </div>
+        <div class="pro-tip">
+          <span class="icon" style="color:var(--blue);">&#9679;</span>
+          <span><strong>Weekly Reports</strong> &mdash; Metrics, highlights, and action items compiled automatically</span>
+        </div>
+      </div>
+    </div>
+    <div class="slide-counter">8 / 11</div>
+  </div>
+
+  <!-- SLIDE 9: DELEGATION MISTAKES -->
+  <div class="slide" id="slide-9">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Section 07</div>
+      <h2>The 4 Delegation <span class="orange">Killers</span></h2>
+      <div class="pro-grid" style="margin-top:16px;">
+        <div class="pro-tip">
+          <span class="icon" style="color:var(--orange);">&#10007;</span>
+          <span><strong>Over-Explaining</strong> &mdash; Micromanaging your AI with step-by-step instructions. Trust the context you've built. Let it execute.</span>
+        </div>
+        <div class="pro-tip">
+          <span class="icon" style="color:var(--orange);">&#10007;</span>
+          <span><strong>Under-Explaining</strong> &mdash; Vague requests with no context. "Write something good" is not delegation. Use the CLEAR framework.</span>
+        </div>
+        <div class="pro-tip">
+          <span class="icon" style="color:var(--orange);">&#10007;</span>
+          <span><strong>Not Checking Output</strong> &mdash; Trust but verify. Review the first 2-3 outputs of any new delegation. Then let it run.</span>
+        </div>
+        <div class="pro-tip">
+          <span class="icon" style="color:var(--orange);">&#10007;</span>
+          <span><strong>Doing It Yourself</strong> &mdash; The biggest waste. If your AI can do 80% of a task, delegate 100% and edit the last 20%.</span>
+        </div>
+      </div>
+      <div class="callout" style="margin-top:22px;">
+        <strong>The fix for all four:</strong> Start with CLEAR, give ownership not instructions, verify early, then trust the process. Your AI improves every single time.
+      </div>
+    </div>
+    <div class="slide-counter">9 / 11</div>
+  </div>
+
+  <!-- SLIDE 10: YOUR DELEGATION ACTION PLAN -->
+  <div class="slide" id="slide-10">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Section 08</div>
+      <h2>Your Delegation <span class="blue">Action Plan</span></h2>
+      <div class="timeline">
+        <div class="timeline-row">
+          <span class="timeline-label">This Week</span>
+          <div class="timeline-bar-wrap">
+            <div class="timeline-bar" style="width:30%;background:linear-gradient(90deg,#1d5f7a,#2a93c1);">Identify 3 recurring tasks to delegate</div>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <span class="timeline-label">This Month</span>
+          <div class="timeline-bar-wrap">
+            <div class="timeline-bar" style="width:55%;background:linear-gradient(90deg,#2a93c1,#1e7ba8);">Move from Level 1-2 to Level 3</div>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <span class="timeline-label">This Qtr</span>
+          <div class="timeline-bar-wrap">
+            <div class="timeline-bar" style="width:85%;background:linear-gradient(90deg,#c94a1a,#f1420b);">AI runs at least one domain autonomously</div>
+          </div>
+        </div>
+      </div>
+      <ul class="point-list" style="margin-top:28px;">
+        <li><span class="dot"></span><span><strong>Week 1 homework:</strong> Pick your 3 most repetitive tasks. Delegate them using the CLEAR framework.</span></li>
+        <li><span class="dot"></span><span><strong>Check your results:</strong> Review AI output on days 3 and 7. Give feedback. Watch it improve.</span></li>
+        <li><span class="dot"></span><span><strong>Level up:</strong> Once your AI nails those 3 tasks, hand off the next 3. Build momentum.</span></li>
+        <li><span class="dot"></span><span><strong>The goal:</strong> Within 90 days, you should be spending your time <strong>only on things that require YOU</strong>.</span></li>
+      </ul>
+    </div>
+    <div class="slide-counter">10 / 11</div>
+  </div>
+
+  <!-- SLIDE 11: CLOSING -->
+  <div class="slide slide-closing" id="slide-11">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <h2>Stop <span class="orange">Doing.</span><br>Start <span class="blue">Delegating.</span></h2>
+    <div class="accent-line"></div>
+    <p>You now have the framework, the levels, and the playbook. The only thing left is to start. Every task you delegate today compounds into hours saved tomorrow.</p>
+    <div class="badge-row">
+      <div class="badge">Delegation</div>
+      <div class="badge">CLEAR Framework</div>
+      <div class="badge orange">Ownership</div>
+    </div>
+    <div style="margin-top:36px;">
+      <p style="font-size:0.9rem;color:var(--muted);margin-bottom:12px;">Module #4 Preview</p>
+      <ul class="point-list" style="text-align:left;max-width:480px;margin:0 auto;">
+        <li><span class="dot"></span><span>Custom Workflows &amp; Automation</span></li>
+        <li><span class="dot"></span><span>Building repeatable AI-powered processes</span></li>
+        <li><span class="dot"></span><span>Multi-step task chains that run themselves</span></li>
+        <li><span class="dot"></span><span>From delegation to full autopilot</span></li>
+      </ul>
+    </div>
+    <div class="slide-counter">11 / 11</div>
+  </div>
+
+</div>
+
+<!-- Navigation -->
+<button class="nav-btn" id="prev-btn" onclick="changeSlide(-1)">&#8592;</button>
+<button class="nav-btn" id="next-btn" onclick="changeSlide(1)">&#8594;</button>
+<div class="progress-bar" id="progress"></div>
+<div class="key-hint">
+  <kbd>&#8592;</kbd> prev &nbsp;&nbsp; <kbd>&#8594;</kbd> next &nbsp;&nbsp; <kbd>Space</kbd> advance &nbsp;&nbsp; <kbd>F</kbd> fullscreen
+</div>
+
+<script>
+  const totalSlides = 11;
+  let current = 1;
+
+  function showSlide(n) {
+    const all = document.querySelectorAll('.slide');
+    all.forEach(s => s.classList.remove('active'));
+    document.getElementById('slide-' + n).classList.add('active');
+    document.getElementById('progress').style.width = ((n / totalSlides) * 100) + '%';
+    current = n;
+  }
+
+  function changeSlide(dir) {
+    let next = current + dir;
+    if (next < 1) next = 1;
+    if (next > totalSlides) next = totalSlides;
+    showSlide(next);
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); changeSlide(1); }
+    if (e.key === 'ArrowLeft')  { changeSlide(-1); }
+    if (e.key === 'f' || e.key === 'F') {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+      else document.exitFullscreen();
+    }
+  });
+
+  // Touch support
+  let touchStartX = 0;
+  document.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; });
+  document.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    if (Math.abs(dx) > 50) changeSlide(dx < 0 ? 1 : -1);
+  });
+
+  showSlide(1);
+</script>
+</body>
+</html>

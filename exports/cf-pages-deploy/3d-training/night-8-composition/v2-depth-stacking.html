@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 8 V2 — Depth Stacking</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #030509; overflow: hidden; }
+  canvas { display: block; }
+  #info {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    color: rgba(255,255,255,0.12);
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    z-index: 10;
+    pointer-events: none;
+  }
+  #fps {
+    position: fixed;
+    top: 12px;
+    right: 16px;
+    font-family: monospace;
+    color: rgba(42,147,193,0.2);
+    font-size: 10px;
+    z-index: 10;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="info">Night 8 V2 — Depth Stacking — Composition: Parallax Glass Planes</div>
+<div id="fps">--</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ─── COMPOSITION STUDY: Depth Stacking ───
+// Gleb often layers multiple glass planes at different Z-depths
+// Mouse movement reveals parallax between layers — creates perceived depth
+// Key: each layer has DIFFERENT opacity/blur/scale
+
+const BLUE = new THREE.Color(0x2a93c1);
+const ORANGE = new THREE.Color(0xf1420b);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x030509);
+
+const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 0, 8);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.9;
+document.body.appendChild(renderer.domElement);
+
+const mouse = new THREE.Vector2(0, 0);
+const targetMouse = new THREE.Vector2(0, 0);
+window.addEventListener('mousemove', (e) => {
+  targetMouse.x = (e.clientX / innerWidth) * 2 - 1;
+  targetMouse.y = -(e.clientY / innerHeight) * 2 + 1;
+});
+
+// ─── LAYER SYSTEM: 5 glass planes at different Z-depths ───
+const layers = [];
+const layerConfigs = [
+  { z: -4, scale: 2.5, opacity: 0.06, color: 0x0a1825, geo: 'hex', rotSpeed: 0.02 },    // Background: huge, barely visible
+  { z: -2, scale: 1.4, opacity: 0.12, color: 0x0e2035, geo: 'hex', rotSpeed: 0.03 },    // Mid-back
+  { z: 0,  scale: 0.85, opacity: 0.25, color: 0x142840, geo: 'circle', rotSpeed: 0.05 }, // Center: main form
+  { z: 1.5, scale: 0.5, opacity: 0.08, color: 0x1a3555, geo: 'hex', rotSpeed: -0.04 },  // Mid-front (overlay)
+  { z: 3, scale: 0.25, opacity: 0.04, color: 0x2a93c1, geo: 'circle', rotSpeed: -0.06 }, // Foreground: tiny, out of focus feel
+];
+
+function createHexShape(radius) {
+  const shape = new THREE.Shape();
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI / 3) * i - Math.PI / 6;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    if (i === 0) shape.moveTo(x, y);
+    else shape.lineTo(x, y);
+  }
+  shape.closePath();
+  return shape;
+}
+
+layerConfigs.forEach((cfg, i) => {
+  let geo;
+  if (cfg.geo === 'hex') {
+    const shape = createHexShape(cfg.scale);
+    geo = new THREE.ShapeGeometry(shape, 1);
+  } else {
+    geo = new THREE.CircleGeometry(cfg.scale, 64);
+  }
+
+  const mat = new THREE.MeshPhysicalMaterial({
+    color: cfg.color,
+    metalness: 0.05,
+    roughness: 0.1,
+    transmission: 0.85,
+    thickness: 0.3 + i * 0.15,
+    ior: 1.3 + i * 0.05,
+    transparent: true,
+    opacity: cfg.opacity,
+    side: THREE.DoubleSide,
+    clearcoat: 0.5,
+    clearcoatRoughness: 0.15,
+  });
+
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.z = cfg.z;
+  // Slight offset per layer for visual interest
+  mesh.position.x = (i % 2 === 0 ? 1 : -1) * i * 0.05;
+  mesh.position.y = (i % 2 === 0 ? -1 : 1) * i * 0.03;
+  scene.add(mesh);
+  layers.push({ mesh, config: cfg, parallaxFactor: 0.15 * (i - 2) }); // Parallax relative to center layer
+});
+
+// ─── CENTRAL ORB (the avatar form — inside the stacking) ───
+const orbGeo = new THREE.IcosahedronGeometry(0.45, 5);
+const orbMat = new THREE.MeshPhysicalMaterial({
+  color: 0x0a1a2a,
+  metalness: 0.3,
+  roughness: 0.02,
+  transmission: 0.9,
+  thickness: 2.0,
+  ior: 1.6,
+  envMapIntensity: 1.5,
+  clearcoat: 1.0,
+  clearcoatRoughness: 0.01,
+  attenuationColor: new THREE.Color(0x2a6090),
+  attenuationDistance: 1.8,
+});
+const orb = new THREE.Mesh(orbGeo, orbMat);
+orb.position.z = 0;
+scene.add(orb);
+
+// ─── ORB INNER GLOW (shader sphere) ───
+const glowGeo = new THREE.SphereGeometry(0.35, 32, 32);
+const glowMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 },
+    uColor1: { value: BLUE },
+    uColor2: { value: ORANGE },
+  },
+  vertexShader: `
+    varying vec3 vNormal;
+    varying vec3 vPosition;
+    void main() {
+      vNormal = normalize(normalMatrix * normal);
+      vPosition = position;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    uniform vec3 uColor1;
+    uniform vec3 uColor2;
+    varying vec3 vNormal;
+    varying vec3 vPosition;
+    void main() {
+      float pulse = sin(uTime * 1.5 + vPosition.y * 4.0) * 0.5 + 0.5;
+      vec3 col = mix(uColor1, uColor2, pulse * 0.3);
+      float fresnel = pow(1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0))), 3.0);
+      float alpha = fresnel * 0.6 * (0.7 + 0.3 * sin(uTime * 2.0));
+      gl_FragColor = vec4(col, alpha);
+    }
+  `,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  side: THREE.BackSide,
+});
+const glow = new THREE.Mesh(glowGeo, glowMat);
+scene.add(glow);
+
+// ─── EDGE LINES (composition guides — extremely subtle) ───
+const edgeLineMat = new THREE.LineBasicMaterial({ color: 0x2a93c1, transparent: true, opacity: 0.03 });
+// Vertical line through center
+const vLineGeo = new THREE.BufferGeometry().setFromPoints([
+  new THREE.Vector3(0, -4, -5),
+  new THREE.Vector3(0, 4, -5)
+]);
+scene.add(new THREE.Line(vLineGeo, edgeLineMat));
+// Horizontal line through center
+const hLineGeo = new THREE.BufferGeometry().setFromPoints([
+  new THREE.Vector3(-6, 0, -5),
+  new THREE.Vector3(6, 0, -5)
+]);
+scene.add(new THREE.Line(hLineGeo, edgeLineMat));
+
+// ─── LIGHTS ───
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
+keyLight.position.set(2, 3, 5);
+scene.add(keyLight);
+
+const rimLight = new THREE.PointLight(0x2a93c1, 1.5, 12);
+rimLight.position.set(-2, 1, 3);
+scene.add(rimLight);
+
+const backLight = new THREE.PointLight(0xf1420b, 0.5, 10);
+backLight.position.set(0, -1, -3);
+scene.add(backLight);
+
+scene.add(new THREE.AmbientLight(0x060a12, 0.4));
+
+// ─── ENV MAP ───
+const cubeRT = new THREE.WebGLCubeRenderTarget(256);
+const cubeCamera = new THREE.CubeCamera(0.1, 100, cubeRT);
+scene.environment = cubeRT.texture;
+
+// ─── POST-PROCESSING ───
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.25, 0.5, 0.88));
+
+// Depth-of-field simulation (center sharp, edges soft)
+const dofShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uResolution: { value: new THREE.Vector2(innerWidth, innerHeight) },
+  },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform vec2 uResolution;
+    varying vec2 vUv;
+    void main() {
+      vec2 center = vUv - 0.5;
+      float dist = length(center);
+      float blur = smoothstep(0.15, 0.6, dist) * 2.0;
+      vec4 color = vec4(0.0);
+      float total = 0.0;
+      for (float x = -2.0; x <= 2.0; x += 1.0) {
+        for (float y = -2.0; y <= 2.0; y += 1.0) {
+          vec2 offset = vec2(x, y) * blur / uResolution;
+          float w = 1.0 - length(vec2(x, y)) * 0.15;
+          color += texture2D(tDiffuse, vUv + offset) * w;
+          total += w;
+        }
+      }
+      gl_FragColor = color / total;
+    }
+  `,
+};
+composer.addPass(new ShaderPass(dofShader));
+composer.addPass(new OutputPass());
+
+// ─── FPS ───
+const fpsEl = document.getElementById('fps');
+let frames = 0, lastFpsTime = performance.now();
+
+// ─── ANIMATE ───
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  mouse.lerp(targetMouse, 0.04);
+
+  // Parallax: each layer moves differently with mouse
+  layers.forEach(({ mesh, config, parallaxFactor }) => {
+    mesh.position.x = (parallaxFactor * mouse.x * 0.8) + ((layers.indexOf({ mesh, config, parallaxFactor }) % 2 === 0 ? 1 : -1) * 0.05);
+    mesh.position.y = parallaxFactor * mouse.y * 0.5;
+    mesh.rotation.z = t * config.rotSpeed;
+  });
+
+  // Orb: gentle breathing + rotation
+  orb.rotation.y = t * 0.2;
+  orb.rotation.x = Math.sin(t * 0.3) * 0.1;
+  const breathe = 1.0 + Math.sin(t * 0.8) * 0.03;
+  orb.scale.setScalar(breathe);
+
+  // Glow
+  glow.rotation.y = -t * 0.15;
+  glowMat.uniforms.uTime.value = t;
+
+  // Camera parallax
+  camera.position.x = mouse.x * 0.25;
+  camera.position.y = mouse.y * 0.15;
+  camera.lookAt(0, 0, 0);
+
+  // Env map
+  if (Math.floor(t * 2) % 4 === 0) {
+    orb.visible = false;
+    cubeCamera.position.copy(orb.position);
+    cubeCamera.update(renderer, scene);
+    orb.visible = true;
+  }
+
+  composer.render();
+
+  frames++;
+  if (performance.now() - lastFpsTime >= 1000) {
+    fpsEl.textContent = frames + ' fps';
+    frames = 0;
+    lastFpsTime = performance.now();
+  }
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+  dofShader.uniforms.uResolution.value.set(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

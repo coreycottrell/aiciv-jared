@@ -1,0 +1,1232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PureBrain 3D Interactive Demo</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --blue: #2a93c1;
+    --orange: #f1420b;
+    --bg: #080a12;
+    --bg2: #0d1020;
+    --text: #e8eaf6;
+    --muted: #8892b0;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    overflow-x: hidden;
+  }
+
+  /* ─── Hero Section ─── */
+  #hero {
+    position: relative;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  #canvas-wrap {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+  }
+
+  #three-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Gradient overlays for depth */
+  #hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 60% at 50% 50%, transparent 30%, rgba(8,10,18,0.85) 100%);
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  #hero-content {
+    position: relative;
+    z-index: 3;
+    text-align: center;
+    pointer-events: none;
+    padding: 0 24px;
+  }
+
+  .hero-eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 20px;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.3s ease forwards;
+  }
+
+  .hero-title {
+    font-size: clamp(2.5rem, 7vw, 5.5rem);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin-bottom: 24px;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.5s ease forwards;
+  }
+
+  .hero-title em {
+    font-style: normal;
+    background: linear-gradient(135deg, var(--blue), #7ecce8, var(--orange));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero-sub {
+    font-size: clamp(1rem, 2vw, 1.2rem);
+    color: var(--muted);
+    max-width: 560px;
+    margin: 0 auto 40px;
+    line-height: 1.7;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.7s ease forwards;
+  }
+
+  .hero-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 32px;
+    background: var(--blue);
+    color: #fff;
+    border-radius: 50px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    text-decoration: none;
+    pointer-events: all;
+    transition: background 0.25s, transform 0.2s, box-shadow 0.25s;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.9s ease forwards;
+    box-shadow: 0 0 30px rgba(42, 147, 193, 0.3);
+  }
+
+  .hero-cta:hover {
+    background: #3aaee0;
+    transform: translateY(-2px);
+    box-shadow: 0 0 50px rgba(42, 147, 193, 0.5);
+  }
+
+  .scroll-hint {
+    position: absolute;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    opacity: 0;
+    animation: fadeIn 1s 1.5s ease forwards;
+  }
+
+  .scroll-hint span {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .scroll-arrow {
+    width: 1px;
+    height: 40px;
+    background: linear-gradient(to bottom, var(--blue), transparent);
+    animation: scrollPulse 2s ease-in-out infinite;
+  }
+
+  /* ─── Scroll Content Sections ─── */
+  #scroll-body {
+    position: relative;
+  }
+
+  .section {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    padding: 100px 40px;
+    max-width: 1200px;
+    margin: 0 auto;
+    gap: 80px;
+  }
+
+  .section-left, .section-right {
+    flex: 1;
+  }
+
+  .section-right {
+    display: flex;
+    justify-content: center;
+  }
+
+  .section:nth-child(even) .section-left {
+    order: 2;
+  }
+  .section:nth-child(even) .section-right {
+    order: 1;
+  }
+
+  .section-tag {
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--orange);
+    margin-bottom: 16px;
+    display: block;
+  }
+
+  .section-title {
+    font-size: clamp(1.8rem, 4vw, 3rem);
+    font-weight: 700;
+    line-height: 1.15;
+    margin-bottom: 20px;
+    letter-spacing: -0.02em;
+  }
+
+  .section-body {
+    color: var(--muted);
+    line-height: 1.8;
+    font-size: 1.05rem;
+    margin-bottom: 32px;
+  }
+
+  .feature-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .feature-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    color: var(--muted);
+    font-size: 0.95rem;
+    line-height: 1.6;
+  }
+
+  .feature-list li::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--blue);
+    margin-top: 8px;
+    flex-shrink: 0;
+  }
+
+  /* Floating card */
+  .floating-card {
+    width: 340px;
+    max-width: 100%;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 24px;
+    padding: 32px;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 32px 80px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
+  }
+
+  .card-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+  }
+
+  .card-icon.blue { background: rgba(42, 147, 193, 0.15); }
+  .card-icon.orange { background: rgba(241, 66, 11, 0.15); }
+
+  .card-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+
+  .card-body {
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.65;
+  }
+
+  /* Stats row */
+  .stats-row {
+    display: flex;
+    gap: 40px;
+    margin-top: 40px;
+  }
+
+  .stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .stat-value {
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--blue);
+  }
+
+  .stat-label {
+    font-size: 0.8rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  /* Loading overlay */
+  #loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    transition: opacity 0.6s ease, visibility 0.6s;
+  }
+
+  #loading-overlay.hidden {
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  .loading-ring {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    border: 2px solid rgba(42, 147, 193, 0.15);
+    border-top-color: var(--blue);
+    animation: spin 1s linear infinite;
+  }
+
+  .loading-text {
+    font-size: 0.85rem;
+    color: var(--muted);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+
+  /* Stats overlay on canvas */
+  #stats-hud {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 50;
+    font-size: 10px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    color: rgba(42, 147, 193, 0.5);
+    text-align: right;
+    line-height: 1.6;
+    pointer-events: none;
+    display: none;
+  }
+
+  #stats-hud.visible { display: block; }
+
+  /* Ambient particles background */
+  #bg-particles {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+  }
+
+  .bg-particle {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    animation: floatParticle linear infinite;
+  }
+
+  /* Footer */
+  footer {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+    font-size: 0.85rem;
+    border-top: 1px solid rgba(255,255,255,0.05);
+  }
+
+  footer a { color: var(--blue); text-decoration: none; }
+
+  /* Animations */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @keyframes scrollPulse {
+    0%, 100% { opacity: 0.3; transform: scaleY(1); }
+    50% { opacity: 1; transform: scaleY(1.2); }
+  }
+
+  @keyframes floatParticle {
+    0% { transform: translateY(100vh) translateX(0); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 0.4; }
+    100% { transform: translateY(-10vh) translateX(var(--drift)); opacity: 0; }
+  }
+
+  /* Mouse cursor glow */
+  #cursor-glow {
+    position: fixed;
+    width: 300px;
+    height: 300px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse, rgba(42,147,193,0.06) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 1;
+    transform: translate(-50%, -50%);
+    transition: transform 0.1s ease;
+  }
+
+  @media (max-width: 768px) {
+    .section {
+      flex-direction: column !important;
+      padding: 80px 24px;
+      gap: 40px;
+    }
+    .section:nth-child(even) .section-left { order: unset; }
+    .section:nth-child(even) .section-right { order: unset; }
+    .stats-row { gap: 20px; }
+    .floating-card { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Loading screen -->
+<div id="loading-overlay">
+  <div class="loading-ring"></div>
+  <div class="loading-text">Initializing 3D Engine</div>
+</div>
+
+<!-- Cursor glow -->
+<div id="cursor-glow"></div>
+
+<!-- Ambient background particles -->
+<div id="bg-particles"></div>
+
+<!-- Stats HUD (press P to toggle) -->
+<div id="stats-hud">
+  <div id="fps-counter">-- fps</div>
+  <div id="draw-calls">-- calls</div>
+  <div id="model-status">Loading...</div>
+</div>
+
+<!-- ─── HERO ─── -->
+<section id="hero">
+  <div id="canvas-wrap">
+    <canvas id="three-canvas"></canvas>
+  </div>
+
+  <div id="hero-content">
+    <p class="hero-eyebrow">Phase 1 &mdash; 3D Pipeline Proof</p>
+    <h1 class="hero-title">
+      Intelligence<br>
+      <em>In Motion</em>
+    </h1>
+    <p class="hero-sub">
+      Real-time 3D with glass materials, HDRI lighting, post-processing bloom,
+      and mouse-reactive interaction. Scroll to explore.
+    </p>
+    <a href="#features" class="hero-cta">
+      Explore the Tech
+      <svg width="16" height="16" fill="none" viewBox="0 0 16 16">
+        <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </a>
+  </div>
+
+  <div class="scroll-hint">
+    <span>Scroll</span>
+    <div class="scroll-arrow"></div>
+  </div>
+</section>
+
+<!-- ─── CONTENT SECTIONS ─── -->
+<div id="scroll-body">
+
+  <div class="section" id="features">
+    <div class="section-left">
+      <span class="section-tag">Glass Material Pipeline</span>
+      <h2 class="section-title">Physically Based<br>Glass Rendering</h2>
+      <p class="section-body">
+        MeshPhysicalMaterial with full transmission simulation. Light passes through,
+        bends, and scatters &mdash; producing the deep optical quality of real crystal.
+      </p>
+      <ul class="feature-list">
+        <li>Transmission + thickness with Beer's Law light absorption</li>
+        <li>IOR 1.5 with chromatic dispersion per channel</li>
+        <li>Environment reflections via HDRI lighting probe</li>
+        <li>60fps target with adaptive quality scaling</li>
+      </ul>
+    </div>
+    <div class="section-right">
+      <div class="floating-card">
+        <div class="card-icon blue">&#9674;</div>
+        <div class="card-title">MeshPhysicalMaterial</div>
+        <div class="card-body">
+          Three.js physically based rendering. Transmission=1.0, ior=1.5,
+          roughness=0.02, thickness=0.8. HDRI environment map sampled for
+          both reflections and refractions.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-right">
+      <div class="floating-card">
+        <div class="card-icon orange">&#9670;</div>
+        <div class="card-title">Post-Processing Stack</div>
+        <div class="card-body">
+          Bloom with luminance threshold for specular highlights.
+          Mouse parallax tilt via smooth exponential lerp at 4% per frame.
+          Procedural glass fallback if GLB load fails.
+        </div>
+      </div>
+    </div>
+    <div class="section-left">
+      <span class="section-tag">Postprocessing + Interaction</span>
+      <h2 class="section-title">Bloom, Depth<br>&amp; Mouse Tilt</h2>
+      <p class="section-body">
+        Selective bloom on high-luminance regions gives specular highlights
+        their glass-lens quality. Move your mouse to tilt the model.
+        Scroll this page to see transform-on-scroll.
+      </p>
+      <ul class="feature-list">
+        <li>Bloom threshold 0.85 &mdash; only true highlights glow</li>
+        <li>Mouse follow with 4% lerp &mdash; smooth, weighted response</li>
+        <li>Scroll progress drives Y rotation and camera Z</li>
+        <li>Ambient occlusion via SSAO approximation</li>
+      </ul>
+      <div class="stats-row">
+        <div class="stat-item">
+          <span class="stat-value">60</span>
+          <span class="stat-label">FPS Target</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">1.5</span>
+          <span class="stat-label">IOR</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">4K</span>
+          <span class="stat-label">HDRI Probe</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-left">
+      <span class="section-tag">End-to-End Pipeline</span>
+      <h2 class="section-title">Sketchfab Model<br>to Web in One File</h2>
+      <p class="section-body">
+        The complete Phase 1 pipeline proof: Sketchfab GLB &rarr; Three.js scene &rarr;
+        glass override materials &rarr; HDRI environment &rarr; bloom post-processing
+        &rarr; interactive mouse + scroll &rarr; standalone HTML.
+      </p>
+      <ul class="feature-list">
+        <li>No build step required &mdash; pure CDN imports</li>
+        <li>Graceful fallback to procedural sphere if GLB fails</li>
+        <li>Relative path HDRI loading with RGBELoader</li>
+        <li>WebGL context loss detection + recovery</li>
+      </ul>
+    </div>
+    <div class="section-right">
+      <div class="floating-card">
+        <div class="card-icon blue">&#10022;</div>
+        <div class="card-title">Technical Stack</div>
+        <div class="card-body">
+          Three.js r160 &middot; GLTFLoader &middot; RGBELoader &middot;
+          EffectComposer &middot; UnrealBloomPass &middot; Poly Haven HDRI &middot;
+          MeshPhysicalMaterial with KHR_materials_transmission
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <p>PureBrain 3D Pipeline &mdash; Phase 1 Demo &middot;
+     Model: <a href="https://sketchfab.com/3d-models/energy-orb-c37063dad7a046fb84649ad5a621bb55" target="_blank">Energy Orb by tamminen</a> (CC-BY-4.0) &middot;
+     HDRI: <a href="https://polyhaven.com/a/studio_small_09" target="_blank">Poly Haven</a> (CC0)
+  </p>
+</footer>
+
+<!-- ─── THREE.JS SETUP ─── -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader }          from 'three/addons/loaders/GLTFLoader.js';
+import { RGBELoader }          from 'three/addons/loaders/RGBELoader.js';
+import { EffectComposer }      from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }          from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass }     from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass }          from 'three/addons/postprocessing/OutputPass.js';
+
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const CONFIG = {
+  // Paths (relative to the HTML file)
+  GLB_PATH:  './3d-models/energy-orb-selfcontained.glb',
+  HDRI_PATH: './3d-models/studio.hdr',
+
+  // Camera
+  CAM_FOV:      45,
+  CAM_NEAR:     0.1,
+  CAM_FAR:      100,
+  CAM_Z:        4.2,
+
+  // Glass material
+  GLASS: {
+    color:          0xd0eeff,
+    transmission:   1.0,
+    thickness:      0.8,
+    roughness:      0.02,
+    metalness:      0.0,
+    ior:            1.5,
+    reflectivity:   0.5,
+    envMapIntensity: 2.5,
+    transparent:    true,
+    side:           THREE.DoubleSide,
+  },
+
+  // Brand colors
+  BLUE:   new THREE.Color(0x2a93c1),
+  ORANGE: new THREE.Color(0xf1420b),
+
+  // Mouse tilt limits (radians)
+  TILT_MAX_X: 0.18,
+  TILT_MAX_Y: 0.28,
+  TILT_LERP:  0.04,  // 4% per frame = ~0.6s lag at 60fps
+
+  // Idle rotation speed (rad/s)
+  IDLE_ROT_Y: 0.25,
+
+  // Bloom
+  BLOOM: {
+    strength:   0.7,
+    radius:     0.4,
+    threshold:  0.85,
+  },
+
+  // Scroll
+  SCROLL_ROT_TOTAL: Math.PI * 1.5,
+  SCROLL_CAM_PUSH:  1.2,
+};
+
+// ─── SCENE SETUP ─────────────────────────────────────────────────────────────
+const canvas    = document.getElementById('three-canvas');
+const overlay   = document.getElementById('loading-overlay');
+const statsHUD  = document.getElementById('stats-hud');
+const fpsCtr    = document.getElementById('fps-counter');
+const modelStat = document.getElementById('model-status');
+
+// Renderer
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias:   true,
+  alpha:       false,
+  powerPreference: 'high-performance',
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping     = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+// Physical lights (needed for transmission to refract properly)
+renderer.physicallyCorrectLights = true;
+
+// Scene + camera
+const scene  = new THREE.Scene();
+scene.background = new THREE.Color(0x080a12);
+
+const camera = new THREE.PerspectiveCamera(
+  CONFIG.CAM_FOV, 1, CONFIG.CAM_NEAR, CONFIG.CAM_FAR
+);
+camera.position.set(0, 0, CONFIG.CAM_Z);
+
+// ─── RESIZE HANDLER ──────────────────────────────────────────────────────────
+function onResize() {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+  bloomPass.resolution.set(w, h);
+}
+
+// ─── POSTPROCESSING ──────────────────────────────────────────────────────────
+const composer   = new EffectComposer(renderer);
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  CONFIG.BLOOM.strength,
+  CONFIG.BLOOM.radius,
+  CONFIG.BLOOM.threshold
+);
+composer.addPass(bloomPass);
+
+const outputPass = new OutputPass();
+composer.addPass(outputPass);
+
+// Initialize size
+onResize();
+window.addEventListener('resize', onResize);
+
+// ─── LIGHTING ────────────────────────────────────────────────────────────────
+// Ambient fill
+const ambient = new THREE.AmbientLight(0x8888aa, 0.3);
+scene.add(ambient);
+
+// Key light (top-left, warm white)
+const keyLight = new THREE.DirectionalLight(0xfff5e8, 3.5);
+keyLight.position.set(-2.5, 3.5, 2.0);
+scene.add(keyLight);
+
+// Fill light (cool blue, right side)
+const fillLight = new THREE.DirectionalLight(0x4488cc, 0.6);
+fillLight.position.set(3, -1, 1);
+scene.add(fillLight);
+
+// Rim light (back, blue brand)
+const rimLight = new THREE.PointLight(CONFIG.BLUE, 1.8, 8);
+rimLight.position.set(0, -1.5, -3);
+scene.add(rimLight);
+
+// Orange accent (low-right, subtle)
+const accentLight = new THREE.PointLight(CONFIG.ORANGE, 0.6, 6);
+accentLight.position.set(2.5, -2, 1.5);
+scene.add(accentLight);
+
+// ─── ENVIRONMENT MAP (HDRI) ───────────────────────────────────────────────────
+const rgbeLoader = new RGBELoader();
+rgbeLoader.load(
+  CONFIG.HDRI_PATH,
+  (texture) => {
+    texture.mapping = THREE.EquirectangularReflectionMapping;
+    scene.environment = texture;
+    // Keep scene.background as solid dark color (not HDRI background)
+    // scene.background = texture; // don't set this - we want dark bg
+    console.log('[3D] HDRI loaded successfully');
+  },
+  undefined,
+  (err) => {
+    console.warn('[3D] HDRI load failed, using synthetic environment:', err);
+    // Fallback: generate a simple env map from lights (already in scene)
+    buildSyntheticEnv();
+  }
+);
+
+function buildSyntheticEnv() {
+  // Create a PMREMGenerator-based environment from a sphere with colored zones
+  const pmremGen = new THREE.PMREMGenerator(renderer);
+  pmremGen.compileEquirectangularShader();
+
+  // Simple gradient sphere as stand-in HDRI
+  const envScene = new THREE.Scene();
+  envScene.background = new THREE.Color(0x080a12);
+
+  const envLight1 = new THREE.DirectionalLight(0xfff5e8, 4);
+  envLight1.position.set(-3, 5, 3);
+  envScene.add(envLight1);
+
+  const envLight2 = new THREE.DirectionalLight(0x2a93c1, 2);
+  envLight2.position.set(3, -2, -3);
+  envScene.add(envLight2);
+
+  const envTex = pmremGen.fromScene(
+    new THREE.RoomEnvironment(), 0.04
+  ).texture;
+
+  scene.environment = envTex;
+  pmremGen.dispose();
+}
+
+// ─── GLASS MATERIAL FACTORY ──────────────────────────────────────────────────
+function makeGlassMaterial(overrides = {}) {
+  return new THREE.MeshPhysicalMaterial({
+    ...CONFIG.GLASS,
+    ...overrides,
+  });
+}
+
+// Glass with blue tint
+const glassMat = makeGlassMaterial({
+  color: 0xd0eeff,
+  transmission: 1.0,
+  thickness: 0.8,
+  roughness: 0.02,
+  ior: 1.5,
+  envMapIntensity: 2.5,
+});
+
+// Inner glow material (slight emissive, semi-opaque glass)
+const innerMat = makeGlassMaterial({
+  color: 0x1a4a80,
+  transmission: 0.7,
+  roughness: 0.05,
+  emissive: CONFIG.BLUE,
+  emissiveIntensity: 0.4,
+  opacity: 0.85,
+  transparent: true,
+});
+
+// ─── PROCEDURAL SPHERE FALLBACK ───────────────────────────────────────────────
+// Shown while GLB loads, and used as fallback if GLB fails
+function buildProceduralSphere() {
+  const group = new THREE.Group();
+
+  // Outer glass shell - icosphere approximation using high-res sphere
+  const geo = new THREE.IcosahedronGeometry(1.0, 4);
+  const mesh = new THREE.Mesh(geo, glassMat.clone());
+  group.add(mesh);
+
+  // Inner energy core
+  const coreGeo = new THREE.IcosahedronGeometry(0.52, 3);
+  const coreMesh = new THREE.Mesh(coreGeo, makeGlassMaterial({
+    color: 0x1a3a70,
+    transmission: 0.5,
+    roughness: 0.1,
+    emissive: CONFIG.BLUE,
+    emissiveIntensity: 0.8,
+    opacity: 0.7,
+    transparent: true,
+  }));
+  group.add(coreMesh);
+
+  // Icosahedral wire frame inside
+  const wireGeo = new THREE.IcosahedronGeometry(0.76, 1);
+  const wireMat = new THREE.MeshBasicMaterial({
+    color: CONFIG.BLUE,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.15,
+  });
+  const wire = new THREE.Mesh(wireGeo, wireMat);
+  group.add(wire);
+
+  // Ring
+  const ringGeo = new THREE.TorusGeometry(1.18, 0.008, 8, 80);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: CONFIG.BLUE,
+    transparent: true,
+    opacity: 0.3,
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = Math.PI / 2;
+  group.add(ring);
+
+  // Tilted ring
+  const ring2 = ring.clone();
+  ring2.rotation.x = Math.PI * 0.3;
+  ring2.rotation.z = Math.PI * 0.2;
+  group.add(ring2);
+
+  group.userData.isProceduralFallback = true;
+  return group;
+}
+
+// ─── GLB MODEL LOAD ───────────────────────────────────────────────────────────
+let modelGroup = null;
+let glbLoaded = false;
+
+// Show procedural sphere immediately
+const proceduralSphere = buildProceduralSphere();
+scene.add(proceduralSphere);
+modelGroup = proceduralSphere;
+
+const gltfLoader = new GLTFLoader();
+
+gltfLoader.load(
+  CONFIG.GLB_PATH,
+  (gltf) => {
+    console.log('[3D] GLB loaded:', gltf);
+    glbLoaded = true;
+
+    const glbScene = gltf.scene;
+
+    // Center and normalize the model
+    const box     = new THREE.Box3().setFromObject(glbScene);
+    const center  = box.getCenter(new THREE.Vector3());
+    const size    = box.getSize(new THREE.Vector3());
+    const maxDim  = Math.max(size.x, size.y, size.z);
+
+    glbScene.position.sub(center);
+    glbScene.scale.multiplyScalar(2.2 / maxDim);
+
+    // Override ALL meshes with glass material
+    let meshCount = 0;
+    glbScene.traverse((child) => {
+      if (child.isMesh) {
+        meshCount++;
+
+        // Determine if this is an outer/inner mesh by bounding sphere
+        const childBox = new THREE.Box3().setFromObject(child);
+        const childSize = childBox.getSize(new THREE.Vector3()).length();
+        const isOuter = childSize > 1.5;
+
+        if (isOuter) {
+          child.material = glassMat.clone();
+          child.material.envMapIntensity = 2.5;
+        } else {
+          child.material = innerMat.clone();
+        }
+
+        child.castShadow = false;
+        child.receiveShadow = false;
+      }
+    });
+
+    console.log(`[3D] Applied glass to ${meshCount} meshes`);
+    if (modelStat) modelStat.textContent = `GLB: ${meshCount} meshes`;
+
+    // Set up animation if present
+    let mixer = null;
+    if (gltf.animations && gltf.animations.length > 0) {
+      mixer = new THREE.AnimationMixer(glbScene);
+      const action = mixer.clipAction(gltf.animations[0]);
+      action.setLoop(THREE.LoopRepeat, Infinity);
+      action.timeScale = 0.4; // slow it down for premium feel
+      action.play();
+      glbScene.userData.mixer = mixer;
+      console.log(`[3D] Animation: ${gltf.animations[0].name}`);
+    }
+
+    // Swap procedural sphere for real model
+    scene.remove(proceduralSphere);
+    scene.add(glbScene);
+    modelGroup = glbScene;
+  },
+  (progress) => {
+    if (progress.total > 0) {
+      const pct = Math.round(progress.loaded / progress.total * 100);
+      if (overlay.querySelector('.loading-text')) {
+        overlay.querySelector('.loading-text').textContent = `Loading 3D Model... ${pct}%`;
+      }
+    }
+  },
+  (err) => {
+    console.warn('[3D] GLB load failed, using procedural fallback:', err);
+    if (modelStat) modelStat.textContent = 'Procedural fallback';
+    glbLoaded = true; // mark as "resolved" so overlay can hide
+  }
+);
+
+// ─── PARTICLES (orbit around model) ──────────────────────────────────────────
+const PARTICLE_COUNT = 180;
+const particlePositions = new Float32Array(PARTICLE_COUNT * 3);
+const particleSpeeds    = new Float32Array(PARTICLE_COUNT);
+const particleRadii     = new Float32Array(PARTICLE_COUNT);
+
+for (let i = 0; i < PARTICLE_COUNT; i++) {
+  const theta = Math.random() * Math.PI * 2;
+  const phi   = Math.acos(2 * Math.random() - 1);
+  const r     = 1.3 + Math.random() * 0.8;
+  particlePositions[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+  particlePositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+  particlePositions[i * 3 + 2] = r * Math.cos(phi);
+  particleSpeeds[i] = 0.0003 + Math.random() * 0.0005;
+  particleRadii[i]  = r;
+}
+
+const particleGeo = new THREE.BufferGeometry();
+particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+
+const particleMat = new THREE.PointsMaterial({
+  color: CONFIG.BLUE,
+  size: 0.018,
+  transparent: true,
+  opacity: 0.55,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  sizeAttenuation: true,
+});
+
+const particleSystem = new THREE.Points(particleGeo, particleMat);
+scene.add(particleSystem);
+
+// ─── MOUSE INTERACTION ───────────────────────────────────────────────────────
+let mouseNX = 0, mouseNY = 0;    // normalized -1 to +1
+let targetRotX = 0, targetRotY = 0;
+let currentRotX = 0, currentRotY = 0;
+let cursorX = 0, cursorY = 0;
+
+const cursorGlow = document.getElementById('cursor-glow');
+
+document.addEventListener('mousemove', (e) => {
+  cursorX = e.clientX;
+  cursorY = e.clientY;
+
+  if (cursorGlow) {
+    cursorGlow.style.left = `${e.clientX}px`;
+    cursorGlow.style.top  = `${e.clientY}px`;
+  }
+
+  // Only apply tilt in hero viewport zone
+  if (e.clientY < window.innerHeight) {
+    const nx = (e.clientX / window.innerWidth)  * 2 - 1;
+    const ny = (e.clientY / window.innerHeight) * 2 - 1;
+    mouseNX = nx;
+    mouseNY = ny;
+    targetRotY = nx * CONFIG.TILT_MAX_Y;
+    targetRotX = -ny * CONFIG.TILT_MAX_X;
+  }
+});
+
+// Touch support for mobile
+document.addEventListener('touchmove', (e) => {
+  const t = e.touches[0];
+  const nx = (t.clientX / window.innerWidth)  * 2 - 1;
+  const ny = (t.clientY / window.innerHeight) * 2 - 1;
+  mouseNX = nx;
+  mouseNY = ny;
+  targetRotY = nx * CONFIG.TILT_MAX_Y;
+  targetRotX = -ny * CONFIG.TILT_MAX_X;
+}, { passive: true });
+
+// ─── SCROLL INTERACTION ──────────────────────────────────────────────────────
+let scrollProgress = 0;
+
+function onScroll() {
+  const docH    = document.documentElement.scrollHeight - window.innerHeight;
+  scrollProgress = docH > 0 ? window.scrollY / docH : 0;
+}
+
+window.addEventListener('scroll', onScroll, { passive: true });
+
+// ─── CLOCK + FPS ──────────────────────────────────────────────────────────────
+const clock       = new THREE.Clock();
+let frameCount    = 0;
+let lastFPSUpdate = performance.now();
+let currentFPS    = 0;
+
+// Press P to toggle perf HUD
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'p' || e.key === 'P') {
+    statsHUD.classList.toggle('visible');
+  }
+});
+
+// ─── RENDER LOOP ──────────────────────────────────────────────────────────────
+let loadHidden = false;
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const delta   = clock.getDelta();
+  const elapsed = clock.getElapsedTime();
+
+  // Hide loading overlay after first frames
+  if (!loadHidden && elapsed > 0.5) {
+    loadHidden = true;
+    overlay.classList.add('hidden');
+  }
+
+  // ── Mouse tilt lerp (smooth follow)
+  currentRotX += (targetRotX - currentRotX) * CONFIG.TILT_LERP;
+  currentRotY += (targetRotY - currentRotY) * CONFIG.TILT_LERP;
+
+  // ── Scroll-driven scroll progress target
+  const scrollRotY   = scrollProgress * CONFIG.SCROLL_ROT_TOTAL;
+  const scrollCamPush = scrollProgress * CONFIG.SCROLL_CAM_PUSH;
+
+  // ── Model animation
+  if (modelGroup) {
+    // Idle rotation (Y axis)
+    modelGroup.rotation.y += delta * CONFIG.IDLE_ROT_Y;
+
+    // Add mouse tilt on top of idle rotation
+    modelGroup.rotation.x = currentRotX + Math.sin(elapsed * 0.3) * 0.02;
+
+    // Scroll drives additional Y rotation
+    modelGroup.rotation.y += scrollRotY * 0.001; // incremental push per frame
+
+    // Subtle breathing scale
+    const breathe = 1.0 + Math.sin(elapsed * 0.8) * 0.012;
+    modelGroup.scale.setScalar(breathe);
+
+    // Update animation mixer if GLB has animations
+    if (modelGroup.userData.mixer) {
+      modelGroup.userData.mixer.update(delta);
+    }
+
+    // Rim light color shifts with scroll (blue -> orange)
+    rimLight.color.lerpColors(CONFIG.BLUE, CONFIG.ORANGE, scrollProgress * 0.6);
+    rimLight.intensity = 1.8 + Math.sin(elapsed * 1.2) * 0.4;
+
+    // Inner glow material emissive intensity pulse
+    modelGroup.traverse((child) => {
+      if (child.isMesh && child.material && child.material.emissiveIntensity !== undefined) {
+        child.material.emissiveIntensity = 0.4 + Math.sin(elapsed * 1.5) * 0.2;
+      }
+    });
+  }
+
+  // ── Camera drift
+  camera.position.x = Math.sin(elapsed * 0.07) * 0.08 + mouseNX * 0.05;
+  camera.position.y = Math.cos(elapsed * 0.05) * 0.04 + mouseNY * -0.03;
+  camera.position.z = CONFIG.CAM_Z - scrollCamPush * 0.6;
+  camera.position.z = Math.max(2.2, camera.position.z);
+
+  // ── Particle orbit update
+  const pPos = particleGeo.attributes.position.array;
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    const idx = i * 3;
+    const spd = particleSpeeds[i];
+    const r   = particleRadii[i];
+
+    // Orbit in XZ plane with slight Y variation
+    const angle = elapsed * spd * 60;
+    const origTheta = Math.atan2(pPos[idx + 2], pPos[idx]);
+    const newTheta  = origTheta + delta * spd * 60 * 0.01;
+
+    pPos[idx]     = r * Math.cos(newTheta);
+    pPos[idx + 2] = r * Math.sin(newTheta);
+    pPos[idx + 1] += Math.sin(elapsed * spd * 30 + i) * 0.0005;
+
+    // Clamp Y
+    if (Math.abs(pPos[idx + 1]) > r * 0.6) pPos[idx + 1] *= 0.98;
+  }
+  particleGeo.attributes.position.needsUpdate = true;
+  particleSystem.rotation.y = elapsed * 0.04;
+  particleSystem.rotation.x = elapsed * 0.02;
+
+  // ── Accent light orbit
+  accentLight.position.x = Math.cos(elapsed * 0.4) * 2.5;
+  accentLight.position.z = Math.sin(elapsed * 0.4) * 2.5;
+
+  // ── Render with postprocessing
+  composer.render();
+
+  // ── FPS counter
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFPSUpdate > 1000) {
+    currentFPS = Math.round(frameCount * 1000 / (now - lastFPSUpdate));
+    frameCount = 0;
+    lastFPSUpdate = now;
+
+    if (fpsCtr) fpsCtr.textContent = `${currentFPS} fps`;
+    const info = renderer.info;
+    if (document.getElementById('draw-calls')) {
+      document.getElementById('draw-calls').textContent =
+        `${info.render.calls} draw calls / ${(info.render.triangles / 1000).toFixed(1)}k tris`;
+    }
+  }
+}
+
+animate();
+
+// ─── WEBGL CONTEXT LOSS HANDLING ─────────────────────────────────────────────
+canvas.addEventListener('webglcontextlost', (event) => {
+  event.preventDefault();
+  console.warn('[3D] WebGL context lost');
+}, false);
+
+canvas.addEventListener('webglcontextrestored', () => {
+  console.log('[3D] WebGL context restored');
+}, false);
+
+// ─── BACKGROUND PARTICLES (CSS/DOM, not Three.js) ───────────────────────────
+const bgContainer = document.getElementById('bg-particles');
+if (bgContainer) {
+  for (let i = 0; i < 30; i++) {
+    const p = document.createElement('div');
+    p.className = 'bg-particle';
+    const size  = 1 + Math.random() * 3;
+    const left  = Math.random() * 100;
+    const dur   = 15 + Math.random() * 25;
+    const delay = Math.random() * -20;
+    const drift = (Math.random() - 0.5) * 100;
+    const isBlue = Math.random() > 0.4;
+
+    p.style.cssText = `
+      width: ${size}px;
+      height: ${size}px;
+      left: ${left}%;
+      bottom: -20px;
+      background: ${isBlue ? 'rgba(42,147,193,0.4)' : 'rgba(241,66,11,0.3)'};
+      animation-duration: ${dur}s;
+      animation-delay: ${delay}s;
+      --drift: ${drift}px;
+    `;
+    bgContainer.appendChild(p);
+  }
+}
+
+// ─── SMOOTH SCROLL FOR CTA ───────────────────────────────────────────────────
+document.querySelector('.hero-cta')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  const target = document.getElementById('features');
+  if (target) {
+    target.scrollIntoView({ behavior: 'smooth' });
+  }
+});
+
+console.log(
+  '%c[PureBrain 3D] %cPhase 1 pipeline active. Press P for perf HUD.',
+  'color: #2a93c1; font-weight: bold;',
+  'color: #8892b0;'
+);
+</script>
+
+</body>
+</html>

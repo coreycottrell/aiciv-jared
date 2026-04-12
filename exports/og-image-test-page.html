@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OG Image Split Strategy - PureBrain Test Page</title>
+
+  <!-- ============================================================
+       OG IMAGE SPLIT STRATEGY: PROOF OF CONCEPT
+       ============================================================
+
+       PLATFORM BEHAVIOR:
+       - LinkedIn  → Reads og:image  (PLAYS GIF animations!)
+       - Facebook  → Reads og:image  (shows first frame of GIF)
+       - Twitter/X → Reads twitter:image FIRST (ignores og:image when present)
+
+       STRATEGY: Use GIF for og:image, static JPG for twitter:image
+       ============================================================ -->
+
+  <!-- For LinkedIn (GIF plays!) and Facebook (first frame) -->
+  <meta property="og:title" content="Your Brain. Your AI. Actual Intelligence" />
+  <meta property="og:description" content="Meet your PURE BRAIN, an AI that awakens just for you." />
+  <meta property="og:url" content="https://purebrain.ai/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="https://purebrain.ai/wp-content/uploads/2026/02/Pure-Brain-Vid-3.gif" />
+  <meta property="og:image:width" content="480" />
+  <meta property="og:image:height" content="270" />
+  <meta property="og:image:type" content="image/gif" />
+
+  <!-- For Twitter/X (static image, clean preview - overrides og:image) -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Your Brain. Your AI. Actual Intelligence" />
+  <meta name="twitter:description" content="Meet your PURE BRAIN, an AI that awakens just for you." />
+  <meta name="twitter:image" content="https://purebrain.ai/wp-content/uploads/2026/02/purebrain-homepage-og.jpg" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue: #2a93c1;
+      --orange: #f1420b;
+      --bg: #080a12;
+      --surface: #0d1020;
+      --surface-2: #131829;
+      --border: rgba(42, 147, 193, 0.2);
+      --text: #e8eaf6;
+      --text-muted: #8a9bb5;
+      --green: #22c55e;
+      --yellow: #f59e0b;
+      --red: #ef4444;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.6;
+      padding: 0 0 60px 0;
+    }
+
+    /* ---- Header ---- */
+    .header {
+      background: linear-gradient(135deg, #0d1020 0%, #131829 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 40px 24px 32px;
+      text-align: center;
+    }
+
+    .logo-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(42, 147, 193, 0.1);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 16px;
+      font-size: 12px;
+      color: var(--blue);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+
+    .header h1 {
+      font-size: clamp(24px, 4vw, 40px);
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: #fff;
+    }
+
+    .header h1 span.blue { color: var(--blue); }
+    .header h1 span.orange { color: var(--orange); }
+
+    .header p {
+      color: var(--text-muted);
+      font-size: 16px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    /* ---- Main container ---- */
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ---- Section titles ---- */
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin: 48px 0 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ---- Platform cards ---- */
+    .platform-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin-bottom: 8px;
+    }
+
+    .platform-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      transition: border-color 0.2s;
+    }
+
+    .platform-card:hover { border-color: var(--blue); }
+
+    .platform-card .platform-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .platform-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 900;
+      flex-shrink: 0;
+    }
+
+    .icon-linkedin { background: #0077b5; color: #fff; }
+    .icon-twitter  { background: #000; color: #fff; font-size: 14px; }
+    .icon-facebook { background: #1877f2; color: #fff; }
+
+    .platform-name {
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .platform-card .tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-bottom: 14px;
+    }
+
+    .tag-gif  { background: rgba(34, 197, 94, 0.15); color: var(--green); border: 1px solid rgba(34, 197, 94, 0.3); }
+    .tag-static { background: rgba(42, 147, 193, 0.15); color: var(--blue); border: 1px solid rgba(42, 147, 193, 0.3); }
+    .tag-first-frame { background: rgba(245, 158, 11, 0.15); color: var(--yellow); border: 1px solid rgba(245, 158, 11, 0.3); }
+
+    .platform-card .reads-tag {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .reads-tag code {
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      background: rgba(255,255,255,0.06);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: var(--orange);
+    }
+
+    .platform-card .result-line {
+      font-size: 13px;
+      color: var(--text);
+      padding: 8px 12px;
+      background: var(--surface-2);
+      border-radius: 6px;
+      border-left: 3px solid transparent;
+    }
+
+    .result-line.good { border-color: var(--green); }
+    .result-line.ok   { border-color: var(--yellow); }
+
+    /* ---- Tag anatomy diagram ---- */
+    .code-block {
+      background: #0a0c18;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      overflow-x: auto;
+    }
+
+    .code-block pre {
+      font-family: 'SFMono-Regular', Consolas, 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.8;
+      color: #abb2bf;
+    }
+
+    .code-block .comment { color: #5c6370; font-style: italic; }
+    .code-block .tag-name { color: #e06c75; }
+    .code-block .attr-name { color: #d19a66; }
+    .code-block .attr-val { color: #98c379; }
+    .code-block .highlight-gif { color: #22c55e; font-weight: bold; }
+    .code-block .highlight-static { color: #2a93c1; font-weight: bold; }
+
+    /* ---- Warning box ---- */
+    .warning-box {
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin: 20px 0;
+    }
+
+    .warning-box .warning-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--red);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .warning-box p {
+      font-size: 14px;
+      color: #e8bfbf;
+      margin-bottom: 8px;
+    }
+
+    .warning-box code {
+      font-family: monospace;
+      background: rgba(255,255,255,0.06);
+      padding: 1px 6px;
+      border-radius: 3px;
+      color: var(--orange);
+      font-size: 12px;
+    }
+
+    .warning-box ul {
+      list-style: none;
+      padding: 0;
+    }
+    .warning-box ul li {
+      font-size: 13px;
+      color: #e8bfbf;
+      padding: 3px 0 3px 16px;
+      position: relative;
+    }
+    .warning-box ul li::before { content: '→'; position: absolute; left: 0; color: var(--red); }
+
+    /* ---- Success box ---- */
+    .success-box {
+      background: rgba(34, 197, 94, 0.06);
+      border: 1px solid rgba(34, 197, 94, 0.25);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin: 20px 0;
+    }
+
+    .success-box .success-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--green);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 10px;
+    }
+
+    .success-box p { font-size: 14px; color: #bfdfca; }
+
+    /* ---- Info box ---- */
+    .info-box {
+      background: rgba(42, 147, 193, 0.06);
+      border: 1px solid rgba(42, 147, 193, 0.25);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin: 20px 0;
+    }
+
+    .info-box p { font-size: 14px; color: var(--text-muted); margin-bottom: 6px; }
+    .info-box p:last-child { margin-bottom: 0; }
+
+    /* ---- Validator links ---- */
+    .validator-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+    }
+
+    .validator-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      text-decoration: none;
+      display: block;
+      transition: all 0.2s;
+    }
+
+    .validator-card:hover {
+      border-color: var(--blue);
+      background: var(--surface-2);
+      transform: translateY(-2px);
+    }
+
+    .validator-card .v-platform {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 6px;
+    }
+
+    .validator-card .v-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+
+    .validator-card .v-url {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: monospace;
+      word-break: break-all;
+    }
+
+    .validator-card .v-tip {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ---- Image previews ---- */
+    .preview-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 600px) { .preview-grid { grid-template-columns: 1fr; } }
+
+    .preview-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .preview-card .preview-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .preview-card .preview-header .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+    }
+
+    .preview-card .preview-header .title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .preview-card .preview-img-wrap {
+      padding: 16px;
+      background: #060810;
+    }
+
+    .preview-card img {
+      width: 100%;
+      border-radius: 6px;
+      display: block;
+    }
+
+    .preview-card .preview-meta {
+      padding: 12px 18px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .preview-card .preview-meta strong { color: var(--text); }
+
+    /* ---- Flow diagram ---- */
+    .flow-diagram {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px 24px;
+      text-align: center;
+    }
+
+    .flow-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+
+    .flow-box {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .flow-box.source { background: rgba(42,147,193,0.12); border-color: var(--blue); color: var(--blue); }
+    .flow-box.dest-gif { background: rgba(34,197,94,0.08); border-color: rgba(34,197,94,0.4); color: var(--green); }
+    .flow-box.dest-static { background: rgba(42,147,193,0.08); border-color: rgba(42,147,193,0.4); color: var(--blue); }
+    .flow-box.dest-both { background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.4); color: var(--yellow); }
+    .flow-box.platform { color: #fff; }
+
+    .flow-arrow {
+      padding: 0 12px;
+      color: var(--text-muted);
+      font-size: 18px;
+    }
+
+    .flow-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .flow-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    footer {
+      margin-top: 60px;
+      padding: 24px;
+      text-align: center;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="logo-badge">PURE<span style="color:var(--orange)">BR</span>AI<span style="color:var(--blue)">N</span> &nbsp;·&nbsp; OG Image Strategy</div>
+    <h1>Social Image Split Strategy<br><span class="blue">GIF for LinkedIn</span> · <span class="orange">Static for Twitter/X</span></h1>
+    <p>One set of meta tags, three platforms, optimal results. LinkedIn plays your GIF animation. Twitter/X shows a clean static image. Facebook gets the first frame.</p>
+  </div>
+
+  <div class="container">
+
+    <!-- SECTION: HOW IT WORKS -->
+    <div class="section-title">How It Works — Platform Routing</div>
+
+    <div class="platform-grid">
+
+      <!-- LinkedIn -->
+      <div class="platform-card">
+        <div class="platform-logo">
+          <div class="platform-icon icon-linkedin">in</div>
+          <span class="platform-name">LinkedIn</span>
+        </div>
+        <span class="tag tag-gif">GIF PLAYS</span>
+        <div class="reads-tag">Reads: <code>og:image</code></div>
+        <div class="result-line good">Plays the animated GIF — full motion preview in feed and link posts</div>
+      </div>
+
+      <!-- Twitter/X -->
+      <div class="platform-card">
+        <div class="platform-logo">
+          <div class="platform-icon icon-twitter">&#x1D54F;</div>
+          <span class="platform-name">Twitter / X</span>
+        </div>
+        <span class="tag tag-static">STATIC IMAGE</span>
+        <div class="reads-tag">Reads: <code>twitter:image</code> first</div>
+        <div class="result-line good">Shows clean static JPG — no broken GIF, professional card appearance</div>
+      </div>
+
+      <!-- Facebook -->
+      <div class="platform-card">
+        <div class="platform-logo">
+          <div class="platform-icon icon-facebook">f</div>
+          <span class="platform-name">Facebook</span>
+        </div>
+        <span class="tag tag-first-frame">FIRST FRAME</span>
+        <div class="reads-tag">Reads: <code>og:image</code></div>
+        <div class="result-line ok">Shows first frame of GIF as static image — acceptable appearance</div>
+      </div>
+
+    </div>
+
+    <!-- SECTION: THE TAGS -->
+    <div class="section-title">The Meta Tags — Copy &amp; Paste Ready</div>
+
+    <div class="code-block">
+      <pre><span class="comment">&lt;!-- ================================================
+  OG IMAGE SPLIT STRATEGY
+  Add these tags to &lt;head&gt; — purebrain.ai homepage
+  ================================================ --&gt;</span>
+
+<span class="comment">&lt;!-- For LinkedIn (GIF animates!) and Facebook (first frame) --&gt;</span>
+<span class="tag-name">&lt;meta</span> <span class="attr-name">property</span>="<span class="attr-val">og:image</span>"
+      <span class="attr-name">content</span>="<span class="highlight-gif">https://purebrain.ai/wp-content/uploads/2026/02/Pure-Brain-Vid-3.gif</span>" <span class="tag-name">/&gt;</span>
+<span class="tag-name">&lt;meta</span> <span class="attr-name">property</span>="<span class="attr-val">og:image:width</span>"  <span class="attr-name">content</span>="<span class="attr-val">480</span>" <span class="tag-name">/&gt;</span>
+<span class="tag-name">&lt;meta</span> <span class="attr-name">property</span>="<span class="attr-val">og:image:height</span>" <span class="attr-name">content</span>="<span class="attr-val">270</span>" <span class="tag-name">/&gt;</span>
+<span class="tag-name">&lt;meta</span> <span class="attr-name">property</span>="<span class="attr-val">og:image:type</span>"  <span class="attr-name">content</span>="<span class="attr-val">image/gif</span>" <span class="tag-name">/&gt;</span>
+
+<span class="comment">&lt;!-- For Twitter/X (static image overrides og:image when present) --&gt;</span>
+<span class="tag-name">&lt;meta</span> <span class="attr-name">name</span>="<span class="attr-val">twitter:card</span>"  <span class="attr-name">content</span>="<span class="highlight-static">summary_large_image</span>" <span class="tag-name">/&gt;</span>
+<span class="tag-name">&lt;meta</span> <span class="attr-name">name</span>="<span class="attr-val">twitter:image</span>" <span class="attr-name">content</span>="<span class="highlight-static">https://purebrain.ai/wp-content/uploads/2026/02/purebrain-homepage-og.jpg</span>" <span class="tag-name">/&gt;</span></pre>
+    </div>
+
+    <!-- IMPORTANT WARNING: DUPLICATE TAG BUG -->
+    <div class="warning-box">
+      <div class="warning-title">&#9888; IMPORTANT: Duplicate Tag Bug Found on Live Homepage</div>
+      <p>A live audit of <code>purebrain.ai</code> found <strong>two sets of OG tags</strong> in the HTML. The first set (lines 24–31) is correct. A second set appears much later (around line 2571) inside Elementor-injected JSON with <code>twitter:image</code> pointing to the GIF instead of the static JPG.</p>
+      <ul>
+        <li>First set (line 24): <code>twitter:image</code> = <code>purebrain-homepage-og.jpg</code> ✓ correct</li>
+        <li>Second set (line 2578): <code>twitter:image</code> = <code>Pure-Brain-Vid-3.gif</code> ✗ wrong</li>
+      </ul>
+      <p style="margin-top: 10px;">Twitter's crawler may read the last occurrence. This means Twitter/X might currently be showing the GIF (broken on X) despite the correct tag being present. <strong>The second twitter:image tag must be removed.</strong></p>
+    </div>
+
+    <!-- SECTION: LIVE IMAGE PREVIEWS -->
+    <div class="section-title">Live Image Previews — Current purebrain.ai Assets</div>
+
+    <div class="preview-grid">
+      <div class="preview-card">
+        <div class="preview-header">
+          <div class="dot" style="background: var(--green);"></div>
+          <span class="title">og:image (GIF) — LinkedIn &amp; Facebook</span>
+        </div>
+        <div class="preview-img-wrap">
+          <img src="https://purebrain.ai/wp-content/uploads/2026/02/Pure-Brain-Vid-3.gif"
+               alt="PureBrain animated GIF for LinkedIn" loading="lazy" />
+        </div>
+        <div class="preview-meta">
+          <strong>File:</strong> Pure-Brain-Vid-3.gif &nbsp;·&nbsp;
+          <strong>Type:</strong> image/gif &nbsp;·&nbsp;
+          <strong>Size:</strong> 480×270
+        </div>
+      </div>
+
+      <div class="preview-card">
+        <div class="preview-header">
+          <div class="dot" style="background: var(--blue);"></div>
+          <span class="title">twitter:image (Static JPG) — Twitter/X</span>
+        </div>
+        <div class="preview-img-wrap">
+          <img src="https://purebrain.ai/wp-content/uploads/2026/02/purebrain-homepage-og.jpg"
+               alt="PureBrain static image for Twitter/X" loading="lazy" />
+        </div>
+        <div class="preview-meta">
+          <strong>File:</strong> purebrain-homepage-og.jpg &nbsp;·&nbsp;
+          <strong>Type:</strong> image/jpeg &nbsp;·&nbsp;
+          <strong>Live:</strong> confirmed 200 OK
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION: FLOW DIAGRAM -->
+    <div class="section-title">Platform Routing Flow</div>
+
+    <div class="flow-diagram">
+
+      <div class="flow-row">
+        <div class="flow-col">
+          <div class="flow-box source">og:image = GIF</div>
+          <div class="flow-label">LinkedIn, Facebook read this</div>
+        </div>
+        <div class="flow-arrow">+</div>
+        <div class="flow-col">
+          <div class="flow-box source">twitter:image = static JPG</div>
+          <div class="flow-label">Twitter/X reads this FIRST</div>
+        </div>
+      </div>
+
+      <div style="font-size: 24px; color: var(--text-muted); margin-bottom: 16px;">↓ &nbsp; ↓ &nbsp; ↓</div>
+
+      <div class="flow-row" style="gap: 16px;">
+        <div class="flow-col">
+          <div class="flow-box dest-gif">LinkedIn</div>
+          <div class="flow-label">GIF animates</div>
+        </div>
+        <div class="flow-col">
+          <div class="flow-box dest-both">Facebook</div>
+          <div class="flow-label">GIF first frame</div>
+        </div>
+        <div class="flow-col">
+          <div class="flow-box dest-static">Twitter / X</div>
+          <div class="flow-label">Static JPG</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- SECTION: VERIFY -->
+    <div class="section-title">Verify With Official Tools</div>
+
+    <div class="info-box">
+      <p>Use these tools to confirm each platform is rendering the correct image. Paste <strong>https://purebrain.ai/</strong> into each inspector and check the image preview.</p>
+      <p>After any tag change, use each tool's "Scrape Again" / "Re-fetch" button to clear their cache.</p>
+    </div>
+
+    <div class="validator-grid">
+
+      <a class="validator-card" href="https://www.linkedin.com/post-inspector/" target="_blank" rel="noopener">
+        <div class="v-platform">LinkedIn</div>
+        <div class="v-title">Post Inspector</div>
+        <div class="v-url">linkedin.com/post-inspector/</div>
+        <div class="v-tip">Should show animated GIF in the preview. If it shows a static image, LinkedIn may have cached an old version — click "Inspect" again.</div>
+      </a>
+
+      <a class="validator-card" href="https://cards-dev.twitter.com/validator" target="_blank" rel="noopener">
+        <div class="v-platform">Twitter / X</div>
+        <div class="v-title">Card Validator</div>
+        <div class="v-url">cards-dev.twitter.com/validator</div>
+        <div class="v-tip">Should show the static JPG (purebrain-homepage-og.jpg). If it shows the GIF, the duplicate twitter:image tag (line 2578) is overriding the correct one.</div>
+      </a>
+
+      <a class="validator-card" href="https://developers.facebook.com/tools/debug/" target="_blank" rel="noopener">
+        <div class="v-platform">Facebook</div>
+        <div class="v-title">Sharing Debugger</div>
+        <div class="v-url">developers.facebook.com/tools/debug/</div>
+        <div class="v-tip">Should show the first frame of the GIF. Click "Scrape Again" if Facebook has cached an old image. May need to scrape 2–3 times to bust the cache.</div>
+      </a>
+
+    </div>
+
+    <!-- SECTION: WHAT SHAHBAZ NEEDS TO DO -->
+    <div class="section-title">Action Items for Shahbaz / WordPress</div>
+
+    <div class="success-box">
+      <div class="success-title">The correct tags are already in the WordPress header</div>
+      <p>The first set of OG tags (inserted via Yoast/RankMath or custom header code) is correct. The GIF is set as og:image and the static JPG is set as twitter:image.</p>
+    </div>
+
+    <div class="warning-box">
+      <div class="warning-title">Action Required: Remove Duplicate Twitter Tag</div>
+      <p>Elementor is injecting a second set of social meta tags further down the page (around line 2571 in the HTML source). The second <code>twitter:image</code> tag points to the GIF, which defeats the whole strategy.</p>
+      <ul>
+        <li>In Elementor, check the page settings for the homepage (Page ID: 11)</li>
+        <li>Look for a "Social Share" or "SEO" panel inside the Elementor editor</li>
+        <li>Remove or clear the Elementor-level twitter:image if it is set to the GIF</li>
+        <li>Alternatively, check if Yoast/RankMath is set to output twitter:image separately from Elementor's meta injection</li>
+        <li>After fix: use Twitter Card Validator to confirm only the static JPG is shown</li>
+      </ul>
+    </div>
+
+  </div><!-- /container -->
+
+  <footer>
+    Built by Aether · PureBrain Engineering · 2026-02-23 &nbsp;·&nbsp;
+    GIF: <code>Pure-Brain-Vid-3.gif</code> (8.8MB, 480×270) &nbsp;·&nbsp;
+    Static: <code>purebrain-homepage-og.jpg</code> (54KB)
+  </footer>
+
+</body>
+</html>

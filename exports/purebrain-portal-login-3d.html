@@ -1,0 +1,1828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PureBrain Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     PUREBRAIN PORTAL — LOGIN PAGE + 3D NEURAL NETWORK BACKGROUND
+     3D scene: position:fixed z-index:0
+     Login overlay: position:fixed z-index:10
+     ============================================================ */
+
+  :root {
+    --bright-orange: #f1420b;
+    --orange: #ed6626;
+    --light-blue: #2a93c1;
+    --dark-blue: #3a60ab;
+    --black: #0a0a0a;
+    --white: #ffffff;
+    --muted: #888888;
+    --font-heading: 'Oswald', sans-serif;
+    --font-body: 'Plus Jakarta Sans', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    /* Portal-specific */
+    --card-bg: rgba(10, 10, 10, 0.82);
+    --field-bg: rgba(255, 255, 255, 0.04);
+    --field-border: rgba(255, 255, 255, 0.1);
+    --glow-orange: rgba(241, 66, 11, 0.35);
+    --glow-blue: rgba(42, 147, 193, 0.35);
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: var(--font-body);
+    background: #0a0e1a;
+    color: var(--white);
+  }
+
+  /* ============================================================
+     3D CANVAS CONTAINER — fixed, behind everything
+     ============================================================ */
+
+  #canvas-container {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+  }
+
+  #canvas-container canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  /* ============================================================
+     OVERLAY — full screen login stage
+     ============================================================ */
+
+  #loginOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    /* Safe area support for mobile notch/home-bar */
+    padding-top: max(20px, env(safe-area-inset-top));
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+
+  #loginOverlay.hidden {
+    display: none;
+  }
+
+  /* ============================================================
+     CARD — glassmorphism over 3D background
+     Higher backdrop-filter opacity so 3D scene shows through
+     ============================================================ */
+
+  .pb-login-card {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    background: var(--card-bg);
+    border-radius: 20px;
+    padding: 48px 40px 0;
+    text-align: center;
+
+    /* Glass morphism — slightly more transparent to show 3D scene */
+    backdrop-filter: blur(32px) saturate(1.6);
+    -webkit-backdrop-filter: blur(32px) saturate(1.6);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+
+    /* Multi-layer glow */
+    box-shadow:
+      0 0 0 1px rgba(241, 66, 11, 0.06),
+      0 8px 32px rgba(0, 0, 0, 0.65),
+      0 0 60px rgba(42, 147, 193, 0.10),
+      0 0 120px rgba(241, 66, 11, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.07);
+
+    animation: cardMaterialize 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.3s;
+    overflow: hidden;
+
+    /* Prevent card from being taller than viewport on small screens */
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    /* Hide scrollbar but allow scroll */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .pb-login-card::-webkit-scrollbar { display: none; }
+
+  /* Inner content wrapper */
+  .pb-card-content {
+    padding-bottom: 36px;
+  }
+
+  @keyframes cardMaterialize {
+    0% {
+      opacity: 0;
+      transform: translateY(24px) scale(0.97);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  /* Top edge — orange-to-blue gradient line */
+  .pb-login-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 10%;
+    right: 10%;
+    height: 1px;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(241, 66, 11, 0.6) 25%,
+      rgba(42, 147, 193, 0.8) 50%,
+      rgba(58, 96, 171, 0.6) 75%,
+      transparent 100%
+    );
+    border-radius: 1px;
+  }
+
+  /* ============================================================
+     LOGO — PURE BRAIN .ai
+     ============================================================ */
+
+  .pb-logo-wrap {
+    margin-bottom: 28px;
+    animation: logoReveal 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.6s;
+  }
+
+  @keyframes logoReveal {
+    0%   { opacity: 0; transform: translateY(-8px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Brand icon */
+  .pb-logo-mark {
+    display: block;
+    width: 52px;
+    height: 52px;
+    margin: 0 auto 14px;
+    border-radius: 50%;
+    object-fit: cover;
+    box-shadow:
+      0 0 16px 4px rgba(42, 147, 193, 0.3),
+      0 0 32px 8px rgba(58, 96, 171, 0.2),
+      0 0 8px 2px rgba(241, 66, 11, 0.25);
+    animation: orbMarkGlow 3s ease-in-out infinite alternate;
+  }
+
+  @keyframes orbMarkGlow {
+    0%  { box-shadow: 0 0 16px 4px rgba(42,147,193,0.3), 0 0 32px 8px rgba(58,96,171,0.2), 0 0 8px 2px rgba(241,66,11,0.25); }
+    100%{ box-shadow: 0 0 20px 6px rgba(42,147,193,0.45), 0 0 40px 12px rgba(58,96,171,0.3), 0 0 12px 4px rgba(241,66,11,0.35); }
+  }
+
+  .pb-logo-wordmark {
+    font-family: var(--font-heading);
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    line-height: 1;
+  }
+
+  /* PUREBR = blue, AI = orange, N = blue, .ai = white */
+  .pb-logo-wordmark .pure  { color: #2a93c1; }
+  .pb-logo-wordmark .brain { color: #f1420b; }
+  .pb-logo-wordmark .brain-n { color: #2a93c1; }
+  .pb-logo-wordmark .ai    { color: var(--white); font-weight: 400; }
+
+  /* ============================================================
+     HEADLINE + SUBTEXT
+     ============================================================ */
+
+  .pb-headline {
+    font-family: var(--font-heading);
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: var(--white);
+    margin-bottom: 8px;
+    animation: contentReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.75s;
+  }
+
+  .pb-subtext {
+    font-size: 13px;
+    color: var(--muted);
+    letter-spacing: 0.01em;
+    margin-bottom: 32px;
+    line-height: 1.5;
+    animation: contentReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.85s;
+  }
+
+  .pb-subtext strong {
+    color: rgba(255,255,255,0.55);
+    font-weight: 500;
+  }
+
+  @keyframes contentReveal {
+    0%   { opacity: 0; transform: translateY(8px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ============================================================
+     FORM — floating label fields
+     ============================================================ */
+
+  .pb-form {
+    text-align: left;
+    animation: contentReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.95s;
+  }
+
+  .pb-field {
+    position: relative;
+    margin-bottom: 20px;
+  }
+
+  .pb-field label {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.35);
+    pointer-events: none;
+    transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    letter-spacing: 0.01em;
+    z-index: 1;
+  }
+
+  .pb-field input:not(:placeholder-shown) ~ label,
+  .pb-field input:focus ~ label {
+    top: 6px;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--light-blue);
+    font-weight: 600;
+  }
+
+  .pb-field input {
+    width: 100%;
+    height: 52px;
+    padding: 20px 14px 6px;
+    border-radius: 10px;
+    border: 1px solid var(--field-border);
+    background: var(--field-bg);
+    color: var(--white);
+    font-family: var(--font-body);
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .pb-field input::placeholder {
+    color: transparent;
+  }
+
+  .pb-field input:focus {
+    border-color: rgba(42, 147, 193, 0.6);
+    background: rgba(42, 147, 193, 0.05);
+    box-shadow:
+      0 0 0 3px rgba(42, 147, 193, 0.12),
+      inset 0 0 20px rgba(42, 147, 193, 0.04);
+  }
+
+  .pb-field input:focus ~ .pb-field-accent {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+
+  .pb-field-accent {
+    position: absolute;
+    bottom: 0;
+    left: 10px;
+    right: 10px;
+    height: 2px;
+    background: linear-gradient(90deg, var(--orange), var(--light-blue));
+    border-radius: 0 0 2px 2px;
+    transform: scaleX(0);
+    opacity: 0;
+    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s;
+    pointer-events: none;
+  }
+
+  /* ============================================================
+     ERROR
+     ============================================================ */
+
+  .pb-error {
+    display: none;
+    color: #ff6b6b;
+    font-size: 13px;
+    margin-bottom: 16px;
+    padding: 10px 14px;
+    background: rgba(255, 107, 107, 0.08);
+    border: 1px solid rgba(255, 107, 107, 0.2);
+    border-radius: 8px;
+    line-height: 1.4;
+  }
+
+  /* ============================================================
+     SIGN IN BUTTON
+     ============================================================ */
+
+  .pb-signin-btn {
+    width: 100%;
+    height: 52px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    font-family: var(--font-heading);
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--white);
+    position: relative;
+    overflow: hidden;
+    transition: opacity 0.2s, transform 0.15s, box-shadow 0.3s;
+
+    background: linear-gradient(105deg,
+      var(--bright-orange) 0%,
+      var(--orange) 30%,
+      var(--light-blue) 70%,
+      var(--dark-blue) 100%
+    );
+
+    box-shadow:
+      0 4px 20px rgba(241, 66, 11, 0.3),
+      0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+
+  .pb-signin-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow:
+      0 6px 30px rgba(241, 66, 11, 0.45),
+      0 0 40px rgba(42, 147, 193, 0.2),
+      0 3px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  .pb-signin-btn:active:not(:disabled) {
+    transform: translateY(0px);
+    box-shadow:
+      0 2px 12px rgba(241, 66, 11, 0.3),
+      0 1px 4px rgba(0, 0, 0, 0.4);
+  }
+
+  .pb-signin-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .pb-signin-btn::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(90deg,
+      transparent,
+      rgba(255,255,255,0.15),
+      transparent
+    );
+    transform: skewX(-20deg);
+    transition: left 0.5s ease;
+  }
+
+  .pb-signin-btn:hover:not(:disabled)::after {
+    left: 160%;
+  }
+
+  .pb-signin-btn .btn-text      { display: inline; }
+  .pb-signin-btn .btn-loading   { display: none; }
+  .pb-signin-btn.loading .btn-text    { display: none; }
+  .pb-signin-btn.loading .btn-loading { display: inline; }
+
+  .pb-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spinnerRotate 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 8px;
+    margin-top: -2px;
+  }
+
+  @keyframes spinnerRotate {
+    to { transform: rotate(360deg); }
+  }
+
+  /* ============================================================
+     TRUST BADGES
+     ============================================================ */
+
+  .pb-trust-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 28px;
+    animation: contentReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.8s;
+  }
+
+  .pb-trust-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: rgba(255,255,255,0.35);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .pb-trust-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--orange);
+    box-shadow: 0 0 6px var(--orange);
+    animation: dotPulse 2s ease-in-out infinite;
+  }
+
+  .pb-trust-dot.blue {
+    background: var(--light-blue);
+    box-shadow: 0 0 6px var(--light-blue);
+    animation-delay: 0.7s;
+  }
+
+  @keyframes dotPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.5; transform: scale(0.7); }
+  }
+
+  .pb-trust-divider {
+    width: 1px;
+    height: 14px;
+    background: rgba(255,255,255,0.1);
+  }
+
+  /* ============================================================
+     FOOTER — Premium bottom banner
+     ============================================================ */
+
+  .pb-footer {
+    position: relative;
+    margin-top: 28px;
+    overflow: hidden;
+    border-radius: 0 0 20px 20px;
+    animation: contentReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 1.1s;
+  }
+
+  .pb-footer-glow-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(241, 66, 11, 0.8) 20%,
+      rgba(42, 147, 193, 0.9) 50%,
+      rgba(58, 96, 171, 0.7) 80%,
+      transparent 100%
+    );
+  }
+
+  .pb-footer-inner {
+    position: relative;
+    padding: 22px 24px 24px;
+    background: linear-gradient(
+      180deg,
+      rgba(42, 147, 193, 0.06) 0%,
+      rgba(241, 66, 11, 0.08) 50%,
+      rgba(10, 10, 10, 0.4) 100%
+    );
+  }
+
+  .pb-footer-inner::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 90% 80% at 50% 120%,
+        rgba(241, 66, 11, 0.18) 0%,
+        rgba(42, 147, 193, 0.12) 40%,
+        transparent 70%
+      );
+    animation: footerGlowPulse 4s ease-in-out infinite alternate;
+    pointer-events: none;
+  }
+
+  @keyframes footerGlowPulse {
+    0%   { opacity: 0.6; transform: scale(1); }
+    100% { opacity: 1; transform: scale(1.04); }
+  }
+
+  .pb-footer-powered {
+    position: relative;
+    font-size: 10px;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    font-family: var(--font-mono);
+  }
+
+  .pb-footer-powered .pb-brand-pure    { color: #2a93c1; font-weight: 700; }
+  .pb-footer-powered .pb-brand-brain   { color: #f1420b; font-weight: 700; }
+  .pb-footer-powered .pb-brand-n       { color: #2a93c1; font-weight: 700; }
+  .pb-footer-powered .pb-brand-ai      { color: rgba(255,255,255,0.6); font-weight: 500; }
+  .pb-footer-powered .pb-brand-sep     { color: rgba(255,255,255,0.25); margin: 0 6px; }
+  .pb-footer-powered .pb-brand-pt      { color: rgba(255,255,255,0.55); font-weight: 600; letter-spacing: 0.08em; }
+
+  .pb-footer-tagline {
+    position: relative;
+    font-family: var(--font-heading);
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    line-height: 1.1;
+
+    background: linear-gradient(100deg,
+      #f1420b 0%,
+      #ed6626 30%,
+      #2a93c1 70%,
+      #3a60ab 100%
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+
+    filter: drop-shadow(0 0 12px rgba(241, 66, 11, 0.5)) drop-shadow(0 0 24px rgba(42, 147, 193, 0.3));
+    animation: taglineGlow 3s ease-in-out infinite alternate;
+  }
+
+  @keyframes taglineGlow {
+    0% {
+      filter: drop-shadow(0 0 8px rgba(241, 66, 11, 0.4)) drop-shadow(0 0 16px rgba(42, 147, 193, 0.25));
+    }
+    100% {
+      filter: drop-shadow(0 0 16px rgba(241, 66, 11, 0.65)) drop-shadow(0 0 32px rgba(42, 147, 193, 0.4));
+    }
+  }
+
+  .pb-footer-tagline .tagline-dot {
+    -webkit-text-fill-color: rgba(255,255,255,0.5);
+    font-weight: 400;
+  }
+
+  /* ============================================================
+     RESPONSIVE — Tablet (768px) + Mobile (480px)
+     ============================================================ */
+
+  /* Tablet: slightly reduce card width, keep full experience */
+  @media (max-width: 768px) {
+    .pb-login-card {
+      max-width: 400px;
+    }
+  }
+
+  /* Mobile portrait: compact form, smaller elements */
+  @media (max-width: 480px) {
+    #loginOverlay {
+      align-items: flex-start;
+      padding-top: max(40px, env(safe-area-inset-top, 20px));
+    }
+
+    .pb-login-card {
+      border-radius: 16px;
+      padding: 36px 0 0;
+      max-height: calc(100vh - max(80px, env(safe-area-inset-top, 20px) + env(safe-area-inset-bottom, 20px) + 40px));
+    }
+
+    .pb-card-content {
+      padding: 0 24px 24px;
+    }
+
+    .pb-headline  { font-size: 20px; }
+    .pb-trust-row { gap: 10px; }
+    .pb-trust-badge { font-size: 10px; }
+    .pb-footer { border-radius: 0 0 16px 16px; }
+    .pb-footer-tagline { font-size: 15px; }
+    .pb-footer-inner { padding: 18px 20px 20px; }
+
+    .pb-logo-mark {
+      width: 44px;
+      height: 44px;
+    }
+  }
+
+  /* Very small screens / landscape mobile */
+  @media (max-height: 600px) {
+    #loginOverlay {
+      align-items: flex-start;
+      overflow-y: auto;
+    }
+
+    .pb-login-card {
+      max-height: none;
+    }
+
+    .pb-logo-wrap {
+      margin-bottom: 16px;
+    }
+
+    .pb-logo-mark {
+      width: 36px;
+      height: 36px;
+      margin-bottom: 8px;
+    }
+
+    .pb-logo-wordmark {
+      font-size: 22px;
+    }
+
+    .pb-headline {
+      font-size: 18px;
+      margin-bottom: 4px;
+    }
+
+    .pb-subtext {
+      margin-bottom: 20px;
+    }
+  }
+
+  /* ============================================================
+     REDUCED MOTION
+     ============================================================ */
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     3D NEURAL NETWORK BACKGROUND
+     Three.js canvas — position:fixed, z-index:0
+     ============================================================ -->
+<div id="canvas-container"></div>
+
+<!-- ============================================================
+     LOGIN OVERLAY — z-index:10, on top of 3D scene
+     All IDs preserved: loginOverlay, loginAicivName, loginSecret,
+     loginButton, loginError, handleLogin()
+     ============================================================ -->
+<div id="loginOverlay">
+
+  <div class="pb-login-card">
+
+    <div class="pb-card-content">
+
+      <!-- Logo -->
+      <div class="pb-logo-wrap">
+        <img class="pb-logo-mark" src="https://purebrain.ai/wp-content/uploads/2026/02/purebrain-icon-1.png" alt="PureBrain Icon" width="52" height="52" />
+        <div class="pb-logo-wordmark">
+          <span class="pure">PUREBR</span><span class="brain">AI</span><span class="brain-n">N</span><span class="ai">.ai</span>
+        </div>
+      </div>
+
+      <!-- Headline — preserved verbatim -->
+      <h1 class="pb-headline">Your AI's Brain Stream</h1>
+      <p class="pb-subtext">Your AI's Neural Network is waiting.<br><strong>50+ specialized agents</strong> ready to work.</p>
+
+      <!-- Trust badges -->
+      <div class="pb-trust-row">
+        <div class="pb-trust-badge">
+          <div class="pb-trust-dot"></div>
+          Active
+        </div>
+        <div class="pb-trust-divider"></div>
+        <div class="pb-trust-badge">
+          <div class="pb-trust-dot blue"></div>
+          Secure
+        </div>
+        <div class="pb-trust-divider"></div>
+        <div class="pb-trust-badge">
+          <div class="pb-trust-dot"></div>
+          Private
+        </div>
+      </div>
+
+      <!-- Form -->
+      <form class="pb-form" onsubmit="handleLogin(); return false;" autocomplete="on">
+
+        <div class="pb-field">
+          <input
+            type="text"
+            id="loginAicivName"
+            placeholder="Your AI's Name"
+            autocomplete="username"
+            spellcheck="false"
+            autocorrect="off"
+            autocapitalize="off"
+          />
+          <label for="loginAicivName">Your AI's Name</label>
+          <div class="pb-field-accent"></div>
+        </div>
+
+        <div class="pb-field">
+          <input
+            type="password"
+            id="loginSecret"
+            placeholder="Secret"
+            autocomplete="current-password"
+          />
+          <label for="loginSecret">Secret</label>
+          <div class="pb-field-accent"></div>
+        </div>
+
+        <div id="loginError" class="pb-error"></div>
+
+        <!-- Button — preserved verbatim -->
+        <button type="submit" id="loginButton" class="pb-signin-btn" onclick="handleLogin(); return false;">
+          <span class="btn-text">Access Your AI's Brain Stream</span>
+          <span class="btn-loading">
+            <span class="pb-spinner"></span>Authenticating...
+          </span>
+        </button>
+
+      </form>
+
+    </div><!-- /.pb-card-content -->
+
+    <!-- Footer -->
+    <div class="pb-footer">
+      <div class="pb-footer-glow-bar"></div>
+      <div class="pb-footer-inner">
+        <div class="pb-footer-powered">
+          POWERED BY&nbsp;
+          <span class="pb-brand-pure">PUREBR</span><span class="pb-brand-brain">AI</span><span class="pb-brand-n">N</span><span class="pb-brand-ai">.AI</span>
+          <span class="pb-brand-sep">&amp;</span>
+          <span class="pb-brand-pt">PURETECHNOLOGY.AI</span>
+        </div>
+        <div class="pb-footer-tagline">
+          AI Partnership<span class="tagline-dot">.</span> Redefined<span class="tagline-dot">.</span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.pb-login-card -->
+
+</div><!-- /#loginOverlay -->
+
+
+<!-- ============================================================
+     THREE.JS — ESM importmap (confirmed working pattern)
+     ============================================================ -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer }   from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }       from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass }  from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass }       from 'three/addons/postprocessing/OutputPass.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BRAND CONSTANTS
+// Adjusted: orange softened (#e86020), blue stays dominant
+// ─────────────────────────────────────────────────────────────────────────────
+const C_BLUE   = new THREE.Color(0x2a93c1);
+const C_ORANGE = new THREE.Color(0xe86020);   // was 0xf1420b — warmer, less red
+const C_BG     = new THREE.Color(0x0a0e1a);
+const C_IDLE   = new THREE.Color(0x1a2840);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DEVICE DETECTION — scale down on mobile for performance
+// ─────────────────────────────────────────────────────────────────────────────
+const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+  || window.innerWidth < 768;
+
+const isLowPower = isMobile;
+
+// Scale parameters based on device capability
+const NODE_COUNT       = isLowPower ? 160 : 280;    // fewer neurons on mobile
+const AMBIENT_COUNT    = isLowPower ? 800 : 1800;   // fewer particles on mobile
+const MAX_PULSES       = isLowPower ? 60  : 120;
+const MAX_SPARKS       = isLowPower ? 300 : 600;
+const PIXEL_RATIO_MAX  = isLowPower ? 1   : 2;      // cap pixel ratio on mobile
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SCENE SETUP
+// ─────────────────────────────────────────────────────────────────────────────
+const container = document.getElementById('canvas-container');
+let W = window.innerWidth;
+let H = window.innerHeight;
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: !isLowPower,
+  alpha: false,
+  powerPreference: isLowPower ? 'low-power' : 'high-performance'
+});
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, PIXEL_RATIO_MAX));
+renderer.setClearColor(C_BG, 1);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = C_BG;
+scene.fog = new THREE.FogExp2(0x0a0e1a, isLowPower ? 0.045 : 0.038);
+
+// Camera — FOV adjusts for portrait (mobile) vs landscape (desktop)
+function getInitialFOV() {
+  const aspect = W / H;
+  // Portrait: wider FOV shows more of the scene
+  return aspect < 0.8 ? 70 : 55;
+}
+
+const camera = new THREE.PerspectiveCamera(getInitialFOV(), W / H, 0.1, 200);
+// Mobile: pull back camera so scene fills more of the viewport
+const CAMERA_Z = isLowPower ? 26 : 22;
+camera.position.set(0, 0, CAMERA_Z);
+camera.lookAt(0, 0, 0);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROCEDURAL PMREM ENVIRONMENT
+// ─────────────────────────────────────────────────────────────────────────────
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+pmremGenerator.compileCubemapShader();
+
+const probeScene = new THREE.Scene();
+const envKey  = new THREE.PointLight(0x4ab8ff, 6.0, 60);
+envKey.position.set(5, 8, 5);
+const envFill = new THREE.PointLight(0x2a93c1, 3.5, 40);
+envFill.position.set(-6, 2, 3);
+// Orange rim light: reduced intensity (1.2 vs 2.0) for blue-dominant feel
+const envRim  = new THREE.PointLight(0xe86020, 1.2, 30);
+envRim.position.set(1, -2, -8);
+probeScene.add(envKey, envFill, envRim);
+
+const envTexture = pmremGenerator.fromScene(probeScene).texture;
+scene.environment = envTexture;
+pmremGenerator.dispose();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NEURAL NETWORK — DATA STRUCTURES
+// ─────────────────────────────────────────────────────────────────────────────
+const CONNECTION_LIMIT = 4;
+const FIRE_DURATION  = 1.2;
+const PULSE_SPEED    = 2.8;
+
+class Neuron {
+  constructor(id, position) {
+    this.id          = id;
+    this.position    = position;
+    this.connections = [];
+    this.fireTime    = -999;
+    this.fireIntensity = 0;
+    this.baseColor   = C_IDLE.clone();
+    this.currentColor = C_IDLE.clone();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GENERATE NEURONS — brain-shaped ellipsoid
+// ─────────────────────────────────────────────────────────────────────────────
+const neurons = [];
+
+function brainPosition() {
+  const hemisphere = Math.random() > 0.5 ? 1 : -1;
+  let x, y, z;
+  let attempts = 0;
+  do {
+    const r = Math.cbrt(Math.random());
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    x = r * 8.5 * Math.sin(phi) * Math.cos(theta) + hemisphere * 1.0;
+    y = r * 5.0 * Math.cos(phi);
+    z = r * 6.0 * Math.sin(phi) * Math.sin(theta);
+    const distFromCenter = Math.sqrt(x * x + z * z);
+    if (distFromCenter > 1.5 && Math.abs(y) < 5) break;
+    attempts++;
+  } while (attempts < 30);
+  return new THREE.Vector3(x, y, z);
+}
+
+for (let i = 0; i < NODE_COUNT; i++) {
+  neurons.push(new Neuron(i, brainPosition()));
+}
+
+// Build connections
+for (let i = 0; i < NODE_COUNT; i++) {
+  const ni = neurons[i];
+  if (ni.connections.length >= CONNECTION_LIMIT) continue;
+  const distances = [];
+  for (let j = i + 1; j < NODE_COUNT; j++) {
+    const nj = neurons[j];
+    if (nj.connections.length >= CONNECTION_LIMIT) continue;
+    const d = ni.position.distanceTo(nj.position);
+    if (d < 6.5) distances.push({ j, d });
+  }
+  distances.sort((a, b) => a.d - b.d);
+  for (const { j } of distances.slice(0, CONNECTION_LIMIT - ni.connections.length)) {
+    const nj = neurons[j];
+    if (nj.connections.length >= CONNECTION_LIMIT) continue;
+    ni.connections.push(j);
+    nj.connections.push(i);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NEURON MESHES — individual materials for per-neuron bloom control
+// ─────────────────────────────────────────────────────────────────────────────
+const neuronGeo = new THREE.SphereGeometry(0.12, isLowPower ? 8 : 12, isLowPower ? 6 : 8);
+const neuronMeshes = [];
+const neuronMaterials = [];
+
+for (let i = 0; i < NODE_COUNT; i++) {
+  const mat = new THREE.MeshPhysicalMaterial({
+    color: C_IDLE,
+    emissive: C_IDLE.clone(),
+    emissiveIntensity: 0.25,
+    roughness: 0.15,
+    metalness: 0.05,
+  });
+  const mesh = new THREE.Mesh(neuronGeo, mat);
+  mesh.position.copy(neurons[i].position);
+  const scale = 0.6 + Math.random() * 0.8;
+  mesh.scale.setScalar(scale);
+  scene.add(mesh);
+  neuronMeshes.push(mesh);
+  neuronMaterials.push(mat);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SYNAPTIC CONNECTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+const edges = [];
+const edgeSet = new Set();
+const edgeLookup = new Map();
+
+for (let i = 0; i < NODE_COUNT; i++) {
+  for (const j of neurons[i].connections) {
+    const key = Math.min(i, j) * 10000 + Math.max(i, j);
+    if (!edgeSet.has(key)) {
+      edgeSet.add(key);
+      const edgeIndex = edges.length;
+      edges.push([i, j]);
+      edgeLookup.set(key, edgeIndex);
+    }
+  }
+}
+
+function getEdgeIndex(a, b) {
+  const key = Math.min(a, b) * 10000 + Math.max(a, b);
+  return edgeLookup.get(key) ?? -1;
+}
+
+const linePositions = new Float32Array(edges.length * 2 * 3);
+const lineColors    = new Float32Array(edges.length * 2 * 3);
+const connectionColors = [];
+
+for (let e = 0; e < edges.length; e++) {
+  const [i, j] = edges[e];
+  const pi = neurons[i].position;
+  const pj = neurons[j].position;
+  linePositions[e * 6 + 0] = pi.x; linePositions[e * 6 + 1] = pi.y; linePositions[e * 6 + 2] = pi.z;
+  linePositions[e * 6 + 3] = pj.x; linePositions[e * 6 + 4] = pj.y; linePositions[e * 6 + 5] = pj.z;
+  const idleR = 0.08, idleG = 0.14, idleB = 0.22;
+  lineColors[e * 6 + 0] = idleR; lineColors[e * 6 + 1] = idleG; lineColors[e * 6 + 2] = idleB;
+  lineColors[e * 6 + 3] = idleR; lineColors[e * 6 + 4] = idleG; lineColors[e * 6 + 5] = idleB;
+  connectionColors.push({ intensity: 0, fromFire: -1, toFire: -1, dir: 0 });
+}
+
+const lineGeo = new THREE.BufferGeometry();
+lineGeo.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+lineGeo.setAttribute('color', new THREE.BufferAttribute(lineColors, 3));
+
+const lineMat = new THREE.LineBasicMaterial({
+  vertexColors: true,
+  transparent: true,
+  opacity: 0.65,
+  linewidth: 1,
+});
+
+const lineSegments = new THREE.LineSegments(lineGeo, lineMat);
+scene.add(lineSegments);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ELECTRICAL PULSE PARTICLES
+// ─────────────────────────────────────────────────────────────────────────────
+const pulses = [];
+const pulseGeo = new THREE.BufferGeometry();
+const pulsePositions = new Float32Array(MAX_PULSES * 3);
+const pulseColors    = new Float32Array(MAX_PULSES * 3);
+const pulseSizes     = new Float32Array(MAX_PULSES);
+
+pulseGeo.setAttribute('position', new THREE.BufferAttribute(pulsePositions, 3));
+pulseGeo.setAttribute('color',    new THREE.BufferAttribute(pulseColors, 3));
+pulseGeo.setAttribute('size',     new THREE.BufferAttribute(pulseSizes, 1));
+
+const pulseMat = new THREE.ShaderMaterial({
+  uniforms: {},
+  vertexShader: `
+    attribute vec3 color;
+    attribute float size;
+    varying vec3 vColor;
+    void main() {
+      vColor = color;
+      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = size * (350.0 / -mvPosition.z);
+      gl_Position = projectionMatrix * mvPosition;
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vColor;
+    void main() {
+      vec2 uv = gl_PointCoord - 0.5;
+      float d = dot(uv, uv);
+      if (d > 0.25) discard;
+      float alpha = 1.0 - smoothstep(0.1, 0.25, d);
+      float core = 1.0 - smoothstep(0.0, 0.12, d);
+      vec3 finalColor = mix(vColor, vec3(1.0, 1.0, 0.95), core * 0.7);
+      gl_FragColor = vec4(finalColor, alpha * 0.95);
+    }
+  `,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  vertexColors: false,
+});
+
+const pulsePoints = new THREE.Points(pulseGeo, pulseMat);
+scene.add(pulsePoints);
+
+for (let i = 0; i < MAX_PULSES; i++) {
+  pulses.push({ active: false, edgeIndex: -1, t: 0, speed: 0, color: new THREE.Color(), fromIndex: -1, toIndex: -1 });
+}
+
+function spawnPulse(edgeIndex, fromNeuron, toNeuron, color) {
+  for (let i = 0; i < MAX_PULSES; i++) {
+    if (!pulses[i].active) {
+      const p = pulses[i];
+      p.active = true; p.edgeIndex = edgeIndex; p.t = 0;
+      p.speed = 0.6 + Math.random() * 0.5;
+      p.color.copy(color); p.fromIndex = fromNeuron; p.toIndex = toNeuron;
+      return;
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AMBIENT VOLUMETRIC PARTICLES
+// Color distribution: 85% blue, 15% orange (was 70/30)
+// ─────────────────────────────────────────────────────────────────────────────
+const ambientGeo = new THREE.BufferGeometry();
+const ambientPos = new Float32Array(AMBIENT_COUNT * 3);
+const ambientCol = new Float32Array(AMBIENT_COUNT * 3);
+const ambientSz  = new Float32Array(AMBIENT_COUNT);
+const ambientVel = new Float32Array(AMBIENT_COUNT * 3);
+
+for (let i = 0; i < AMBIENT_COUNT; i++) {
+  const r = Math.cbrt(Math.random()) * 12;
+  const theta = Math.random() * Math.PI * 2;
+  const phi   = Math.acos(2 * Math.random() - 1);
+  ambientPos[i * 3 + 0] = r * Math.sin(phi) * Math.cos(theta);
+  ambientPos[i * 3 + 1] = r * 0.6 * Math.cos(phi);
+  ambientPos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+
+  // 85% blue, 15% warm orange (was 70/30 in original)
+  const t = Math.random();
+  if (t < 0.85) {
+    // Blue atmosphere
+    ambientCol[i * 3 + 0] = 0.05 + Math.random() * 0.1;
+    ambientCol[i * 3 + 1] = 0.12 + Math.random() * 0.12;
+    ambientCol[i * 3 + 2] = 0.25 + Math.random() * 0.2;
+  } else {
+    // Warm orange wisps — softer than before (0.2 max vs 0.3 before)
+    ambientCol[i * 3 + 0] = 0.2 + Math.random() * 0.2;
+    ambientCol[i * 3 + 1] = 0.08 + Math.random() * 0.07;
+    ambientCol[i * 3 + 2] = 0.01;
+  }
+
+  ambientSz[i] = 0.3 + Math.random() * 0.8;
+  const speed = 0.003 + Math.random() * 0.008;
+  const dTheta = Math.random() * Math.PI * 2;
+  ambientVel[i * 3 + 0] = Math.cos(dTheta) * speed;
+  ambientVel[i * 3 + 1] = (Math.random() - 0.5) * speed * 0.3;
+  ambientVel[i * 3 + 2] = Math.sin(dTheta) * speed;
+}
+
+ambientGeo.setAttribute('position', new THREE.BufferAttribute(ambientPos, 3));
+ambientGeo.setAttribute('color',    new THREE.BufferAttribute(ambientCol, 3));
+ambientGeo.setAttribute('size',     new THREE.BufferAttribute(ambientSz,  1));
+
+const ambientMat = new THREE.ShaderMaterial({
+  uniforms: {},
+  vertexShader: `
+    attribute vec3 color;
+    attribute float size;
+    varying vec3 vColor;
+    varying float vAlpha;
+    void main() {
+      vColor = color;
+      vAlpha = 0.18 + size * 0.08;
+      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = size * (280.0 / -mvPosition.z);
+      gl_Position = projectionMatrix * mvPosition;
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vColor;
+    varying float vAlpha;
+    void main() {
+      vec2 uv = gl_PointCoord - 0.5;
+      float d = dot(uv, uv);
+      if (d > 0.25) discard;
+      float alpha = vAlpha * (1.0 - smoothstep(0.05, 0.25, d));
+      gl_FragColor = vec4(vColor, alpha);
+    }
+  `,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+
+const ambientPoints = new THREE.Points(ambientGeo, ambientMat);
+scene.add(ambientPoints);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SPARK BURST EFFECT
+// Orange sparks: count reduced (5 vs 8 per burst) for subtler orange presence
+// ─────────────────────────────────────────────────────────────────────────────
+const sparkGeo = new THREE.BufferGeometry();
+const sparkPos  = new Float32Array(MAX_SPARKS * 3);
+const sparkCol  = new Float32Array(MAX_SPARKS * 3);
+const sparkSz   = new Float32Array(MAX_SPARKS);
+
+sparkGeo.setAttribute('position', new THREE.BufferAttribute(sparkPos, 3));
+sparkGeo.setAttribute('color',    new THREE.BufferAttribute(sparkCol, 3));
+sparkGeo.setAttribute('size',     new THREE.BufferAttribute(sparkSz, 1));
+
+const sparkMat = new THREE.ShaderMaterial({
+  uniforms: {},
+  vertexShader: `
+    attribute vec3 color;
+    attribute float size;
+    varying vec3 vColor;
+    void main() {
+      vColor = color;
+      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = size * (400.0 / -mvPosition.z);
+      gl_Position = projectionMatrix * mvPosition;
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vColor;
+    void main() {
+      vec2 uv = gl_PointCoord - 0.5;
+      float d = dot(uv, uv);
+      if (d > 0.25) discard;
+      float alpha = pow(1.0 - smoothstep(0.0, 0.25, d), 2.0);
+      gl_FragColor = vec4(vColor, alpha);
+    }
+  `,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+
+const sparkPoints = new THREE.Points(sparkGeo, sparkMat);
+scene.add(sparkPoints);
+
+const sparks = [];
+for (let i = 0; i < MAX_SPARKS; i++) {
+  sparks.push({ active: false, pos: new THREE.Vector3(), vel: new THREE.Vector3(), life: 0, maxLife: 0, color: new THREE.Color() });
+}
+
+function spawnSparks(origin, color, count = 6) {
+  // If orange sparks: reduce count further (subtler bursts)
+  const isOrange = color.r > 0.6 && color.b < 0.3;
+  const actualCount = isOrange ? Math.max(3, Math.floor(count * 0.6)) : count;
+
+  let spawned = 0;
+  for (let i = 0; i < MAX_SPARKS && spawned < actualCount; i++) {
+    if (!sparks[i].active) {
+      const s = sparks[i];
+      s.active = true;
+      s.pos.copy(origin);
+      const speed = 0.04 + Math.random() * 0.12;
+      s.vel.set(
+        (Math.random() - 0.5) * speed,
+        (Math.random() - 0.5) * speed,
+        (Math.random() - 0.5) * speed
+      );
+      s.life = 0;
+      s.maxLife = 0.4 + Math.random() * 0.6;
+      s.color.copy(color);
+      spawned++;
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POSTPROCESSING — UnrealBloom
+// Mobile: lower strength to save GPU
+// ─────────────────────────────────────────────────────────────────────────────
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(W, H),
+  isLowPower ? 1.0 : 1.4,   // lower bloom on mobile
+  isLowPower ? 0.4 : 0.6,
+  0.15
+);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MOUSE / TOUCH INTERACTION
+// Touch events properly handled via unified pointer handler
+// ─────────────────────────────────────────────────────────────────────────────
+const mouse       = new THREE.Vector2(0, 0);
+const mouseWorld  = new THREE.Vector3(0, 0, 0);
+const raycaster   = new THREE.Raycaster();
+const mousePlane  = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+
+const cameraTarget = new THREE.Vector3(0, 0, CAMERA_Z);
+const cameraLookTarget = new THREE.Vector3(0, 0, 0);
+
+let lastMouseActivationTime = 0;
+const MOUSE_ACTIVATION_COOLDOWN = 0.08;
+
+function getClientXY(e) {
+  if (e.touches && e.touches.length > 0) {
+    return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+  return { x: e.clientX, y: e.clientY };
+}
+
+function onPointerMove(e) {
+  const { x, y } = getClientXY(e);
+  mouse.x = (x / window.innerWidth) * 2 - 1;
+  mouse.y = -(y / window.innerHeight) * 2 + 1;
+
+  // Parallax — reduced on mobile (less exaggerated)
+  const parallaxX = isLowPower ? -1.0 : -1.8;
+  const parallaxY = isLowPower ? -0.7 : -1.2;
+  cameraTarget.x = mouse.x * parallaxX;
+  cameraTarget.y = mouse.y * parallaxY;
+  cameraTarget.z = CAMERA_Z;
+  cameraLookTarget.x = mouse.x * 0.8;
+  cameraLookTarget.y = mouse.y * 0.5;
+}
+
+window.addEventListener('mousemove',  onPointerMove);
+window.addEventListener('touchmove',  onPointerMove, { passive: true });
+window.addEventListener('touchstart', onPointerMove, { passive: true });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NEURON FIRING SYSTEM
+// Orange fires LESS frequently: depth=1 only fires orange if random() > 0.4
+// ─────────────────────────────────────────────────────────────────────────────
+const firingQueue = [];
+
+function fireNeuron(neuronIndex, time, propagate = true, depth = 0, color = null) {
+  const n = neurons[neuronIndex];
+  if (time - n.fireTime < FIRE_DURATION * 0.7) return;
+  n.fireTime = time;
+
+  // Blue is dominant color for initial fires.
+  // Orange only fires at odd depths AND only 60% of the time (reduced from 100%)
+  let fireColor;
+  if (color) {
+    fireColor = color;
+  } else if (depth === 0) {
+    fireColor = C_BLUE;
+  } else if (depth % 2 === 1) {
+    // At odd depths: 60% orange, 40% blue — blue fires more often
+    fireColor = Math.random() < 0.6 ? C_ORANGE : C_BLUE;
+  } else {
+    fireColor = C_BLUE;
+  }
+
+  firingQueue.push({ index: neuronIndex, time, color: fireColor.clone() });
+
+  // Sparks: fewer for orange, normal for blue
+  const sparkCount = fireColor === C_ORANGE
+    ? 3 + depth        // orange: 3,4,5,6... (reduced)
+    : 5 + depth * 2;   // blue: 5,7,9,11...
+  spawnSparks(n.position, fireColor, sparkCount);
+
+  if (propagate && depth < 4) {
+    const shuffled = [...n.connections].sort(() => Math.random() - 0.5);
+    const propagateCount = Math.min(2 + Math.floor(Math.random() * 2), shuffled.length);
+
+    for (let k = 0; k < propagateCount; k++) {
+      const targetIndex = shuffled[k];
+      const targetNeuron = neurons[targetIndex];
+      const dist = n.position.distanceTo(targetNeuron.position);
+      const travelTime = dist / PULSE_SPEED;
+
+      const edgeIndex = getEdgeIndex(neuronIndex, targetIndex);
+      if (edgeIndex >= 0) {
+        spawnPulse(edgeIndex, neuronIndex, targetIndex, fireColor);
+      }
+
+      setTimeout(() => {
+        // Propagate: alternate but with blue bias
+        const nextColor = fireColor === C_BLUE
+          ? (Math.random() < 0.6 ? C_ORANGE : C_BLUE)  // 60% chance orange after blue
+          : C_BLUE;                                       // always blue after orange
+        fireNeuron(targetIndex, clock.getElapsedTime(), true, depth + 1, nextColor);
+      }, travelTime * 1000);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AMBIENT FIRING
+// Reduced firing rate on mobile
+// Blue fires more often than orange in ambient triggers
+// ─────────────────────────────────────────────────────────────────────────────
+function scheduleAmbientFire() {
+  const neuronIndex = Math.floor(Math.random() * NODE_COUNT);
+  // Mobile: slower firing rate (300-800ms vs 200-500ms)
+  const minDelay = isLowPower ? 300 : 200;
+  const maxDelay = isLowPower ? 600 : 400;
+  const delay = minDelay + Math.random() * (maxDelay - minDelay);
+
+  setTimeout(() => {
+    // 75% chance blue initial fire, 25% orange — was 50/50
+    const initColor = Math.random() < 0.75 ? C_BLUE : C_ORANGE;
+    fireNeuron(neuronIndex, clock.getElapsedTime(), true, 0, initColor);
+    scheduleAmbientFire();
+  }, delay);
+}
+
+function initialBurst() {
+  // Start with 8 blue fires for strong blue opening
+  for (let i = 0; i < 8; i++) {
+    setTimeout(() => {
+      const idx = Math.floor(Math.random() * NODE_COUNT);
+      fireNeuron(idx, 0, true, 0, C_BLUE);
+    }, i * 150);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLOCK + RENDER LOOP
+// ─────────────────────────────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+const tmpV  = new THREE.Vector3();
+let highQuality = !isLowPower;
+let isVisible = true;
+
+// Pause when tab hidden (mobile battery saver)
+document.addEventListener('visibilitychange', () => {
+  isVisible = document.visibilityState === 'visible';
+});
+
+const _blueIdle = new THREE.Color(0x0d1a2d);
+
+function animate() {
+  requestAnimationFrame(animate);
+  if (!isVisible) return;
+
+  const dt  = clock.getDelta();
+  const t   = clock.getElapsedTime();
+
+  // Camera parallax
+  camera.position.lerp(cameraTarget, 0.025);
+  camera.lookAt(cameraLookTarget);
+
+  // Scene rotation — prime frequency anti-looping
+  scene.rotation.y = Math.sin(t * 0.071) * 0.10 + Math.sin(t * 0.038) * 0.04;
+  scene.rotation.x = Math.sin(t * 0.053) * 0.04 + Math.sin(t * 0.029) * 0.02;
+
+  // Mouse-world position for proximity activation
+  raycaster.setFromCamera(mouse, camera);
+  raycaster.ray.intersectPlane(mousePlane, mouseWorld);
+
+  if (t - lastMouseActivationTime > MOUSE_ACTIVATION_COOLDOWN) {
+    const MOUSE_RADIUS = 4.0;
+    for (let i = 0; i < NODE_COUNT; i++) {
+      const n = neurons[i];
+      tmpV.copy(n.position).applyMatrix4(scene.matrixWorld);
+      const dx = tmpV.x - mouseWorld.x;
+      const dy = tmpV.y - mouseWorld.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < MOUSE_RADIUS && t - n.fireTime > FIRE_DURATION) {
+        const prob = (1.0 - dist / MOUSE_RADIUS) * 0.25;
+        if (Math.random() < prob) {
+          // Mouse-triggered: 70% blue, 30% orange
+          const mouseColor = Math.random() < 0.7 ? C_BLUE : C_ORANGE;
+          fireNeuron(i, t, true, 0, mouseColor);
+          lastMouseActivationTime = t;
+          break;
+        }
+      }
+    }
+  }
+
+  // Update neuron materials
+  for (let i = 0; i < NODE_COUNT; i++) {
+    const n   = neurons[i];
+    const mat = neuronMaterials[i];
+    const age = t - n.fireTime;
+
+    if (age < FIRE_DURATION) {
+      let intensity;
+      const rampUp   = 0.3;
+      const hold     = 0.4;
+      const rampDown = FIRE_DURATION - rampUp - hold;
+
+      if (age < rampUp) {
+        intensity = age / rampUp;
+      } else if (age < rampUp + hold) {
+        intensity = 1.0;
+      } else {
+        intensity = 1.0 - (age - rampUp - hold) / rampDown;
+      }
+      intensity = Math.max(0, Math.min(1, intensity));
+
+      const fc = firingQueue.find(f => f.index === i && f.time === n.fireTime);
+      const fireColor = fc ? fc.color : C_BLUE;
+
+      mat.emissive.copy(fireColor).multiplyScalar(intensity);
+      mat.emissiveIntensity = 0.3 + intensity * 3.5;
+      mat.color.lerpColors(C_IDLE, fireColor, intensity * 0.7);
+    } else {
+      const pulse = Math.sin(t * 0.8 + i * 0.3) * 0.5 + 0.5;
+      mat.emissive.copy(_blueIdle);
+      mat.emissiveIntensity = 0.1 + pulse * 0.08;
+      mat.color.copy(C_IDLE);
+    }
+  }
+
+  // Clean firing queue
+  const QUEUE_TTL = FIRE_DURATION * 2;
+  for (let i = firingQueue.length - 1; i >= 0; i--) {
+    if (t - firingQueue[i].time > QUEUE_TTL) firingQueue.splice(i, 1);
+  }
+
+  // Update connection colors
+  const colorsArr = lineGeo.attributes.color.array;
+  for (let e = 0; e < edges.length; e++) {
+    const [ai, bi] = edges[e];
+    const na = neurons[ai];
+    const nb = neurons[bi];
+    const ageA = t - na.fireTime;
+    const ageB = t - nb.fireTime;
+    const firedA = ageA < FIRE_DURATION;
+    const firedB = ageB < FIRE_DURATION;
+
+    let r, g, b;
+    if (firedA || firedB) {
+      const intensityA = firedA ? Math.max(0, 1.0 - ageA / FIRE_DURATION) : 0;
+      const intensityB = firedB ? Math.max(0, 1.0 - ageB / FIRE_DURATION) : 0;
+      const intensity = Math.max(intensityA, intensityB);
+      r = 0.08 + intensity * 0.16;
+      g = 0.14 + intensity * 0.45;
+      b = 0.22 + intensity * 0.65;
+    } else {
+      r = 0.06; g = 0.10; b = 0.18;
+    }
+
+    colorsArr[e * 6 + 0] = r; colorsArr[e * 6 + 1] = g; colorsArr[e * 6 + 2] = b;
+    colorsArr[e * 6 + 3] = r; colorsArr[e * 6 + 4] = g; colorsArr[e * 6 + 5] = b;
+  }
+  lineGeo.attributes.color.needsUpdate = true;
+
+  // Update pulses
+  const pPositions = pulseGeo.attributes.position.array;
+  const pColors    = pulseGeo.attributes.color.array;
+  const pSizes     = pulseGeo.attributes.size.array;
+
+  for (let i = 0; i < MAX_PULSES; i++) {
+    const p = pulses[i];
+    if (!p.active) {
+      pPositions[i * 3] = 9999; pSizes[i] = 0; continue;
+    }
+    p.t += dt * p.speed;
+    if (p.t >= 1.0) {
+      p.active = false; pPositions[i * 3] = 9999; pSizes[i] = 0; continue;
+    }
+    const fromNeuron = neurons[p.fromIndex];
+    const toNeuron   = neurons[p.toIndex];
+    pPositions[i * 3 + 0] = fromNeuron.position.x + (toNeuron.position.x - fromNeuron.position.x) * p.t;
+    pPositions[i * 3 + 1] = fromNeuron.position.y + (toNeuron.position.y - fromNeuron.position.y) * p.t;
+    pPositions[i * 3 + 2] = fromNeuron.position.z + (toNeuron.position.z - fromNeuron.position.z) * p.t;
+
+    const pulseAge = p.t;
+    pColors[i * 3 + 0] = p.color.r + (1.0 - p.color.r) * pulseAge * 0.4;
+    pColors[i * 3 + 1] = p.color.g * (1.0 - pulseAge * 0.3);
+    pColors[i * 3 + 2] = p.color.b * (1.0 - pulseAge * 0.5);
+    pSizes[i] = 2.5 + Math.sin(pulseAge * Math.PI) * 1.5;
+  }
+
+  pulseGeo.attributes.position.needsUpdate = true;
+  pulseGeo.attributes.color.needsUpdate = true;
+  pulseGeo.attributes.size.needsUpdate = true;
+
+  // Update sparks
+  const sPositions = sparkGeo.attributes.position.array;
+  const sColors    = sparkGeo.attributes.color.array;
+  const sSizes     = sparkGeo.attributes.size.array;
+
+  for (let i = 0; i < MAX_SPARKS; i++) {
+    const s = sparks[i];
+    if (!s.active) {
+      sPositions[i * 3] = 9999; sSizes[i] = 0; continue;
+    }
+    s.life += dt;
+    if (s.life >= s.maxLife) {
+      s.active = false; sPositions[i * 3] = 9999; sSizes[i] = 0; continue;
+    }
+    s.pos.x += s.vel.x; s.pos.y += s.vel.y; s.pos.z += s.vel.z;
+    s.vel.multiplyScalar(0.96);
+    const lifeRatio = s.life / s.maxLife;
+    sPositions[i * 3 + 0] = s.pos.x;
+    sPositions[i * 3 + 1] = s.pos.y;
+    sPositions[i * 3 + 2] = s.pos.z;
+    const brightness = Math.pow(1.0 - lifeRatio, 1.5);
+    const hotCore = Math.max(0, 1.0 - lifeRatio * 3.0);
+    sColors[i * 3 + 0] = s.color.r * brightness + hotCore * 0.8;
+    sColors[i * 3 + 1] = s.color.g * brightness + hotCore * 0.7;
+    sColors[i * 3 + 2] = s.color.b * brightness + hotCore * 0.4;
+    sSizes[i] = (1.5 + hotCore * 2.0) * brightness;
+  }
+
+  sparkGeo.attributes.position.needsUpdate = true;
+  sparkGeo.attributes.color.needsUpdate = true;
+  sparkGeo.attributes.size.needsUpdate = true;
+
+  // Update ambient particles
+  for (let i = 0; i < AMBIENT_COUNT; i++) {
+    ambientPos[i * 3 + 0] += ambientVel[i * 3 + 0];
+    ambientPos[i * 3 + 1] += ambientVel[i * 3 + 1];
+    ambientPos[i * 3 + 2] += ambientVel[i * 3 + 2];
+    const px = ambientPos[i * 3 + 0];
+    const py = ambientPos[i * 3 + 1];
+    const pz = ambientPos[i * 3 + 2];
+    const dist = Math.sqrt(px * px + (py / 0.6) * (py / 0.6) + pz * pz);
+    if (dist > 13) {
+      ambientVel[i * 3 + 0] *= -0.8;
+      ambientVel[i * 3 + 1] *= -0.8;
+      ambientVel[i * 3 + 2] *= -0.8;
+    }
+  }
+  ambientGeo.attributes.position.needsUpdate = true;
+
+  composer.render();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RESIZE HANDLER — full responsive support
+// Updates camera FOV for portrait/landscape, resets renderer + bloom
+// ─────────────────────────────────────────────────────────────────────────────
+function onResize() {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  camera.aspect = W / H;
+  // Recalculate FOV on resize (portrait vs landscape)
+  const aspect = W / H;
+  camera.fov = aspect < 0.8 ? 70 : 55;
+  camera.updateProjectionMatrix();
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, PIXEL_RATIO_MAX));
+  composer.setSize(W, H);
+  bloomPass.resolution.set(W, H);
+}
+
+window.addEventListener('resize', onResize);
+// Also handle orientation change on mobile
+window.addEventListener('orientationchange', () => {
+  // Small delay to let browser complete orientation change
+  setTimeout(onResize, 200);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLICK / TAP TO BURST — works on both mouse and touch
+// ─────────────────────────────────────────────────────────────────────────────
+function onTap(clientX, clientY) {
+  // Don't fire if tap is on the login card
+  const card = document.querySelector('.pb-login-card');
+  if (card) {
+    const rect = card.getBoundingClientRect();
+    if (clientX >= rect.left && clientX <= rect.right &&
+        clientY >= rect.top  && clientY <= rect.bottom) {
+      return;  // tap was on the card — don't fire neurons
+    }
+  }
+
+  const mx = (clientX / window.innerWidth)  * 2 - 1;
+  const my = -(clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(new THREE.Vector2(mx, my), camera);
+  raycaster.ray.intersectPlane(mousePlane, mouseWorld);
+
+  let minDist = Infinity;
+  let nearestIdx = 0;
+  for (let i = 0; i < NODE_COUNT; i++) {
+    tmpV.copy(neurons[i].position).applyMatrix4(scene.matrixWorld);
+    const dx = tmpV.x - mouseWorld.x;
+    const dy = tmpV.y - mouseWorld.y;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d < minDist) { minDist = d; nearestIdx = i; }
+  }
+
+  // Tap burst: blue dominant, with smaller orange burst
+  fireNeuron(nearestIdx, clock.getElapsedTime(), true, 0, C_BLUE);
+  spawnSparks(neurons[nearestIdx].position, C_BLUE, 20);
+}
+
+window.addEventListener('click', (e) => onTap(e.clientX, e.clientY));
+window.addEventListener('touchend', (e) => {
+  if (e.changedTouches.length > 0) {
+    onTap(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+  }
+}, { passive: true });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// QUALITY TOGGLE — auto-engage on mobile
+// ─────────────────────────────────────────────────────────────────────────────
+window.togglePerf = function() {
+  highQuality = !highQuality;
+  if (highQuality) {
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    bloomPass.strength = 1.4;
+    bloomPass.radius   = 0.6;
+  } else {
+    renderer.setPixelRatio(1);
+    bloomPass.strength = 1.0;
+    bloomPass.radius   = 0.4;
+  }
+};
+
+// Mobile: start in low quality mode automatically
+if (isLowPower) {
+  // Already initialized with low-power settings — no toggle needed
+  console.log('[PureBrain Neural 3D] Mobile detected — low-power mode active');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LAUNCH
+// ─────────────────────────────────────────────────────────────────────────────
+initialBurst();
+scheduleAmbientFire();
+animate();
+
+console.log('[PureBrain Neural 3D + Portal] Initialized');
+console.log(`[PureBrain Neural 3D] ${NODE_COUNT} neurons, ${edges.length} synaptic connections`);
+console.log(`[PureBrain Neural 3D] Device: ${isLowPower ? 'mobile/low-power' : 'desktop/high-performance'}`);
+
+</script>
+
+
+<!-- ============================================================
+     PORTAL LOGIN JAVASCRIPT
+     handleLogin() and all form logic — preserved verbatim
+     ============================================================ -->
+<script>
+/* ============================================================
+   FLOATING LABEL — autofill detection
+   ============================================================ */
+document.querySelectorAll('.pb-field input').forEach(function(input) {
+  input.addEventListener('animationstart', function(e) {
+    if (e.animationName === 'onAutoFillStart') {
+      input.classList.add('has-value');
+    }
+  });
+});
+
+
+/* ============================================================
+   handleLogin() — preserved interface, all IDs preserved
+   ============================================================ */
+function handleLogin() {
+  const nameInput   = document.getElementById('loginAicivName');
+  const secretInput = document.getElementById('loginSecret');
+  const errorDiv    = document.getElementById('loginError');
+  const button      = document.getElementById('loginButton');
+
+  if (!nameInput || !secretInput) return;
+
+  const aicivName = (nameInput.value   || '').trim();
+  const secret    = (secretInput.value || '').trim();
+
+  errorDiv.style.display = 'none';
+  errorDiv.textContent = '';
+
+  if (!aicivName) {
+    showLoginError('Please enter your AI\'s name.');
+    nameInput.focus();
+    return;
+  }
+  if (!secret) {
+    showLoginError('Please enter your secret.');
+    secretInput.focus();
+    return;
+  }
+
+  button.classList.add('loading');
+  button.disabled = true;
+
+  /* -------- REPLACE THIS BLOCK with real gateway POST --------
+     Example:
+     fetch('/api/auth', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ name: aicivName, secret })
+     })
+     .then(r => r.json())
+     .then(data => {
+       if (data.ok) {
+         document.getElementById('loginOverlay').classList.add('hidden');
+       } else {
+         showLoginError(data.message || 'Invalid credentials.');
+       }
+     })
+     .catch(() => showLoginError('Connection failed. Please try again.'))
+     .finally(() => {
+       button.classList.remove('loading');
+       button.disabled = false;
+     });
+     ------------------------------------------------------------- */
+
+  setTimeout(function() {
+    button.classList.remove('loading');
+    button.disabled = false;
+    showLoginError('Gateway not configured — use "Configure gateway manually" below.');
+  }, 1200);
+}
+
+function showLoginError(msg) {
+  const errorDiv = document.getElementById('loginError');
+  if (!errorDiv) return;
+  errorDiv.textContent = msg;
+  errorDiv.style.display = 'block';
+  errorDiv.style.animation = 'none';
+  errorDiv.offsetHeight;
+  errorDiv.style.animation = 'errorShake 0.35s cubic-bezier(0.36,0.07,0.19,0.97)';
+}
+
+(function() {
+  var s = document.createElement('style');
+  s.textContent = '@keyframes errorShake { 10%,90%{transform:translateX(-2px)} 20%,80%{transform:translateX(4px)} 30%,50%,70%{transform:translateX(-4px)} 40%,60%{transform:translateX(4px)} }';
+  document.head.appendChild(s);
+})();
+
+
+/* ============================================================
+   KEYBOARD — Enter key submits
+   ============================================================ */
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') {
+    const overlay = document.getElementById('loginOverlay');
+    if (overlay && !overlay.classList.contains('hidden')) {
+      handleLogin();
+    }
+  }
+});
+</script>
+</body>
+</html>

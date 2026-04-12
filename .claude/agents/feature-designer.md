@@ -3,7 +3,7 @@ name: feature-designer
 description: User experience and feature design specialist
 tools: [Read, Write, WebFetch, WebSearch, Grep, Glob]
 skills: [user-story-implementation, verification-before-completion, memory-first-protocol]
-model: sonnet-4-5
+model: opus
 created: 2025-10-03
 ---
 

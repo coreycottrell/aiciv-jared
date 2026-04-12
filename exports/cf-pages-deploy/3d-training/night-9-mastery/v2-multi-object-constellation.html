@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 9 V2 — Multi-Object Constellation</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #020305; overflow: hidden; }
+  canvas { display: block; }
+  #info {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    color: rgba(255,255,255,0.10);
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    z-index: 10;
+    pointer-events: none;
+  }
+  #fps {
+    position: fixed;
+    top: 12px;
+    right: 16px;
+    font-family: monospace;
+    color: rgba(42,147,193,0.2);
+    font-size: 10px;
+    z-index: 10;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="info">Night 9 V2 — Multi-Object Constellation — Complex Arrangement with Hierarchy</div>
+<div id="fps">--</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ─── STUDY: Multi-Object Constellation Composition ───
+// Gap: Complex multi-object composition (3+ hero elements with hierarchy)
+// Technique: Visual hierarchy through scale, material, and Z-depth
+// Gleb Reference: His dashboard/product shots with primary, secondary, tertiary elements
+// Rule: One dominant form, 2-3 supporting, scattered accents. Never equal weight.
+
+const BLUE = new THREE.Color(0x2a93c1);
+const ORANGE = new THREE.Color(0xf1420b);
+const NEAR_BLACK = new THREE.Color(0x020305);
+const DEEP_BLUE = new THREE.Color(0x0a1628);
+
+const scene = new THREE.Scene();
+scene.background = NEAR_BLACK;
+scene.fog = new THREE.FogExp2(0x020305, 0.12);
+
+const camera = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 0.5, 7);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.9;
+document.body.appendChild(renderer.domElement);
+
+// ─── Procedural Environment ───
+function makeEnvMap() {
+  const size = 512;
+  const data = new Float32Array(size * (size / 2) * 4);
+  for (let y = 0; y < size / 2; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4;
+      const u = x / size, v = y / (size / 2);
+      const phi = u * Math.PI * 2, theta = v * Math.PI;
+      const dy = Math.cos(theta);
+
+      let r = 0.002, g = 0.003, b = 0.006;
+
+      // Soft overhead light
+      const topDot = Math.max(0, dy);
+      r += Math.pow(topDot, 16) * 2.0;
+      g += Math.pow(topDot, 16) * 1.8;
+      b += Math.pow(topDot, 16) * 2.5;
+
+      // Side accent
+      const dx = Math.sin(theta) * Math.cos(phi);
+      const sideDot = Math.max(0, dx * 0.8 + dy * 0.3);
+      r += Math.pow(sideDot, 32) * 1.5 * 0.3;
+      g += Math.pow(sideDot, 32) * 1.5 * 0.6;
+      b += Math.pow(sideDot, 32) * 1.5 * 1.0;
+
+      data[i] = r; data[i+1] = g; data[i+2] = b; data[i+3] = 1;
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size/2, THREE.RGBAFormat, THREE.FloatType);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+const envMap = makeEnvMap();
+scene.environment = envMap;
+
+// ─── HIERARCHY SYSTEM ───
+// PRIMARY (1): Large glass icosahedron — the hero, PHI-offset left
+// SECONDARY (2): Medium chrome torus + glass octahedron — supporting forms
+// TERTIARY (5): Small accent pips — scattered energy nodes
+// CONNECTORS (3): Thin light beams linking forms
+
+// ── PRIMARY: Glass Icosahedron ──
+const primaryGeo = new THREE.IcosahedronGeometry(1.1, 3);
+const primaryMat = new THREE.MeshPhysicalMaterial({
+  color: new THREE.Color(0x9accee),
+  metalness: 0.0,
+  roughness: 0.05,
+  transmission: 0.92,
+  thickness: 2.0,
+  ior: 1.5,
+  envMapIntensity: 1.2,
+  clearcoat: 1.0,
+  clearcoatRoughness: 0.08,
+  attenuationColor: BLUE,
+  attenuationDistance: 4.0,
+});
+const primary = new THREE.Mesh(primaryGeo, primaryMat);
+primary.position.set(-0.8, 0, 0); // PHI offset left
+scene.add(primary);
+
+// Wireframe overlay on primary (Gleb's structural hint)
+const wireGeo = new THREE.IcosahedronGeometry(1.12, 1);
+const wireMat = new THREE.MeshBasicMaterial({
+  color: BLUE,
+  wireframe: true,
+  transparent: true,
+  opacity: 0.06,
+});
+const wireframe = new THREE.Mesh(wireGeo, wireMat);
+wireframe.position.copy(primary.position);
+scene.add(wireframe);
+
+// ── SECONDARY A: Chrome Torus (upper right) ──
+const secAGeo = new THREE.TorusGeometry(0.45, 0.12, 32, 80);
+const secAMat = new THREE.MeshPhysicalMaterial({
+  color: new THREE.Color(0xdddddd),
+  metalness: 1.0,
+  roughness: 0.05,
+  envMapIntensity: 1.8,
+});
+const secA = new THREE.Mesh(secAGeo, secAMat);
+secA.position.set(1.8, 0.9, -0.5);
+secA.rotation.x = Math.PI * 0.35;
+secA.rotation.z = Math.PI * 0.15;
+scene.add(secA);
+
+// ── SECONDARY B: Glass Octahedron (lower right) ──
+const secBGeo = new THREE.OctahedronGeometry(0.5, 2);
+const secBMat = new THREE.MeshPhysicalMaterial({
+  color: new THREE.Color(0xaaddff),
+  metalness: 0.0,
+  roughness: 0.02,
+  transmission: 0.9,
+  thickness: 1.5,
+  ior: 1.4,
+  envMapIntensity: 1.0,
+  attenuationColor: new THREE.Color(0x1155aa),
+  attenuationDistance: 2.0,
+});
+const secB = new THREE.Mesh(secBGeo, secBMat);
+secB.position.set(1.4, -0.7, 0.8);
+scene.add(secB);
+
+// ── TERTIARY: 5 Orange Accent Pips ──
+const pips = [];
+const pipPositions = [
+  [0.6, 1.3, -0.2],
+  [-2.0, -0.5, 0.3],
+  [2.5, 0.1, -0.8],
+  [-0.2, -1.2, 0.5],
+  [0.8, -0.3, 1.2],
+];
+const pipGeo = new THREE.SphereGeometry(0.04, 16, 16);
+
+pipPositions.forEach((pos, i) => {
+  const pipMat = new THREE.MeshPhysicalMaterial({
+    color: ORANGE,
+    emissive: ORANGE,
+    emissiveIntensity: 2.0 + i * 0.5,
+    metalness: 0.0,
+    roughness: 1.0,
+  });
+  const p = new THREE.Mesh(pipGeo, pipMat);
+  p.position.set(...pos);
+  scene.add(p);
+  pips.push(p);
+});
+
+// ── CONNECTORS: Light beams linking primary to secondaries ──
+function createBeam(from, to, color, opacity) {
+  const points = [from.clone(), to.clone()];
+  const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+  const lineMat = new THREE.LineBasicMaterial({
+    color: color,
+    transparent: true,
+    opacity: opacity,
+  });
+  return new THREE.Line(lineGeo, lineMat);
+}
+
+const beam1 = createBeam(primary.position, secA.position, BLUE, 0.08);
+const beam2 = createBeam(primary.position, secB.position, BLUE, 0.06);
+const beam3 = createBeam(secA.position, secB.position, new THREE.Color(0x113355), 0.04);
+scene.add(beam1, beam2, beam3);
+
+// ── GROUND PLANE ──
+const groundGeo = new THREE.PlaneGeometry(40, 40);
+const groundMat = new THREE.MeshPhysicalMaterial({
+  color: DEEP_BLUE,
+  metalness: 0.7,
+  roughness: 0.2,
+  envMapIntensity: 0.3,
+});
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -2.0;
+scene.add(ground);
+
+// ─── Post-Processing ───
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(innerWidth, innerHeight),
+  0.35,
+  0.8,
+  0.65
+);
+composer.addPass(bloomPass);
+
+// Chromatic aberration + grain + vignette
+const postShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uTime: { value: 0 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uTime;
+    varying vec2 vUv;
+
+    float rand(vec2 co) { return fract(sin(dot(co, vec2(12.9898,78.233))) * 43758.5453); }
+
+    void main() {
+      vec2 dir = vUv - 0.5;
+      float dist = length(dir);
+
+      // Chromatic aberration
+      float ca = 0.0005 * smoothstep(0.0, 0.7, dist);
+      float r = texture2D(tDiffuse, vUv + dir * ca).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vUv - dir * ca).b;
+      vec3 color = vec3(r, g, b);
+
+      // Film grain (4%)
+      float grain = rand(vUv * uTime) * 0.04;
+      color += grain - 0.02;
+
+      // Vignette
+      float vig = 1.0 - smoothstep(0.35, 1.2, dist * 1.3);
+      color *= mix(0.4, 1.0, vig);
+
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `
+};
+const postPass = new ShaderPass(postShader);
+composer.addPass(postPass);
+composer.addPass(new OutputPass());
+
+// ─── Mouse ───
+const mouse = new THREE.Vector2(0, 0);
+const targetMouse = new THREE.Vector2(0, 0);
+window.addEventListener('mousemove', (e) => {
+  targetMouse.x = (e.clientX / innerWidth) * 2 - 1;
+  targetMouse.y = -(e.clientY / innerHeight) * 2 + 1;
+});
+
+// ─── Resize ───
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+
+// ─── Animation ───
+const clock = new THREE.Clock();
+let frameCount = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  mouse.lerp(targetMouse, 0.04);
+
+  // Primary: majestic slow rotation
+  primary.rotation.x = t * 0.06;
+  primary.rotation.y = t * 0.09;
+  primary.scale.setScalar(1.0 + Math.sin(t * 0.4) * 0.01);
+  wireframe.rotation.copy(primary.rotation);
+
+  // Secondary A: independent tilt
+  secA.rotation.x = Math.PI * 0.35 + t * 0.15;
+  secA.rotation.z = Math.PI * 0.15 + Math.sin(t * 0.3) * 0.1;
+  secA.position.y = 0.9 + Math.sin(t * 0.25) * 0.08;
+
+  // Secondary B: gentle bob
+  secB.rotation.y = t * 0.12;
+  secB.rotation.x = Math.sin(t * 0.2) * 0.15;
+  secB.position.y = -0.7 + Math.cos(t * 0.3) * 0.06;
+
+  // Tertiary pips: gentle float + pulse
+  pips.forEach((p, i) => {
+    const phase = i * 1.2;
+    p.position.y = pipPositions[i][1] + Math.sin(t * 0.4 + phase) * 0.08;
+    p.position.x = pipPositions[i][0] + Math.cos(t * 0.3 + phase) * 0.05;
+    const pulse = 0.8 + Math.sin(t * 2 + phase) * 0.2;
+    p.material.emissiveIntensity = (2.0 + i * 0.5) * pulse;
+  });
+
+  // Update connector beams
+  beam1.geometry.setFromPoints([primary.position.clone(), secA.position.clone()]);
+  beam2.geometry.setFromPoints([primary.position.clone(), secB.position.clone()]);
+  beam3.geometry.setFromPoints([secA.position.clone(), secB.position.clone()]);
+
+  // Camera: subtle mouse parallax
+  camera.position.x = mouse.x * 0.4;
+  camera.position.y = 0.5 + mouse.y * 0.3;
+  camera.lookAt(0, 0, 0);
+
+  postPass.uniforms.uTime.value = t * 100;
+
+  composer.render();
+
+  frameCount++;
+  if (frameCount % 30 === 0) {
+    document.getElementById('fps').textContent = Math.round(1 / clock.getDelta()) || '--';
+  }
+}
+animate();
+</script>
+</body>
+</html>

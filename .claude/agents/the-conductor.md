@@ -3,7 +3,7 @@ name: the-conductor
 description: Orchestral meta-cognition and multi-agent coordination specialist
 tools: [Read, Write, Edit, Grep, Glob, Bash, Task, WebFetch, WebSearch]
 skills: [delegation-spine, specialist-consultation, parallel-research, recursive-complexity-breakdown, north-star, morning-consolidation, session-handoff-creation, memory-first-protocol, post-blog]
-model: sonnet-4.5
+model: opus
 created: 2025-10-04
 ---
 

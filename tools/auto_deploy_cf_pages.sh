@@ -1,0 +1,271 @@
+#!/usr/bin/env bash
+# =============================================================================
+# auto_deploy_cf_pages.sh
+# CF Pages Auto-Deploy Pipeline: Security Check → Deploy → Cache Flush
+#
+# Usage:
+#   ./tools/auto_deploy_cf_pages.sh [--skip-security] [--dry-run]
+#
+# Requirements:
+#   - .env with CF_PAGES_TOKEN and CF_ACCOUNT_ID
+#   - npx + wrangler installed
+#   - python3 available
+#
+# Pipeline:
+#   1. Load credentials from .env
+#   2. Detect changed files (git diff) - skip if nothing changed in deploy path
+#   3. Security pre-check (fast static scan)
+#   4. Deploy to purebrain-staging via wrangler
+#   5. Flush CF cache via API
+#   6. Performance spot-check (file sizes, lazy loading gaps)
+#   7. Log result
+#
+# =============================================================================
+
+set -uo pipefail
+
+AETHER_ROOT="/home/jared/projects/AI-CIV/aether"
+DEPLOY_DIR="$AETHER_ROOT/exports/cf-pages-deploy"
+DEPLOY_PROJECT="purebrain-staging"
+LOG_FILE="$AETHER_ROOT/logs/auto_deploy_cf_pages.log"
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+DRY_RUN=false
+SKIP_SECURITY=false
+EXIT_CODE=0
+
+# Parse flags
+for arg in "$@"; do
+  case $arg in
+    --dry-run) DRY_RUN=true ;;
+    --skip-security) SKIP_SECURITY=true ;;
+  esac
+done
+
+log() {
+  echo "[$TIMESTAMP] $*" | tee -a "$LOG_FILE"
+}
+
+fail() {
+  log "FAIL: $*"
+  exit 1
+}
+
+log "=============================================="
+log "CF Pages Auto-Deploy starting"
+log "DRY_RUN=$DRY_RUN | SKIP_SECURITY=$SKIP_SECURITY"
+
+# =============================================================================
+# STEP 1: Load credentials
+# =============================================================================
+log "[1/6] Loading credentials from .env"
+
+if [ ! -f "$AETHER_ROOT/.env" ]; then
+  fail ".env not found at $AETHER_ROOT/.env"
+fi
+
+CF_PAGES_TOKEN=$(grep '^CF_PAGES_TOKEN=' "$AETHER_ROOT/.env" | cut -d= -f2 | tr -d '"' | tr -d "'")
+CF_ACCOUNT_ID=$(grep '^CF_ACCOUNT_ID=' "$AETHER_ROOT/.env" | cut -d= -f2 | tr -d '"' | tr -d "'")
+
+if [ -z "$CF_PAGES_TOKEN" ] || [ -z "$CF_ACCOUNT_ID" ]; then
+  fail "CF_PAGES_TOKEN or CF_ACCOUNT_ID missing from .env"
+fi
+
+log "[1/6] Credentials loaded."
+
+# =============================================================================
+# STEP 2: Detect changes
+# =============================================================================
+log "[2/6] Checking for changes in deploy path"
+
+cd "$AETHER_ROOT"
+CHANGED=$(git diff --name-only HEAD 2>/dev/null | grep "^exports/cf-pages-deploy/" | wc -l || echo "0")
+CHANGED_UNTRACKED=$(git status --porcelain 2>/dev/null | grep "exports/cf-pages-deploy/" | wc -l || echo "0")
+TOTAL_CHANGED=$((CHANGED + CHANGED_UNTRACKED))
+
+if [ "$TOTAL_CHANGED" -eq 0 ]; then
+  log "[2/6] No changes detected in exports/cf-pages-deploy/. Skipping deploy."
+  log "To force deploy, commit or stage changes first."
+  exit 0
+fi
+
+log "[2/6] $TOTAL_CHANGED changed files detected. Proceeding."
+
+# =============================================================================
+# STEP 3: Security pre-check (fast static scan)
+# =============================================================================
+if [ "$SKIP_SECURITY" = true ]; then
+  log "[3/6] Security check SKIPPED (--skip-security flag)"
+else
+  log "[3/6] Running security pre-check on deploy directory"
+
+  SECURITY_ISSUES=0
+
+  # Check for secrets accidentally committed to HTML/JS files
+  log "  Scanning for exposed secrets in deploy artifacts..."
+  SECRET_PATTERNS=(
+    "sk-[a-zA-Z0-9]{20,}"    # OpenAI API keys
+    "Bearer [a-zA-Z0-9]{30,}" # Bearer tokens
+    "ANTHROPIC_API_KEY"
+    "paypal_client_secret"
+    "password.*=.*['\"][^'\"]{8,}"
+  )
+
+  for pattern in "${SECRET_PATTERNS[@]}"; do
+    HITS=$(grep -r --include="*.html" --include="*.js" -l "$pattern" "$DEPLOY_DIR" 2>/dev/null | wc -l)
+    HITS=$((HITS + 0))
+    if [ "$HITS" -gt 0 ]; then
+      log "  WARNING: Pattern '$pattern' found in $HITS file(s) - review before deploy"
+      SECURITY_ISSUES=$((SECURITY_ISSUES + 1))
+    fi
+  done
+
+  # Check for inline event handlers (XSS risk in generated HTML)
+  INLINE_EVENTS=$(grep -r --include="*.html" -l " on[a-z]*=\"javascript:" "$DEPLOY_DIR" 2>/dev/null | wc -l)
+  INLINE_EVENTS=$((INLINE_EVENTS + 0))
+  if [ "$INLINE_EVENTS" -gt 0 ]; then
+    log "  WARNING: $INLINE_EVENTS file(s) have inline javascript: event handlers"
+    SECURITY_ISSUES=$((SECURITY_ISSUES + 1))
+  fi
+
+  # Check for external script sources not on allowlist
+  EXTERNAL_SCRIPTS=$(grep -r --include="*.html" "src=\"http://" "$DEPLOY_DIR" 2>/dev/null | wc -l)
+  EXTERNAL_SCRIPTS=$((EXTERNAL_SCRIPTS + 0))
+  if [ "$EXTERNAL_SCRIPTS" -gt 0 ]; then
+    log "  BLOCK: $EXTERNAL_SCRIPTS HTTP (non-HTTPS) external script(s) found - aborting deploy"
+    fail "Security check failed: HTTP external scripts present. Fix before deploying."
+  fi
+
+  if [ "$SECURITY_ISSUES" -gt 0 ]; then
+    log "  Security check: $SECURITY_ISSUES WARNING(s) found. Review logs above."
+    log "  Continuing deploy (warnings are non-blocking)."
+  else
+    log "[3/6] Security check passed. No critical issues found."
+  fi
+fi
+
+# =============================================================================
+# STEP 4: Deploy to CF Pages
+# =============================================================================
+log "[4/6] Deploying to Cloudflare Pages project: $DEPLOY_PROJECT"
+
+if [ "$DRY_RUN" = true ]; then
+  log "[4/6] DRY RUN — would run: CLOUDFLARE_API_TOKEN=*** npx wrangler pages deploy $DEPLOY_DIR --project-name $DEPLOY_PROJECT --commit-dirty=true"
+else
+  DEPLOY_OUTPUT=$(CLOUDFLARE_API_TOKEN="$CF_PAGES_TOKEN" npx wrangler pages deploy "$DEPLOY_DIR" \
+    --project-name "$DEPLOY_PROJECT" \
+    --commit-dirty=true \
+    2>&1) || EXIT_CODE=$?
+
+  if [ "$EXIT_CODE" -ne 0 ]; then
+    log "FAIL: Wrangler deploy failed."
+    log "Output: $DEPLOY_OUTPUT"
+    fail "Deploy failed - aborting cache flush."
+  fi
+
+  # Extract deployment URL from output
+  DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | grep -oP 'https://[a-zA-Z0-9._-]+\.pages\.dev' | tail -1 || echo "unknown")
+  log "[4/6] Deploy successful. URL: $DEPLOY_URL"
+fi
+
+# =============================================================================
+# STEP 5: Flush CF cache
+# =============================================================================
+log "[5/6] Flushing Cloudflare cache for purebrain.ai"
+
+if [ "$DRY_RUN" = true ]; then
+  log "[5/6] DRY RUN — would flush CF cache via API"
+else
+  # Get zone ID for purebrain.ai
+  ZONE_RESPONSE=$(curl -s -X GET \
+    "https://api.cloudflare.com/client/v4/zones?name=purebrain.ai" \
+    -H "Authorization: Bearer $CF_PAGES_TOKEN" \
+    -H "Content-Type: application/json")
+
+  ZONE_ID=$(echo "$ZONE_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    zones = data.get('result', [])
+    if zones:
+        print(zones[0]['id'])
+    else:
+        print('')
+except:
+    print('')
+" 2>/dev/null || echo "")
+
+  if [ -z "$ZONE_ID" ]; then
+    log "  WARNING: Could not retrieve zone ID for purebrain.ai. Cache flush skipped."
+    log "  Zone API response: $ZONE_RESPONSE"
+  else
+    FLUSH_RESPONSE=$(curl -s -X POST \
+      "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/purge_cache" \
+      -H "Authorization: Bearer $CF_PAGES_TOKEN" \
+      -H "Content-Type: application/json" \
+      --data '{"purge_everything":true}')
+
+    FLUSH_SUCCESS=$(echo "$FLUSH_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print('yes' if data.get('success') else 'no')
+except:
+    print('no')
+" 2>/dev/null || echo "no")
+
+    if [ "$FLUSH_SUCCESS" = "yes" ]; then
+      log "[5/6] CF cache flushed successfully for zone $ZONE_ID"
+    else
+      log "  WARNING: Cache flush may have failed. Response: $FLUSH_RESPONSE"
+    fi
+  fi
+fi
+
+# =============================================================================
+# STEP 6: Performance spot-check
+# =============================================================================
+log "[6/6] Running performance spot-check"
+
+# Banner image sizes
+LARGE_BANNERS=$(find "$DEPLOY_DIR/blog" -name "banner.png" -size +1M 2>/dev/null | wc -l)
+TOTAL_BANNER_SIZE_KB=$(find "$DEPLOY_DIR/blog" -name "banner.png" 2>/dev/null | xargs du -k 2>/dev/null | awk '{sum+=$1} END {print sum}')
+TOTAL_BANNER_SIZE_MB=$(echo "scale=1; $TOTAL_BANNER_SIZE_KB / 1024" | bc 2>/dev/null || echo "unknown")
+
+log "  Blog banner PNGs > 1MB: $LARGE_BANNERS"
+log "  Total banner size: ${TOTAL_BANNER_SIZE_MB} MB"
+
+if [ "$LARGE_BANNERS" -gt 0 ]; then
+  log "  RECOMMENDATION: $LARGE_BANNERS banner(s) exceed 1MB. Run image compression pipeline."
+  log "  Command: python3 $AETHER_ROOT/tools/compress_blog_banners.py"
+fi
+
+# Lazy loading check
+BLOG_POSTS=$(find "$DEPLOY_DIR/blog" -name "index.html" 2>/dev/null | wc -l)
+MISSING_LAZY=$(find "$DEPLOY_DIR/blog" -name "index.html" 2>/dev/null \
+  -exec grep -l "banner.png" {} \; 2>/dev/null \
+  | xargs grep -L 'loading="lazy"' 2>/dev/null | wc -l || echo "0")
+
+log "  Blog posts total: $BLOG_POSTS"
+log "  Blog posts missing lazy loading on images: $MISSING_LAZY"
+
+if [ "$MISSING_LAZY" -gt 0 ]; then
+  log "  RECOMMENDATION: Add loading=\"lazy\" to banner img tags in $MISSING_LAZY post(s)."
+fi
+
+# Homepage size check
+HOMEPAGE_SIZE=$(wc -c < "$DEPLOY_DIR/index.html" 2>/dev/null || echo "0")
+HOMEPAGE_KB=$(echo "scale=0; $HOMEPAGE_SIZE / 1024" | bc 2>/dev/null || echo "unknown")
+log "  Homepage HTML size: ${HOMEPAGE_KB}KB"
+if [ "$HOMEPAGE_SIZE" -gt 500000 ]; then
+  log "  RECOMMENDATION: Homepage exceeds 500KB. Consider code splitting or deferring non-critical JS."
+fi
+
+# =============================================================================
+# DONE
+# =============================================================================
+log "=============================================="
+log "Auto-deploy pipeline complete."
+if [ "$DRY_RUN" = true ]; then
+  log "DRY RUN — no changes were made."
+fi
+log "=============================================="

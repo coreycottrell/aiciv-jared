@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Liquid Metal Demo — Aether 3D Training</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #080a12;
+      overflow: hidden;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #ffffff;
+    }
+
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+    }
+
+    canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    /* Watermark / Title */
+    .title-badge {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      text-align: center;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .title-badge h1 {
+      font-size: clamp(11px, 1.5vw, 14px);
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.35);
+      margin-bottom: 4px;
+    }
+
+    .title-badge .sub {
+      font-size: clamp(9px, 1.1vw, 11px);
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(0, 212, 255, 0.3);
+    }
+
+    /* Top-left brand mark */
+    .brand-mark {
+      position: fixed;
+      top: 28px;
+      left: 32px;
+      z-index: 10;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-mark .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #00d4ff;
+      box-shadow: 0 0 8px #00d4ff, 0 0 16px rgba(0,212,255,0.4);
+      animation: pulse 2.5s ease-in-out infinite;
+    }
+
+    .brand-mark span {
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.25);
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.85); }
+    }
+
+    /* Mouse hint */
+    .mouse-hint {
+      position: fixed;
+      top: 28px;
+      right: 32px;
+      z-index: 10;
+      pointer-events: none;
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.18);
+      animation: fadeIn 3s ease forwards;
+      opacity: 0;
+      animation-delay: 1.5s;
+    }
+
+    @keyframes fadeIn {
+      to { opacity: 1; }
+    }
+
+    /* Vignette overlay */
+    .vignette {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      background: radial-gradient(
+        ellipse at center,
+        transparent 40%,
+        rgba(8, 10, 18, 0.6) 100%
+      );
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="canvas-container"></div>
+  <div class="vignette"></div>
+
+  <div class="brand-mark">
+    <div class="dot"></div>
+    <span>Aether</span>
+  </div>
+
+  <div class="mouse-hint">Move cursor to interact</div>
+
+  <div class="title-badge">
+    <h1>Liquid Metal Study</h1>
+    <div class="sub">Aether 3D Training &nbsp;&middot;&nbsp; 2026</div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { PMREMGenerator } from 'three';
+
+    // ─────────────────────────────────────────────
+    // VERTEX SHADER — organic blob deformation
+    // Uses layered simplex-like noise for viscous fluid shape
+    // ─────────────────────────────────────────────
+    const vertexShader = /* glsl */`
+      uniform float u_time;
+      uniform float u_amplitude;
+      uniform float u_frequency;
+      uniform float u_speed;
+      uniform vec2  u_mouse;
+      uniform float u_mouseInfluence;
+
+      varying vec3 vNormal;
+      varying vec3 vWorldPos;
+      varying vec3 vViewDir;
+      varying float vFresnel;
+
+      // ── Hash / permutation ──────────────────────
+      vec3 mod289(vec3 x) { return x - floor(x * (1.0/289.0)) * 289.0; }
+      vec4 mod289(vec4 x) { return x - floor(x * (1.0/289.0)) * 289.0; }
+      vec4 permute(vec4 x) { return mod289(((x*34.0)+10.0)*x); }
+      vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+      // ── 3D Simplex Noise (Gustavson) ─────────────
+      float snoise(vec3 v) {
+        const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+        const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+
+        vec3 i  = floor(v + dot(v, C.yyy));
+        vec3 x0 = v - i + dot(i, C.xxx);
+
+        vec3 g = step(x0.yzx, x0.xyz);
+        vec3 l = 1.0 - g;
+        vec3 i1 = min(g.xyz, l.zxy);
+        vec3 i2 = max(g.xyz, l.zxy);
+
+        vec3 x1 = x0 - i1 + C.xxx;
+        vec3 x2 = x0 - i2 + C.yyy;
+        vec3 x3 = x0 - D.yyy;
+
+        i = mod289(i);
+        vec4 p = permute(permute(permute(
+          i.z + vec4(0.0, i1.z, i2.z, 1.0))
+          + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+          + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+
+        float n_ = 0.142857142857;
+        vec3 ns = n_ * D.wyz - D.xzx;
+
+        vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+        vec4 x_ = floor(j * ns.z);
+        vec4 y_ = floor(j - 7.0 * x_);
+        vec4 x = x_ * ns.x + ns.yyyy;
+        vec4 y = y_ * ns.x + ns.yyyy;
+        vec4 h = 1.0 - abs(x) - abs(y);
+
+        vec4 b0 = vec4(x.xy, y.xy);
+        vec4 b1 = vec4(x.zw, y.zw);
+
+        vec4 s0 = floor(b0)*2.0 + 1.0;
+        vec4 s1 = floor(b1)*2.0 + 1.0;
+        vec4 sh = -step(h, vec4(0.0));
+
+        vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+        vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+
+        vec3 p0 = vec3(a0.xy, h.x);
+        vec3 p1 = vec3(a0.zw, h.y);
+        vec3 p2 = vec3(a1.xy, h.z);
+        vec3 p3 = vec3(a1.zw, h.w);
+
+        vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+        p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+
+        vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+        m = m * m;
+        return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+      }
+
+      void main() {
+        float t = u_time * u_speed;
+
+        // Multi-octave noise — creates organic, viscous fluid feel
+        vec3 noiseCoord = position * u_frequency;
+        float n1 = snoise(noiseCoord + vec3(t * 0.31, t * 0.23, t * 0.17));
+        float n2 = snoise(noiseCoord * 2.1 + vec3(t * 0.47, t * -0.31, t * 0.29)) * 0.5;
+        float n3 = snoise(noiseCoord * 4.3 + vec3(t * -0.19, t * 0.41, t * -0.37)) * 0.25;
+        float n4 = snoise(noiseCoord * 8.7 + vec3(t * 0.11, t * -0.17, t * 0.13)) * 0.125;
+
+        float displacement = (n1 + n2 + n3 + n4) * u_amplitude;
+
+        // Mouse interaction — create a gravity well
+        // Project mouse from NDC to approximate sphere-surface influence
+        vec2 mouseWorld = u_mouse * 1.4;
+        float mouseDist = length(position.xy - mouseWorld);
+        float mouseWave = u_mouseInfluence * exp(-mouseDist * mouseDist * 2.5)
+                          * sin(mouseDist * 8.0 - u_time * 3.0);
+        displacement += mouseWave;
+
+        // Displace along normal — keeps spherical topology
+        vec3 displacedPos = position + normal * displacement;
+
+        // Recompute smooth normal via finite differences for proper lighting
+        float eps = 0.01;
+        vec3 tangent1 = normalize(cross(normal, vec3(0.0, 1.0, 0.001)));
+        vec3 tangent2 = normalize(cross(normal, tangent1));
+
+        float n_px = snoise((position + tangent1 * eps) * u_frequency + vec3(t * 0.31, t * 0.23, t * 0.17));
+        float n_py = snoise((position + tangent2 * eps) * u_frequency + vec3(t * 0.31, t * 0.23, t * 0.17));
+        // Use same octave structure for normal derivation
+        float d_px = n_px * u_amplitude;
+        float d_py = n_py * u_amplitude;
+        float d_c  = n1 * u_amplitude;
+
+        vec3 disNormal = normalize(normal
+          - tangent1 * (d_px - d_c) / eps
+          - tangent2 * (d_py - d_c) / eps);
+
+        // Pass to fragment shader
+        vec4 worldPos4 = modelMatrix * vec4(displacedPos, 1.0);
+        vWorldPos = worldPos4.xyz;
+        vNormal = normalize((modelMatrix * vec4(disNormal, 0.0)).xyz);
+
+        vec3 camPos = (inverse(viewMatrix) * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+        vViewDir = normalize(camPos - vWorldPos);
+
+        // Pre-compute Fresnel for fragment shader
+        float cosTheta = max(dot(vViewDir, vNormal), 0.0);
+        vFresnel = pow(1.0 - cosTheta, 4.0);
+
+        gl_Position = projectionMatrix * viewMatrix * worldPos4;
+      }
+    `;
+
+    // ─────────────────────────────────────────────
+    // FRAGMENT SHADER — metallic reflections + iridescence + Fresnel
+    // ─────────────────────────────────────────────
+    const fragmentShader = /* glsl */`
+      uniform samplerCube u_envMap;
+      uniform float u_time;
+      uniform float u_iridescence;
+      uniform float u_roughness;
+      uniform vec3  u_lightPos1;
+      uniform vec3  u_lightPos2;
+      uniform vec3  u_lightPos3;
+      uniform vec3  u_lightPos4;
+      uniform vec3  u_lightCol1;
+      uniform vec3  u_lightCol2;
+      uniform vec3  u_lightCol3;
+      uniform vec3  u_lightCol4;
+
+      varying vec3 vNormal;
+      varying vec3 vWorldPos;
+      varying vec3 vViewDir;
+      varying float vFresnel;
+
+      // ── Schlick Fresnel ───────────────────────────
+      float fresnelSchlick(float cosTheta, float F0) {
+        return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+      }
+
+      // ── Iridescence — thin-film interference ───────
+      vec3 iridescenceSpectrum(float angle, float timeShift) {
+        float t = angle * 5.0 + timeShift;
+        vec3 col;
+        // Electric blue → magenta → cyan → gold cycle (brand palette)
+        col.r = 0.5 + 0.5 * cos(t + 0.0);
+        col.g = 0.5 + 0.5 * cos(t + 2.094);
+        col.b = 0.5 + 0.5 * cos(t + 4.189);
+        return col;
+      }
+
+      // ── Point light specular (Blinn-Phong) ─────────
+      float specularBP(vec3 normal, vec3 viewDir, vec3 lightDir, float power) {
+        vec3 halfV = normalize(viewDir + lightDir);
+        return pow(max(dot(normal, halfV), 0.0), power);
+      }
+
+      void main() {
+        vec3 N = normalize(vNormal);
+        vec3 V = normalize(vViewDir);
+
+        // ── Environment reflection ─────────────────
+        vec3 R = reflect(-V, N);
+        // Roughness-blurred env: sample 3 mip levels and blend (fake glossy env)
+        vec3 envSharp   = textureCube(u_envMap, R).rgb;
+        // For a more polished result we use the single env sample
+        vec3 envColor = envSharp;
+
+        // ── Fresnel ──────────────────────────────────
+        float cosTheta = max(dot(V, N), 0.0);
+        float F = fresnelSchlick(cosTheta, 0.04);
+        // For metals, Fresnel tints toward the metal color (silver/chrome)
+        // Here we use 0.8 as metallic F0 (chrome)
+        float Fmetal = fresnelSchlick(cosTheta, 0.8);
+
+        // ── Iridescence at rim / silhouette ──────────
+        float iridAngle = vFresnel;
+        vec3 iridColor = iridescenceSpectrum(iridAngle, u_time * 0.08);
+        // Brand palette colors for iridescence
+        vec3 brandBlue    = vec3(0.0, 0.831, 1.0);     // #00d4ff
+        vec3 brandMagenta = vec3(1.0, 0.0, 1.0);       // #ff00ff
+        vec3 brandCyan    = vec3(0.098, 0.659, 0.824); // #19a8d2
+        vec3 brandGold    = vec3(0.788, 0.635, 0.263); // #c9a243
+
+        // Mix iridescence toward brand colors
+        iridColor = mix(iridColor, mix(brandBlue, brandMagenta, sin(iridAngle * 3.14 + u_time * 0.1) * 0.5 + 0.5), 0.5);
+
+        // ── Area light contributions ──────────────────
+        // 4 colored point lights representing brand environment
+        float specPow = 256.0 * (1.0 - u_roughness);
+
+        vec3 L1 = normalize(u_lightPos1 - vWorldPos);
+        vec3 L2 = normalize(u_lightPos2 - vWorldPos);
+        vec3 L3 = normalize(u_lightPos3 - vWorldPos);
+        vec3 L4 = normalize(u_lightPos4 - vWorldPos);
+
+        float atten1 = 1.0 / (1.0 + 0.3 * dot(u_lightPos1 - vWorldPos, u_lightPos1 - vWorldPos));
+        float atten2 = 1.0 / (1.0 + 0.3 * dot(u_lightPos2 - vWorldPos, u_lightPos2 - vWorldPos));
+        float atten3 = 1.0 / (1.0 + 0.4 * dot(u_lightPos3 - vWorldPos, u_lightPos3 - vWorldPos));
+        float atten4 = 1.0 / (1.0 + 0.4 * dot(u_lightPos4 - vWorldPos, u_lightPos4 - vWorldPos));
+
+        vec3 specular =
+          u_lightCol1 * specularBP(N, V, L1, specPow) * atten1 * 3.0 +
+          u_lightCol2 * specularBP(N, V, L2, specPow) * atten2 * 2.0 +
+          u_lightCol3 * specularBP(N, V, L3, specPow) * atten3 * 1.5 +
+          u_lightCol4 * specularBP(N, V, L4, specPow) * atten4 * 1.0;
+
+        // ── Rim light ─────────────────────────────────
+        float rim = pow(1.0 - max(cosTheta, 0.0), 3.5);
+        vec3 rimColor = mix(brandBlue, brandMagenta, sin(u_time * 0.15 + vWorldPos.y) * 0.5 + 0.5);
+        rimColor *= rim * 0.9;
+
+        // ── Assemble final color ──────────────────────
+        // Metal base = pure environment reflection (metalness=1, no diffuse)
+        vec3 metalBase = envColor * mix(1.0, 1.4, Fmetal);
+
+        // Add iridescence at the Fresnel rim
+        metalBase = mix(metalBase, iridColor, u_iridescence * vFresnel * 0.9);
+
+        // Add specular highlights from brand lights
+        metalBase += specular;
+
+        // Add rim glow
+        metalBase += rimColor;
+
+        // Clearcoat wet sheen — tiny additional specular on top
+        float clearcoatSpec = specularBP(N, V, normalize(vec3(1.0, 2.0, 2.5)), 512.0) * 0.5;
+        metalBase += vec3(clearcoatSpec);
+
+        // Subtle ambient fill so dark side isn't pure black (matches #080a12 bg)
+        vec3 ambient = vec3(0.03, 0.04, 0.07) * 0.4;
+        metalBase += ambient;
+
+        // ACESFilmic-inspired tone mapping
+        vec3 color = metalBase;
+        color = (color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14);
+        color = clamp(color, 0.0, 1.0);
+
+        gl_FragColor = vec4(color, 1.0);
+      }
+    `;
+
+    // ─────────────────────────────────────────────
+    // SCENE SETUP
+    // ─────────────────────────────────────────────
+    const container = document.getElementById('canvas-container');
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: false,
+      powerPreference: 'high-performance',
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    container.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x080a12);
+
+    const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 0, 3.2);
+
+    // ─────────────────────────────────────────────
+    // ENVIRONMENT MAP (procedural — no external file needed)
+    // Build a custom cubemap with brand colors baked in
+    // ─────────────────────────────────────────────
+    function buildProceduralEnv() {
+      const pmremGenerator = new PMREMGenerator(renderer);
+      pmremGenerator.compileCubemapShader();
+
+      // Create a scene representing the "studio" environment
+      const envScene = new THREE.Scene();
+
+      // Dark background
+      envScene.background = new THREE.Color(0x020408);
+
+      // 6 large colored area-like "light panels" — these become the env reflection
+      const panels = [
+        // White key light (top-front)
+        { pos: [0, 8, 5],   col: 0xffffff, intensity: 12, size: 6 },
+        // Electric blue fill (left)
+        { pos: [-8, 1, 2],  col: 0x0033ff, intensity: 8, size: 5 },
+        // Magenta accent (right)
+        { pos: [8, -1, 1],  col: 0xcc00ee, intensity: 6, size: 4 },
+        // Cyan bottom fill
+        { pos: [0, -7, 3],  col: 0x00ccff, intensity: 4, size: 5 },
+        // Gold warm top
+        { pos: [2, 6, -4],  col: 0xffc060, intensity: 3, size: 4 },
+        // Deep blue back
+        { pos: [0, 0, -10], col: 0x000844, intensity: 2, size: 8 },
+      ];
+
+      panels.forEach(p => {
+        const geo = new THREE.PlaneGeometry(p.size, p.size);
+        const mat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color(p.col).multiplyScalar(p.intensity),
+          side: THREE.DoubleSide
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(...p.pos);
+        mesh.lookAt(0, 0, 0);
+        envScene.add(mesh);
+      });
+
+      const envTexture = pmremGenerator.fromScene(envScene, 0.04).texture;
+      pmremGenerator.dispose();
+      return envTexture;
+    }
+
+    const envMap = buildProceduralEnv();
+    scene.environment = envMap;
+
+    // ─────────────────────────────────────────────
+    // LIQUID METAL UNIFORMS
+    // ─────────────────────────────────────────────
+    const uniforms = {
+      u_time:          { value: 0.0 },
+      u_amplitude:     { value: 0.14 },
+      u_frequency:     { value: 1.6 },
+      u_speed:         { value: 0.28 },
+      u_mouse:         { value: new THREE.Vector2(0, 0) },
+      u_mouseInfluence:{ value: 0.0 },
+      u_envMap:        { value: envMap },
+      u_iridescence:   { value: 0.75 },
+      u_roughness:     { value: 0.04 },
+      // Brand colored area lights
+      u_lightPos1:     { value: new THREE.Vector3(0, 6, 5) },
+      u_lightPos2:     { value: new THREE.Vector3(-6, 1, 3) },
+      u_lightPos3:     { value: new THREE.Vector3(5, -2, 2) },
+      u_lightPos4:     { value: new THREE.Vector3(0, -5, 4) },
+      u_lightCol1:     { value: new THREE.Color(1.0, 1.0, 1.0) },
+      u_lightCol2:     { value: new THREE.Color(0.0, 0.5, 1.0) },    // blue
+      u_lightCol3:     { value: new THREE.Color(0.9, 0.0, 0.9) },    // magenta
+      u_lightCol4:     { value: new THREE.Color(0.0, 0.85, 1.0) },   // cyan
+    };
+
+    // ─────────────────────────────────────────────
+    // MAIN BLOB — high-poly sphere with custom shader
+    // ─────────────────────────────────────────────
+    const blobGeo = new THREE.SphereGeometry(1.0, 192, 192);
+    const blobMat = new THREE.ShaderMaterial({
+      uniforms,
+      vertexShader,
+      fragmentShader,
+      side: THREE.FrontSide,
+    });
+    const blob = new THREE.Mesh(blobGeo, blobMat);
+    scene.add(blob);
+
+    // ─────────────────────────────────────────────
+    // SECONDARY SATELLITES — smaller blobs orbiting
+    // They share the same material but separate geometry instances
+    // ─────────────────────────────────────────────
+    const satData = [
+      { radius: 0.22, orbit: 1.95, orbitSpeed: 0.19, phase: 0.0,    incline: 0.4 },
+      { radius: 0.15, orbit: 2.3,  orbitSpeed: -0.13, phase: 2.1,   incline: -0.6 },
+      { radius: 0.28, orbit: 2.1,  orbitSpeed: 0.11,  phase: 4.2,   incline: 0.2 },
+    ];
+
+    const satUniforms = satData.map(s => {
+      const u = {
+        u_time:          { value: 0.0 },
+        u_amplitude:     { value: 0.18 },
+        u_frequency:     { value: 2.2 },
+        u_speed:         { value: 0.35 },
+        u_mouse:         { value: new THREE.Vector2(0, 0) },
+        u_mouseInfluence:{ value: 0.0 },
+        u_envMap:        { value: envMap },
+        u_iridescence:   { value: 0.9 },
+        u_roughness:     { value: 0.05 },
+        u_lightPos1:     { value: new THREE.Vector3(0, 6, 5) },
+        u_lightPos2:     { value: new THREE.Vector3(-6, 1, 3) },
+        u_lightPos3:     { value: new THREE.Vector3(5, -2, 2) },
+        u_lightPos4:     { value: new THREE.Vector3(0, -5, 4) },
+        u_lightCol1:     { value: new THREE.Color(1.0, 1.0, 1.0) },
+        u_lightCol2:     { value: new THREE.Color(0.0, 0.5, 1.0) },
+        u_lightCol3:     { value: new THREE.Color(0.9, 0.0, 0.9) },
+        u_lightCol4:     { value: new THREE.Color(0.0, 0.85, 1.0) },
+      };
+      return u;
+    });
+
+    const satellites = satData.map((s, i) => {
+      const geo = new THREE.SphereGeometry(s.radius, 96, 96);
+      const mat = new THREE.ShaderMaterial({
+        uniforms: satUniforms[i],
+        vertexShader,
+        fragmentShader,
+        side: THREE.FrontSide,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      scene.add(mesh);
+      return { mesh, ...s };
+    });
+
+    // ─────────────────────────────────────────────
+    // PARTICLE FIELD — floating metallic dust
+    // ─────────────────────────────────────────────
+    (function buildParticles() {
+      const count = 280;
+      const positions = new Float32Array(count * 3);
+      const sizes = new Float32Array(count);
+      for (let i = 0; i < count; i++) {
+        // Distribute in a sphere shell between r=1.8 and r=4.5
+        const r = 1.8 + Math.random() * 2.7;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        positions[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+        positions[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+        positions[i*3+2] = r * Math.cos(phi);
+        sizes[i] = 0.5 + Math.random() * 1.5;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+      const particleMat = new THREE.PointsMaterial({
+        size: 0.012,
+        color: new THREE.Color(0x60c8ff),
+        transparent: true,
+        opacity: 0.45,
+        sizeAttenuation: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const pts = new THREE.Points(geo, particleMat);
+      scene.add(pts);
+
+      // Animate particles slowly
+      const origPositions = positions.slice();
+      let ptTime = 0;
+
+      function updateParticles(dt) {
+        ptTime += dt;
+        const pos = geo.attributes.position.array;
+        for (let i = 0; i < count; i++) {
+          const ox = origPositions[i*3];
+          const oy = origPositions[i*3+1];
+          const oz = origPositions[i*3+2];
+          pos[i*3]   = ox + Math.sin(ptTime * 0.15 + i * 0.3) * 0.05;
+          pos[i*3+1] = oy + Math.cos(ptTime * 0.12 + i * 0.5) * 0.05;
+          pos[i*3+2] = oz + Math.sin(ptTime * 0.18 + i * 0.7) * 0.04;
+        }
+        geo.attributes.position.needsUpdate = true;
+      }
+
+      // Store reference for animation loop
+      scene._updateParticles = updateParticles;
+    })();
+
+    // ─────────────────────────────────────────────
+    // MOUSE TRACKING
+    // ─────────────────────────────────────────────
+    const mouse = new THREE.Vector2(0, 0);
+    const targetMouse = new THREE.Vector2(0, 0);
+    let mouseInfluence = 0.0;
+    let targetMouseInfluence = 0.0;
+
+    window.addEventListener('mousemove', e => {
+      targetMouse.x = (e.clientX / window.innerWidth)  * 2 - 1;
+      targetMouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      targetMouseInfluence = 0.18;
+    });
+
+    window.addEventListener('touchmove', e => {
+      const t = e.touches[0];
+      targetMouse.x = (t.clientX / window.innerWidth)  * 2 - 1;
+      targetMouse.y = -(t.clientY / window.innerHeight) * 2 + 1;
+      targetMouseInfluence = 0.12;
+    }, { passive: true });
+
+    // Decay influence when mouse idle
+    let lastMouseMove = 0;
+    window.addEventListener('mousemove', () => { lastMouseMove = performance.now(); });
+
+    // ─────────────────────────────────────────────
+    // RESIZE HANDLER
+    // ─────────────────────────────────────────────
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // ─────────────────────────────────────────────
+    // ANIMATION LOOP
+    // ─────────────────────────────────────────────
+    const clock = new THREE.Clock();
+    let lastT = 0;
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const t = clock.getElapsedTime();
+      const dt = t - lastT;
+      lastT = t;
+
+      // Smooth mouse lerp
+      mouse.lerp(targetMouse, 0.06);
+
+      // Decay mouse influence when not moving
+      if (performance.now() - lastMouseMove > 800) {
+        targetMouseInfluence *= 0.95;
+      }
+      mouseInfluence += (targetMouseInfluence - mouseInfluence) * 0.08;
+
+      // ── Main blob ──────────────────────────────
+      uniforms.u_time.value = t;
+      uniforms.u_mouse.value.copy(mouse);
+      uniforms.u_mouseInfluence.value = mouseInfluence;
+
+      // Slow yaw + gentle pitch oscillation — metal rolls through env
+      blob.rotation.y = t * 0.08;
+      blob.rotation.x = Math.sin(t * 0.13) * 0.12;
+      blob.rotation.z = Math.cos(t * 0.09) * 0.06;
+
+      // Very subtle scale breathing (surface tension pulsation)
+      const breathe = 1.0 + Math.sin(t * 0.45) * 0.012;
+      blob.scale.setScalar(breathe);
+
+      // ── Satellites ────────────────────────────
+      satellites.forEach((s, i) => {
+        const u = satUniforms[i];
+        u.u_time.value = t + i * 1.3;
+        u.u_mouse.value.copy(mouse);
+        u.u_mouseInfluence.value = mouseInfluence * 0.5;
+
+        const angle = s.phase + t * s.orbitSpeed;
+        const r = s.orbit + Math.sin(t * 0.21 + i) * 0.08;
+        s.mesh.position.set(
+          r * Math.cos(angle),
+          Math.sin(angle * 0.7 + s.incline * t * 0.1) * 0.8,
+          r * Math.sin(angle)
+        );
+        s.mesh.rotation.y = t * 0.3 + i;
+        s.mesh.rotation.x = t * 0.2 - i;
+      });
+
+      // ── Particles ─────────────────────────────
+      if (scene._updateParticles) scene._updateParticles(dt);
+
+      renderer.render(scene, camera);
+    }
+
+    // Prefers reduced motion — freeze animation if requested
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (!mediaQuery.matches) {
+      animate();
+    } else {
+      // Render one static frame
+      uniforms.u_time.value = 1.2;
+      renderer.render(scene, camera);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+=== FROM AETHER — BUG FIXED ===
+
+Hey Chy! Fixed the speaking state flicker on investment-opportunity. Deployed live.
+
+**Root Cause:** `reader.closed` is a Promise (from ReadableStreamDefaultReader), which is ALWAYS truthy in boolean context. So `playNext()` was prematurely detecting "stream complete" between TTS audio chunks.
+
+**Why Some Buttons Flickered:**
+- Short answers: chunks arrived fast enough to keep audioQueue full — no gap
+- Long answers (#7, #10, #13, #17, #18, #19): gaps between chunks → playNext() fired on onended → found empty queue → checked reader.closed (truthy Promise!) → setState('idle') → next chunk arrived → setState('speaking') = FLICKER
+
+**Fix:** Replaced `reader.closed` with a boolean `streamDone` flag. Only set to true after the while(true) stream-reading loop fully completes. Now setState('idle') fires only when stream is genuinely finished AND queue is drained.
+
+3 lines changed in the file. Deployed to CF Pages.
+
+Let me know if it's smooth now!
+
+— Aether
+=== END ===

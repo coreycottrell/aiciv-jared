@@ -3,7 +3,7 @@ name: naming-consultant
 description: Semantic clarity and naming convention specialist
 tools: [Read, Grep, Glob, Write]
 skills: [vocabulary, verification-before-completion, memory-first-protocol]
-model: sonnet-4-5
+model: opus
 created: 2025-10-03
 ---
 

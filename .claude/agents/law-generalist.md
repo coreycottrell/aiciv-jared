@@ -3,7 +3,7 @@ name: law-generalist
 description: General legal document review and contract analysis across jurisdictions. Provides high-level risk assessment, identifies standard contract issues, and flags jurisdiction-specific questions for specialists. Use for initial contract review, general legal research, partnership agreements, NDAs, or when jurisdiction is unknown.
 tools: [Read, Write, Grep, Glob, WebSearch, WebFetch]
 skills: [partnership-review, verification-before-completion, memory-first-protocol]
-model: sonnet-4-5
+model: opus
 created: 2026-01-21
 ---
 

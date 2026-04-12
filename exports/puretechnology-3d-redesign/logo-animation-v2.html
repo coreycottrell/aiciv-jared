@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology — Logo Animation v2 (Real Geometry)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;500;700&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#060606; overflow:hidden; }
+#main-canvas { display:block; position:fixed; inset:0; }
+#compare {
+  position:fixed; inset:0; display:flex; align-items:center;
+  justify-content:center; gap:60px; z-index:10; pointer-events:none;
+  opacity:0; transition:opacity 0.4s; background:rgba(6,6,6,0.88);
+}
+#compare.visible { opacity:1; pointer-events:all; }
+.cbox { text-align:center; }
+.clabel { color:rgba(255,255,255,0.45); font-size:11px; letter-spacing:3px;
+  text-transform:uppercase; margin-bottom:12px; font-family:monospace; display:block; }
+.ccanvas { border:1px solid rgba(255,255,255,0.1); display:block; }
+#title { position:fixed; bottom:48px; left:50%; transform:translateX(-50%);
+  color:#fff; font-family:'Oswald',sans-serif; font-size:30px; font-weight:500;
+  letter-spacing:10px; text-transform:uppercase; opacity:0; pointer-events:none;
+  z-index:20; white-space:nowrap;
+  text-shadow:0 0 40px rgba(42,147,193,0.9),0 0 80px rgba(42,147,193,0.4); }
+#subtitle { position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
+  color:rgba(42,147,193,0.6); font-family:monospace; font-size:11px;
+  letter-spacing:5px; text-transform:uppercase; opacity:0; pointer-events:none;
+  z-index:20; white-space:nowrap; }
+#ui { position:fixed; top:20px; right:20px; z-index:30; display:flex;
+  flex-direction:column; gap:8px; }
+.btn { background:rgba(42,147,193,0.1); border:1px solid rgba(42,147,193,0.3);
+  color:#2a93c1; padding:8px 18px; font-size:11px; letter-spacing:2px;
+  text-transform:uppercase; cursor:pointer; font-family:monospace; transition:all 0.2s; }
+.btn:hover { background:rgba(42,147,193,0.25); }
+#progress { position:fixed; bottom:0; left:0; height:2px;
+  background:linear-gradient(90deg,#2a93c1,#f1420b); width:0%; z-index:40; }
+#info { position:fixed; top:20px; left:20px; z-index:30;
+  color:rgba(255,255,255,0.3); font-family:monospace; font-size:10px;
+  line-height:1.8; letter-spacing:0.5px; }
+</style>
+</head>
+<body>
+<canvas id="main-canvas"></canvas>
+<div id="compare">
+  <div class="cbox">
+    <span class="clabel">Original PNG</span>
+    <canvas id="orig-c" class="ccanvas" width="320" height="320"></canvas>
+  </div>
+  <div class="cbox">
+    <span class="clabel">Mathematical Recreation</span>
+    <canvas id="asm-c" class="ccanvas" width="320" height="320"></canvas>
+  </div>
+</div>
+<div id="title">PURE TECHNOLOGY</div>
+<div id="subtitle">AI · INNOVATION · INTELLIGENCE</div>
+<div id="ui">
+  <button class="btn" onclick="window._compare()">Compare</button>
+  <button class="btn" onclick="window._replay()">Replay</button>
+</div>
+<div id="progress"></div>
+<div id="info">
+  v2 — Real logo geometry<br>
+  4 border rings · 4 vortex rings<br>
+  6 blade fans · string-art vortex
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  LOGO MATHEMATICAL ANALYSIS
+// ══════════════════════════════════════════════════════════════════════════════
+//
+//  After careful study of the PT PNG (nested hexagonal spiral):
+//
+//  STRUCTURE:
+//  1. BORDER RINGS — The outermost area shows ~4 tightly spaced parallel hexagon
+//     outlines in blue. These are the "frame" of the logo.
+//
+//  2. STRING ART VORTEX — The spiral blade pattern is created by a classic
+//     string art / parametric line technique:
+//     - Take the hexagon's 6 sides
+//     - For each side, draw N lines from evenly-spaced points on that side
+//       to evenly-spaced points on the NEXT side (rotated 60° counterclockwise)
+//     - BUT the inner endpoint comes from an INNER hexagon (smaller radius)
+//     - This creates diagonal lines that sweep from outer to inner, fanning outward
+//
+//  3. THE VORTEX DEPTH — The spiral appears to SPIRAL (not just be flat fans)
+//     because consecutive fan levels are rotated slightly, and the inner hex
+//     connection point rotates progressively as radius decreases.
+//     This is the key mathematical insight:
+//     - Each line: outer_point → inner_point
+//     - outer_point: on hex at radius R_outer, side S, position u (0→1)
+//     - inner_point: on hex at radius R_inner, but rotated by angle TWIST,
+//       on the "same" relative position (1-u)
+//     - TWIST increases as R_inner decreases → spiral tightens toward center
+//
+//  4. COLOR — Linear interpolation from #2a93c1 (outer) to #f1420b (inner)
+//     based on the radial position of each line
+//
+//  5. VOID — Black circle at center, radius ~7-8% of outer hex radius
+//
+//  DECOMPOSITION into animatable pieces (15 total):
+//  - 8 hex ring loops (one per concentric hexagon outline)
+//  - 6 blade fan groups (one per hex side — the 6-fold vortex sections)
+//  - 1 void disc
+//
+//  The 6 blade fans can scatter separately because they correspond to
+//  the 6 sectors of the hexagon — like "petals" of a flower.
+
+const BLUE   = new THREE.Color('#2a93c1');
+const ORANGE = new THREE.Color('#f1420b');
+
+function lerpThreeColor(t) {
+  return new THREE.Color(
+    BLUE.r + (ORANGE.r - BLUE.r) * t,
+    BLUE.g + (ORANGE.g - BLUE.g) * t,
+    BLUE.b + (ORANGE.b - BLUE.b) * t
+  );
+}
+
+function cssLerpColor(t) {
+  const c = lerpThreeColor(Math.max(0, Math.min(1, t)));
+  return `rgb(${Math.round(c.r*255)},${Math.round(c.g*255)},${Math.round(c.b*255)})`;
+}
+
+// ── Hex geometry helpers ──────────────────────────────────────────────────────
+// Pointy-top hexagon (rotated 30° from standard)
+// vi = 0..5 for vertices, extraRot in radians
+function hexPoint(r, vi, extraRot = 0) {
+  const angle = (Math.PI / 3) * vi + Math.PI / 6 + extraRot;
+  return new THREE.Vector2(Math.cos(angle) * r, Math.sin(angle) * r);
+}
+
+// ── Logo dimensions ───────────────────────────────────────────────────────────
+const OUTER_R = 1.0;          // normalized outer radius
+const VOID_R  = 0.078;        // normalized void radius
+
+// Border ring cluster: 4 tightly spaced hexagons at the outer edge
+const BORDER_RINGS = 4;
+const BORDER_SPACING = 0.027; // how close together the border rings are
+
+// Interior vortex ring levels: the blade fans connect these
+// Each level defines an inner hex that the blades of the outer level connect to
+const VORTEX_RINGS = 5;  // number of intermediate radii for blade connections
+
+// Total radii used:
+// [border_0=outermost, ..., border_3, vortex_0, ..., vortex_4=near void]
+const ALL_RING_RADII = (() => {
+  const r = [];
+  // Border rings: cluster at outer edge
+  for (let i = 0; i < BORDER_RINGS; i++) {
+    r.push(OUTER_R - i * BORDER_SPACING);
+  }
+  // Vortex interior rings: logarithmic compression
+  const outerVortex = OUTER_R - (BORDER_RINGS - 1) * BORDER_SPACING - 0.04;
+  const innerVortex  = VOID_R + 0.02;
+  for (let i = 0; i < VORTEX_RINGS; i++) {
+    const t = (i + 1) / (VORTEX_RINGS + 1);
+    // Power curve: rings compress more toward center (matches logo)
+    const logT = 1.0 - Math.pow(1.0 - t, 1.8);
+    r.push(outerVortex * (1 - logT) + innerVortex * logT);
+  }
+  return r;
+})();
+
+const NUM_RINGS = ALL_RING_RADII.length; // 9 total ring radii
+const NUM_ANIMATABLE_RINGS = NUM_RINGS;  // each is an animatable piece
+
+// Per-ring color (t=0 outer/blue → t=1 inner/orange)
+const RING_COLOR_T = ALL_RING_RADII.map(r => {
+  const t = (OUTER_R - r) / (OUTER_R - VOID_R);
+  return Math.max(0, Math.min(1, t));
+});
+
+// Number of blade lines per side per level
+const BLADES_PER_LEVEL = 38;
+
+// Vortex twist: how many radians each inner hex is rotated relative to outer
+// The total cumulative twist from outer to inner determines the spiral tightness.
+// From image analysis: the spiral sweeps approximately 300° total (5π/3 rad)
+// across all levels.
+const TOTAL_SPIRAL_RADIANS = Math.PI * (5.0 / 3.0); // ~300 degrees
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  THREE.JS SCENE
+// ══════════════════════════════════════════════════════════════════════════════
+
+const canvas = document.getElementById('main-canvas');
+const W = () => window.innerWidth, H = () => window.innerHeight;
+
+const renderer = new THREE.WebGLRenderer({
+  canvas, antialias:true, alpha:false, powerPreference:'high-performance'
+});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(W(), H());
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x060606);
+
+const camera = new THREE.PerspectiveCamera(45, W()/H(), 0.01, 200);
+camera.position.set(0, 0, 5.5);
+
+// Postprocessing
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloom = new UnrealBloomPass(new THREE.Vector2(W(), H()), 0.4, 0.55, 0.80);
+composer.addPass(bloom);
+
+const chromaPass = new ShaderPass({
+  uniforms: {
+    tDiffuse:{ value:null },
+    uCA:     { value:0.5 },
+    uFlash:  { value:0.0 },
+    uVig:    { value:0.5 },
+  },
+  vertexShader:`varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+  fragmentShader:`
+    uniform sampler2D tDiffuse;
+    uniform float uCA,uFlash,uVig;
+    varying vec2 vUv;
+    void main(){
+      vec2 c=vUv-0.5; float d=length(c);
+      float ca=uCA*d*0.020;
+      vec2 dir=normalize(c+0.0001);
+      float r=texture2D(tDiffuse,vUv+dir*ca).r;
+      float g=texture2D(tDiffuse,vUv).g;
+      float b=texture2D(tDiffuse,vUv-dir*ca*0.65).b;
+      vec3 col=vec3(r,g,b);
+      float vig=1.0-smoothstep(0.32,1.05,d*uVig*2.1);
+      col*=vig; col+=vec3(uFlash);
+      gl_FragColor=vec4(col,1.0);
+    }
+  `
+});
+composer.addPass(chromaPass);
+composer.addPass(new OutputPass());
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  BUILD LOGO GEOMETRY — DECOMPOSED INTO ANIMATABLE PIECES
+// ══════════════════════════════════════════════════════════════════════════════
+
+const LOGO_SCALE = 1.85; // outer hex radius in world units
+const Z_STEP     = 0.010; // z-depth between rings (3D depth hint)
+
+// All pieces stored here for scatter/assemble animation
+const pieces = []; // { group, mat, type, idx }
+
+const logoPivot = new THREE.Group();
+scene.add(logoPivot);
+
+// ── A) HEX RING LINES ────────────────────────────────────────────────────────
+// Each concentric hexagon is an independent animatable piece
+
+for (let ri = 0; ri < NUM_RINGS; ri++) {
+  const r   = ALL_RING_RADII[ri] * LOGO_SCALE;
+  const ct  = RING_COLOR_T[ri];
+  const col = lerpThreeColor(ct);
+  const z   = (ri - NUM_RINGS * 0.5) * Z_STEP;
+
+  const pts = [];
+  for (let vi = 0; vi <= 6; vi++) {
+    const p = hexPoint(r, vi % 6);
+    pts.push(p.x, p.y, z);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+
+  const mat = new THREE.LineBasicMaterial({
+    color: col, transparent: true, opacity: 1.0
+  });
+
+  const line = new THREE.Line(geo, mat);
+  const group = new THREE.Group();
+  group.add(line);
+  logoPivot.add(group);
+
+  pieces.push({ group, mat, type:'ring', idx:ri });
+}
+
+// ── B) BLADE FAN GROUPS ──────────────────────────────────────────────────────
+//
+// THE CORRECT STRING ART ALGORITHM for this logo type:
+//
+// For each of the 6 hex sides (sideIdx):
+//   For each blade b in [0, BLADES_PER_LEVEL]:
+//     u = b / (N-1)              // 0→1 along the side
+//     outerPoint = lerp(hexVert(outerR, sideIdx), hexVert(outerR, sideIdx+1), u)
+//     innerPoint = lerp(hexVert(innerR, nextSide_A), hexVert(innerR, nextSide_B), 1-u)
+//
+// The "nextSide" for the inner hex is rotated by the TWIST angle.
+// For multi-level spanning, we interpolate from outer (level 0) to inner (level max)
+// along the blade's length, which creates the smooth spiral continuity.
+//
+// KEY INSIGHT from the image:
+// The blades in the PT logo span from the OUTERMOST hex all the way
+// to the INNERMOST boundary. The color gradient along each blade goes
+// from blue (where it touches the outer ring) to orange (where it
+// approaches the void). This means each blade is a full radial span,
+// not just between adjacent ring levels.
+
+// We'll create the blade fans as FULL SPAN lines (outer to inner).
+// We also need many short blades at each vortex ring level for density.
+
+// Approach: draw blade lines at MULTIPLE density levels
+// Each level uses consecutive ring pairs, stacking to create the illusion
+// of continuous vortex lines.
+
+for (let sideIdx = 0; sideIdx < 6; sideIdx++) {
+  const positions = [];
+  const colors    = [];
+
+  // Number of "levels" is the number of ring pairs where blades are drawn
+  // For the outer border rings: short cross-lines (like quilting)
+  // For the vortex rings: the main fan lines
+
+  // Total levels = NUM_RINGS - 1 consecutive ring pairs
+  const totalLevels = NUM_RINGS - 1;
+
+  for (let level = 0; level < totalLevels; level++) {
+    const outerRingIdx = level;
+    const innerRingIdx = level + 1;
+
+    const outerR = ALL_RING_RADII[outerRingIdx] * LOGO_SCALE;
+    const innerR = ALL_RING_RADII[innerRingIdx] * LOGO_SCALE;
+
+    const outerT = RING_COLOR_T[outerRingIdx];
+    const innerT = RING_COLOR_T[innerRingIdx];
+
+    const outerZ = (outerRingIdx - NUM_RINGS * 0.5) * Z_STEP;
+    const innerZ = (innerRingIdx - NUM_RINGS * 0.5) * Z_STEP;
+
+    // The twist angle at this level
+    // Outer border rings: small twist (just connect adjacent hex edge points)
+    // Inner vortex rings: progressive twist (spiral tightens)
+    let twistAtLevel;
+    if (outerRingIdx < BORDER_RINGS - 1) {
+      // Border rings: small twist connecting them (creates the outer frame look)
+      // These short diagonal lines in the border area
+      twistAtLevel = Math.PI / 3 * 0.15; // small: fan angle within one hex side
+    } else {
+      // Vortex area: progressive cumulative twist
+      // Normalized position in vortex (0=outermost vortex, 1=innermost)
+      const vortexIdx = outerRingIdx - (BORDER_RINGS - 1);
+      const vortexTotal = totalLevels - (BORDER_RINGS - 1);
+      const vortexFrac = vortexIdx / Math.max(1, vortexTotal - 1);
+      // At each level, the blade connects to the NEXT hexagon side
+      // (60 degrees rotated), plus additional inward twist
+      twistAtLevel = Math.PI / 3 + vortexFrac * TOTAL_SPIRAL_RADIANS / VORTEX_RINGS;
+    }
+
+    // Outer hex side S endpoints (sideIdx and sideIdx+1)
+    const outerA = hexPoint(outerR, sideIdx);
+    const outerB = hexPoint(outerR, (sideIdx + 1) % 6);
+
+    // Inner hex: TWISTED relative to outer hex
+    // The twist is applied as a rotation to find which side on the inner hex
+    // But since hex has 6 sides (60° each), twistAtLevel determines
+    // how far around the inner hex the blades land.
+    // We compute the inner hex endpoints using raw angle arithmetic.
+
+    // Angle of midpoint of outer side
+    const outerSideMidAngle = (Math.PI / 3) * sideIdx + Math.PI / 6 + Math.PI / 6;
+    // (one hex vertex offset = PI/6, plus half-side = PI/6)
+
+    // Inner endpoints are found by rotating the side angle by twistAtLevel
+    // and interpolating on the inner hex
+    // For the inner hex, the relevant side is at angle (sideIdx * 60° + twistAngle)
+    // We'll just compute the two inner endpoints directly using the twist:
+    function hexPointAngle(r2, angle2) {
+      return new THREE.Vector2(Math.cos(angle2) * r2, Math.sin(angle2) * r2);
+    }
+
+    // Angle of vertex sideIdx and sideIdx+1 on inner hex (twisted)
+    const baseAngle = Math.PI / 6; // pointy-top offset
+    const innerAngleA = (Math.PI / 3) * sideIdx + baseAngle + twistAtLevel;
+    const innerAngleB = (Math.PI / 3) * (sideIdx + 1) + baseAngle + twistAtLevel;
+
+    const innerA = hexPointAngle(innerR, innerAngleA);
+    const innerB = hexPointAngle(innerR, innerAngleB);
+
+    // Blade density: more blades in the vortex interior, fewer in border
+    const levelFrac = level / (totalLevels - 1);
+    const N = Math.max(Math.round(BLADES_PER_LEVEL * (0.45 + 0.55 * levelFrac)), 16);
+
+    for (let b = 0; b < N; b++) {
+      const u    = b / (N - 1);
+      const invU = 1.0 - u;
+
+      // Outer point: along outer side at position u
+      const ox = outerA.x + (outerB.x - outerA.x) * u;
+      const oy = outerA.y + (outerB.y - outerA.y) * u;
+
+      // Inner point: reversed — connects u=0 outer to u=1 inner, creating fan
+      const ix = innerA.x + (innerB.x - innerA.x) * invU;
+      const iy = innerA.y + (innerB.y - innerA.y) * invU;
+
+      positions.push(ox, oy, outerZ,  ix, iy, innerZ);
+
+      const ocol = lerpThreeColor(outerT);
+      const icol = lerpThreeColor(innerT);
+      colors.push(ocol.r, ocol.g, ocol.b,  icol.r, icol.g, icol.b);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('color',    new THREE.Float32BufferAttribute(colors, 3));
+
+  const mat = new THREE.LineBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 1.0,
+  });
+
+  const lines = new THREE.LineSegments(geo, mat);
+  const group = new THREE.Group();
+  group.add(lines);
+  logoPivot.add(group);
+
+  pieces.push({ group, mat, type:'blade', idx:sideIdx });
+}
+
+// ── C) VOID DISC ─────────────────────────────────────────────────────────────
+const voidR3d = VOID_R * LOGO_SCALE;
+const voidGeo = new THREE.CircleGeometry(voidR3d, 72);
+const voidMat = new THREE.MeshBasicMaterial({ color: 0x060606 });
+const voidMesh = new THREE.Mesh(voidGeo, voidMat);
+voidMesh.renderOrder = 5;
+const voidGroup = new THREE.Group();
+voidGroup.add(voidMesh);
+voidGroup.position.z = 0.09;
+logoPivot.add(voidGroup);
+pieces.push({ group:voidGroup, mat:voidMat, type:'void', idx:0 });
+
+// ── D) INNER GLOW (orange halo) ──────────────────────────────────────────────
+const glowGeo = new THREE.RingGeometry(voidR3d * 0.9, voidR3d * 3.2, 72);
+const glowMat = new THREE.MeshBasicMaterial({
+  color: ORANGE, transparent:true, opacity:0.0
+});
+const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+glowMesh.renderOrder = 4;
+glowMesh.position.z = 0.06;
+logoPivot.add(glowMesh);
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  2D COMPARISON CANVAS
+// ══════════════════════════════════════════════════════════════════════════════
+
+function drawLogo2D(ctx, sz) {
+  ctx.fillStyle = '#060606';
+  ctx.fillRect(0, 0, sz, sz);
+  const cx = sz/2, cy = sz/2;
+  const maxR = sz * 0.44;
+
+  function hp(r, vi, extraRot = 0) {
+    const a = (Math.PI/3)*(vi%6) + Math.PI/6 + extraRot;
+    return [cx + Math.cos(a)*r, cy + Math.sin(a)*r];
+  }
+
+  function hexAnglePt(r, angle) {
+    return [cx + Math.cos(angle)*r, cy + Math.sin(angle)*r];
+  }
+
+  // Draw blade fans first (behind rings)
+  const totalLevels = NUM_RINGS - 1;
+  for (let sideIdx = 0; sideIdx < 6; sideIdx++) {
+    for (let level = 0; level < totalLevels; level++) {
+      const outerR2 = ALL_RING_RADII[level] * maxR;
+      const innerR2 = ALL_RING_RADII[level+1] * maxR;
+      const outerT  = RING_COLOR_T[level];
+      const innerT  = RING_COLOR_T[level+1];
+
+      let twistAtLevel;
+      if (level < BORDER_RINGS - 1) {
+        twistAtLevel = Math.PI/3 * 0.15;
+      } else {
+        const vortexIdx   = level - (BORDER_RINGS - 1);
+        const vortexTotal = totalLevels - (BORDER_RINGS - 1);
+        const vortexFrac  = vortexIdx / Math.max(1, vortexTotal - 1);
+        twistAtLevel = Math.PI/3 + vortexFrac * TOTAL_SPIRAL_RADIANS / VORTEX_RINGS;
+      }
+
+      const [outerAx, outerAy] = hp(outerR2, sideIdx);
+      const [outerBx, outerBy] = hp(outerR2, sideIdx+1);
+
+      const baseAngle = Math.PI/6;
+      const [innerAx, innerAy] = hexAnglePt(innerR2, (Math.PI/3)*sideIdx + baseAngle + twistAtLevel);
+      const [innerBx, innerBy] = hexAnglePt(innerR2, (Math.PI/3)*(sideIdx+1) + baseAngle + twistAtLevel);
+
+      const levelFrac = level / (totalLevels - 1);
+      const N = Math.max(Math.round(BLADES_PER_LEVEL * (0.45 + 0.55 * levelFrac)), 16);
+
+      for (let b = 0; b < N; b++) {
+        const u = b / (N-1);
+        const sx = outerAx + (outerBx - outerAx) * u;
+        const sy = outerAy + (outerBy - outerAy) * u;
+        const ex = innerAx + (innerBx - innerAx) * (1-u);
+        const ey = innerAy + (innerBy - innerAy) * (1-u);
+
+        const grad = ctx.createLinearGradient(sx, sy, ex, ey);
+        grad.addColorStop(0, cssLerpColor(outerT));
+        grad.addColorStop(1, cssLerpColor(innerT));
+
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(ex, ey);
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 0.85;
+        ctx.stroke();
+      }
+    }
+  }
+
+  // Hex rings on top
+  for (let ri = 0; ri < NUM_RINGS; ri++) {
+    const r = ALL_RING_RADII[ri] * maxR;
+    ctx.beginPath();
+    for (let vi = 0; vi <= 6; vi++) {
+      const [x,y] = hp(r, vi);
+      vi===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = cssLerpColor(RING_COLOR_T[ri]);
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+  }
+
+  // Void
+  ctx.beginPath();
+  ctx.arc(cx, cy, VOID_R * maxR, 0, Math.PI*2);
+  ctx.fillStyle = '#060606';
+  ctx.fill();
+}
+
+function setupComparisons() {
+  // Assembled recreation
+  drawLogo2D(document.getElementById('asm-c').getContext('2d'), 320);
+
+  // Original PNG
+  const ctx = document.getElementById('orig-c').getContext('2d');
+  const img = new Image();
+  img.onload = () => ctx.drawImage(img, 0, 0, 320, 320);
+  img.onerror = () => {
+    ctx.fillStyle='#0d0d0d'; ctx.fillRect(0,0,320,320);
+    ctx.fillStyle='rgba(255,255,255,0.25)'; ctx.font='11px monospace';
+    ctx.fillText('Original PNG', 110, 155); ctx.fillText('(load in browser)', 98, 172);
+  };
+  img.src = '/portal_uploads/from-portal/portal_20260320_231816_MA1.BI-1.2.4-002-211107-Icon-PT.png';
+}
+setupComparisons();
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  SCATTER → ASSEMBLE ANIMATION
+// ══════════════════════════════════════════════════════════════════════════════
+
+const gsap = window.gsap;
+let masterTL = null;
+let state = 'pre';
+
+function scatterPieces() {
+  pieces.forEach((p, i) => {
+    const theta = (i / pieces.length) * Math.PI * 2 + Math.random() * 1.0;
+    const phi   = (Math.random() - 0.5) * Math.PI * 0.7;
+    const dist  = p.type === 'void' ? 3 + Math.random() * 2
+                : p.type === 'ring' ? 5 + Math.random() * 4
+                : 6 + Math.random() * 4;
+
+    p.sx  = Math.cos(theta) * Math.cos(phi) * dist;
+    p.sy  = Math.sin(phi) * dist * 0.55;
+    p.sz  = Math.sin(theta) * Math.cos(phi) * dist * 0.28 - 4.8;
+    p.srx = (Math.random() - 0.5) * Math.PI * 1.3;
+    p.sry = (Math.random() - 0.5) * Math.PI * 1.3;
+    p.srz = (Math.random() - 0.5) * Math.PI * 0.8;
+
+    p.group.position.set(p.sx, p.sy, p.sz);
+    p.group.rotation.set(p.srx, p.sry, p.srz);
+    p.group.scale.setScalar(1.0);
+    if (p.mat.opacity !== undefined) p.mat.opacity = 0;
+  });
+}
+scatterPieces();
+
+function buildTimeline() {
+  if (masterTL) { masterTL.kill(); masterTL = null; }
+  state = 'animating';
+
+  const TL = gsap.timeline();
+  masterTL = TL;
+
+  const progressEl = document.getElementById('progress');
+  TL.eventCallback('onUpdate', () => {
+    progressEl.style.width = (TL.progress() * 100) + '%';
+  });
+
+  // Phase 0: Fade in scattered (0–1.2s)
+  pieces.forEach((p, i) => {
+    TL.to(p.mat, { opacity:0.6, duration:0.4 }, 0.06 + i * 0.02);
+  });
+
+  // Phase 1: Rings assemble (outermost first)
+  const RING_START = 1.2, RING_GAP = 0.20;
+  const ringPieces = pieces.filter(p => p.type === 'ring');
+  ringPieces.forEach((p, i) => {
+    const t = RING_START + i * RING_GAP;
+    const snapT = t + 1.0;
+    TL.to(p.group.position, { x:0, y:0, z:0, duration:1.05, ease:'expo.out' }, t);
+    TL.to(p.group.rotation, { x:0, y:0, z:0, duration:0.88, ease:'expo.out' }, t);
+    TL.fromTo(p.group.scale,
+      { x:1.6, y:1.6, z:1.6 },
+      { x:1.0, y:1.0, z:1.0, duration:0.60, ease:'back.out(2.4)' },
+      t + 0.44);
+    TL.to(p.mat, { opacity:1.0, duration:0.3 }, t + 0.08);
+    // Snap flash
+    TL.to(bloom, { strength:1.3, duration:0.05 }, snapT);
+    TL.to(bloom, { strength:0.4, duration:0.5, ease:'power2.out' }, snapT + 0.05);
+    TL.to(chromaPass.uniforms.uCA, { value:2.2, duration:0.05 }, snapT);
+    TL.to(chromaPass.uniforms.uCA, { value:0.7, duration:0.42 }, snapT + 0.05);
+  });
+
+  // Phase 2: Blade fans (staggered after rings)
+  const BLADE_START = RING_START + 1.5, BLADE_GAP = 0.13;
+  const bladePieces = pieces.filter(p => p.type === 'blade');
+  bladePieces.forEach((p, i) => {
+    const t = BLADE_START + i * BLADE_GAP;
+    TL.to(p.group.position, { x:0, y:0, z:0, duration:0.92, ease:'expo.out' }, t);
+    TL.to(p.group.rotation, { x:0, y:0, z:0, duration:0.80, ease:'expo.out' }, t);
+    TL.fromTo(p.group.scale,
+      { x:1.3, y:1.3, z:1.3 },
+      { x:1.0, y:1.0, z:1.0, duration:0.50, ease:'back.out(1.8)' },
+      t + 0.38);
+    TL.to(p.mat, { opacity:1.0, duration:0.28 }, t);
+  });
+
+  // Phase 3: Void disc
+  const voidP = pieces.find(p => p.type === 'void');
+  const VOID_T = BLADE_START + bladePieces.length * BLADE_GAP + 0.3;
+  if (voidP) {
+    TL.to(voidP.group.position, { x:0, y:0, z:0.09, duration:0.65, ease:'expo.out' }, VOID_T);
+    TL.to(voidP.group.rotation, { x:0, y:0, z:0, duration:0.55, ease:'expo.out' }, VOID_T);
+    TL.to(voidP.mat, { opacity:1.0, duration:0.25 }, VOID_T);
+  }
+
+  // FINAL SNAP
+  const SNAP = VOID_T + 0.7;
+  TL.to(bloom, { strength:3.2, duration:0.04 }, SNAP);
+  TL.to(bloom, { strength:0.55, duration:1.1, ease:'power3.out' }, SNAP + 0.04);
+  TL.to(chromaPass.uniforms.uFlash, { value:0.95, duration:0.04 }, SNAP);
+  TL.to(chromaPass.uniforms.uFlash, { value:0.0, duration:0.8, ease:'power3.out' }, SNAP + 0.04);
+  TL.to(chromaPass.uniforms.uCA, { value:6.5, duration:0.04 }, SNAP);
+  TL.to(chromaPass.uniforms.uCA, { value:1.2, duration:1.0, ease:'power2.out' }, SNAP + 0.04);
+  TL.to(glowMat, { opacity:0.8, duration:0.12 }, SNAP + 0.04);
+  TL.to(glowMat, { opacity:0.25, duration:1.3 }, SNAP + 0.18);
+  TL.to(camera.position, { z:4.35, duration:1.4, ease:'power2.out' }, SNAP);
+
+  // Text
+  const TEXT_T = SNAP + 1.6;
+  TL.to({}, { duration:0.01, onComplete:() => {
+    gsap.to('#title',    { opacity:1, duration:1.0, ease:'power2.out' });
+    gsap.to('#subtitle', { opacity:1, duration:1.0, delay:0.35, ease:'power2.out' });
+  }}, TEXT_T);
+
+  // Idle breathing bloom
+  TL.to(bloom, { strength:0.38, duration:2.3, repeat:-1, yoyo:true, ease:'power1.inOut' }, TEXT_T + 0.9);
+
+  TL.eventCallback('onComplete', () => { state = 'done'; });
+}
+buildTimeline();
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  RENDER LOOP
+// ══════════════════════════════════════════════════════════════════════════════
+
+const clock = new THREE.Clock();
+let mX = 0, mY = 0;
+window.addEventListener('mousemove', e => {
+  mX = (e.clientX / W() - 0.5) * 2;
+  mY = (e.clientY / H() - 0.5) * 2;
+});
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t  = clock.getElapsedTime();
+
+  if (state === 'done') {
+    logoPivot.rotation.z += 0.020 * dt;
+    logoPivot.rotation.x  = Math.sin(t * 0.36) * 0.032;
+    logoPivot.rotation.y  = Math.sin(t * 0.25) * 0.020;
+    camera.position.x    += (mX * 0.22 - camera.position.x) * 0.042;
+    camera.position.y    += (-mY * 0.16 - camera.position.y) * 0.042;
+    chromaPass.uniforms.uCA.value = 1.0 + Math.sin(t * 0.6) * 0.22;
+  }
+
+  camera.lookAt(0, 0, 0);
+  composer.render();
+}
+animate();
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  UI
+// ══════════════════════════════════════════════════════════════════════════════
+
+let cmpVisible = false;
+window._compare = () => {
+  cmpVisible = !cmpVisible;
+  const el = document.getElementById('compare');
+  el.classList.toggle('visible', cmpVisible);
+  if (cmpVisible) {
+    drawLogo2D(document.getElementById('asm-c').getContext('2d'), 320);
+  }
+};
+
+window._replay = () => {
+  state = 'pre';
+  gsap.to('#title',    { opacity:0, duration:0.3 });
+  gsap.to('#subtitle', { opacity:0, duration:0.3 });
+  logoPivot.rotation.set(0, 0, 0);
+  camera.position.set(0, 0, 5.5);
+  glowMat.opacity = 0;
+  bloom.strength  = 0.4;
+  chromaPass.uniforms.uCA.value   = 0.5;
+  chromaPass.uniforms.uFlash.value = 0.0;
+  document.getElementById('progress').style.width = '0%';
+  scatterPieces();
+  setTimeout(buildTimeline, 80);
+};
+
+document.getElementById('compare').addEventListener('click', e => {
+  if (e.target === document.getElementById('compare')) window._compare();
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = W()/H();
+  camera.updateProjectionMatrix();
+  renderer.setSize(W(), H());
+  composer.setSize(W(), H());
+  bloom.resolution.set(W(), H());
+});
+
+</script>
+</body>
+</html>

@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aether Avatar V3 — Fire Bloom Portrait</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #080a12;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  .stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+
+  /* The avatar uses stacked canvas layers with mix-blend-mode:screen */
+  .avatar-root {
+    position: relative;
+    width: 200px;
+    height: 200px;
+    cursor: pointer;
+  }
+
+  /* Base canvas — dark background, deep glow */
+  #baseCanvas {
+    position: absolute;
+    inset: 0;
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+  }
+
+  /* Bloom canvas — screen blend, bright bloom cores */
+  #bloomCanvas {
+    position: absolute;
+    inset: 0;
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    mix-blend-mode: screen;
+  }
+
+  /* Fire canvas — screen blend, hot orange/white particles */
+  #fireCanvas {
+    position: absolute;
+    inset: 0;
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    mix-blend-mode: screen;
+  }
+
+  /* Corona canvas — outermost aura, screen blend */
+  #coronaCanvas {
+    position: absolute;
+    inset: -20px;
+    width: 240px;
+    height: 240px;
+    mix-blend-mode: screen;
+    pointer-events: none;
+  }
+
+  /* Glass clip ring */
+  .ring {
+    position: absolute;
+    inset: -1px;
+    border-radius: 50%;
+    border: 1px solid rgba(42, 147, 193, 0.3);
+    pointer-events: none;
+    box-shadow:
+      0 0 20px rgba(42,147,193,0.2),
+      0 0 40px rgba(241,66,11,0.1),
+      inset 0 0 20px rgba(0,0,0,0.5);
+  }
+
+  .label {
+    color: rgba(255,255,255,0.35);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="avatar-root" id="avatarRoot">
+    <canvas id="baseCanvas" width="400" height="400"></canvas>
+    <canvas id="bloomCanvas" width="400" height="400"></canvas>
+    <canvas id="fireCanvas" width="400" height="400"></canvas>
+    <canvas id="coronaCanvas" width="480" height="480"></canvas>
+    <div class="ring"></div>
+  </div>
+  <span class="label">Fire Bloom Portrait</span>
+</div>
+
+<script>
+'use strict';
+
+const baseCanvas   = document.getElementById('baseCanvas');
+const bloomCanvas  = document.getElementById('bloomCanvas');
+const fireCanvas   = document.getElementById('fireCanvas');
+const coronaCanvas = document.getElementById('coronaCanvas');
+
+const baseCtx   = baseCanvas.getContext('2d');
+const bloomCtx  = bloomCanvas.getContext('2d');
+const fireCtx   = fireCanvas.getContext('2d');
+const coronaCtx = coronaCanvas.getContext('2d');
+
+const W  = 400;
+const H  = 400;
+const CX = W / 2;
+const CY = H / 2;
+const CCW = 480;
+const CCH = 480;
+const CCX = CCW / 2;
+const CCY = CCH / 2;
+
+// ── Particle system (fire bloom) ──
+class BloomParticle {
+  constructor() { this.reset(); }
+
+  reset() {
+    // "Face-like" spatial distribution — particles cluster around
+    // head/crown region to suggest a presence, not literal face
+    this.spawnInPresenceMap();
+    this.vx = (Math.random() - 0.5) * 0.8;
+    this.vy = -0.3 - Math.random() * 1.2; // generally rise
+    this.life = 0;
+    this.maxLife = 60 + Math.random() * 80;
+    this.size = 1.5 + Math.random() * 5;
+
+    // Color: orange core → blue outer → white at peak
+    const roll = Math.random();
+    if (roll < 0.5) {
+      this.color = { r: 241, g: 66 + Math.random() * 40, b: 11 };
+      this.isHot = true;
+    } else if (roll < 0.8) {
+      this.color = { r: 42, g: 147, b: 193 };
+      this.isHot = false;
+    } else {
+      this.color = { r: 255, g: 200 + Math.random() * 55, b: 100 };
+      this.isHot = true;
+    }
+  }
+
+  spawnInPresenceMap() {
+    // Spawn within an abstract "presence" — elliptical distribution
+    // biased toward upper half (head), with crown wisps
+    const zone = Math.random();
+
+    if (zone < 0.25) {
+      // Crown / halo region (top)
+      const angle = -Math.PI * 0.8 + Math.random() * Math.PI * 0.6;
+      const r = 55 + Math.random() * 30;
+      this.x = CX + Math.cos(angle) * r;
+      this.y = CY - 30 + Math.sin(angle) * r * 0.6;
+    } else if (zone < 0.55) {
+      // Core center — highest density
+      const angle = Math.random() * Math.PI * 2;
+      const r = Math.random() * 50;
+      this.x = CX + Math.cos(angle) * r * 1.0;
+      this.y = CY + Math.sin(angle) * r * 0.85 - 10;
+    } else if (zone < 0.75) {
+      // Orbital ring — suggests boundary of presence
+      const angle = Math.random() * Math.PI * 2;
+      const r = 70 + Math.random() * 15;
+      this.x = CX + Math.cos(angle) * r;
+      this.y = CY + Math.sin(angle) * r;
+    } else {
+      // Random scatter within circle
+      const angle = Math.random() * Math.PI * 2;
+      const r = Math.random() * 80;
+      this.x = CX + Math.cos(angle) * r;
+      this.y = CY + Math.sin(angle) * r;
+    }
+  }
+
+  update(dt) {
+    this.life++;
+    const progress = this.life / this.maxLife;
+
+    // Upward drift + slight turbulence
+    this.vy -= 0.01;
+    this.vx += (Math.random() - 0.5) * 0.12;
+    this.vx *= 0.97;
+    this.vy *= 0.98;
+
+    this.x += this.vx;
+    this.y += this.vy;
+    this.size *= 0.992;
+  }
+
+  get alive() { return this.life < this.maxLife && this.size > 0.3; }
+
+  draw(ctx) {
+    const progress = this.life / this.maxLife;
+    // Fade in quickly, linger, fade out
+    let alpha;
+    if (progress < 0.15) alpha = progress / 0.15;
+    else if (progress > 0.7) alpha = 1 - (progress - 0.7) / 0.3;
+    else alpha = 1.0;
+
+    alpha *= 0.85;
+
+    const { r, g, b } = this.color;
+
+    // Bloom particle — radial gradient for soft glow core
+    const grad = ctx.createRadialGradient(
+      this.x, this.y, 0,
+      this.x, this.y, this.size * 2.5
+    );
+    grad.addColorStop(0, `rgba(${r},${g},${b},${alpha})`);
+    grad.addColorStop(0.3, `rgba(${r},${g},${b},${alpha * 0.6})`);
+    grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size * 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// Hot core particle (tight, white-hot center)
+class CoreParticle extends BloomParticle {
+  constructor() {
+    super();
+    this.size = 0.8 + Math.random() * 2;
+    this.maxLife = 30 + Math.random() * 40;
+    this.color = { r: 255, g: 240, b: 220 };
+    // spawn tighter to core
+    const angle = Math.random() * Math.PI * 2;
+    const r = Math.random() * 35;
+    this.x = CX + Math.cos(angle) * r;
+    this.y = CY + Math.sin(angle) * r * 0.8 - 10;
+    this.vy = -0.5 - Math.random() * 0.8;
+  }
+
+  draw(ctx) {
+    const progress = this.life / this.maxLife;
+    let alpha = progress < 0.2 ? progress / 0.2 : 1 - (progress - 0.2) / 0.8;
+    alpha = Math.max(0, alpha * 0.9);
+
+    const grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size * 3);
+    grad.addColorStop(0, `rgba(255,255,255,${alpha})`);
+    grad.addColorStop(0.4, `rgba(255,220,180,${alpha * 0.7})`);
+    grad.addColorStop(1, `rgba(241,66,11,0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// Spawn pool
+const PARTICLE_COUNT = 200;
+const CORE_COUNT = 60;
+const particles = [];
+const coreParticles = [];
+
+for (let i = 0; i < PARTICLE_COUNT; i++) {
+  const p = new BloomParticle();
+  p.life = Math.floor(Math.random() * p.maxLife); // stagger initial lifetimes
+  particles.push(p);
+}
+for (let i = 0; i < CORE_COUNT; i++) {
+  const p = new CoreParticle();
+  p.life = Math.floor(Math.random() * p.maxLife);
+  coreParticles.push(p);
+}
+
+// ── Hover state ──
+let isHovered = false;
+let hoverIntensity = 0;
+const root = document.getElementById('avatarRoot');
+root.addEventListener('mouseenter', () => { isHovered = true; });
+root.addEventListener('mouseleave', () => { isHovered = false; });
+
+// ── Nebula / deep glow blobs (base layer) ──
+class NebulaBlob {
+  constructor(x, y, r, color, speed) {
+    this.ox = x; this.oy = y;
+    this.x = x; this.y = y;
+    this.r = r;
+    this.color = color;
+    this.speed = speed;
+    this.angle = Math.random() * Math.PI * 2;
+    this.orbitR = 8 + Math.random() * 20;
+    this.t = Math.random() * 100;
+  }
+  update(dt) {
+    this.t += dt;
+    this.angle += this.speed * dt * 0.5;
+    this.x = this.ox + Math.cos(this.angle) * this.orbitR;
+    this.y = this.oy + Math.sin(this.angle * 1.4) * this.orbitR * 0.7;
+  }
+  draw(ctx) {
+    const grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.r);
+    const { r, g, b, a } = this.color;
+    grad.addColorStop(0, `rgba(${r},${g},${b},${a})`);
+    grad.addColorStop(0.5, `rgba(${r},${g},${b},${a * 0.4})`);
+    grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+const nebulaBlobs = [
+  new NebulaBlob(CX, CY - 15, 100, { r: 241, g: 66, b: 11, a: 0.3 }, 0.3),
+  new NebulaBlob(CX - 20, CY + 10, 80, { r: 42, g: 147, b: 193, a: 0.2 }, 0.4),
+  new NebulaBlob(CX + 25, CY - 5, 70, { r: 241, g: 66, b: 11, a: 0.15 }, 0.5),
+  new NebulaBlob(CX, CY + 20, 60, { r: 42, g: 147, b: 193, a: 0.25 }, 0.35),
+];
+
+let lastTime = performance.now();
+
+function drawLoop(now) {
+  const dt = Math.min((now - lastTime) / 1000, 0.05);
+  lastTime = now;
+  const t = now * 0.001;
+
+  // Hover intensity
+  if (isHovered) hoverIntensity = Math.min(1, hoverIntensity + dt * 3);
+  else hoverIntensity = Math.max(0, hoverIntensity - dt * 2);
+
+  // ─── BASE LAYER (deep glow background) ───────────────────────────────
+  // Slight trail effect — don't fully clear
+  baseCtx.fillStyle = `rgba(8,10,18,0.55)`;
+  baseCtx.fillRect(0, 0, W, H);
+
+  // Nebula blobs
+  nebulaBlobs.forEach(b => {
+    b.update(dt);
+    b.draw(baseCtx);
+  });
+
+  // Deep vignette to darken edges
+  const vig = baseCtx.createRadialGradient(CX, CY, CX * 0.4, CX, CY, CX * 1.1);
+  vig.addColorStop(0, 'rgba(8,10,18,0)');
+  vig.addColorStop(1, 'rgba(8,10,18,0.85)');
+  baseCtx.fillStyle = vig;
+  baseCtx.fillRect(0, 0, W, H);
+
+  // ─── BLOOM LAYER (screen blended energy aura) ─────────────────────────
+  bloomCtx.clearRect(0, 0, W, H);
+
+  // Main energy core
+  const coreAlpha = 0.12 + Math.sin(t * 1.2) * 0.04 + hoverIntensity * 0.1;
+  const coreGrad = bloomCtx.createRadialGradient(CX, CY - 8, 5, CX, CY - 8, 95);
+  coreGrad.addColorStop(0, `rgba(255,160,80,${coreAlpha * 2})`);
+  coreGrad.addColorStop(0.25, `rgba(241,66,11,${coreAlpha})`);
+  coreGrad.addColorStop(0.55, `rgba(42,147,193,${coreAlpha * 0.5})`);
+  coreGrad.addColorStop(1, 'rgba(8,10,18,0)');
+  bloomCtx.fillStyle = coreGrad;
+  bloomCtx.fillRect(0, 0, W, H);
+
+  // Secondary blue arc (orbital intelligence ring)
+  const arcAlpha = 0.08 + Math.sin(t * 0.8 + 1.5) * 0.03 + hoverIntensity * 0.06;
+  bloomCtx.save();
+  bloomCtx.translate(CX, CY);
+  bloomCtx.rotate(t * 0.15);
+  for (let i = 0; i < 3; i++) {
+    const arcR = 72 + i * 8;
+    const arcGrad = bloomCtx.createRadialGradient(0, 0, arcR - 5, 0, 0, arcR + 10);
+    arcGrad.addColorStop(0, `rgba(42,147,193,${arcAlpha * (1 - i * 0.3)})`);
+    arcGrad.addColorStop(1, `rgba(42,147,193,0)`);
+    bloomCtx.strokeStyle = `rgba(42,147,193,${arcAlpha * (1 - i * 0.2)})`;
+    bloomCtx.lineWidth = 3 - i;
+    bloomCtx.beginPath();
+    bloomCtx.arc(0, 0, arcR, -Math.PI * 0.6 + i, Math.PI * 0.4 + i);
+    bloomCtx.stroke();
+  }
+  bloomCtx.restore();
+
+  // ─── FIRE LAYER (screen — hot particles) ─────────────────────────────
+  fireCtx.clearRect(0, 0, W, H);
+
+  // Draw and update bloom particles
+  const spawnRate = isHovered ? 4 : 2;
+  let spawned = 0;
+  particles.forEach(p => {
+    p.update(dt);
+    if (!p.alive) {
+      if (spawned < spawnRate) { p.reset(); spawned++; }
+    } else {
+      p.draw(fireCtx);
+    }
+  });
+
+  // Core hot particles
+  let coreSpawned = 0;
+  coreParticles.forEach(p => {
+    p.update(dt);
+    if (!p.alive) {
+      if (coreSpawned < (isHovered ? 3 : 1)) {
+        p.constructor === CoreParticle;
+        const np = new CoreParticle();
+        Object.assign(p, np);
+        coreSpawned++;
+      }
+    } else {
+      p.draw(fireCtx);
+    }
+  });
+
+  // ─── CORONA LAYER (outermost ambient screen haze) ─────────────────────
+  coronaCtx.clearRect(0, 0, CCW, CCH);
+
+  const coronaAlpha = 0.04 + Math.sin(t * 0.6) * 0.02 + hoverIntensity * 0.05;
+
+  // Orange corona
+  const coronaOrange = coronaCtx.createRadialGradient(CCX, CCY, 60, CCX, CCY, 160);
+  coronaOrange.addColorStop(0, 'rgba(241,66,11,0)');
+  coronaOrange.addColorStop(0.5, `rgba(241,66,11,${coronaAlpha})`);
+  coronaOrange.addColorStop(1, 'rgba(241,66,11,0)');
+  coronaCtx.fillStyle = coronaOrange;
+  coronaCtx.fillRect(0, 0, CCW, CCH);
+
+  // Blue corona
+  const coronaBlue = coronaCtx.createRadialGradient(CCX, CCY, 70, CCX, CCY, 180);
+  coronaBlue.addColorStop(0, 'rgba(42,147,193,0)');
+  coronaBlue.addColorStop(0.6, `rgba(42,147,193,${coronaAlpha * 0.7})`);
+  coronaBlue.addColorStop(1, 'rgba(42,147,193,0)');
+  coronaCtx.fillStyle = coronaBlue;
+  coronaCtx.fillRect(0, 0, CCW, CCH);
+
+  // Animated wisps (streak-like)
+  for (let i = 0; i < 4; i++) {
+    const wispAngle = t * 0.2 + i * (Math.PI / 2);
+    const wispX = CCX + Math.cos(wispAngle) * 100;
+    const wispY = CCY + Math.sin(wispAngle) * 100;
+    const wispGrad = coronaCtx.createRadialGradient(wispX, wispY, 0, wispX, wispY, 40);
+    const isOrange = i % 2 === 0;
+    const wr = isOrange ? 241 : 42;
+    const wg = isOrange ? 66 : 147;
+    const wb = isOrange ? 11 : 193;
+    const wa = 0.06 + Math.sin(t * 1.5 + i) * 0.03 + hoverIntensity * 0.05;
+    wispGrad.addColorStop(0, `rgba(${wr},${wg},${wb},${wa})`);
+    wispGrad.addColorStop(1, `rgba(${wr},${wg},${wb},0)`);
+    coronaCtx.fillStyle = wispGrad;
+    coronaCtx.fillRect(wispX - 40, wispY - 40, 80, 80);
+  }
+
+  requestAnimationFrame(drawLoop);
+}
+
+requestAnimationFrame(drawLoop);
+</script>
+</body>
+</html>

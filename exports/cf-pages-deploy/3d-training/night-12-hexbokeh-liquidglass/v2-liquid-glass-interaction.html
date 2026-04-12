@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 12 V2: Liquid Glass Interaction-Driven Refraction</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #080a12; overflow: hidden; cursor: crosshair; }
+canvas { display: block; width: 100vw; height: 100vh; }
+#info { position: fixed; bottom: 20px; left: 20px; color: rgba(255,255,255,0.4); font: 12px monospace; z-index: 10; }
+</style>
+</head>
+<body>
+<div id="info">Night 12 V2 | Liquid Glass | Move mouse to shift specular highlights</div>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.164.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// --- Scene ---
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 0, 5.5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+document.body.appendChild(renderer.domElement);
+
+// --- Mouse tracking for liquid glass interaction ---
+const mouse = new THREE.Vector2(0, 0);
+const mouseTarget = new THREE.Vector2(0, 0);
+const mouseVelocity = new THREE.Vector2(0, 0);
+let prevMouse = new THREE.Vector2(0, 0);
+
+window.addEventListener('mousemove', (e) => {
+  mouseTarget.x = (e.clientX / innerWidth) * 2 - 1;
+  mouseTarget.y = -(e.clientY / innerHeight) * 2 + 1;
+});
+
+// --- Lighting ---
+const ambientLight = new THREE.AmbientLight(0x1a1a2e, 0.4);
+scene.add(ambientLight);
+
+// Dynamic light that follows mouse (Apple Liquid Glass key technique)
+const interactionLight = new THREE.PointLight(0xffffff, 3.0, 15);
+interactionLight.position.set(0, 0, 4);
+scene.add(interactionLight);
+
+const keyLight = new THREE.DirectionalLight(0x4fc3f7, 1.5);
+keyLight.position.set(3, 4, 5);
+scene.add(keyLight);
+
+const rimLight = new THREE.DirectionalLight(0xff6f00, 0.8);
+rimLight.position.set(-3, 2, -3);
+scene.add(rimLight);
+
+// --- CubeCamera ---
+const cubeRT = new THREE.WebGLCubeRenderTarget(256, {
+  format: THREE.RGBAFormat, generateMipmaps: true,
+  minFilter: THREE.LinearMipmapLinearFilter
+});
+const cubeCamera = new THREE.CubeCamera(0.1, 100, cubeRT);
+scene.add(cubeCamera);
+
+// --- Liquid Glass Custom Material ---
+// Key insight: Apple's Liquid Glass uses interaction-driven specular shift
+// The specular highlight position responds to mouse/tilt, creating a "liquid" feel
+const liquidGlassVertexShader = `
+  uniform float time;
+  uniform vec2 mousePos;
+  uniform float mouseSpeed;
+
+  varying vec3 vNormal;
+  varying vec3 vWorldPosition;
+  varying vec3 vViewDir;
+  varying float vFresnel;
+  varying vec2 vMouseInfluence;
+
+  // Simplex-like noise for surface perturbation
+  vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+  vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+  vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+
+  float snoise(vec3 v) {
+    const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+    const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+    vec3 i = floor(v + dot(v, C.yyy));
+    vec3 x0 = v - i + dot(i, C.xxx);
+    vec3 g = step(x0.yzx, x0.xyz);
+    vec3 l = 1.0 - g;
+    vec3 i1 = min(g.xyz, l.zxy);
+    vec3 i2 = max(g.xyz, l.zxy);
+    vec3 x1 = x0 - i1 + C.xxx;
+    vec3 x2 = x0 - i2 + C.yyy;
+    vec3 x3 = x0 - D.yyy;
+    i = mod289(i);
+    vec4 p = permute(permute(permute(
+      i.z + vec4(0.0, i1.z, i2.z, 1.0))
+      + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+      + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+    float n_ = 0.142857142857;
+    vec3 ns = n_ * D.wyz - D.xzx;
+    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+    vec4 x_ = floor(j * ns.z);
+    vec4 y_ = floor(j - 7.0 * x_);
+    vec4 x = x_ * ns.x + ns.yyyy;
+    vec4 y = y_ * ns.x + ns.yyyy;
+    vec4 h = 1.0 - abs(x) - abs(y);
+    vec4 b0 = vec4(x.xy, y.xy);
+    vec4 b1 = vec4(x.zw, y.zw);
+    vec4 s0 = floor(b0)*2.0 + 1.0;
+    vec4 s1 = floor(b1)*2.0 + 1.0;
+    vec4 sh = -step(h, vec4(0.0));
+    vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+    vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+    vec3 p0 = vec3(a0.xy, h.x);
+    vec3 p1 = vec3(a0.zw, h.y);
+    vec3 p2 = vec3(a1.xy, h.z);
+    vec3 p3 = vec3(a1.zw, h.w);
+    vec4 norm = 1.79284291400159 - 0.85373472095314 *
+      vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3));
+    p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+    m = m * m;
+    return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+  }
+
+  void main() {
+    vec3 pos = position;
+
+    // Mouse-driven surface deformation (liquid response)
+    float mouseInfluence = 1.0 - clamp(length(mousePos - pos.xy * 0.5), 0.0, 1.0);
+    mouseInfluence = pow(mouseInfluence, 2.0);
+
+    // FBM displacement + mouse-reactive perturbation
+    float displacement = snoise(pos * 2.0 + time * 0.3) * 0.08;
+    displacement += snoise(pos * 4.0 + time * 0.5) * 0.04;
+
+    // Liquid bulge toward mouse
+    float liquidBulge = mouseInfluence * mouseSpeed * 0.3;
+    pos += normal * (displacement + liquidBulge);
+
+    // Perturbed normal (finite difference)
+    float eps = 0.01;
+    float dx = snoise((pos + vec3(eps,0,0)) * 2.0 + time * 0.3) - snoise((pos - vec3(eps,0,0)) * 2.0 + time * 0.3);
+    float dy = snoise((pos + vec3(0,eps,0)) * 2.0 + time * 0.3) - snoise((pos - vec3(0,eps,0)) * 2.0 + time * 0.3);
+    float dz = snoise((pos + vec3(0,0,eps)) * 2.0 + time * 0.3) - snoise((pos - vec3(0,0,eps)) * 2.0 + time * 0.3);
+
+    vec3 perturbedNormal = normalize(normal - vec3(dx, dy, dz) * 3.0);
+
+    vNormal = normalize(normalMatrix * perturbedNormal);
+    vec4 worldPos = modelMatrix * vec4(pos, 1.0);
+    vWorldPosition = worldPos.xyz;
+    vViewDir = normalize(cameraPosition - worldPos.xyz);
+
+    // Fresnel
+    vFresnel = pow(1.0 - max(dot(vNormal, vViewDir), 0.0), 3.0);
+
+    vMouseInfluence = vec2(mouseInfluence, mouseSpeed);
+
+    gl_Position = projectionMatrix * viewMatrix * worldPos;
+  }
+`;
+
+const liquidGlassFragmentShader = `
+  uniform float time;
+  uniform vec2 mousePos;
+  uniform float mouseSpeed;
+  uniform samplerCube envMap;
+  uniform vec3 baseColor;
+  uniform vec3 specularColor;
+  uniform float iridescenceStrength;
+
+  varying vec3 vNormal;
+  varying vec3 vWorldPosition;
+  varying vec3 vViewDir;
+  varying float vFresnel;
+  varying vec2 vMouseInfluence;
+
+  // Per-channel IOR chromatic dispersion
+  vec3 chromaticRefract(vec3 viewDir, vec3 normal, float iorSpread) {
+    vec3 refR = refract(-viewDir, normal, 1.0 / (1.45 + iorSpread));
+    vec3 refG = refract(-viewDir, normal, 1.0 / 1.50);
+    vec3 refB = refract(-viewDir, normal, 1.0 / (1.55 - iorSpread));
+    return vec3(
+      textureCube(envMap, refR).r,
+      textureCube(envMap, refG).g,
+      textureCube(envMap, refB).b
+    );
+  }
+
+  // Thin-film iridescence approximation
+  vec3 iridescence(float cosTheta, float thickness) {
+    float delta = 2.0 * thickness * cosTheta;
+    return 0.5 + 0.5 * vec3(
+      cos(delta * 6.28 * 1.0),
+      cos(delta * 6.28 * 1.33),
+      cos(delta * 6.28 * 1.67)
+    );
+  }
+
+  void main() {
+    vec3 N = normalize(vNormal);
+    vec3 V = normalize(vViewDir);
+    float NdotV = max(dot(N, V), 0.0);
+
+    // --- Liquid Glass core: interaction-shifted specular ---
+    // Light position shifts with mouse movement (Apple's key insight)
+    vec3 lightDir = normalize(vec3(mousePos * 2.0, 3.0));
+    vec3 H = normalize(lightDir + V);
+    float NdotH = max(dot(N, H), 0.0);
+
+    // GGX-like specular with high concentration
+    float alpha = 0.02; // very tight specular
+    float alpha2 = alpha * alpha;
+    float denom = NdotH * NdotH * (alpha2 - 1.0) + 1.0;
+    float D = alpha2 / (3.14159 * denom * denom);
+
+    vec3 specHighlight = specularColor * D * 0.5;
+
+    // --- Chromatic dispersion with mouse-reactive spread ---
+    float iorSpread = 0.05 + vMouseInfluence.x * vMouseInfluence.y * 0.08;
+    vec3 refracted = chromaticRefract(V, N, iorSpread);
+
+    // --- Reflection ---
+    vec3 reflectDir = reflect(-V, N);
+    vec3 reflected = textureCube(envMap, reflectDir).rgb;
+
+    // --- Iridescence (thin-film interference) ---
+    vec3 iriColor = iridescence(NdotV, 0.5 + vMouseInfluence.x * 0.3);
+
+    // --- Fresnel blend ---
+    float fresnelBias = 0.04;
+    float fresnelScale = 0.96;
+    float fresnelPower = 4.0;
+    float fresnel = fresnelBias + fresnelScale * pow(1.0 - NdotV, fresnelPower);
+
+    // Combine: refraction base + reflection at edges + specular highlight
+    vec3 color = mix(refracted, reflected, fresnel);
+    color += specHighlight;
+
+    // Add iridescence at glancing angles
+    color = mix(color, color * iriColor, iridescenceStrength * fresnel);
+
+    // Subtle base color tint
+    color = mix(color, baseColor, 0.08);
+
+    // Edge glow
+    color += vec3(0.2, 0.5, 1.0) * pow(vFresnel, 4.0) * 0.3;
+
+    // Mouse proximity glow (liquid highlight)
+    color += specularColor * vMouseInfluence.x * 0.15;
+
+    gl_FragColor = vec4(color, 0.9);
+  }
+`;
+
+// --- Create the liquid glass orb ---
+const liquidGlassGroup = new THREE.Group();
+
+const orbGeo = new THREE.IcosahedronGeometry(1.2, 6);
+const orbMat = new THREE.ShaderMaterial({
+  vertexShader: liquidGlassVertexShader,
+  fragmentShader: liquidGlassFragmentShader,
+  uniforms: {
+    time: { value: 0 },
+    mousePos: { value: new THREE.Vector2(0, 0) },
+    mouseSpeed: { value: 0 },
+    envMap: { value: cubeRT.texture },
+    baseColor: { value: new THREE.Color(0x0d47a1) },
+    specularColor: { value: new THREE.Color(0xffffff) },
+    iridescenceStrength: { value: 0.4 }
+  },
+  transparent: true,
+  depthWrite: false,
+  side: THREE.DoubleSide
+});
+const orb = new THREE.Mesh(orbGeo, orbMat);
+
+// Inner core
+const coreGeo = new THREE.IcosahedronGeometry(0.5, 4);
+const coreMat = new THREE.MeshPhysicalMaterial({
+  color: 0x4fc3f7,
+  metalness: 0.0,
+  roughness: 0.0,
+  transmission: 0.98,
+  thickness: 0.8,
+  ior: 1.7,
+  envMap: cubeRT.texture,
+  transparent: true,
+  opacity: 0.5,
+  depthWrite: false,
+  emissive: 0x1a237e,
+  emissiveIntensity: 0.3
+});
+const core = new THREE.Mesh(coreGeo, coreMat);
+
+liquidGlassGroup.add(orb);
+liquidGlassGroup.add(core);
+scene.add(liquidGlassGroup);
+
+// --- Background elements for refraction content ---
+const bgGroup = new THREE.Group();
+for (let i = 0; i < 8; i++) {
+  const geo = new THREE.TorusGeometry(0.3 + Math.random() * 0.4, 0.05, 16, 32);
+  const mat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color().setHSL(i / 8, 0.7, 0.5),
+    emissive: new THREE.Color().setHSL(i / 8, 0.5, 0.2),
+    metalness: 0.8, roughness: 0.2
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(
+    (Math.random() - 0.5) * 6,
+    (Math.random() - 0.5) * 4,
+    -3 - Math.random() * 4
+  );
+  mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+  bgGroup.add(mesh);
+}
+scene.add(bgGroup);
+
+// --- Post-processing ---
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.5, 0.3, 0.85);
+composer.addPass(bloom);
+
+// Vignette
+const vignettePass = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, offset: { value: 0.3 }, darkness: { value: 0.65 } },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float offset; uniform float darkness; varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      float d = distance(vUv, vec2(0.5));
+      c.rgb *= smoothstep(0.8, offset * 0.799, d * (darkness + offset));
+      gl_FragColor = c;
+    }
+  `
+});
+composer.addPass(vignettePass);
+
+// Film grain
+const grainPass = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, intensity: { value: 0.012 } },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float time; uniform float intensity; varying vec2 vUv;
+    float rand(vec2 co) { return fract(sin(dot(co, vec2(12.9898,78.233))) * 43758.5453); }
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      c.rgb += (rand(vUv + fract(time)) * 2.0 - 1.0) * intensity;
+      gl_FragColor = c;
+    }
+  `
+});
+composer.addPass(grainPass);
+
+// --- Animation ---
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  const dt = clock.getDelta();
+
+  // Smooth mouse
+  mouse.lerp(mouseTarget, 0.08);
+  mouseVelocity.copy(mouse).sub(prevMouse);
+  const speed = mouseVelocity.length() * 60;
+  prevMouse.copy(mouse);
+
+  // Update liquid glass uniforms
+  orbMat.uniforms.time.value = t;
+  orbMat.uniforms.mousePos.value.copy(mouse);
+  orbMat.uniforms.mouseSpeed.value = Math.min(speed, 2.0);
+
+  // Interaction light follows mouse (Apple Liquid Glass technique)
+  interactionLight.position.x = mouse.x * 3;
+  interactionLight.position.y = mouse.y * 2;
+  interactionLight.intensity = 2.0 + speed * 1.5;
+
+  // Group float + rotation
+  liquidGlassGroup.position.y = Math.sin(t * 0.35) * 0.12;
+  liquidGlassGroup.rotation.y = t * 0.1;
+
+  // Core rotation
+  core.rotation.y = -t * 0.2;
+  core.rotation.x = t * 0.15;
+
+  // Background tori rotation
+  bgGroup.children.forEach((mesh, i) => {
+    mesh.rotation.x += 0.003 * (i % 2 === 0 ? 1 : -1);
+    mesh.rotation.y += 0.002;
+  });
+
+  // Grain time
+  grainPass.uniforms.time.value = t;
+
+  // CubeCamera
+  orb.visible = false;
+  cubeCamera.position.copy(liquidGlassGroup.position);
+  cubeCamera.update(renderer, scene);
+  orb.visible = true;
+  orbMat.uniforms.envMap.value = cubeRT.texture;
+
+  composer.render();
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

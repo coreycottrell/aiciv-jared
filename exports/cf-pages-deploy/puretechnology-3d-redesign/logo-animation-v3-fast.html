@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology — Animated Logo v3 Fast</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body {
+  width:100%; height:100%;
+  background:#080a12;
+  overflow:hidden;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+canvas { display:block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// ============================================================
+//  PURE TECHNOLOGY — ANIMATED LOGO v3
+//  Pixel-accurate recreation of the PT hexagonal vortex logo
+//
+//  Measured from master PNG (2100x2100):
+//  - Inner color:  RGB(241, 66, 11)  = #f14211  (r ≈ 0.0)
+//  - Outer color:  RGB( 43,147,193)  = #2b93c1  (r ≈ 1.0)
+//  - Outer hex flat sides at ~25°, 85°, 145°, 205°, 265°, 325°
+//    → flat-top hex rotated −5° from standard
+//  - ~13 hexagon rings, each rotated ~5° more than previous
+//  - Radiating spokes between consecutive rings (vertex-to-vertex
+//    plus vertex-to-next-vertex for spiral weave)
+//  - Dense sub-spokes in outer third (from midpoint analysis)
+//  - Black void at center (r < 0.08)
+// ============================================================
+
+const CANVAS = document.getElementById('c');
+const CTX    = CANVAS.getContext('2d');
+
+// ---- responsive sizing ----
+function resize() {
+  const s = Math.min(window.innerWidth, window.innerHeight);
+  CANVAS.width  = s;
+  CANVAS.height = s;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ---- mouse tracking ----
+let MX = 0, MY = 0;
+document.addEventListener('mousemove', e => {
+  const r = CANVAS.getBoundingClientRect();
+  MX = (e.clientX - r.left - r.width  * 0.5) / (r.width  * 0.5);
+  MY = (e.clientY - r.top  - r.height * 0.5) / (r.height * 0.5);
+});
+// Touch support
+document.addEventListener('touchmove', e => {
+  const r = CANVAS.getBoundingClientRect();
+  MX = (e.touches[0].clientX - r.left - r.width  * 0.5) / (r.width  * 0.5);
+  MY = (e.touches[0].clientY - r.top  - r.height * 0.5) / (r.height * 0.5);
+}, { passive: true });
+
+// ---- color interpolation ----
+// t = 0 → #f14211 (orange-red center)
+// t = 1 → #2b93c1 (cyan-blue outer)
+function lerpColor(t, alpha) {
+  const r = Math.round(241 + (43  - 241) * t);
+  const g = Math.round( 66 + (147 -  66) * t);
+  const b = Math.round( 11 + (193 -  11) * t);
+  return alpha !== undefined
+    ? `rgba(${r},${g},${b},${alpha})`
+    : `rgb(${r},${g},${b})`;
+}
+
+// ---- hexagon vertex generator ----
+// rotation=0 → pointy-top, rotation=PI/6 → flat-top
+function hexVerts(radius, rotation) {
+  const pts = new Array(6);
+  for (let i = 0; i < 6; i++) {
+    const a = rotation + (Math.PI * 2 * i) / 6;
+    pts[i] = { x: radius * Math.cos(a), y: radius * Math.sin(a) };
+  }
+  return pts;
+}
+
+// ---- draw a hexagon ring ----
+function drawHexRing(ctx, radius, rotation, color, lw, alpha) {
+  const v = hexVerts(radius, rotation);
+  ctx.beginPath();
+  ctx.moveTo(v[0].x, v[0].y);
+  for (let i = 1; i < 6; i++) ctx.lineTo(v[i].x, v[i].y);
+  ctx.closePath();
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = lw;
+  ctx.globalAlpha = alpha;
+  ctx.stroke();
+}
+
+// ---- draw spokes between two hex rings ----
+// Connects each vertex of ring A to same-index AND next-index vertex of ring B
+// This is the core of the spiral/vortex effect
+function drawVortexSpokes(ctx, rA, rotA, rB, rotB, tA, tB, lw, alpha) {
+  const vA = hexVerts(rA, rotA);
+  const vB = hexVerts(rB, rotB);
+  for (let i = 0; i < 6; i++) {
+    const pA  = vA[i];
+    const pB0 = vB[i % 6];
+    const pB1 = vB[(i + 1) % 6];
+
+    // Spoke to same-index vertex
+    const g0 = ctx.createLinearGradient(pA.x, pA.y, pB0.x, pB0.y);
+    g0.addColorStop(0, lerpColor(tA, alpha));
+    g0.addColorStop(1, lerpColor(tB, alpha));
+    ctx.beginPath();
+    ctx.moveTo(pA.x, pA.y);
+    ctx.lineTo(pB0.x, pB0.y);
+    ctx.strokeStyle = g0;
+    ctx.lineWidth   = lw;
+    ctx.globalAlpha = alpha;
+    ctx.stroke();
+
+    // Spoke to next-index vertex (the spiral weave)
+    const g1 = ctx.createLinearGradient(pA.x, pA.y, pB1.x, pB1.y);
+    g1.addColorStop(0, lerpColor(tA, alpha));
+    g1.addColorStop(1, lerpColor(tB, alpha));
+    ctx.beginPath();
+    ctx.moveTo(pA.x, pA.y);
+    ctx.lineTo(pB1.x, pB1.y);
+    ctx.strokeStyle = g1;
+    ctx.lineWidth   = lw * 0.7;
+    ctx.globalAlpha = alpha;
+    ctx.stroke();
+  }
+}
+
+// Edge midpoint spokes for denser outer weave
+function drawMidSpokes(ctx, rA, rotA, rB, rotB, tA, tB, lw, alpha) {
+  function edgeMids(r, rot) {
+    const v = hexVerts(r, rot);
+    return v.map((p, i) => {
+      const q = v[(i+1) % 6];
+      return { x:(p.x+q.x)*0.5, y:(p.y+q.y)*0.5 };
+    });
+  }
+  const mA = edgeMids(rA, rotA);
+  const mB = edgeMids(rB, rotB);
+  for (let i = 0; i < 6; i++) {
+    const pA = mA[i];
+    const pB = mB[i];
+    const g  = ctx.createLinearGradient(pA.x, pA.y, pB.x, pB.y);
+    g.addColorStop(0, lerpColor(tA, alpha));
+    g.addColorStop(1, lerpColor(tB, alpha));
+    ctx.beginPath();
+    ctx.moveTo(pA.x, pA.y);
+    ctx.lineTo(pB.x, pB.y);
+    ctx.strokeStyle = g;
+    ctx.lineWidth   = lw * 0.5;
+    ctx.globalAlpha = alpha;
+    ctx.stroke();
+  }
+}
+
+// ============================================================
+//  RING DEFINITIONS
+//  Based on pixel analysis of master PNG
+//  Radii normalized to outer radius R=1.0
+//  Measured flat-side minima: outer hex at ~0.97*R
+//  The 13 rings span from r≈0.11 to r≈0.97 (normalized)
+// ============================================================
+const RING_NORMS = [
+  0.11,  // innermost — just outside the dark void
+  0.16,
+  0.22,
+  0.28,
+  0.335,
+  0.40,
+  0.46,
+  0.535,
+  0.615,
+  0.685,
+  0.755,
+  0.840,
+  0.970, // outermost
+];
+
+// Base rotation: flat-top hex (PI/6) offset by -5° = PI/6 - 5*PI/180
+const BASE_ROT = Math.PI / 6 - 5 * Math.PI / 180;
+
+// Spiral step per ring (each successive ring rotated by this amount)
+// Measured: outer hex flat sides at 25°, middle at ~30°, inner at ~15°
+// → approximately 5° per ring of spiral
+const SPIRAL_STEP = 5 * Math.PI / 180;
+
+// Animation speeds (rad/s):
+// Inner rings spin faster to create unwinding vortex
+const SPEED_INNER = 0.81;   // innermost ring speed
+const SPEED_OUTER = 0.27;   // outermost ring speed
+
+// ============================================================
+//  MAIN RENDER LOOP
+// ============================================================
+let prevMX = 0, prevMY = 0;
+let smoothMX = 0, smoothMY = 0;
+
+function render(ms) {
+  const t = ms * 0.001; // time in seconds
+  const W = CANVAS.width;
+  const H = CANVAS.height;
+
+  // Smooth mouse
+  smoothMX += (MX - smoothMX) * 0.06;
+  smoothMY += (MY - smoothMY) * 0.06;
+
+  // Center with subtle parallax
+  const ox = smoothMX * W * 0.015;
+  const oy = smoothMY * H * 0.015;
+
+  // Outer radius = 42% of canvas size
+  const R = W * 0.42;
+
+  // ---- clear ----
+  CTX.fillStyle = '#080a12';
+  CTX.fillRect(0, 0, W, H);
+
+  CTX.save();
+  CTX.translate(W * 0.5 + ox, H * 0.5 + oy);
+
+  const N = RING_NORMS.length;
+
+  // Pre-compute each ring's rotation at current time
+  // ring 0 = innermost, ring N-1 = outermost
+  const rotations = RING_NORMS.map((normR, i) => {
+    // Speed interpolation: inner fast, outer slow
+    const speed = SPEED_OUTER + (SPEED_INNER - SPEED_OUTER) * (1 - normR);
+    // Static spiral offset: innermost has 0 additional offset, outermost has (N-1)*SPIRAL_STEP
+    const staticOffset = i * SPIRAL_STEP;
+    return BASE_ROT + staticOffset + speed * t;
+  });
+
+  // ---- PASS 1: glow bloom ----
+  CTX.save();
+  CTX.shadowBlur = W * 0.018;
+  for (let i = 0; i < N; i++) {
+    const normR = RING_NORMS[i];
+    const radius = normR * R;
+    const color  = lerpColor(normR);
+    const lw     = (W * 0.0015) + (W * 0.001) * normR;
+    CTX.shadowColor = color;
+    drawHexRing(CTX, radius, rotations[i], color, lw, 0.25);
+  }
+  CTX.restore();
+
+  // ---- PASS 2: crisp main draw ----
+  CTX.shadowBlur = 0;
+
+  // Draw from outer to inner so inner rings appear on top
+  for (let i = N - 1; i >= 0; i--) {
+    const normR  = RING_NORMS[i];
+    const radius = normR * R;
+    const color  = lerpColor(normR);
+    const lw     = (W * 0.0022) + (W * 0.0012) * normR;
+
+    // Spokes to next ring outward
+    if (i < N - 1) {
+      const jNormR  = RING_NORMS[i + 1];
+      const jRadius = jNormR * R;
+      const tMid    = (normR + jNormR) * 0.5;
+      const spokeLW = lw * 0.7;
+      const spokeA  = 0.55 + 0.45 * normR; // opacity: brighter toward outer
+
+      drawVortexSpokes(
+        CTX,
+        radius,    rotations[i],
+        jRadius,   rotations[i + 1],
+        normR, jNormR,
+        spokeLW, spokeA
+      );
+
+      // Dense mid-spokes in outer half
+      if (normR > 0.45) {
+        drawMidSpokes(
+          CTX,
+          radius,  rotations[i],
+          jRadius, rotations[i + 1],
+          normR, jNormR,
+          spokeLW * 0.55, spokeA * 0.65
+        );
+      }
+    }
+
+    // Hex ring itself
+    drawHexRing(CTX, radius, rotations[i], color, lw, 1.0);
+  }
+
+  // ---- inner glow pulse (orange-red core) ----
+  CTX.globalAlpha = 1;
+  const pulseR  = R * 0.13 * (1 + 0.04 * Math.sin(t * 2.1));
+  const coreGrd = CTX.createRadialGradient(0, 0, 0, 0, 0, pulseR);
+  coreGrd.addColorStop(0.0, 'rgba(241,66,11,0.35)');
+  coreGrd.addColorStop(0.5, 'rgba(241,66,11,0.12)');
+  coreGrd.addColorStop(1.0, 'rgba(241,66,11,0.0)');
+  CTX.beginPath();
+  CTX.arc(0, 0, pulseR, 0, Math.PI * 2);
+  CTX.fillStyle = coreGrd;
+  CTX.fill();
+
+  // ---- black void at exact center ----
+  const voidR   = R * 0.055;
+  const voidGrd = CTX.createRadialGradient(0, 0, 0, 0, 0, voidR * 1.5);
+  voidGrd.addColorStop(0.0,  '#080a12');
+  voidGrd.addColorStop(0.55, '#080a12');
+  voidGrd.addColorStop(1.0,  'rgba(8,10,18,0)');
+  CTX.beginPath();
+  CTX.arc(0, 0, voidR * 1.5, 0, Math.PI * 2);
+  CTX.fillStyle = voidGrd;
+  CTX.fill();
+
+  CTX.restore();
+  CTX.globalAlpha = 1;
+  CTX.shadowBlur  = 0;
+
+  requestAnimationFrame(render);
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

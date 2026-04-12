@@ -1,0 +1,1548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aether Hex-Cube — Sprint 2 Day 1</title>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --pb-blue:   #2a93c1;
+    --pb-orange: #f1420b;
+    --pb-dark:   #060606;
+    --pb-gold:   #C8A84A;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--pb-dark);
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  /* =================== LOADING SCREEN =================== */
+  #loading-screen {
+    position: fixed;
+    inset: 0;
+    background: #060606;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    transition: opacity 0.9s ease, visibility 0.9s ease;
+  }
+  #loading-screen.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .loading-logo {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .loading-logo .blue   { color: var(--pb-blue); }
+  .loading-logo .orange { color: var(--pb-orange); }
+
+  .loading-ring-wrap {
+    position: relative;
+    width: 56px;
+    height: 56px;
+  }
+  .loading-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    animation: spin 1.2s linear infinite;
+  }
+  .loading-ring.outer {
+    border: 1.5px solid rgba(42,147,193,0.12);
+    border-top-color: var(--pb-blue);
+  }
+  .loading-ring.inner {
+    inset: 10px;
+    border: 1.5px solid rgba(241,66,11,0.08);
+    border-top-color: rgba(241,66,11,0.35);
+    animation-direction: reverse;
+    animation-duration: 0.9s;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-text {
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.25);
+    font-weight: 400;
+  }
+
+  /* =================== CANVAS =================== */
+  #wrap {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--pb-dark);
+  }
+
+  #wrap::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(ellipse 52% 52% at 68% 22%, rgba(13,22,245,0.06) 0%, transparent 70%),
+      radial-gradient(ellipse 40% 40% at 30% 74%, rgba(209,13,206,0.04) 0%, transparent 70%),
+      radial-gradient(ellipse 30% 30% at 50% 50%, rgba(24,168,211,0.03) 0%, transparent 60%);
+  }
+
+  #canvas-wrap {
+    position: relative;
+    width: 480px;
+    height: 480px;
+    z-index: 1;
+    filter: drop-shadow(0 0 60px rgba(42,147,193,0.08));
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* =================== UI OVERLAY =================== */
+  #ui-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 28px 36px;
+  }
+
+  #ui-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .logo-mark {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .logo-mark .blue   { color: var(--pb-blue); }
+  .logo-mark .orange { color: var(--pb-orange); }
+
+  .agent-badge {
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.2);
+    font-weight: 400;
+    border: 1px solid rgba(255,255,255,0.06);
+    padding: 5px 13px;
+    border-radius: 20px;
+    backdrop-filter: blur(8px);
+    background: rgba(255,255,255,0.02);
+  }
+
+  /* Right-side mode indicator */
+  #mode-indicator {
+    position: fixed;
+    top: 50%;
+    right: 36px;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-end;
+    z-index: 10;
+    pointer-events: all;
+  }
+
+  .mode-label {
+    font-size: 8px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.15);
+    margin-bottom: 6px;
+    pointer-events: none;
+  }
+
+  .mode-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    cursor: pointer;
+    padding: 2px 0;
+    transition: all 0.3s ease;
+  }
+  .mode-row-label {
+    font-size: 8px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.18);
+    text-align: right;
+    transition: color 0.3s;
+    font-weight: 500;
+  }
+  .mode-row:hover .mode-row-label { color: rgba(255,255,255,0.55); }
+  .mode-row.active .mode-row-label { color: rgba(255,255,255,0.7); }
+
+  .mode-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.06);
+    transition: all 0.4s ease;
+    flex-shrink: 0;
+  }
+  .mode-row.active .mode-dot,
+  .mode-row:hover .mode-dot { transform: scale(1.3); }
+  .mode-row[data-mode="idle"].active .mode-dot {
+    background: var(--pb-blue); border-color: var(--pb-blue);
+    box-shadow: 0 0 10px rgba(42,147,193,0.7);
+  }
+  .mode-row[data-mode="speaking"].active .mode-dot {
+    background: #fff; border-color: rgba(255,255,255,0.5);
+    box-shadow: 0 0 10px rgba(255,255,255,0.6);
+  }
+  .mode-row[data-mode="thinking"].active .mode-dot {
+    background: #8866AA; border-color: #8866AA;
+    box-shadow: 0 0 10px rgba(136,102,170,0.7);
+  }
+  .mode-row[data-mode="listening"].active .mode-dot {
+    background: #00D4FF; border-color: #00D4FF;
+    box-shadow: 0 0 10px rgba(0,212,255,0.7);
+  }
+
+  #ui-footer {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+
+  #aether-name { line-height: 1; }
+  #aether-name .big {
+    font-size: 80px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: rgba(255,255,255,0.03);
+    line-height: 1;
+    user-select: none;
+  }
+  #aether-name .sub {
+    font-size: 10px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.18);
+    font-weight: 400;
+    margin-top: 4px;
+  }
+
+  #mode-buttons {
+    display: flex;
+    gap: 8px;
+    pointer-events: all;
+  }
+
+  .mode-btn {
+    font-family: 'Inter', sans-serif;
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    font-weight: 500;
+    color: rgba(255,255,255,0.28);
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    padding: 7px 16px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+  }
+  .mode-btn:hover {
+    color: rgba(255,255,255,0.65);
+    border-color: rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.05);
+  }
+  .mode-btn.active {
+    color: rgba(255,255,255,0.9);
+    border-color: var(--pb-blue);
+    background: rgba(42,147,193,0.1);
+    box-shadow: 0 0 18px rgba(42,147,193,0.18);
+  }
+  .mode-btn[data-mode="speaking"].active {
+    border-color: rgba(255,255,255,0.35);
+    background: rgba(255,255,255,0.05);
+    box-shadow: 0 0 18px rgba(255,255,255,0.1);
+  }
+  .mode-btn[data-mode="thinking"].active {
+    border-color: #8866AA;
+    background: rgba(136,102,170,0.1);
+    box-shadow: 0 0 18px rgba(136,102,170,0.2);
+  }
+  .mode-btn[data-mode="listening"].active {
+    border-color: #00D4FF;
+    background: rgba(0,212,255,0.07);
+    box-shadow: 0 0 18px rgba(0,212,255,0.15);
+  }
+
+  #status-text {
+    position: fixed;
+    bottom: 96px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.22);
+    z-index: 11;
+    transition: all 0.6s ease;
+    white-space: nowrap;
+    pointer-events: none;
+    text-align: center;
+  }
+
+  #audio-bars {
+    position: fixed;
+    bottom: 132px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 3px;
+    align-items: flex-end;
+    height: 18px;
+    z-index: 11;
+    pointer-events: none;
+  }
+  .audio-bar {
+    width: 2px;
+    background: var(--pb-blue);
+    border-radius: 2px;
+    opacity: 0.35;
+    transition: height 0.06s ease;
+    min-height: 2px;
+  }
+  .audio-bar.orange { background: var(--pb-orange); }
+
+  #key-hint {
+    position: fixed;
+    top: 50%;
+    left: 36px;
+    transform: translateY(-50%);
+    font-size: 8px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.1);
+    z-index: 11;
+    pointer-events: none;
+    line-height: 2.2;
+  }
+
+  #sprint-badge {
+    position: fixed;
+    top: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 8px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.12);
+    z-index: 11;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  /* Hex geometry info panel */
+  #hex-info {
+    position: fixed;
+    bottom: 165px;
+    left: 36px;
+    font-size: 8px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.1);
+    z-index: 11;
+    pointer-events: none;
+    line-height: 2.0;
+  }
+  #hex-info .label { color: rgba(42,147,193,0.4); }
+</style>
+</head>
+<body>
+
+<!-- LOADING SCREEN -->
+<div id="loading-screen">
+  <div class="loading-logo">
+    <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>
+  </div>
+  <div class="loading-ring-wrap">
+    <div class="loading-ring outer"></div>
+    <div class="loading-ring inner"></div>
+  </div>
+  <div class="loading-text">Initialising Hex-Cube Geometry</div>
+</div>
+
+<!-- CANVAS CONTAINER -->
+<div id="wrap">
+  <div id="canvas-wrap">
+    <canvas id="gl-canvas"></canvas>
+  </div>
+</div>
+
+<!-- UI OVERLAY -->
+<div id="ui-overlay">
+  <div id="ui-header">
+    <div class="logo-mark">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>
+    </div>
+    <div class="agent-badge">Hex-Cube Avatar</div>
+  </div>
+  <div id="ui-footer">
+    <div id="aether-name">
+      <div class="big">AETHER</div>
+      <div class="sub">Hex-Cube Geometry — Sprint 2 Day 1</div>
+    </div>
+    <div id="mode-buttons">
+      <button class="mode-btn active" data-mode="idle"      onclick="setMode('idle')">Idle</button>
+      <button class="mode-btn"        data-mode="speaking"  onclick="setMode('speaking')">Speaking</button>
+      <button class="mode-btn"        data-mode="thinking"  onclick="setMode('thinking')">Thinking</button>
+      <button class="mode-btn"        data-mode="listening" onclick="setMode('listening')">Listening</button>
+    </div>
+  </div>
+</div>
+
+<!-- Mode indicator (right side) -->
+<div id="mode-indicator">
+  <div class="mode-label">Mode</div>
+  <div class="mode-row active" data-mode="idle"      onclick="setMode('idle')">
+    <span class="mode-row-label">Idle</span><span class="mode-dot"></span>
+  </div>
+  <div class="mode-row" data-mode="speaking"  onclick="setMode('speaking')">
+    <span class="mode-row-label">Speaking</span><span class="mode-dot"></span>
+  </div>
+  <div class="mode-row" data-mode="thinking"  onclick="setMode('thinking')">
+    <span class="mode-row-label">Thinking</span><span class="mode-dot"></span>
+  </div>
+  <div class="mode-row" data-mode="listening" onclick="setMode('listening')">
+    <span class="mode-row-label">Listening</span><span class="mode-dot"></span>
+  </div>
+</div>
+
+<div id="sprint-badge">Sprint 2 / Day 1 — Hex-Cube Geometry</div>
+<div id="status-text">Idle — hover to interact</div>
+<div id="key-hint">
+  [1] Idle<br>
+  [2] Speaking<br>
+  [3] Thinking<br>
+  [4] Listening
+</div>
+
+<div id="hex-info">
+  <span class="label">Geometry:</span> RoundedBox (1.3 chamfer 0.08)<br>
+  <span class="label">Rotation:</span> X -35.264° / Y 45° (isometric)<br>
+  <span class="label">Material:</span> MeshPhysical transmission=1.0<br>
+  <span class="label">IOR:</span> 1.50 · roughness 0.04
+</div>
+
+<!-- Audio bars: 9 bars, center 3 orange for speaking mode -->
+<div id="audio-bars">
+  <div class="audio-bar" id="bar0"></div>
+  <div class="audio-bar" id="bar1"></div>
+  <div class="audio-bar" id="bar2"></div>
+  <div class="audio-bar orange" id="bar3"></div>
+  <div class="audio-bar orange" id="bar4"></div>
+  <div class="audio-bar orange" id="bar5"></div>
+  <div class="audio-bar" id="bar6"></div>
+  <div class="audio-bar" id="bar7"></div>
+  <div class="audio-bar" id="bar8"></div>
+</div>
+
+<!--
+  Three.js r148+ requires ES modules with import map.
+  Legacy script src tags 404 silently.
+-->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// =============================================================================
+// PUREBRAIN DESIGN TOKENS
+// Canonical token set — Sprint 2 Day 6 will formalize these as a tokens.js file
+// =============================================================================
+const TOKEN = {
+  color: {
+    blue:       new THREE.Color('#2a93c1'),
+    orange:     new THREE.Color('#f1420b'),
+    dark:       new THREE.Color('#060606'),
+    gold:       new THREE.Color('#C8A84A'),
+    purple:     new THREE.Color('#8866AA'),
+    cyan:       new THREE.Color('#00D4FF'),
+    white:      new THREE.Color('#ffffff'),
+  },
+  glass: {
+    // The isometric hex-cube angle — Samsung R3 insight from gap analysis
+    // arctan(1/sqrt(2)) = 35.264 degrees. At this angle, vertex faces viewer = hexagonal face visible.
+    rotX: -35.264 * Math.PI / 180,
+    rotY:  45.0   * Math.PI / 180,
+    // RoundedBox size + chamfer. Larger chamfer = softer edges, more sphere-like refraction
+    sideLength: 1.3,
+    chamfer:    0.08,
+    smoothness: 8,
+    // MeshPhysicalMaterial parameters
+    transmission:   1.0,
+    thickness:      0.80,
+    roughness:      0.04,
+    ior:            1.50,
+    reflectivity:   0.95,
+    envMapIntensity: 4.0,
+    // Iridescence gives the thin-film shimmer that approximates Gleb's premium glass
+    iridescence:    0.60,
+    iridescenceIOR: 1.38,
+    clearcoat:      0.90,
+    clearcoatRoughness: 0.05,
+  },
+  postprocessing: {
+    bloomStrength:   0.55,
+    bloomRadius:     0.42,
+    bloomThreshold:  0.85,
+  },
+};
+
+// =============================================================================
+// BEHAVIORAL STATE CONFIGS
+// =============================================================================
+const MODES = {
+  idle: {
+    innerColor:           TOKEN.color.blue.clone(),
+    innerIntensity:       5.0,
+    glassAttColor:        TOKEN.color.blue.clone(),
+    glassThickness:       0.80,
+    floatAmp:             1.0,
+    idleRotSpeedY:        0.0020,
+    idleRotSpeedX:        0.0005,
+    gazeRatio:            0.70,
+    ringPulse:            false,
+    ringColor:            TOKEN.color.blue.clone(),
+    sparkActive:          false,
+    hexEmissive:          new THREE.Color('#0a2a3a'),
+    hexEmissiveIntensity: 0.3,
+    statusText:           'Idle — hover to interact',
+    synthMode:            'idle',
+    lightBlueIntensity:   1.5,
+    lightOrangeIntensity: 0.0,
+    bloomStrength:        0.55,
+    // Multi-frequency float — organic feel
+    float: { freq1: 0.55, amp1: 0.095, freq2: 0.38, amp2: 0.030, freq3: 0.22, amp3: 0.018 },
+  },
+  speaking: {
+    innerColor:           TOKEN.color.white.clone(),
+    innerIntensity:       7.5,
+    glassAttColor:        new THREE.Color('#88ccff'),
+    glassThickness:       0.90,
+    floatAmp:             1.4,
+    idleRotSpeedY:        0.0030,
+    idleRotSpeedX:        0.0008,
+    gazeRatio:            0.50,
+    ringPulse:            true,
+    ringColor:            TOKEN.color.orange.clone(),
+    sparkActive:          true,
+    hexEmissive:          new THREE.Color('#1a0800'),
+    hexEmissiveIntensity: 0.5,
+    statusText:           'Speaking — generating response',
+    synthMode:            'speaking',
+    lightBlueIntensity:   2.2,
+    lightOrangeIntensity: 1.8,
+    bloomStrength:        0.85,
+    float: { freq1: 0.70, amp1: 0.12, freq2: 0.48, amp2: 0.040, freq3: 0.30, amp3: 0.025 },
+  },
+  thinking: {
+    innerColor:           TOKEN.color.blue.clone(),
+    innerIntensity:       2.5,
+    glassAttColor:        TOKEN.color.purple.clone(),
+    glassThickness:       1.00,
+    floatAmp:             0.6,
+    idleRotSpeedY:        0.0060,
+    idleRotSpeedX:        0.0015,
+    gazeRatio:            0.30,
+    ringPulse:            false,
+    ringColor:            TOKEN.color.blue.clone(),
+    sparkActive:          false,
+    hexEmissive:          new THREE.Color('#12083a'),
+    hexEmissiveIntensity: 0.25,
+    statusText:           'Thinking — processing deeply',
+    synthMode:            'thinking',
+    lightBlueIntensity:   1.0,
+    lightOrangeIntensity: 0.0,
+    bloomStrength:        0.45,
+    float: { freq1: 0.35, amp1: 0.060, freq2: 0.24, amp2: 0.020, freq3: 0.15, amp3: 0.012 },
+  },
+  listening: {
+    innerColor:           TOKEN.color.cyan.clone(),
+    innerIntensity:       4.0,
+    glassAttColor:        TOKEN.color.cyan.clone(),
+    glassThickness:       0.70,
+    floatAmp:             1.0,
+    idleRotSpeedY:        0.0010,
+    idleRotSpeedX:        0.0003,
+    gazeRatio:            1.60,
+    ringPulse:            false,
+    ringColor:            TOKEN.color.cyan.clone(),
+    sparkActive:          false,
+    hexEmissive:          new THREE.Color('#001a2a'),
+    hexEmissiveIntensity: 0.35,
+    statusText:           'Listening — tell me everything',
+    synthMode:            'listening',
+    lightBlueIntensity:   1.8,
+    lightOrangeIntensity: 0.0,
+    bloomStrength:        0.60,
+    float: { freq1: 0.50, amp1: 0.085, freq2: 0.35, amp2: 0.028, freq3: 0.20, amp3: 0.016 },
+  },
+};
+
+// =============================================================================
+// SYNTHETIC AUDIO ENGINE (verbatim from Avatar v2 — battle-tested)
+// =============================================================================
+class SyntheticAudioEngine {
+  constructor() {
+    this.mode = 'idle';
+    this.time = 0;
+    this.speechCycleLength = 0.15 + Math.random() * 0.35;
+    this.speechPhase = 0;
+    this.amplitudes = { subBass: 0, bass: 0, midLow: 0, midHigh: 0, presence: 0 };
+  }
+  setMode(mode) { this.mode = mode; this.time = 0; this.speechPhase = 0; }
+  tick(dt) {
+    this.time += dt;
+    const t = this.time;
+    if (this.mode === 'idle') {
+      const breath = (Math.sin(t * 0.45) * 0.5 + 0.5) * 0.25;
+      this.amplitudes.subBass  = breath * 0.8;
+      this.amplitudes.bass     = breath * 0.4;
+      this.amplitudes.midLow   = 0.015 + Math.random() * 0.015;
+      this.amplitudes.midHigh  = 0.008;
+      this.amplitudes.presence = 0.005;
+    } else if (this.mode === 'speaking') {
+      this.speechPhase += dt;
+      if (this.speechPhase >= this.speechCycleLength) {
+        this.speechPhase -= this.speechCycleLength;
+        this.speechCycleLength = 0.15 + Math.random() * 0.35;
+      }
+      const bp = this.speechPhase / this.speechCycleLength;
+      let burst = bp < 0.2 ? bp / 0.2 : 1.0 - (bp - 0.2) / 0.8;
+      burst = Math.max(0, burst);
+      const phoneme = 0.5 + 0.5 * Math.sin(t * 12.0);
+      const midVal  = burst * phoneme;
+      const formant = Math.sin(bp * Math.PI);
+      const sibilant = Math.sin(t * 5.0) > 0.6 ? 0.3 + Math.random() * 0.4 : 0;
+      this.amplitudes.subBass  = 0.10 + burst * 0.15;
+      this.amplitudes.bass     = 0.15 + burst * 0.50;
+      this.amplitudes.midLow   = 0.10 + formant * 0.55;
+      this.amplitudes.midHigh  = 0.05 + midVal  * 0.65;
+      this.amplitudes.presence = sibilant;
+    } else if (this.mode === 'thinking') {
+      const pulse  = Math.pow(Math.sin(t * 0.8) * 0.5 + 0.5, 2);
+      const tremor = 0.5 + 0.5 * Math.sin(t * 3.5);
+      this.amplitudes.subBass  = pulse * 0.18;
+      this.amplitudes.bass     = pulse * 0.12;
+      this.amplitudes.midLow   = 0.04 + tremor * 0.12;
+      this.amplitudes.midHigh  = 0.06 + pulse  * 0.10;
+      this.amplitudes.presence = 0.015 + Math.random() * 0.04;
+    } else if (this.mode === 'listening') {
+      const breathe = (Math.sin(t * 0.38) * 0.5 + 0.5) * 0.18;
+      this.amplitudes.subBass  = breathe * 0.5;
+      this.amplitudes.bass     = breathe * 0.3;
+      this.amplitudes.midLow   = 0.012;
+      this.amplitudes.midHigh  = 0.008;
+      this.amplitudes.presence = 0.005;
+    }
+    return this.amplitudes;
+  }
+}
+
+// =============================================================================
+// CUSTOM POSTPROCESSING SHADERS
+// =============================================================================
+const ChromaticAberrationShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    offset:   { value: new THREE.Vector2(0.0020, 0.0020) },
+    strength: { value: 1.0 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform vec2 offset;
+    uniform float strength;
+    varying vec2 vUv;
+    void main() {
+      vec2 dir = vUv - vec2(0.5);
+      float dist = length(dir);
+      // Radial CA: strongest at corners, zero at center
+      vec2 offsetScaled = offset * dist * 2.5 * strength;
+      vec2 n = normalize(dir + vec2(0.0001));
+      float r = texture2D(tDiffuse, vUv + n * offsetScaled).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vUv - n * offsetScaled).b;
+      float a = texture2D(tDiffuse, vUv).a;
+      gl_FragColor = vec4(r, g, b, a);
+    }
+  `,
+};
+
+const VignetteShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    offset:   { value: 0.52 },
+    darkness: { value: 0.72 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float offset;
+    uniform float darkness;
+    varying vec2 vUv;
+    void main() {
+      vec4 color = texture2D(tDiffuse, vUv);
+      vec2 uv = (vUv - 0.5) * 2.0;
+      float d = length(uv);
+      float vignette = smoothstep(offset, offset + 0.45, d);
+      color.rgb = mix(color.rgb, color.rgb * (1.0 - darkness), vignette);
+      gl_FragColor = color;
+    }
+  `,
+};
+
+// =============================================================================
+// RENDERER + SCENE SETUP
+// =============================================================================
+const canvas    = document.getElementById('gl-canvas');
+const CANVAS_SZ = 480;
+
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: true,
+  alpha: false,
+  powerPreference: 'high-performance',
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(CANVAS_SZ, CANVAS_SZ);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.20;
+
+const scene  = new THREE.Scene();
+scene.background = TOKEN.color.dark.clone();
+
+const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+camera.position.set(0, 0, 5.2);
+
+// OrbitControls — gentle damping for orbit interaction
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping  = true;
+controls.dampingFactor  = 0.05;
+controls.enableZoom     = false;
+controls.enablePan      = false;
+controls.rotateSpeed    = 0.35;
+controls.minPolarAngle  = Math.PI * 0.25;
+controls.maxPolarAngle  = Math.PI * 0.75;
+
+// =============================================================================
+// PROCEDURAL ENVIRONMENT MAP
+// Six-light environment: key (warm white), electric blue fill, cyan rim,
+// magenta accent, gold specular, orange underlight.
+// This IS the lighting. The HDRI proxy.
+// =============================================================================
+const pmrem = new THREE.PMREMGenerator(renderer);
+pmrem.compileCubemapShader();
+
+const envScene = new THREE.Scene();
+const envSphere = new THREE.Mesh(
+  new THREE.SphereGeometry(50, 32, 32),
+  new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    uniforms: {
+      topColor:    { value: new THREE.Color('#0A10E0') },
+      midColor:    { value: new THREE.Color('#03030A') },
+      bottomColor: { value: new THREE.Color('#180008') },
+    },
+    vertexShader: `
+      varying vec3 vPos;
+      void main() {
+        vPos = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 topColor;
+      uniform vec3 midColor;
+      uniform vec3 bottomColor;
+      varying vec3 vPos;
+      void main() {
+        float t = normalize(vPos).y * 0.5 + 0.5;
+        vec3 c = mix(bottomColor, midColor, smoothstep(0.0, 0.45, t));
+        c = mix(c, topColor, smoothstep(0.45, 1.0, t));
+        gl_FragColor = vec4(c, 1.0);
+      }
+    `,
+  })
+);
+envScene.add(envSphere);
+
+// Six env lights
+[
+  { c: '#FFF8F0', i: 70, p: [-3,  5,  3] },   // Warm white key
+  { c: '#0D16F5', i: 28, p: [ 4,  2, -3] },   // Electric blue fill (Gleb signature)
+  { c: '#18A8D3', i: 20, p: [-4, -1,  2] },   // Cyan rim
+  { c: '#D10DCE', i: 14, p: [ 2, -3, -2] },   // Magenta accent
+  { c: '#C8A84A', i: 16, p: [ 1,  3, -1] },   // Gold specular
+  { c: '#E44224', i: 12, p: [ 0, -5,  1] },   // Orange underlight
+].forEach(({ c, i, p }) => {
+  const l = new THREE.PointLight(c, i, 20);
+  l.position.set(...p);
+  envScene.add(l);
+});
+
+const envTexture = pmrem.fromScene(envScene).texture;
+scene.environment = envTexture;
+setTimeout(() => pmrem.dispose(), 3000);
+
+// =============================================================================
+// SCENE LIGHT RIG (scene-direct lights for glass refractive effects)
+// =============================================================================
+const lightKey = new THREE.DirectionalLight('#FFF8F0', 3.2);
+lightKey.position.set(-3, 4, 3);
+scene.add(lightKey);
+
+const lightFill = new THREE.PointLight('#0D16F5', 1.0, 14);
+lightFill.position.set(3, 1, 2);
+scene.add(lightFill);
+
+const lightRim = new THREE.PointLight('#18A8D3', 0.75, 10);
+lightRim.position.set(-3, -1, -2);
+scene.add(lightRim);
+
+const lightAccent = new THREE.PointLight('#D10DCE', 0.45, 8);
+lightAccent.position.set(2, -2, 1);
+scene.add(lightAccent);
+
+const lightGold = new THREE.PointLight('#C8A84A', 0.60, 9);
+lightGold.position.set(1, 3, -1);
+scene.add(lightGold);
+
+const lightGround = new THREE.PointLight('#E42424', 0.35, 10);
+lightGround.position.set(0, -4, 0);
+scene.add(lightGround);
+
+const lightAmbient = new THREE.AmbientLight('#0A0A1A', 0.9);
+scene.add(lightAmbient);
+
+// Dynamic state-driven lights (intensity changes with mode)
+const lightBlue = new THREE.PointLight(TOKEN.color.blue.getHex(), 1.5, 7);
+lightBlue.position.set(0, 0.5, 2.2);
+scene.add(lightBlue);
+
+const lightOrange = new THREE.PointLight(TOKEN.color.orange.getHex(), 0.0, 8);
+lightOrange.position.set(0.5, -1, 2.0);
+scene.add(lightOrange);
+
+// =============================================================================
+// SCENE HIERARCHY
+// gazeGroup -> avatarGroup -> hex-cube mesh + inner core + rings + particles
+// gaze ONLY on gazeGroup; float/rotation on avatarGroup; never mix on same object
+// =============================================================================
+const gazeGroup  = new THREE.Group();
+scene.add(gazeGroup);
+
+const avatarGroup = new THREE.Group();
+gazeGroup.add(avatarGroup);
+
+// =============================================================================
+// THE HEX-CUBE (Day 1 primary objective)
+//
+// KEY INSIGHT (from Samsung R3 gap analysis):
+//   A cube viewed from its vertex diagonal looks like a perfect hexagon.
+//   The isometric viewing angle is: rotate X by -arctan(1/sqrt(2)) = -35.264 degrees
+//   AND rotate Y by 45 degrees.
+//   Using RoundedBox (chamfered cube) makes the edges soft, improving glass refraction.
+//
+// GEOMETRY: RoundedBoxGeometry from three/addons — chamfered cube
+// The chamfer radius of 0.08 gives subtle edge softening without losing the cube character.
+// Too high chamfer (0.3+) degrades to a sphere. Too low (0.01) = sharp edges that look faceted.
+// =============================================================================
+const hexCubeGeo = new RoundedBoxGeometry(
+  TOKEN.glass.sideLength,    // width
+  TOKEN.glass.sideLength,    // height
+  TOKEN.glass.sideLength,    // depth
+  TOKEN.glass.smoothness,    // segments per side (higher = smoother chamfer)
+  TOKEN.glass.chamfer        // chamfer radius
+);
+
+// MeshPhysicalMaterial — full PBR glass
+// Using the parameters from the v2 avatar but tuned for the hex-cube geometry.
+// ThicknessMap is undefined (no texture) but physical thickness is set to 0.8 —
+// this drives the light attenuation inside the glass volume.
+const hexCubeMat = new THREE.MeshPhysicalMaterial({
+  color:               new THREE.Color('#aaddff'),  // slight blue tint
+  transmission:        TOKEN.glass.transmission,
+  thickness:           TOKEN.glass.thickness,
+  roughness:           TOKEN.glass.roughness,
+  metalness:           0.0,
+  ior:                 TOKEN.glass.ior,
+  reflectivity:        TOKEN.glass.reflectivity,
+  envMapIntensity:     TOKEN.glass.envMapIntensity,
+  transparent:         true,
+  side:                THREE.DoubleSide,             // CRITICAL for glass: render backfaces
+  attenuationColor:    TOKEN.color.blue.clone(),
+  attenuationDistance: 0.5,
+  iridescence:         TOKEN.glass.iridescence,     // Thin-film shimmer — approximates Gleb premium glass
+  iridescenceIOR:      TOKEN.glass.iridescenceIOR,
+  clearcoat:           TOKEN.glass.clearcoat,
+  clearcoatRoughness:  TOKEN.glass.clearcoatRoughness,
+  specularColor:       TOKEN.color.gold.clone(),    // Gold specular — Gleb's signature
+  specularIntensity:   0.95,
+});
+
+const hexCubeMesh = new THREE.Mesh(hexCubeGeo, hexCubeMat);
+
+// THE ISOMETRIC ROTATION — this is what makes the cube read as a hexagonal face.
+// Bake the base isometric rotation into the mesh (not the group) so that
+// the continuous slow rotation in the animation loop rotates around the
+// isometric axis, maintaining the hex face throughout the animation.
+hexCubeMesh.rotation.order = 'YXZ';
+hexCubeMesh.rotation.x = TOKEN.glass.rotX;  // -35.264 degrees
+hexCubeMesh.rotation.y = TOKEN.glass.rotY;  //  45.000 degrees
+avatarGroup.add(hexCubeMesh);
+
+// =============================================================================
+// INNER EMISSIVE CORE (floats inside the hex-cube)
+// Smaller sphere that provides the colored glow visible through the glass
+// =============================================================================
+const innerGeo = new THREE.SphereGeometry(0.42, 48, 48);
+const innerMat = new THREE.MeshStandardMaterial({
+  color:             TOKEN.color.blue.clone(),
+  emissive:          TOKEN.color.blue.clone(),
+  emissiveIntensity: 5.0,
+  roughness:         1.0,
+  metalness:         0.0,
+  transparent:       true,
+  opacity:           0.92,
+});
+const innerMesh = new THREE.Mesh(innerGeo, innerMat);
+avatarGroup.add(innerMesh);
+
+// Inner glow haze — soft additive sphere just outside the emissive core
+const hazeGeo = new THREE.SphereGeometry(0.60, 24, 24);
+const hazeMat = new THREE.MeshBasicMaterial({
+  color:      TOKEN.color.blue.clone(),
+  transparent: true,
+  opacity:    0.12,
+  side:       THREE.BackSide,
+  depthWrite: false,
+  blending:   THREE.AdditiveBlending,
+});
+const hazeMesh = new THREE.Mesh(hazeGeo, hazeMat);
+avatarGroup.add(hazeMesh);
+
+// =============================================================================
+// ORBITAL RING SYSTEM (3 rings at different inclinations and speeds)
+//
+// State-dependent behavior:
+//   idle:      slow blue rings, 45% opacity
+//   speaking:  pulsing orange rings, 1.8x speed
+//   thinking:  very slow, 0.3x speed, purple
+//   listening: medium cyan rings, forward-tilted
+//
+// Rings DO NOT rotate with hexCubeMesh — they stay in world space to create
+// the feeling of the hex-cube sitting inside an orbital system.
+// =============================================================================
+const RING_CONFIGS = [
+  // [radius, tube, rotX, rotZ, speed, index]
+  // Ring 1: equatorial — closest to XZ plane
+  [1.62, 0.009, Math.PI * 0.08,  Math.PI * 0.04, +0.0048, 0],
+  // Ring 2: tilted ~30 degrees — medium distance
+  [1.98, 0.007, Math.PI * 0.28, -Math.PI * 0.12, -0.0062, 1],
+  // Ring 3: nearly polar — widest orbit, slowest
+  [1.42, 0.006, Math.PI * 0.48,  Math.PI * 0.36, +0.0035, 2],
+];
+
+const rings = RING_CONFIGS.map(([radius, tube, rotX, rotZ, speed]) => {
+  const geo = new THREE.TorusGeometry(radius, tube, 16, 200);
+  const mat = new THREE.MeshStandardMaterial({
+    color:             TOKEN.color.blue.clone(),
+    emissive:          TOKEN.color.blue.clone(),
+    emissiveIntensity: 1.2,
+    roughness:         0.08,
+    metalness:         0.85,
+    transparent:       true,
+    opacity:           0.50,
+    depthWrite:        false,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.set(rotX, 0, rotZ);
+  mesh.userData.speed    = speed;
+  mesh.userData.baseRotX = rotX;
+  mesh.userData.baseRotZ = rotZ;
+  avatarGroup.add(mesh);
+  return mesh;
+});
+
+// =============================================================================
+// ORANGE SPARK PARTICLES (appear in speaking mode)
+// =============================================================================
+const SPARK_COUNT = 120;
+const sparkGeo    = new THREE.BufferGeometry();
+const sparkPos    = new Float32Array(SPARK_COUNT * 3);
+const sparkAngles = new Float32Array(SPARK_COUNT);
+const sparkRadii  = new Float32Array(SPARK_COUNT);
+const sparkElevs  = new Float32Array(SPARK_COUNT);
+const sparkSpeeds = new Float32Array(SPARK_COUNT);
+
+for (let si = 0; si < SPARK_COUNT; si++) {
+  sparkAngles[si] = Math.random() * Math.PI * 2;
+  sparkRadii[si]  = 0.65 + Math.random() * 0.50;
+  sparkElevs[si]  = (Math.random() - 0.5) * 0.85;
+  sparkSpeeds[si] = (Math.random() > 0.5 ? 1 : -1) * (0.012 + Math.random() * 0.022);
+  sparkPos[si*3]   = Math.cos(sparkAngles[si]) * sparkRadii[si];
+  sparkPos[si*3+1] = sparkElevs[si];
+  sparkPos[si*3+2] = Math.sin(sparkAngles[si]) * sparkRadii[si];
+}
+sparkGeo.setAttribute('position', new THREE.BufferAttribute(sparkPos, 3));
+const sparkMat = new THREE.PointsMaterial({
+  color: TOKEN.color.orange.clone(), size: 0.028, sizeAttenuation: true,
+  transparent: true, opacity: 0.0, depthWrite: false, blending: THREE.AdditiveBlending,
+});
+const sparkParticles = new THREE.Points(sparkGeo, sparkMat);
+avatarGroup.add(sparkParticles);
+
+// =============================================================================
+// AMBIENT PARTICLES (blue + gold, always visible, orbit at distance)
+// =============================================================================
+const BLUE_COUNT = 200;
+const blueGeo    = new THREE.BufferGeometry();
+const bluePos    = new Float32Array(BLUE_COUNT * 3);
+const blueAngles = new Float32Array(BLUE_COUNT);
+const blueRadii  = new Float32Array(BLUE_COUNT);
+const blueElevs  = new Float32Array(BLUE_COUNT);
+const blueSpeeds = new Float32Array(BLUE_COUNT);
+
+for (let bi = 0; bi < BLUE_COUNT; bi++) {
+  blueAngles[bi] = Math.random() * Math.PI * 2;
+  blueRadii[bi]  = 1.85 + Math.random() * 1.50;
+  blueElevs[bi]  = (Math.random() - 0.5) * 1.40;
+  blueSpeeds[bi] = (Math.random() - 0.5) * 0.006 + 0.002;
+  bluePos[bi*3]   = Math.cos(blueAngles[bi]) * blueRadii[bi];
+  bluePos[bi*3+1] = blueElevs[bi];
+  bluePos[bi*3+2] = Math.sin(blueAngles[bi]) * blueRadii[bi];
+}
+blueGeo.setAttribute('position', new THREE.BufferAttribute(bluePos, 3));
+const blueMat = new THREE.PointsMaterial({
+  color: TOKEN.color.blue.clone(), size: 0.022, sizeAttenuation: true,
+  transparent: true, opacity: 0.38, depthWrite: false, blending: THREE.AdditiveBlending,
+});
+const blueParticles = new THREE.Points(blueGeo, blueMat);
+avatarGroup.add(blueParticles);
+
+// Gold accent particles
+const GOLD_COUNT = 65;
+const goldGeo    = new THREE.BufferGeometry();
+const goldPos    = new Float32Array(GOLD_COUNT * 3);
+const goldAngles = new Float32Array(GOLD_COUNT);
+const goldRadii  = new Float32Array(GOLD_COUNT);
+const goldElevs  = new Float32Array(GOLD_COUNT);
+const goldSpeeds = new Float32Array(GOLD_COUNT);
+
+for (let gi = 0; gi < GOLD_COUNT; gi++) {
+  goldAngles[gi] = Math.random() * Math.PI * 2;
+  goldRadii[gi]  = 1.40 + Math.random() * 0.60;
+  goldElevs[gi]  = (Math.random() - 0.5) * 0.60;
+  goldSpeeds[gi] = -(Math.random() * 0.005 + 0.003);
+  goldPos[gi*3]   = Math.cos(goldAngles[gi]) * goldRadii[gi];
+  goldPos[gi*3+1] = goldElevs[gi];
+  goldPos[gi*3+2] = Math.sin(goldAngles[gi]) * goldRadii[gi];
+}
+goldGeo.setAttribute('position', new THREE.BufferAttribute(goldPos, 3));
+const goldMat = new THREE.PointsMaterial({
+  color: TOKEN.color.gold.clone(), size: 0.018, sizeAttenuation: true,
+  transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending,
+});
+const goldParticles = new THREE.Points(goldGeo, goldMat);
+avatarGroup.add(goldParticles);
+
+// =============================================================================
+// POSTPROCESSING STACK
+// Order: RenderPass -> UnrealBloom -> ChromaticAberration -> Vignette -> OutputPass
+// OutputPass MUST be last in r0.161.0 for correct SRGB output
+// =============================================================================
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(CANVAS_SZ, CANVAS_SZ),
+  TOKEN.postprocessing.bloomStrength,
+  TOKEN.postprocessing.bloomRadius,
+  TOKEN.postprocessing.bloomThreshold
+);
+composer.addPass(bloomPass);
+
+const chromaticPass = new ShaderPass(ChromaticAberrationShader);
+composer.addPass(chromaticPass);
+
+const vignettePass = new ShaderPass(VignetteShader);
+composer.addPass(vignettePass);
+
+// OutputPass ensures correct color space / tonemapping output in r0.161.0
+composer.addPass(new OutputPass());
+
+// =============================================================================
+// STATE MACHINE
+// =============================================================================
+let currentMode = 'idle';
+
+// Smoothed values — lerped toward target config each frame
+const smooth = {
+  innerColor:      TOKEN.color.blue.clone(),
+  innerIntensity:  5.0,
+  glassThickness:  0.80,
+  glassAttColor:   TOKEN.color.blue.clone(),
+  hexEmissiveR:    0.04,
+  hexEmissiveG:    0.10,
+  hexEmissiveB:    0.15,
+  hexEmissiveI:    0.3,
+  gazeRotX:        0.0,
+  gazeRotY:        0.0,
+  bloomStrength:   0.55,
+  lightBlueI:      1.5,
+  lightOrangeI:    0.0,
+  ringColorR:      TOKEN.color.blue.r,
+  ringColorG:      TOKEN.color.blue.g,
+  ringColorB:      TOKEN.color.blue.b,
+  // Multi-frequency float (3 sine waves for organic motion)
+  floatPhase1:     0.0,
+  floatPhase2:     Math.PI * 0.33,   // offset phases for non-synchronous motion
+  floatPhase3:     Math.PI * 0.67,
+};
+
+// =============================================================================
+// ANIMATION HELPERS
+// =============================================================================
+function lerp(a, b, t)  { return a + (b - a) * t; }
+function lerpC(cur, tgt, t) {
+  cur.r = lerp(cur.r, tgt.r, t);
+  cur.g = lerp(cur.g, tgt.g, t);
+  cur.b = lerp(cur.b, tgt.b, t);
+}
+
+// =============================================================================
+// CURSOR TRACKING
+// =============================================================================
+const mouse = new THREE.Vector2();
+document.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const cx = rect.left + rect.width  / 2;
+  const cy = rect.top  + rect.height / 2;
+  mouse.x = (e.clientX - cx) / (rect.width  / 2);
+  mouse.y = (e.clientY - cy) / (rect.height / 2);
+});
+document.addEventListener('touchmove', e => {
+  const touch = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  const cx = rect.left + rect.width  / 2;
+  const cy = rect.top  + rect.height / 2;
+  mouse.x = (touch.clientX - cx) / (rect.width  / 2);
+  mouse.y = (touch.clientY - cy) / (rect.height / 2);
+}, { passive: true });
+
+// =============================================================================
+// DOM REFERENCES
+// =============================================================================
+const statusEl = document.getElementById('status-text');
+const bars = [];
+for (let i = 0; i < 9; i++) bars.push(document.getElementById('bar' + i));
+
+function updateUI(mode) {
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+  document.querySelectorAll('.mode-row').forEach(row => {
+    row.classList.toggle('active', row.dataset.mode === mode);
+  });
+  if (statusEl) statusEl.textContent = MODES[mode].statusText;
+}
+
+function updateAudioBars(amps) {
+  const vals = [
+    amps.subBass * 0.5,
+    amps.bass    * 0.75,
+    amps.midLow  * 0.90,
+    amps.midHigh * 1.00,
+    amps.midHigh * 0.95,
+    amps.midHigh * 0.80,
+    amps.midLow  * 0.70,
+    amps.bass    * 0.55,
+    amps.subBass * 0.40,
+  ];
+  bars.forEach((bar, i) => {
+    const h = 2 + vals[i] * 16;
+    bar.style.height  = h + 'px';
+    bar.style.opacity = String(0.18 + vals[i] * 0.65);
+  });
+}
+
+// =============================================================================
+// MODE SWITCH — exposed globally for onclick handlers (ES module scope fix)
+// =============================================================================
+function setMode(mode) {
+  if (!MODES[mode]) return;
+  currentMode = mode;
+  synth.setMode(MODES[mode].synthMode);
+  updateUI(mode);
+}
+window.setMode = setMode;   // Required: ES modules don't pollute global scope
+
+// PostMessage API (for WordPress iframe embed)
+const ALLOWED_ORIGINS = [
+  'https://purebrain.ai',
+  'https://www.purebrain.ai',
+  'http://localhost:3000',
+  'http://localhost:5173',
+];
+window.addEventListener('message', e => {
+  const isAllowed = e.origin === 'null' ||
+    ALLOWED_ORIGINS.some(o => e.origin === o || e.origin.endsWith('.purebrain.ai'));
+  if (!isAllowed) return;
+  if (!e.data || !e.data.type) return;
+  if (e.data.type === 'SET_MODE' && e.data.mode) setMode(e.data.mode);
+  else if (e.data.type === 'PING' && window.parent !== window) {
+    window.parent.postMessage({ type: 'PONG', mode: currentMode, version: '2.1-hexcube' }, '*');
+  }
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.key === '1') setMode('idle');
+  else if (e.key === '2') setMode('speaking');
+  else if (e.key === '3') setMode('thinking');
+  else if (e.key === '4') setMode('listening');
+});
+
+// =============================================================================
+// SYNTH + CLOCK
+// =============================================================================
+const synth = new SyntheticAudioEngine();
+const clock  = new THREE.Clock();
+
+// =============================================================================
+// MAIN ANIMATION LOOP
+// =============================================================================
+let readyFrames   = 0;
+let loadingHidden = false;
+
+// Base isometric rotation — this is the hex-cube's resting pose.
+// The Y rotation from TOKEN.glass.rotY is baked at mesh init.
+// The animation adds additional slow Y rotation ON TOP of this base.
+const HEX_BASE_ROT_X = TOKEN.glass.rotX;
+const HEX_BASE_ROT_Y = TOKEN.glass.rotY;
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const dt  = Math.min(clock.getDelta(), 0.05);
+  const t   = clock.getElapsedTime();
+  const cfg = MODES[currentMode];
+
+  // Dismiss loading screen after a few frames (ensures scene rendered before hiding)
+  if (!loadingHidden) {
+    readyFrames++;
+    if (readyFrames >= 4) {
+      loadingHidden = true;
+      const ls = document.getElementById('loading-screen');
+      if (ls) ls.classList.add('hidden');
+      if (window.parent !== window) {
+        window.parent.postMessage({ type: 'READY', version: '2.1-hexcube' }, '*');
+      }
+    }
+  }
+
+  const amps = synth.tick(dt);
+
+  // ============================================================
+  // SMOOTH TARGET VALUES (lerp toward current mode config)
+  // ============================================================
+  const LF = 0.045;  // Lerp factor — ~0.045 gives ~200ms smooth transition feel
+  lerpC(smooth.innerColor,    cfg.innerColor,    LF);
+  lerpC(smooth.glassAttColor, cfg.glassAttColor, LF);
+  smooth.innerIntensity = lerp(smooth.innerIntensity, cfg.innerIntensity, LF);
+  smooth.glassThickness = lerp(smooth.glassThickness, cfg.glassThickness, LF);
+  smooth.bloomStrength  = lerp(smooth.bloomStrength,  cfg.bloomStrength,  LF);
+  smooth.lightBlueI     = lerp(smooth.lightBlueI,     cfg.lightBlueIntensity,   LF * 0.7);
+  smooth.lightOrangeI   = lerp(smooth.lightOrangeI,   cfg.lightOrangeIntensity, LF * 0.7);
+  smooth.ringColorR     = lerp(smooth.ringColorR, cfg.ringColor.r, LF);
+  smooth.ringColorG     = lerp(smooth.ringColorG, cfg.ringColor.g, LF);
+  smooth.ringColorB     = lerp(smooth.ringColorB, cfg.ringColor.b, LF);
+  smooth.hexEmissiveR   = lerp(smooth.hexEmissiveR, cfg.hexEmissive.r, LF);
+  smooth.hexEmissiveG   = lerp(smooth.hexEmissiveG, cfg.hexEmissive.g, LF);
+  smooth.hexEmissiveB   = lerp(smooth.hexEmissiveB, cfg.hexEmissive.b, LF);
+  smooth.hexEmissiveI   = lerp(smooth.hexEmissiveI, cfg.hexEmissiveIntensity, LF);
+
+  // ============================================================
+  // AUDIO-REACTIVE SCALE ON HEX-CUBE
+  // Scale reacts to bass amplitude — cube breathes with the audio
+  // Capped at 1.12x to avoid visual jarring
+  // ============================================================
+  const bassScale   = Math.min(amps.bass * 0.10, 0.12);
+  const targetScale = 1.0 + bassScale;
+  const curScale    = hexCubeMesh.scale.x;
+  const newScale    = lerp(curScale, targetScale, 0.10);
+  hexCubeMesh.scale.setScalar(newScale);
+
+  // ============================================================
+  // HEX-CUBE ROTATION
+  // The mesh was initialized at the isometric angle (X: -35.264, Y: 45).
+  // We ADD a slow continuous Y rotation to this base pose.
+  // This keeps the hex-face orientation stable while still animating.
+  // Mode-specific speed gives each state a distinct feel.
+  // ============================================================
+  hexCubeMesh.rotation.y += cfg.idleRotSpeedY;
+  hexCubeMesh.rotation.x  = HEX_BASE_ROT_X + Math.sin(t * 0.35) * 0.0003 * cfg.floatAmp;
+
+  // ============================================================
+  // MULTI-FREQUENCY FLOAT ANIMATION
+  // Three sine waves at different frequencies create organic, non-repeating motion.
+  // This is the "breathing" feel Gleb's work has.
+  // ============================================================
+  const f = cfg.float;
+  smooth.floatPhase1 += dt * f.freq1;
+  smooth.floatPhase2 += dt * f.freq2;
+  smooth.floatPhase3 += dt * f.freq3;
+
+  const floatY = Math.sin(smooth.floatPhase1) * f.amp1 * cfg.floatAmp
+               + Math.sin(smooth.floatPhase2) * f.amp2 * cfg.floatAmp;
+  const floatX = Math.sin(smooth.floatPhase3) * f.amp3 * cfg.floatAmp;
+
+  avatarGroup.position.y = lerp(avatarGroup.position.y, floatY, 0.06);
+  avatarGroup.position.x = lerp(avatarGroup.position.x, floatX, 0.06);
+
+  // ============================================================
+  // APPLY MATERIAL UPDATES
+  // ============================================================
+  // Inner core
+  innerMesh.material.color.copy(smooth.innerColor);
+  innerMesh.material.emissive.copy(smooth.innerColor);
+  const audioGlow = amps.midHigh * 3.5;
+  innerMesh.material.emissiveIntensity = lerp(
+    innerMesh.material.emissiveIntensity,
+    smooth.innerIntensity + audioGlow,
+    0.15
+  );
+  hazeMesh.material.color.copy(smooth.innerColor);
+  hazeMesh.material.opacity = lerp(hazeMesh.material.opacity, 0.06 + amps.bass * 0.12, 0.10);
+
+  // Hex-cube: attenuation color tracks state color
+  hexCubeMat.attenuationColor.copy(smooth.glassAttColor);
+  hexCubeMat.thickness = smooth.glassThickness;
+  // Subtle emissive on glass — gives it a very faint inner glow
+  hexCubeMat.emissive = new THREE.Color(smooth.hexEmissiveR, smooth.hexEmissiveG, smooth.hexEmissiveB);
+  hexCubeMat.emissiveIntensity = smooth.hexEmissiveI;
+
+  // Lights
+  lightBlue.intensity   = smooth.lightBlueI;
+  lightOrange.intensity = smooth.lightOrangeI;
+
+  // Bloom reacts to audio midHigh (voice harmonics)
+  bloomPass.strength = smooth.bloomStrength + amps.midHigh * 0.4;
+
+  // ============================================================
+  // RING SYSTEM ANIMATION
+  // State-driven speed and pulse behavior
+  // ============================================================
+  const ringColor = new THREE.Color(smooth.ringColorR, smooth.ringColorG, smooth.ringColorB);
+  const speedMult = currentMode === 'speaking'  ? 1.8
+                  : currentMode === 'thinking'  ? 0.3
+                  : currentMode === 'listening' ? 1.2
+                  : 1.0;
+
+  rings.forEach((ring, idx) => {
+    ring.rotation.z += ring.userData.speed * speedMult;
+
+    if (cfg.ringPulse) {
+      const phaseSeed = idx * 2.2;
+      const pulse     = 0.55 + 0.45 * Math.sin(t * 2.8 + phaseSeed);
+      ring.material.opacity           = lerp(ring.material.opacity,           0.30 + pulse * 0.60, 0.12);
+      ring.material.emissiveIntensity = lerp(ring.material.emissiveIntensity, 0.8  + pulse * 2.0,  0.12);
+    } else {
+      ring.material.opacity           = lerp(ring.material.opacity,           0.45, 0.06);
+      ring.material.emissiveIntensity = lerp(ring.material.emissiveIntensity, 1.0,  0.06);
+    }
+    ring.material.color.copy(ringColor);
+    ring.material.emissive.copy(ringColor);
+  });
+
+  // ============================================================
+  // SPARK PARTICLES (speaking mode only)
+  // ============================================================
+  const sparkTargetOpacity = cfg.sparkActive ? 0.72 : 0.0;
+  sparkMat.opacity = lerp(sparkMat.opacity, sparkTargetOpacity, 0.08);
+  const sparkPosAttr  = sparkGeo.attributes.position;
+  const sparkSpeedMul = currentMode === 'speaking' ? 1.0 : 0.5;
+  for (let si = 0; si < SPARK_COUNT; si++) {
+    sparkAngles[si] += sparkSpeeds[si] * sparkSpeedMul;
+    const vertOsc = Math.sin(t * 1.5 + si * 0.4) * 0.04;
+    sparkPosAttr.setXYZ(
+      si,
+      Math.cos(sparkAngles[si]) * sparkRadii[si],
+      sparkElevs[si] + vertOsc,
+      Math.sin(sparkAngles[si]) * sparkRadii[si]
+    );
+  }
+  sparkPosAttr.needsUpdate = true;
+
+  // ============================================================
+  // AMBIENT PARTICLE ORBITS
+  // ============================================================
+  const bluePosAttr = blueGeo.attributes.position;
+  for (let bi = 0; bi < BLUE_COUNT; bi++) {
+    blueAngles[bi] += blueSpeeds[bi];
+    const vertOsc = Math.sin(t * 0.4 + bi * 0.2) * 0.025;
+    bluePosAttr.setXYZ(
+      bi,
+      Math.cos(blueAngles[bi]) * blueRadii[bi],
+      blueElevs[bi] + vertOsc,
+      Math.sin(blueAngles[bi]) * blueRadii[bi]
+    );
+  }
+  bluePosAttr.needsUpdate = true;
+
+  const goldPosAttr = goldGeo.attributes.position;
+  for (let gi = 0; gi < GOLD_COUNT; gi++) {
+    goldAngles[gi] += goldSpeeds[gi];
+    goldPosAttr.setXYZ(
+      gi,
+      Math.cos(goldAngles[gi]) * goldRadii[gi],
+      goldElevs[gi],
+      Math.sin(goldAngles[gi]) * goldRadii[gi]
+    );
+  }
+  goldPosAttr.needsUpdate = true;
+
+  // ============================================================
+  // CURSOR GAZE TRACKING
+  // gazeGroup only handles gaze — avatarGroup handles float
+  // Separated to prevent the gaze+rotation conflict bug (documented in memory)
+  // ============================================================
+  const GAZE_TRACK  = 0.20;
+  const GAZE_SMOOTH = 0.05;
+  const gazeIntensity = cfg.gazeRatio;
+  const targetRotY =  mouse.x * GAZE_TRACK * gazeIntensity;
+  const targetRotX = -mouse.y * GAZE_TRACK * gazeIntensity * 0.6;
+  smooth.gazeRotY = lerp(smooth.gazeRotY, targetRotY, GAZE_SMOOTH);
+  smooth.gazeRotX = lerp(smooth.gazeRotX, targetRotX, GAZE_SMOOTH);
+  gazeGroup.rotation.y = smooth.gazeRotY;
+  gazeGroup.rotation.x = smooth.gazeRotX;
+
+  // ============================================================
+  // DOM UPDATES
+  // ============================================================
+  updateAudioBars(amps);
+  controls.update();
+  composer.render();
+}
+
+// =============================================================================
+// AUTO DEMO CYCLE (cycles through all 4 modes every 5s)
+// Stops when user interacts manually
+// =============================================================================
+const DEMO_MODES = ['idle', 'listening', 'thinking', 'speaking'];
+let demoIndex  = 0;
+let demoActive = true;
+let demoTimer  = null;
+
+function scheduleDemoNext() {
+  demoTimer = setTimeout(() => {
+    if (!demoActive) return;
+    demoIndex = (demoIndex + 1) % DEMO_MODES.length;
+    setMode(DEMO_MODES[demoIndex]);
+    scheduleDemoNext();
+  }, 5000);
+}
+
+// Start demo after 3 seconds (let user see idle state first)
+setTimeout(() => { if (demoActive) scheduleDemoNext(); }, 3000);
+
+function stopDemo() {
+  demoActive = false;
+  if (demoTimer) { clearTimeout(demoTimer); demoTimer = null; }
+}
+
+document.querySelectorAll('.mode-btn, .mode-row').forEach(el => {
+  el.addEventListener('click', stopDemo);
+});
+document.addEventListener('keydown', e => {
+  if (['1','2','3','4'].includes(e.key)) stopDemo();
+});
+
+// Fallback: hide loading after 8s regardless
+setTimeout(() => {
+  const ls = document.getElementById('loading-screen');
+  if (ls && !ls.classList.contains('hidden')) ls.classList.add('hidden');
+}, 8000);
+
+// =============================================================================
+// LAUNCH
+// =============================================================================
+updateUI('idle');
+animate();
+
+</script>
+</body>
+</html>

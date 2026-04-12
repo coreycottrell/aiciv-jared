@@ -1,0 +1,36 @@
+#!/bin/bash
+# Log Server Watchdog — pings verify-payment endpoint every 5 min
+# If it fails 2x in a row, restarts aether-logserver service
+
+ENDPOINT="https://localhost:8443/api/spots-status"
+LOG="/home/jared/projects/AI-CIV/aether/logs/logserver-watchdog.log"
+FAIL_FILE="/tmp/logserver-watchdog-fails"
+
+# Test the endpoint
+RESPONSE=$(curl -sk --max-time 10 "$ENDPOINT" 2>&1)
+HTTP_CODE=$(curl -sk --max-time 10 -o /dev/null -w "%{http_code}" "$ENDPOINT" 2>/dev/null)
+
+if [ "$HTTP_CODE" = "200" ]; then
+    # Healthy — reset fail counter
+    echo 0 > "$FAIL_FILE"
+else
+    # Failed — increment counter
+    FAILS=$(cat "$FAIL_FILE" 2>/dev/null || echo 0)
+    FAILS=$((FAILS + 1))
+    echo "$FAILS" > "$FAIL_FILE"
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) WARN: Log server health check failed ($HTTP_CODE), fail count: $FAILS" >> "$LOG"
+    
+    if [ "$FAILS" -ge 2 ]; then
+        echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) ACTION: Restarting aether-logserver (2+ consecutive failures)" >> "$LOG"
+        sudo systemctl restart aether-logserver
+        sleep 5
+        # Verify restart worked
+        NEW_CODE=$(curl -sk --max-time 10 -o /dev/null -w "%{http_code}" "$ENDPOINT" 2>/dev/null)
+        if [ "$NEW_CODE" = "200" ]; then
+            echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) RECOVERED: Log server restarted successfully" >> "$LOG"
+            echo 0 > "$FAIL_FILE"
+        else
+            echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) CRITICAL: Log server restart failed! Manual intervention needed" >> "$LOG"
+        fi
+    fi
+fi

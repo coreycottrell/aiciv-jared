@@ -464,3 +464,102 @@ fi
 ---
 
 **This skill runs autonomously. No human approval needed.**
+
+---
+
+## Newsletter Deliverability Rules (UPDATED 2026-02-19)
+
+**Source**: LinkedIn newsletter spam analysis. LinkedIn's email infrastructure carries a damaged sender reputation with Gmail - 45% of all email phishing in 2025 impersonated LinkedIn. These rules minimize content-side signals that amplify the infrastructure problem.
+
+Full analysis: `docs/from-telegram/linkedin-newsletter-spam-analysis-2026-02-18.md`
+
+---
+
+### RULE 1: Whitelist Block (MANDATORY - Every Issue)
+
+Every LinkedIn newsletter issue MUST include this block ABOVE THE FOLD (before first content section):
+
+> "Gmail user? Quick fix: LinkedIn newsletters sometimes end up in spam or trigger a safety warning. This is a known issue with LinkedIn's email system, not specific to this newsletter. To fix it permanently: find this email, click the three dots in the top right, select 'Report not spam' or 'Looks safe,' then add newsletters-noreply@linkedin.com to your Gmail contacts. You'll only need to do this once."
+
+Full templates (3 versions for different contexts): `exports/newsletter-whitelist-template.md`
+
+---
+
+### RULE 2: Subject Line Restrictions (MANDATORY)
+
+Subject lines MUST NOT contain:
+- Financial loss language: "costing", "losing", "missing out", "leaving money on the table"
+- Conflict/division framing: pitting CEO vs team, leadership vs employees
+- Crisis language: "gap", "crisis", "danger" (in subject lines)
+- Implied insider/secret knowledge: "what they don't tell you", "the hidden truth"
+- Scarcity urgency: "don't miss", "act now", "limited time"
+- AI-as-threat framing combined with urgency
+- ALL CAPS words
+- Exclamation points
+- More than 60 characters (50 preferred for mobile)
+
+Subject lines SHOULD use:
+- "How to...", "A framework for...", "What changes when..."
+- "The difference between...", "Bridging...", "A closer look at..."
+- "This week: [specific topic]"
+- Specific and concrete over vague and ominous
+
+Full swipe file with 10 ready-to-use subject lines: `exports/newsletter-subject-line-guidelines.md`
+
+---
+
+### RULE 3: Link Density (MANDATORY)
+
+- Maximum 3 external links per newsletter issue
+- No URL shorteners (bit.ly, tinyurl, etc.) - these trigger spam filters
+- All links must use descriptive anchor text (never raw URLs, never "click here")
+- No link-heavy footers beyond the standard LinkedIn unsubscribe link
+
+---
+
+### RULE 4: Spam Trigger Words (MANDATORY)
+
+These words/phrases must not appear in newsletter subject lines or body content:
+
+High-risk (remove): "Free" (standalone), "Act now", "Limited time", "Don't miss", "Winner", "Guaranteed", "No obligation", "Risk-free", "Click here", "Buy now", "Urgent", "Danger", "Earn money", "Make money"
+
+Medium-risk (use with care): "Revolutionary", "Transform/Transformation" (okay in educational context, not urgency context), "Exclusive" (okay alone, not paired with scarcity)
+
+---
+
+### RULE 5: Content Structure (MANDATORY)
+
+- Word count under 800 words per issue
+- Paragraphs: 2-3 sentences maximum
+- No ALL CAPS sections anywhere in the body
+- Maximum two exclamation points in the entire body
+- At least two subheadings or bullet sections for scan-ability
+- At least one concrete actionable element per issue
+- No "secret/insider/hidden knowledge" framing in body text
+
+---
+
+### RULE 6: Engagement Element (MANDATORY)
+
+Every issue must end with ONE specific question inviting a reply. Example format:
+> "Hit reply and tell me: [specific question relevant to this issue's topic]"
+
+Replies from subscribers are a strong positive deliverability signal to Gmail's algorithms. One question only - multiple questions reduce reply rate.
+
+---
+
+### RULE 7: Publishing Frequency (MANDATORY)
+
+- Maintain weekly OR bi-weekly cadence consistently
+- Never publish more than one issue in a 48-hour window
+- Irregular spikes in sending volume are a spam signal
+
+---
+
+### Pre-Publish Checklist Reference
+
+Full 7-gate checklist (copy-paste ready for non-technical use): `exports/newsletter-publishing-checklist.md`
+
+---
+
+*Deliverability rules updated: 2026-02-19 | Source: marketing-strategist | Based on analysis: web-researcher 2026-02-18*

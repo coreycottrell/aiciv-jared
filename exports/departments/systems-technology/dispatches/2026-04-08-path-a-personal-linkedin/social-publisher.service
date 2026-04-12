@@ -1,0 +1,69 @@
+[Unit]
+Description=Aether Social Publisher (LinkedIn)
+Documentation=https://github.com/coreycottrell/aether
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jared
+Group=jared
+WorkingDirectory=/home/jared/projects/AI-CIV/aether
+EnvironmentFile=/home/jared/projects/AI-CIV/aether/.env
+ExecStart=/usr/bin/python3 /home/jared/projects/AI-CIV/aether/tools/social_publisher.py
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+StandardOutput=append:/home/jared/projects/AI-CIV/aether/logs/social_publisher.systemd.log
+StandardError=append:/home/jared/projects/AI-CIV/aether/logs/social_publisher.systemd.log
+SyslogIdentifier=social-publisher
+
+# --- Security Hardening ---
+# Deny privilege escalation
+NoNewPrivileges=true
+
+# Filesystem protection: entire system read-only except allowed paths
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/jared/projects/AI-CIV/aether/logs /home/jared/projects/AI-CIV/aether/.social_publisher_state.json /home/jared/projects/AI-CIV/aether/data
+
+# Private /tmp and /var/tmp
+PrivateTmp=true
+
+# Kernel / device protection
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+PrivateDevices=true
+
+# Capability restrictions
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# System call filtering
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @debug @cpu-emulation @obsolete
+SystemCallArchitectures=native
+
+# Network: allow only IPv4/IPv6 (no AF_UNIX weirdness needed for LinkedIn HTTPS)
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+# Resource limits
+LimitNOFILE=4096
+LimitNPROC=512
+
+# UMask
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

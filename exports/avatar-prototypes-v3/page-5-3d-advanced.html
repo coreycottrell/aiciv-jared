@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aether Avatars — 3D Advanced</title>
+<style>
+  :root {
+    --blue: #2a93c1;
+    --orange: #f1420b;
+    --dark: #080a12;
+    --card-bg: rgba(10,14,28,0.85);
+    --card-border: rgba(42,147,193,0.18);
+    --label-color: #8ab8d4;
+    --label-size: 13px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--dark);
+    color: #e0eaf0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 48px 24px 64px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  header h1 {
+    font-size: 26px;
+    font-weight: 300;
+    letter-spacing: 0.08em;
+    background: linear-gradient(90deg, var(--blue), #7dd4f0, var(--orange));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  header p {
+    margin-top: 10px;
+    font-size: 13px;
+    color: rgba(140,170,190,0.55);
+    letter-spacing: 0.04em;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    max-width: 560px;
+    width: 100%;
+  }
+
+  .card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 20px 20px 22px;
+    transition: border-color 0.3s, box-shadow 0.3s;
+    cursor: default;
+  }
+
+  .card:hover {
+    border-color: rgba(42,147,193,0.5);
+    box-shadow: 0 0 32px rgba(42,147,193,0.12), 0 8px 40px rgba(0,0,0,0.5);
+  }
+
+  .canvas-wrap {
+    position: relative;
+    width: 250px;
+    height: 250px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #030508;
+  }
+
+  canvas {
+    display: block;
+    width: 250px !important;
+    height: 250px !important;
+  }
+
+  .label {
+    text-align: center;
+  }
+
+  .label h3 {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: #c8dce8;
+    text-transform: uppercase;
+  }
+
+  .label p {
+    font-size: 11px;
+    color: rgba(140,170,190,0.55);
+    margin-top: 4px;
+    letter-spacing: 0.03em;
+  }
+
+  footer {
+    margin-top: 56px;
+    text-align: center;
+    font-size: 11px;
+    color: rgba(140,170,190,0.3);
+    letter-spacing: 0.05em;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Aether Avatars — 3D Advanced</h1>
+  <p>WebGL / Three.js &nbsp;·&nbsp; Volumetric &nbsp;·&nbsp; Spring Physics &nbsp;·&nbsp; Shader FX</p>
+</header>
+
+<div class="grid">
+
+  <!-- 1: Plasma Core Reactor -->
+  <div class="card" id="card-plasma">
+    <div class="canvas-wrap">
+      <canvas id="canvas-plasma"></canvas>
+    </div>
+    <div class="label">
+      <h3>Plasma Core Reactor</h3>
+      <p>Fresnel glass shell &nbsp;·&nbsp; orbiting particles</p>
+    </div>
+  </div>
+
+  <!-- 2: Digital DNA Helix -->
+  <div class="card" id="card-dna">
+    <div class="canvas-wrap">
+      <canvas id="canvas-dna"></canvas>
+    </div>
+    <div class="label">
+      <h3>Digital DNA Helix</h3>
+      <p>Traveling light pulses &nbsp;·&nbsp; breathing scale</p>
+    </div>
+  </div>
+
+  <!-- 3: Tesseract -->
+  <div class="card" id="card-tesseract">
+    <div class="canvas-wrap">
+      <canvas id="canvas-tesseract"></canvas>
+    </div>
+    <div class="label">
+      <h3>Tesseract</h3>
+      <p>4D hypercube projection &nbsp;·&nbsp; impossible geometry</p>
+    </div>
+  </div>
+
+  <!-- 4: Event Horizon -->
+  <div class="card" id="card-horizon">
+    <div class="canvas-wrap">
+      <canvas id="canvas-horizon"></canvas>
+    </div>
+    <div class="label">
+      <h3>Event Horizon</h3>
+      <p>Accretion disk &nbsp;·&nbsp; gravitational lensing</p>
+    </div>
+  </div>
+
+</div>
+
+<footer>Aether · AI Civilization · Advanced 3D Prototypes · Three.js r128</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ============================================================
+// SHARED UTILITIES
+// ============================================================
+const BLUE   = new THREE.Color(0x2a93c1);
+const ORANGE = new THREE.Color(0xf1420b);
+const DARK   = new THREE.Color(0x030508);
+
+function makeRenderer(canvasId) {
+  const canvas = document.getElementById(canvasId);
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    alpha: false,
+    powerPreference: 'high-performance'
+  });
+  renderer.setSize(250, 250, false);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = false;
+  return renderer;
+}
+
+function makeScene(bgColor) {
+  const scene = new THREE.Scene();
+  scene.background = bgColor || DARK;
+  return scene;
+}
+
+function makeCamera(z) {
+  const cam = new THREE.PerspectiveCamera(45, 1, 0.01, 200);
+  cam.position.z = z || 4;
+  return cam;
+}
+
+// Simple spring value
+function Spring(val, stiffness, damping) {
+  this.val = val;
+  this.vel = 0;
+  this.target = val;
+  this.stiffness = stiffness || 0.12;
+  this.damping = damping || 0.75;
+  this.update = function() {
+    const force = (this.target - this.val) * this.stiffness;
+    this.vel = this.vel * this.damping + force;
+    this.val += this.vel;
+    return this.val;
+  };
+}
+
+// Hover detection per canvas
+function setupHover(canvasId, onEnter, onLeave) {
+  const el = document.getElementById(canvasId);
+  el.addEventListener('mouseenter', onEnter);
+  el.addEventListener('mouseleave', onLeave);
+}
+
+// ============================================================
+// AVATAR 1: PLASMA CORE REACTOR
+// ============================================================
+(function plasmaCore() {
+  const renderer = makeRenderer('canvas-plasma');
+  const scene = makeScene(new THREE.Color(0x020407));
+  const camera = makeCamera(3.5);
+
+  // ---- Outer glass shell ----
+  const shellGeo = new THREE.SphereGeometry(1.0, 64, 64);
+  const shellMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime:   { value: 0 },
+      uHover:  { value: 0 },
+    },
+    vertexShader: `
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      void main() {
+        vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+        vNormal = normalize(normalMatrix * normal);
+        vViewDir = normalize(-mvPos.xyz);
+        gl_Position = projectionMatrix * mvPos;
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform float uHover;
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      void main() {
+        float fresnel = pow(1.0 - max(dot(vNormal, vViewDir), 0.0), 2.5);
+        vec3 blueRim  = vec3(0.165, 0.576, 0.757);
+        vec3 orangeRim = vec3(0.946, 0.259, 0.043);
+        float pulse = 0.5 + 0.5 * sin(uTime * 2.1);
+        vec3 rim = mix(blueRim, orangeRim, pulse * uHover + 0.2 * sin(uTime));
+        // glass body: almost transparent, slight tint
+        vec3 col = mix(vec3(0.04, 0.09, 0.14), rim, fresnel * 1.4);
+        float alpha = 0.12 + fresnel * 0.65;
+        gl_FragColor = vec4(col, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const shell = new THREE.Mesh(shellGeo, shellMat);
+  scene.add(shell);
+
+  // ---- Inner plasma core (shader sphere) ----
+  const coreGeo = new THREE.SphereGeometry(0.58, 64, 64);
+  const coreMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime:  { value: 0 },
+      uHover: { value: 0 },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec3 vNormal;
+      varying vec3 vPos;
+      void main() {
+        vUv = uv;
+        vNormal = normalize(normalMatrix * normal);
+        vPos = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform float uHover;
+      varying vec2 vUv;
+      varying vec3 vNormal;
+      varying vec3 vPos;
+
+      // fast noise
+      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+      float noise(vec2 p) {
+        vec2 i = floor(p); vec2 f = fract(p);
+        f = f*f*(3.0-2.0*f);
+        return mix(mix(hash(i), hash(i+vec2(1,0)),f.x),
+                   mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)),f.x), f.y);
+      }
+      float fbm(vec2 p) {
+        float v=0.0, a=0.5;
+        for(int i=0;i<5;i++){v+=a*noise(p);p*=2.1;a*=0.5;}
+        return v;
+      }
+
+      void main() {
+        vec2 uv = vUv * 4.0;
+        float t = uTime * 0.6 + uHover * 0.4;
+        float n1 = fbm(uv + vec2(t * 0.7, t * 0.4));
+        float n2 = fbm(uv * 1.3 - vec2(t * 0.5, t * 0.9));
+        float plasma = n1 * n2 * 2.8;
+
+        vec3 blue   = vec3(0.165, 0.576, 0.757);
+        vec3 orange = vec3(0.95, 0.26, 0.04);
+        vec3 white  = vec3(1.0, 0.95, 0.9);
+
+        float split = 0.5 + 0.5 * sin(uTime * 1.3 + vPos.y * 3.0);
+        vec3 col = mix(blue, orange, clamp(plasma - split * 0.5, 0.0, 1.0));
+        col = mix(col, white, clamp(plasma - 1.5, 0.0, 1.0));
+
+        // fresnel glow
+        float fr = pow(1.0 - max(dot(vNormal, vec3(0,0,1)), 0.0), 1.8);
+        col += orange * fr * 0.5;
+
+        float alpha = 0.8 + 0.2 * sin(uTime * 2.3 + n1 * 3.0);
+        gl_FragColor = vec4(col * (1.0 + uHover * 0.3), alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+  });
+  const core = new THREE.Mesh(coreGeo, coreMat);
+  scene.add(core);
+
+  // ---- Orbiting particles ----
+  const orbitCount = 60;
+  const orbitGeo = new THREE.BufferGeometry();
+  const orbitPos = new Float32Array(orbitCount * 3);
+  const orbitPhase = new Float32Array(orbitCount);
+  const orbitRadius = new Float32Array(orbitCount);
+  const orbitTilt = new Float32Array(orbitCount);
+
+  for (let i = 0; i < orbitCount; i++) {
+    orbitPhase[i] = Math.random() * Math.PI * 2;
+    orbitRadius[i] = 1.05 + Math.random() * 0.5;
+    orbitTilt[i] = (Math.random() - 0.5) * Math.PI;
+  }
+  orbitGeo.setAttribute('position', new THREE.BufferAttribute(orbitPos, 3));
+
+  const orbitMat = new THREE.PointsMaterial({
+    size: 0.04,
+    color: 0x7ecfee,
+    transparent: true,
+    opacity: 0.85,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const orbitPoints = new THREE.Points(orbitGeo, orbitMat);
+  scene.add(orbitPoints);
+
+  // ---- Second orbital ring (orange) ----
+  const ring2 = new THREE.Points(
+    orbitGeo.clone(),
+    new THREE.PointsMaterial({
+      size: 0.03,
+      color: 0xf1420b,
+      transparent: true,
+      opacity: 0.6,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    })
+  );
+  scene.add(ring2);
+
+  // ---- Light ----
+  scene.add(new THREE.AmbientLight(0x0a1a28, 1.0));
+  const ptLight = new THREE.PointLight(0x2a93c1, 2.0, 8);
+  ptLight.position.set(0, 0, 2);
+  scene.add(ptLight);
+
+  let hovered = false;
+  const hoverSpring = new Spring(0, 0.1, 0.72);
+  setupHover('canvas-plasma', () => hovered = true, () => hovered = false);
+
+  let t = 0;
+  function animate() {
+    requestAnimationFrame(animate);
+    t += 0.016;
+    hoverSpring.target = hovered ? 1 : 0;
+    const h = hoverSpring.update();
+
+    coreMat.uniforms.uTime.value = t;
+    coreMat.uniforms.uHover.value = h;
+    shellMat.uniforms.uTime.value = t;
+    shellMat.uniforms.uHover.value = h;
+
+    // update orbit positions
+    const pos1 = orbitGeo.attributes.position;
+    const speed = 0.5 + h * 1.5;
+    for (let i = 0; i < orbitCount; i++) {
+      const angle = orbitPhase[i] + t * speed * (0.6 + i * 0.007);
+      const r = orbitRadius[i];
+      const tilt = orbitTilt[i];
+      pos1.setXYZ(i,
+        r * Math.cos(angle),
+        r * Math.sin(angle) * Math.sin(tilt),
+        r * Math.sin(angle) * Math.cos(tilt) * 0.3
+      );
+    }
+    pos1.needsUpdate = true;
+
+    const pos2 = ring2.geometry.attributes.position;
+    for (let i = 0; i < orbitCount; i++) {
+      const angle = orbitPhase[i] * 1.3 - t * speed * 0.4;
+      const r = orbitRadius[i] * 0.9;
+      const tilt = orbitTilt[i] + 1.2;
+      pos2.setXYZ(i,
+        r * Math.cos(angle),
+        r * Math.sin(angle) * Math.sin(tilt),
+        r * Math.sin(angle) * Math.cos(tilt) * 0.5
+      );
+    }
+    pos2.needsUpdate = true;
+
+    core.rotation.y = t * 0.15;
+    shell.rotation.y = t * 0.04;
+
+    // pulse shell scale
+    const pulse = 1.0 + Math.sin(t * 1.8) * 0.012;
+    shell.scale.setScalar(pulse);
+
+    ptLight.position.x = Math.sin(t * 0.7) * 1.5;
+    ptLight.position.y = Math.cos(t * 0.5) * 1.0;
+
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+
+// ============================================================
+// AVATAR 2: DIGITAL DNA HELIX
+// ============================================================
+(function digitalDNA() {
+  const renderer = makeRenderer('canvas-dna');
+  const scene = makeScene(new THREE.Color(0x020407));
+  const camera = makeCamera(4.5);
+
+  const STRANDS = 2;
+  const NODES_PER_STRAND = 28;
+  const HELIX_RADIUS = 0.55;
+  const HELIX_HEIGHT = 2.8;
+  const HELIX_TURNS = 3.5;
+
+  // node geometry
+  const nodeGeo = new THREE.SphereGeometry(0.055, 12, 12);
+
+  const blueMat  = new THREE.MeshStandardMaterial({ color: 0x2a93c1, emissive: 0x1a5a80, emissiveIntensity: 1.2, roughness: 0.3, metalness: 0.3 });
+  const orangeMat = new THREE.MeshStandardMaterial({ color: 0xf1420b, emissive: 0x8a2000, emissiveIntensity: 1.4, roughness: 0.3, metalness: 0.3 });
+
+  const helixGroup = new THREE.Group();
+  scene.add(helixGroup);
+
+  // store node references for animation
+  const nodeData = []; // { mesh, strand, index, baseY }
+
+  for (let s = 0; s < STRANDS; s++) {
+    for (let i = 0; i < NODES_PER_STRAND; i++) {
+      const t = i / (NODES_PER_STRAND - 1);
+      const angle = t * Math.PI * 2 * HELIX_TURNS + s * Math.PI;
+      const x = HELIX_RADIUS * Math.cos(angle);
+      const z = HELIX_RADIUS * Math.sin(angle);
+      const y = (t - 0.5) * HELIX_HEIGHT;
+
+      const mat = (i % 2 === s % 2) ? blueMat : orangeMat;
+      const node = new THREE.Mesh(nodeGeo, mat);
+      node.position.set(x, y, z);
+      helixGroup.add(node);
+      nodeData.push({ mesh: node, strand: s, index: i, baseAngle: angle, t });
+    }
+  }
+
+  // connection bars between opposite strand nodes
+  const barMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uHover: { value: 0 },
+    },
+    vertexShader: `
+      attribute float aProgress;
+      uniform float uTime;
+      uniform float uHover;
+      varying float vProgress;
+      void main() {
+        vProgress = aProgress;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform float uHover;
+      varying float vProgress;
+      void main() {
+        // traveling pulse
+        float pulse = mod(vProgress - uTime * 0.4 * (1.0 + uHover), 1.0);
+        float glow = exp(-pulse * pulse * 18.0) + exp(-(pulse-1.0)*(pulse-1.0)*18.0);
+        vec3 blue = vec3(0.165, 0.576, 0.757);
+        vec3 orange = vec3(0.95, 0.26, 0.04);
+        vec3 col = mix(blue * 0.25, orange, glow);
+        float alpha = 0.25 + glow * 0.75;
+        gl_FragColor = vec4(col, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+
+  // build bar geometry (line segments with progress attribute)
+  const barPositions = [];
+  const barProgress = [];
+  const SEGS = 8;
+
+  for (let i = 0; i < NODES_PER_STRAND; i++) {
+    const t0 = i / (NODES_PER_STRAND - 1);
+    const a0 = t0 * Math.PI * 2 * HELIX_TURNS;
+    const a1 = a0 + Math.PI;
+    const y = (t0 - 0.5) * HELIX_HEIGHT;
+    const p0 = new THREE.Vector3(HELIX_RADIUS * Math.cos(a0), y, HELIX_RADIUS * Math.sin(a0));
+    const p1 = new THREE.Vector3(HELIX_RADIUS * Math.cos(a1), y, HELIX_RADIUS * Math.sin(a1));
+
+    for (let s = 0; s <= SEGS; s++) {
+      const prog = s / SEGS;
+      const pt = new THREE.Vector3().lerpVectors(p0, p1, prog);
+      barPositions.push(pt.x, pt.y, pt.z);
+      barProgress.push(t0 + prog * 0.02); // slight offset per segment
+    }
+  }
+
+  // Build line segments: pairs of consecutive points in each bar
+  const segPositions = [];
+  const segProgress = [];
+  for (let i = 0; i < NODES_PER_STRAND; i++) {
+    const base = i * (SEGS + 1);
+    for (let s = 0; s < SEGS; s++) {
+      const idx0 = (base + s) * 3;
+      const idx1 = (base + s + 1) * 3;
+      segPositions.push(barPositions[idx0], barPositions[idx0+1], barPositions[idx0+2]);
+      segPositions.push(barPositions[idx1], barPositions[idx1+1], barPositions[idx1+2]);
+      segProgress.push(barProgress[base + s], barProgress[base + s + 1]);
+    }
+  }
+
+  const barGeo = new THREE.BufferGeometry();
+  barGeo.setAttribute('position', new THREE.Float32BufferAttribute(segPositions, 3));
+  barGeo.setAttribute('aProgress', new THREE.Float32BufferAttribute(segProgress, 1));
+  const bars = new THREE.LineSegments(barGeo, barMat);
+  helixGroup.add(bars);
+
+  // Ambient glow particles along helix
+  const glowCount = 80;
+  const glowPos = new Float32Array(glowCount * 3);
+  const glowGeo = new THREE.BufferGeometry();
+  for (let i = 0; i < glowCount; i++) {
+    const t = i / glowCount;
+    const angle = t * Math.PI * 2 * HELIX_TURNS * 2;
+    glowPos[i*3]   = (HELIX_RADIUS + 0.12) * Math.cos(angle);
+    glowPos[i*3+1] = (t - 0.5) * HELIX_HEIGHT;
+    glowPos[i*3+2] = (HELIX_RADIUS + 0.12) * Math.sin(angle);
+  }
+  glowGeo.setAttribute('position', new THREE.BufferAttribute(glowPos, 3));
+  const glowPoints = new THREE.Points(glowGeo, new THREE.PointsMaterial({
+    size: 0.03, color: 0x5ec8ee, transparent: true, opacity: 0.5,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  }));
+  helixGroup.add(glowPoints);
+
+  // Lighting
+  scene.add(new THREE.AmbientLight(0x0a1520, 2.0));
+  const light1 = new THREE.PointLight(0x2a93c1, 3.0, 10);
+  light1.position.set(2, 1, 2);
+  scene.add(light1);
+  const light2 = new THREE.PointLight(0xf1420b, 2.0, 8);
+  light2.position.set(-2, -1, 1);
+  scene.add(light2);
+
+  const breatheSpring = new Spring(1.0, 0.06, 0.78);
+  let hovered = false;
+  setupHover('canvas-dna', () => hovered = true, () => hovered = false);
+  const hoverSpring = new Spring(0, 0.1, 0.72);
+
+  let t = 0;
+  function animate() {
+    requestAnimationFrame(animate);
+    t += 0.016;
+    hoverSpring.target = hovered ? 1 : 0;
+    const h = hoverSpring.update();
+
+    barMat.uniforms.uTime.value = t;
+    barMat.uniforms.uHover.value = h;
+
+    // breathing
+    const breatheTarget = 1.0 + Math.sin(t * 0.9) * 0.045;
+    breatheSpring.target = breatheTarget;
+    const breatheVal = breatheSpring.update();
+    helixGroup.scale.setScalar(breatheVal);
+
+    // rotate
+    helixGroup.rotation.y = t * (0.35 + h * 0.3);
+    helixGroup.rotation.x = Math.sin(t * 0.3) * 0.08;
+
+    // node glow pulse
+    for (const nd of nodeData) {
+      const pulse = 1.0 + Math.sin(t * 2.2 + nd.t * Math.PI * 6) * 0.25;
+      nd.mesh.scale.setScalar(pulse);
+    }
+
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+
+// ============================================================
+// AVATAR 3: TESSERACT (4D Hypercube)
+// ============================================================
+(function tesseract() {
+  const renderer = makeRenderer('canvas-tesseract');
+  const scene = makeScene(new THREE.Color(0x020407));
+  const camera = makeCamera(5.5);
+
+  // 4D hypercube: 16 vertices in 4D space
+  // Project to 3D via perspective projection from 4D viewpoint
+  const w4d = 2.5; // 4D view distance (for perspective)
+
+  // All 16 vertices of a unit 4-cube
+  const verts4D = [];
+  for (let i = 0; i < 16; i++) {
+    verts4D.push([
+      (i & 1) ? 1 : -1,
+      (i & 2) ? 1 : -1,
+      (i & 4) ? 1 : -1,
+      (i & 8) ? 1 : -1,
+    ]);
+  }
+
+  // Edges: two vertices differ in exactly one bit
+  const edges = [];
+  for (let i = 0; i < 16; i++) {
+    for (let j = i + 1; j < 16; j++) {
+      let diff = 0;
+      for (let k = 0; k < 4; k++) if (verts4D[i][k] !== verts4D[j][k]) diff++;
+      if (diff === 1) edges.push([i, j]);
+    }
+  }
+
+  // Wireframe geometry using LineSegments
+  const edgePositions = new Float32Array(edges.length * 2 * 3);
+  const edgeGeo = new THREE.BufferGeometry();
+  edgeGeo.setAttribute('position', new THREE.BufferAttribute(edgePositions, 3));
+
+  const edgeMat = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uHover: { value: 0 } },
+    vertexShader: `
+      attribute float aDepth4D;
+      varying float vDepth;
+      void main() {
+        vDepth = aDepth4D;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform float uHover;
+      varying float vDepth;
+      void main() {
+        // edges deeper in 4D are more transparent (depth cue)
+        float alpha = mix(0.25, 0.85, vDepth);
+        vec3 blue = vec3(0.165, 0.576, 0.757);
+        vec3 col = blue * (0.7 + 0.3 * sin(uTime * 1.5 + vDepth * 3.0));
+        gl_FragColor = vec4(col, alpha * (0.7 + uHover * 0.3));
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+
+  // depth4D attribute per vertex of each edge
+  const depthAttr = new Float32Array(edges.length * 2);
+
+  // We'll compute this dynamically each frame. Pre-allocate.
+  edgeGeo.setAttribute('aDepth4D', new THREE.BufferAttribute(depthAttr, 1));
+  const lineSegs = new THREE.LineSegments(edgeGeo, edgeMat);
+  scene.add(lineSegs);
+
+  // Vertex spheres (glowing points at 16 vertices)
+  const vertGeo = new THREE.BufferGeometry();
+  const vertPositions = new Float32Array(16 * 3);
+  vertGeo.setAttribute('position', new THREE.BufferAttribute(vertPositions, 3));
+
+  const vertMat = new THREE.PointsMaterial({
+    size: 0.14,
+    color: 0xf1420b,
+    transparent: true,
+    opacity: 0.95,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true,
+  });
+  const vertPoints = new THREE.Points(vertGeo, vertMat);
+  scene.add(vertPoints);
+
+  // small glow sphere at each vertex
+  const glowGeo = new THREE.SphereGeometry(0.06, 8, 8);
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0xff6030, transparent: true, opacity: 0.7 });
+  const vertMeshes = [];
+  for (let i = 0; i < 16; i++) {
+    const m = new THREE.Mesh(glowGeo, glowMat);
+    scene.add(m);
+    vertMeshes.push(m);
+  }
+
+  // 4D rotation matrices applied as angle parameters
+  // We rotate in planes: XW and YW and ZW for 4D "impossible" movement
+  function project4Dto3D(v4, angles) {
+    // Apply 4D rotation in XW plane
+    const cos1 = Math.cos(angles[0]), sin1 = Math.sin(angles[0]);
+    let x = v4[0] * cos1 - v4[3] * sin1;
+    let w = v4[0] * sin1 + v4[3] * cos1;
+
+    // Apply 4D rotation in YW plane
+    const cos2 = Math.cos(angles[1]), sin2 = Math.sin(angles[1]);
+    let y = v4[1] * cos2 - w * sin2;
+    w = v4[1] * sin2 + w * cos2;
+
+    // Apply 4D rotation in ZW plane
+    const cos3 = Math.cos(angles[2]), sin3 = Math.sin(angles[2]);
+    let z = v4[2] * cos3 - w * sin3;
+    w = v4[2] * sin3 + w * cos3;
+
+    // 4D perspective projection
+    const d4 = w4d / (w4d + w + 0.001);
+    return {
+      x: x * d4,
+      y: y * d4,
+      z: z * d4,
+      w4: w, // keep for depth
+    };
+  }
+
+  let hovered = false;
+  setupHover('canvas-tesseract', () => hovered = true, () => hovered = false);
+  const hoverSpring = new Spring(0, 0.1, 0.72);
+
+  // 3D rotation for the whole tesseract
+  const groupRot = { x: 0, y: 0 };
+
+  let t = 0;
+  function animate() {
+    requestAnimationFrame(animate);
+    t += 0.016;
+    hoverSpring.target = hovered ? 1 : 0;
+    const h = hoverSpring.update();
+
+    edgeMat.uniforms.uTime.value = t;
+    edgeMat.uniforms.uHover.value = h;
+
+    const speed = 1.0 + h * 0.6;
+    const angles = [
+      t * 0.23 * speed,
+      t * 0.17 * speed,
+      t * 0.31 * speed,
+    ];
+
+    // scale factor for display
+    const sc = 0.72;
+
+    // Project all 16 vertices
+    const projected = verts4D.map(v => project4Dto3D(v, angles));
+
+    // Update edge positions
+    const ePos = edgeGeo.attributes.position.array;
+    const eDep = edgeGeo.attributes.aDepth4D.array;
+    for (let i = 0; i < edges.length; i++) {
+      const [a, b] = edges[i];
+      const pa = projected[a], pb = projected[b];
+      ePos[i*6+0] = pa.x * sc; ePos[i*6+1] = pa.y * sc; ePos[i*6+2] = pa.z * sc;
+      ePos[i*6+3] = pb.x * sc; ePos[i*6+4] = pb.y * sc; ePos[i*6+5] = pb.z * sc;
+      // depth: normalize w4 to 0-1 range
+      const depA = (pa.w4 + 1.5) / 3.0;
+      const depB = (pb.w4 + 1.5) / 3.0;
+      eDep[i*2]   = Math.max(0, Math.min(1, depA));
+      eDep[i*2+1] = Math.max(0, Math.min(1, depB));
+    }
+    edgeGeo.attributes.position.needsUpdate = true;
+    edgeGeo.attributes.aDepth4D.needsUpdate = true;
+
+    // Update vertex positions
+    const vPos = vertGeo.attributes.position.array;
+    for (let i = 0; i < 16; i++) {
+      const p = projected[i];
+      vPos[i*3]   = p.x * sc;
+      vPos[i*3+1] = p.y * sc;
+      vPos[i*3+2] = p.z * sc;
+      vertMeshes[i].position.set(p.x * sc, p.y * sc, p.z * sc);
+      const s = 1.0 + Math.sin(t * 2.0 + i * 0.4) * 0.3;
+      vertMeshes[i].scale.setScalar(s);
+    }
+    vertGeo.attributes.position.needsUpdate = true;
+
+    // Gentle 3D rotation of the whole scene
+    lineSegs.rotation.y = Math.sin(t * 0.15) * 0.3;
+    lineSegs.rotation.x = Math.cos(t * 0.11) * 0.15;
+    vertPoints.rotation.copy(lineSegs.rotation);
+    for (const m of vertMeshes) {
+      m.rotation.copy(lineSegs.rotation);
+    }
+
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+
+// ============================================================
+// AVATAR 4: EVENT HORIZON
+// ============================================================
+(function eventHorizon() {
+  const renderer = makeRenderer('canvas-horizon');
+  const scene = makeScene(new THREE.Color(0x000203));
+  const camera = makeCamera(4.0);
+  camera.position.set(0, 1.8, 3.5);
+  camera.lookAt(0, 0, 0);
+
+  // ---- Black hole sphere ----
+  const bhGeo = new THREE.SphereGeometry(0.42, 64, 64);
+  const bhMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime:   { value: 0 },
+      uHover:  { value: 0 },
+    },
+    vertexShader: `
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      void main() {
+        vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+        vNormal = normalize(normalMatrix * normal);
+        vViewDir = normalize(-mvPos.xyz);
+        gl_Position = projectionMatrix * mvPos;
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform float uHover;
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      void main() {
+        // gravitational lensing: bright ring at edge
+        float fresnel = pow(1.0 - max(dot(vNormal, vViewDir), 0.0), 3.5);
+        vec3 glowColor = mix(vec3(0.165, 0.576, 0.757), vec3(0.95, 0.26, 0.04), sin(uTime * 0.8) * 0.5 + 0.5);
+        vec3 col = glowColor * fresnel * (1.5 + uHover * 0.5);
+        // core is absolute black
+        float alpha = max(fresnel * 1.2, 0.0);
+        // black body
+        col = mix(vec3(0.0), col, fresnel);
+        gl_FragColor = vec4(col, 0.95);
+      }
+    `,
+    depthWrite: true,
+  });
+  const bh = new THREE.Mesh(bhGeo, bhMat);
+  scene.add(bh);
+
+  // ---- Accretion disk (thousands of tiny particles) ----
+  const DISK_COUNT = 3000;
+  const diskGeo = new THREE.BufferGeometry();
+  const diskPos = new Float32Array(DISK_COUNT * 3);
+  const diskColors = new Float32Array(DISK_COUNT * 3);
+  const diskPhase = new Float32Array(DISK_COUNT);
+  const diskRadii = new Float32Array(DISK_COUNT);
+  const diskSpeeds = new Float32Array(DISK_COUNT);
+  const diskHeights = new Float32Array(DISK_COUNT);
+
+  for (let i = 0; i < DISK_COUNT; i++) {
+    diskPhase[i] = Math.random() * Math.PI * 2;
+    // Disk radius: inner edge near BH, outer tapers
+    const r = 0.55 + Math.pow(Math.random(), 1.5) * 1.45;
+    diskRadii[i] = r;
+    // Keplerian: inner orbits faster
+    diskSpeeds[i] = 0.4 / Math.sqrt(r) * (1 + Math.random() * 0.15);
+    // Very thin disk with slight height variation
+    diskHeights[i] = (Math.random() - 0.5) * 0.06 * (r - 0.5);
+
+    // Color: inner hot white/orange, outer blue
+    const t = (r - 0.55) / 1.45;
+    const bv = Math.max(0, 1.0 - t * 1.5); // blue contribution (outer)
+    const ov = Math.max(0, 1.0 - t * 0.5); // orange/white (inner)
+    diskColors[i*3]   = 0.95 * ov + 0.165 * bv * (1-ov) + Math.random() * 0.05;
+    diskColors[i*3+1] = 0.5 * ov * (1-t) + 0.4 * bv * 0.3;
+    diskColors[i*3+2] = 0.3 * bv + 0.04 * ov;
+  }
+
+  diskGeo.setAttribute('position', new THREE.BufferAttribute(diskPos, 3));
+  diskGeo.setAttribute('color', new THREE.BufferAttribute(diskColors, 3));
+
+  const diskMat = new THREE.PointsMaterial({
+    size: 0.025,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.82,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    sizeAttenuation: true,
+  });
+  const disk = new THREE.Points(diskGeo, diskMat);
+  // Tilt disk slightly (not flat, like real accretion)
+  disk.rotation.x = Math.PI / 2 + 0.25;
+  scene.add(disk);
+
+  // ---- Polar jets (blue vertical streams) ----
+  const JET_COUNT = 200;
+  const jetGeo = new THREE.BufferGeometry();
+  const jetPos = new Float32Array(JET_COUNT * 3);
+  const jetPhaseArr = new Float32Array(JET_COUNT);
+  const jetR = new Float32Array(JET_COUNT);
+  const jetDir = new Float32Array(JET_COUNT); // +1 or -1
+
+  for (let i = 0; i < JET_COUNT; i++) {
+    jetPhaseArr[i] = Math.random();
+    jetR[i] = Math.random() * 0.08;
+    jetDir[i] = i < JET_COUNT / 2 ? 1 : -1;
+  }
+  jetGeo.setAttribute('position', new THREE.BufferAttribute(jetPos, 3));
+  const jetMat = new THREE.PointsMaterial({
+    size: 0.03, color: 0x4acfff,
+    transparent: true, opacity: 0.7,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const jets = new THREE.Points(jetGeo, jetMat);
+  scene.add(jets);
+
+  // ---- Distortion ring glow (lens effect suggestion) ----
+  const ringGeo = new THREE.RingGeometry(0.42, 0.58, 96);
+  const ringMat = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 } },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      varying vec2 vUv;
+      void main() {
+        float d = abs(vUv.y - 0.5) * 2.0;
+        float glow = exp(-d * d * 8.0);
+        vec3 col = mix(vec3(0.95, 0.26, 0.04), vec3(0.165, 0.576, 0.757), sin(uTime * 1.3 + vUv.x * 6.28) * 0.5 + 0.5);
+        gl_FragColor = vec4(col * glow, glow * 0.85);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+  const lensRing = new THREE.Mesh(ringGeo, ringMat);
+  lensRing.rotation.x = Math.PI / 2 + 0.25;
+  scene.add(lensRing);
+
+  // Lighting
+  scene.add(new THREE.AmbientLight(0x030810, 1.0));
+  const ptBlue = new THREE.PointLight(0x2a93c1, 3.0, 6);
+  ptBlue.position.set(0, 2, 0);
+  scene.add(ptBlue);
+  const ptOrange = new THREE.PointLight(0xff4400, 2.5, 5);
+  ptOrange.position.set(0, -0.5, 0);
+  scene.add(ptOrange);
+
+  let hovered = false;
+  setupHover('canvas-horizon', () => hovered = true, () => hovered = false);
+  const hoverSpring = new Spring(0, 0.1, 0.72);
+
+  let t = 0;
+  function animate() {
+    requestAnimationFrame(animate);
+    t += 0.016;
+    hoverSpring.target = hovered ? 1 : 0;
+    const h = hoverSpring.update();
+
+    bhMat.uniforms.uTime.value = t;
+    bhMat.uniforms.uHover.value = h;
+    ringMat.uniforms.uTime.value = t;
+
+    const speedMult = 1.0 + h * 3.5;
+
+    // update disk particles
+    const pos = diskGeo.attributes.position.array;
+    for (let i = 0; i < DISK_COUNT; i++) {
+      const angle = diskPhase[i] + t * diskSpeeds[i] * speedMult;
+      const r = diskRadii[i];
+      pos[i*3]   = r * Math.cos(angle);
+      pos[i*3+1] = diskHeights[i];
+      pos[i*3+2] = r * Math.sin(angle);
+    }
+    diskGeo.attributes.position.needsUpdate = true;
+
+    // jets: particles stream up and down from poles
+    const jPos = jetGeo.attributes.position.array;
+    for (let i = 0; i < JET_COUNT; i++) {
+      const phase = (jetPhaseArr[i] + t * 0.5 * (1 + h)) % 1.0;
+      const height = phase * 2.2 * jetDir[i];
+      const spread = jetR[i] * (phase * 0.5 + 0.1);
+      const angle = jetPhaseArr[i] * 137.5; // golden angle
+      jPos[i*3]   = spread * Math.cos(angle);
+      jPos[i*3+1] = height;
+      jPos[i*3+2] = spread * Math.sin(angle);
+    }
+    jetGeo.attributes.position.needsUpdate = true;
+
+    // rotate bh slightly
+    bh.rotation.y = t * 0.08;
+
+    // lens ring pulse
+    const ringScale = 1.0 + Math.sin(t * 2.5) * 0.025;
+    lensRing.scale.setScalar(ringScale);
+
+    // camera slow orbit
+    const camAngle = t * 0.06;
+    camera.position.x = Math.sin(camAngle) * 0.8;
+    camera.position.z = 3.5 + Math.cos(camAngle) * 0.3;
+    camera.lookAt(0, 0, 0);
+
+    ptOrange.intensity = 2.5 + Math.sin(t * 3.1) * 0.5;
+
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+</script>
+</body>
+</html>

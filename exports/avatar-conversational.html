@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PureBrain AI - Talk to Aether</title>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #060612;
+            color: #e0e0e0;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow-x: hidden;
+        }
+        .header {
+            text-align: center;
+            padding: 12px 20px 4px;
+        }
+        .header h1 {
+            font-family: 'Oswald', sans-serif;
+            font-size: 1.3rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+        .header .blue { color: #2a93c1; }
+        .header .orange { color: #f1420b; }
+        .header p { color: #556677; font-size: 0.72rem; margin-top: 2px; }
+
+        .main-area {
+            display: flex;
+            gap: 20px;
+            max-width: 1100px;
+            width: 100%;
+            padding: 8px 20px;
+            align-items: flex-start;
+        }
+
+        .avatar-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        canvas { display: block; background: #060612; border-radius: 12px; }
+
+        .status {
+            text-align: center;
+            margin: 4px 0;
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.85rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            min-height: 20px;
+            transition: color 0.3s;
+        }
+        .status.listening { color: #2a93c1; }
+        .status.speaking { color: #f1420b; }
+        .status.thinking { color: #8866cc; }
+        .status.idle { color: #334455; }
+
+        .avatar-picker {
+            display: flex;
+            gap: 5px;
+            margin: 4px 0;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .avatar-thumb {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            object-fit: cover;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s ease;
+            opacity: 0.45;
+        }
+        .avatar-thumb:hover { opacity: 0.85; transform: scale(1.1); }
+        .avatar-thumb.active { border-color: #f1420b; opacity: 1; }
+
+        .chat-col {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 460px;
+            max-height: 80vh;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            border: 1px solid rgba(42, 147, 193, 0.1);
+            border-radius: 12px;
+            background: rgba(10, 10, 30, 0.5);
+            min-height: 280px;
+        }
+
+        .chat-messages::-webkit-scrollbar { width: 4px; }
+        .chat-messages::-webkit-scrollbar-track { background: transparent; }
+        .chat-messages::-webkit-scrollbar-thumb { background: #334455; border-radius: 4px; }
+
+        .msg {
+            max-width: 85%;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 0.88rem;
+            line-height: 1.5;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+        .msg.user {
+            align-self: flex-end;
+            background: linear-gradient(135deg, #1a3a5a, #1a2a4a);
+            color: #c0d8f0;
+            border-bottom-right-radius: 4px;
+        }
+
+        .msg.assistant {
+            align-self: flex-start;
+            background: linear-gradient(135deg, #1a1a2e, #12122a);
+            color: #d0d0e0;
+            border: 1px solid rgba(42, 147, 193, 0.1);
+            border-bottom-left-radius: 4px;
+        }
+
+        .msg.system {
+            align-self: center;
+            color: #556677;
+            font-size: 0.75rem;
+            font-style: italic;
+        }
+
+        .msg .sender {
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin-bottom: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .msg.user .sender { color: #4a9fd0; }
+        .msg.assistant .sender { color: #f1420b; }
+
+        .chat-input-area {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+            align-items: center;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 10px 14px;
+            border: 1px solid rgba(42, 147, 193, 0.2);
+            border-radius: 10px;
+            background: rgba(15, 15, 35, 0.8);
+            color: #e0e0e0;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 0.88rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .chat-input:focus { border-color: #2a93c1; }
+        .chat-input::placeholder { color: #445566; }
+
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 10px;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+        .btn:hover { transform: translateY(-1px); }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+        .btn-talk {
+            background: linear-gradient(135deg, #2a93c1, #1a7aaa);
+            color: white;
+            min-width: 100px;
+        }
+        .btn-talk.recording {
+            background: linear-gradient(135deg, #f1420b, #d4380b);
+            animation: talkPulse 1.2s ease-in-out infinite;
+        }
+        @keyframes talkPulse {
+            0%,100% { box-shadow: 0 0 0 0 rgba(241,66,11,0.4); }
+            50% { box-shadow: 0 0 0 12px rgba(241,66,11,0); }
+        }
+
+        .btn-send { background: linear-gradient(135deg, #f1420b, #d4380b); color: white; }
+
+        .voice-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #fff;
+            margin-right: 6px;
+            animation: voicePulse 0.6s infinite;
+        }
+        @keyframes voicePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+        .welcome-msg {
+            text-align: center;
+            padding: 40px 20px;
+            color: #556677;
+        }
+        .welcome-msg h2 {
+            font-family: 'Oswald', sans-serif;
+            color: #2a93c1;
+            font-size: 1.2rem;
+            margin-bottom: 8px;
+        }
+        .welcome-msg p { font-size: 0.85rem; line-height: 1.5; }
+
+        .info {
+            text-align: center;
+            color: #223344;
+            font-size: 0.62rem;
+            margin-top: 6px;
+            padding: 0 20px 8px;
+        }
+
+        @media (max-width: 768px) {
+            .main-area { flex-direction: column; align-items: center; }
+            canvas { width: 320px !important; height: 320px !important; }
+            .chat-col { width: 100%; min-height: 250px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1><span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span> <span style="color:#fff">Talk to Aether</span></h1>
+    <p>Conversational AI with a living visual identity</p>
+</div>
+
+<div class="main-area">
+    <div class="avatar-col">
+        <canvas id="canvas" width="460" height="460"></canvas>
+        <div class="status idle" id="statusText">Ready</div>
+        <div class="avatar-picker" id="avatarPicker"></div>
+    </div>
+
+    <div class="chat-col">
+        <div class="chat-messages" id="chatMessages">
+            <div class="welcome-msg">
+                <h2>Hello, I'm Aether</h2>
+                <p>I'm the orchestrating intelligence behind PureBrain.<br>
+                Click <strong>Talk</strong> to speak with me, or type a message below.</p>
+            </div>
+        </div>
+        <div class="chat-input-area">
+            <button class="btn btn-talk" id="talkBtn" onclick="toggleTalk()">Talk</button>
+            <input class="chat-input" id="chatInput" placeholder="Or type a message..." onkeydown="if(event.key==='Enter')sendText()" />
+            <button class="btn btn-send" id="sendBtn" onclick="sendText()">Send</button>
+        </div>
+    </div>
+</div>
+
+<div class="info">
+    PureBrain AI &mdash; Pure Technology &copy; 2026
+</div>
+
+<script>
+// Force dark background (WordPress override)
+document.documentElement.style.cssText = 'background:#060612 !important';
+document.body.style.cssText = 'background:#060612 !important;margin:0 !important;padding:0 !important;color:#e0e0e0 !important;font-family:Plus Jakarta Sans,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;overflow-x:hidden';
+var hideEls = document.querySelectorAll('header,footer,nav,.elementor-location-header,.elementor-location-footer,.site-header,.site-footer');
+for (var hh = 0; hh < hideEls.length; hh++) hideEls[hh].style.display = 'none';
+
+// ============================================
+// CONFIG
+// ============================================
+var API_BASE = window.location.origin;
+var SESSION_ID = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+
+// ============================================
+// SIMPLEX NOISE (2D)
+// ============================================
+var F2 = 0.5 * (Math.sqrt(3) - 1);
+var G2 = (3 - Math.sqrt(3)) / 6;
+var grad3 = [[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
+var perm = new Uint8Array(512);
+var permMod8 = new Uint8Array(512);
+function smod(a, b) { return ((a % b) + b) % b; }
+(function() {
+    var p = new Uint8Array(256);
+    for (var i = 0; i < 256; i++) p[i] = i;
+    for (var i = 255; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var tmp = p[i]; p[i] = p[j]; p[j] = tmp; }
+    for (var i = 0; i < 512; i++) { perm[i] = p[i % 256]; permMod8[i] = perm[i] % 8; }
+})();
+function noise2D(x, y) {
+    var s = (x + y) * F2;
+    var i = Math.floor(x + s), j = Math.floor(y + s);
+    var t = (i + j) * G2;
+    var x0 = x - (i - t), y0 = y - (j - t);
+    var i1 = x0 > y0 ? 1 : 0, j1 = x0 > y0 ? 0 : 1;
+    var x1 = x0 - i1 + G2, y1 = y0 - j1 + G2;
+    var x2 = x0 - 1 + 2 * G2, y2 = y0 - 1 + 2 * G2;
+    var ii = smod(i, 256), jj = smod(j, 256);
+    var n0 = 0, n1 = 0, n2 = 0;
+    var t0 = 0.5 - x0 * x0 - y0 * y0;
+    if (t0 > 0) { t0 *= t0; var g0 = grad3[permMod8[ii + perm[jj]]]; n0 = t0 * t0 * (g0[0] * x0 + g0[1] * y0); }
+    var t1 = 0.5 - x1 * x1 - y1 * y1;
+    if (t1 > 0) { t1 *= t1; var g1 = grad3[permMod8[ii + i1 + perm[jj + j1]]]; n1 = t1 * t1 * (g1[0] * x1 + g1[1] * y1); }
+    var t2 = 0.5 - x2 * x2 - y2 * y2;
+    if (t2 > 0) { t2 *= t2; var g2 = grad3[permMod8[ii + 1 + perm[jj + 1]]]; n2 = t2 * t2 * (g2[0] * x2 + g2[1] * y2); }
+    return 70 * (n0 + n1 + n2);
+}
+
+// ============================================
+// CANVAS + AVATAR SETUP
+// ============================================
+var canvas = document.getElementById('canvas');
+var ctx = canvas.getContext('2d');
+var W = canvas.width, H = canvas.height;
+var CX = W / 2, CY = H / 2;
+
+var CDN = 'https://purebrain.ai/wp-content/uploads/2026/02/';
+var PROXY = API_BASE + '/api/image/';  // Same-origin proxy for canvas pixel access
+var avatarList = [
+    { file: 'avatar_aether_v9_hex_neural.png', name: 'Hex Neural' },
+    { file: 'avatar_aether_v8_hex_glass.png', name: 'Hex Glass' },
+    { file: 'avatar_aether_v10_hex_cluster.png', name: 'Hex Cluster' },
+    { file: 'avatar_aether_v11_hex_portal.png', name: 'Hex Portal' },
+    { file: 'avatar_aether_v2_gleb.png', name: 'Glass Spheres' },
+    { file: 'avatar_aether_v5_cosmic_eye.png', name: 'Cosmic Eye' },
+    { file: 'avatar_aether_v6_neural_flame.png', name: 'Neural Flame' },
+    { file: 'avatar_aether_v7_shattered_prism.png', name: 'Shattered Prism' },
+];
+
+var avatarImages = [];
+var processedAvatars = [];  // Background-removed versions
+var currentAvatarIdx = 0;
+var imagesLoaded = 0;
+
+// Offscreen canvas for background removal
+var offCanvas = document.createElement('canvas');
+var offCtx = offCanvas.getContext('2d');
+
+function removeBackground(img) {
+    // Draw image to offscreen canvas and remove dark pixels
+    var w = img.naturalWidth || img.width;
+    var h = img.naturalHeight || img.height;
+    offCanvas.width = w;
+    offCanvas.height = h;
+    offCtx.clearRect(0, 0, w, h);
+    offCtx.drawImage(img, 0, 0, w, h);
+
+    try {
+        var imageData = offCtx.getImageData(0, 0, w, h);
+        var data = imageData.data;
+        var cx = w / 2, cy = h / 2;
+        var maxDist = Math.sqrt(cx * cx + cy * cy);
+
+        for (var i = 0; i < data.length; i += 4) {
+            var r = data[i], g = data[i + 1], b = data[i + 2];
+            var brightness = (r + g + b) / 3;
+            var px = (i / 4) % w;
+            var py = Math.floor((i / 4) / w);
+
+            // Distance from center (normalized 0-1)
+            var dx = (px - cx) / cx;
+            var dy = (py - cy) / cy;
+            var dist = Math.sqrt(dx * dx + dy * dy);
+
+            // More aggressive background removal at edges
+            var edgeFactor = Math.max(0, Math.min(1, (dist - 0.3) / 0.5));
+            var threshold = 30 + edgeFactor * 50;
+
+            if (brightness < threshold) {
+                data[i + 3] = 0;  // Fully transparent
+            } else if (brightness < threshold + 40) {
+                // Gradient fade for smoother edges
+                var fade = (brightness - threshold) / 40;
+                data[i + 3] = Math.floor(data[i + 3] * fade);
+            }
+
+            // Also fade out edges based on distance from center
+            if (dist > 0.7) {
+                var edgeAlpha = Math.max(0, 1 - (dist - 0.7) / 0.3);
+                data[i + 3] = Math.floor(data[i + 3] * edgeAlpha);
+            }
+        }
+
+        offCtx.putImageData(imageData, 0, 0);
+
+        // Create new canvas with the processed image
+        var resultCanvas = document.createElement('canvas');
+        resultCanvas.width = w;
+        resultCanvas.height = h;
+        resultCanvas.getContext('2d').drawImage(offCanvas, 0, 0);
+        return resultCanvas;
+    } catch(e) {
+        // CORS or security error - return original
+        return img;
+    }
+}
+
+avatarList.forEach(function(av, idx) {
+    var img = new Image();
+    // Load from same-origin proxy so canvas pixel access works (no CORS taint)
+    img.onload = function() {
+        processedAvatars[idx] = removeBackground(img);
+        imagesLoaded++;
+        if (imagesLoaded === avatarList.length) startAnimation();
+    };
+    img.onerror = function() {
+        // Fallback: try CDN directly (won't have bg removal but will display)
+        var fallback = new Image();
+        fallback.crossOrigin = 'anonymous';
+        fallback.onload = function() {
+            processedAvatars[idx] = fallback;
+            imagesLoaded++;
+            if (imagesLoaded === avatarList.length) startAnimation();
+        };
+        fallback.onerror = function() {
+            processedAvatars[idx] = null;
+            imagesLoaded++;
+            if (imagesLoaded === avatarList.length) startAnimation();
+        };
+        fallback.src = CDN + av.file;
+    };
+    img.src = PROXY + av.file;
+    avatarImages.push(img);
+});
+
+// Build picker
+var picker = document.getElementById('avatarPicker');
+avatarList.forEach(function(av, i) {
+    var thumb = document.createElement('img');
+    thumb.className = 'avatar-thumb' + (i === 0 ? ' active' : '');
+    thumb.src = CDN + av.file;
+    thumb.alt = av.name;
+    thumb.title = av.name;
+    thumb.onclick = function() {
+        currentAvatarIdx = i;
+        document.querySelectorAll('.avatar-thumb').forEach(function(t) { t.classList.remove('active'); });
+        thumb.classList.add('active');
+    };
+    picker.appendChild(thumb);
+});
+
+// ============================================
+// STATE + AUDIO
+// ============================================
+var state = 'idle';
+var audioLevel = 0;
+var targetAudioLevel = 0;
+var time = 0;
+var audioCtx = null;
+var analyser = null;
+var particles = [];
+var pulseRings = [];
+var tendrils = [];
+
+// Floating position (organic drift)
+var floatX = 0, floatY = 0;
+var floatTargetX = 0, floatTargetY = 0;
+var floatAngle = 0;
+var rotationAngle = 0;
+
+function ensureAudioCtx() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.connect(audioCtx.destination);
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+}
+
+// ============================================
+// ENERGY TENDRILS
+// ============================================
+function spawnTendril() {
+    var angle = Math.random() * Math.PI * 2;
+    tendrils.push({
+        angle: angle,
+        length: 60 + Math.random() * 80,
+        width: 1.5 + Math.random() * 2,
+        speed: 0.3 + Math.random() * 0.5,
+        phase: Math.random() * Math.PI * 2,
+        life: 1,
+        decay: 0.003 + Math.random() * 0.005,
+        isOrange: Math.random() > 0.55,
+    });
+}
+
+// ============================================
+// PARTICLES
+// ============================================
+function spawnParticle(intensity) {
+    intensity = intensity || 0.3;
+    var angle = Math.random() * Math.PI * 2;
+    var dist = 80 + Math.random() * 100;
+    particles.push({
+        x: CX + floatX + Math.cos(angle) * dist,
+        y: CY + floatY + Math.sin(angle) * dist,
+        vx: Math.cos(angle) * (0.15 + intensity * 0.6),
+        vy: Math.sin(angle) * (0.15 + intensity * 0.6),
+        size: 0.8 + Math.random() * 3.5 * intensity,
+        life: 1,
+        decay: 0.003 + Math.random() * 0.007,
+        isOrange: Math.random() > 0.5,
+        orbitSpeed: (Math.random() - 0.5) * 0.02,
+        angle: angle,
+    });
+}
+
+// ============================================
+// RENDER - ALIVE ANIMATION
+// ============================================
+function render() {
+    time += 0.016;
+    audioLevel += (targetAudioLevel - audioLevel) * 0.12;
+
+    // Read analyser if active
+    if (analyser) {
+        var freqData = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(freqData);
+        var sum = 0;
+        for (var i = 0; i < freqData.length; i++) sum += freqData[i];
+        var measured = (sum / freqData.length) / 255;
+        if (measured > 0.01) targetAudioLevel = measured;
+    }
+
+    var intensity = audioLevel;
+    if (state === 'speaking') intensity = Math.max(intensity, 0.4 + Math.sin(time * 3) * 0.2);
+    else if (state === 'listening') intensity = Math.max(intensity, 0.12 + Math.sin(time * 2) * 0.06);
+    else if (state === 'thinking') intensity = Math.max(intensity, 0.2 + Math.sin(time * 4) * 0.12);
+    else intensity = Math.max(intensity, 0.06 + Math.sin(time * 1.2) * 0.04);
+
+    // === ORGANIC FLOATING MOTION ===
+    floatAngle += 0.003;
+    floatTargetX = Math.sin(floatAngle * 0.7) * 8 + noise2D(time * 0.15, 0) * 6;
+    floatTargetY = Math.cos(floatAngle * 0.5) * 6 + noise2D(0, time * 0.15) * 5;
+    floatX += (floatTargetX - floatX) * 0.03;
+    floatY += (floatTargetY - floatY) * 0.03;
+
+    // Subtle rotation
+    rotationAngle = noise2D(time * 0.1, 3) * 0.04 * (1 + intensity * 2);
+
+    // Clear
+    ctx.fillStyle = '#060612';
+    ctx.fillRect(0, 0, W, H);
+
+    var srcImg = processedAvatars[currentAvatarIdx];
+    var origImg = avatarImages[currentAvatarIdx];
+    if ((!srcImg) || (!origImg) || (!origImg.complete) || origImg.naturalWidth === 0) {
+        // Draw placeholder orb while loading
+        drawPlaceholderOrb(intensity);
+        requestAnimationFrame(render);
+        return;
+    }
+
+    var drawCX = CX + floatX;
+    var drawCY = CY + floatY;
+
+    // === DEEP AMBIENT GLOW ===
+    var glowColor = state === 'speaking' ? [241,66,11] : state === 'thinking' ? [136,102,204] : [42,147,193];
+    // Outer diffuse glow
+    var ambGrad2 = ctx.createRadialGradient(drawCX, drawCY, 40, drawCX, drawCY, 280);
+    ambGrad2.addColorStop(0, 'rgba(' + glowColor[0] + ',' + glowColor[1] + ',' + glowColor[2] + ',' + (0.03 + intensity * 0.06) + ')');
+    ambGrad2.addColorStop(0.5, 'rgba(' + glowColor[0] + ',' + glowColor[1] + ',' + glowColor[2] + ',' + (0.015 + intensity * 0.03) + ')');
+    ambGrad2.addColorStop(1, 'rgba(6,6,18,0)');
+    ctx.fillStyle = ambGrad2;
+    ctx.fillRect(0, 0, W, H);
+    // Inner bright glow
+    var ambGrad = ctx.createRadialGradient(drawCX, drawCY, 30, drawCX, drawCY, 160);
+    ambGrad.addColorStop(0, 'rgba(' + glowColor[0] + ',' + glowColor[1] + ',' + glowColor[2] + ',' + (0.08 + intensity * 0.15) + ')');
+    ambGrad.addColorStop(1, 'rgba(6,6,18,0)');
+    ctx.fillStyle = ambGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // === ENERGY TENDRILS (behind avatar) ===
+    if (Math.random() < 0.03 + intensity * 0.08) spawnTendril();
+    var rc = state === 'speaking' ? '241,66,11' : state === 'thinking' ? '136,102,204' : '42,147,193';
+    tendrils = tendrils.filter(function(td) {
+        td.life -= td.decay;
+        if (td.life <= 0) return false;
+        td.angle += td.speed * 0.01;
+        var tCol = td.isOrange ? '241,66,11' : '42,147,193';
+        var tAlpha = td.life * (0.15 + intensity * 0.2);
+
+        ctx.save();
+        ctx.translate(drawCX, drawCY);
+        ctx.rotate(td.angle);
+        ctx.beginPath();
+        ctx.moveTo(80, 0);
+
+        // Wavy tendril path
+        var segments = 8;
+        for (var si = 1; si <= segments; si++) {
+            var frac = si / segments;
+            var len = 80 + td.length * frac;
+            var wave = Math.sin(time * 3 + td.phase + frac * 6) * (10 + intensity * 15) * frac;
+            ctx.lineTo(len, wave);
+        }
+
+        ctx.strokeStyle = 'rgba(' + tCol + ',' + tAlpha + ')';
+        ctx.lineWidth = td.width * td.life;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        // Glow on tendril tip
+        var tipX = 80 + td.length;
+        var tipY = Math.sin(time * 3 + td.phase + 6) * (10 + intensity * 15);
+        var tipGrad = ctx.createRadialGradient(tipX, tipY, 0, tipX, tipY, 8);
+        tipGrad.addColorStop(0, 'rgba(' + tCol + ',' + (tAlpha * 0.5) + ')');
+        tipGrad.addColorStop(1, 'rgba(' + tCol + ',0)');
+        ctx.fillStyle = tipGrad;
+        ctx.beginPath();
+        ctx.arc(tipX, tipY, 8, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+        return true;
+    });
+
+    // === DRAW AVATAR (transparent bg, floating) ===
+    var avatarSize = 200;
+    var breathe = Math.sin(time * 1.8) * 5 + Math.sin(time * 0.7) * 3 + intensity * 18;
+    var drawSize = avatarSize + breathe;
+
+    ctx.save();
+    ctx.translate(drawCX, drawCY);
+    ctx.rotate(rotationAngle);
+
+    // Ghost copies for glass refraction (more organic)
+    for (var gc = 0; gc < 3; gc++) {
+        var gcPhase = gc * 2.1 + time * 0.4;
+        var gcX = Math.sin(gcPhase) * (3 + intensity * 8);
+        var gcY = Math.cos(gcPhase * 0.8) * (3 + intensity * 8);
+        var gcAlpha = 0.08 + intensity * 0.06;
+        ctx.globalAlpha = gcAlpha;
+        ctx.drawImage(srcImg, -drawSize / 2 + gcX, -drawSize / 2 + gcY, drawSize, drawSize);
+    }
+
+    // Main avatar with continuous morph
+    var scaleX = 1 + noise2D(time * 0.6, 1.5) * 0.025 * (1 + intensity * 4);
+    var scaleY = 1 + noise2D(1.5, time * 0.6) * 0.025 * (1 + intensity * 4);
+    ctx.globalAlpha = 1;
+    ctx.save();
+    ctx.scale(scaleX, scaleY);
+    ctx.drawImage(srcImg, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
+    ctx.restore();
+
+    // Displacement overlay (organic warping)
+    ctx.globalAlpha = 0.1 + intensity * 0.1;
+    ctx.globalCompositeOperation = 'lighter';
+    var sliceCount = 16;
+    var sliceH = drawSize / sliceCount;
+    for (var s = 0; s < sliceCount; s++) {
+        var sliceFrac = s / sliceCount;
+        var displaceX = noise2D(sliceFrac * 4 + time * 0.9, time * 0.6) * (4 + intensity * 25);
+        var displaceY = noise2D(time * 0.6, sliceFrac * 4 + time * 0.9) * (2 + intensity * 10);
+        var sw = srcImg.width || 460;
+        var sh = srcImg.height || 460;
+        var srcSliceY = sliceFrac * sh;
+        var srcSliceH = sh / sliceCount;
+        ctx.drawImage(srcImg, 0, srcSliceY, sw, srcSliceH,
+                      -drawSize / 2 + displaceX, -drawSize / 2 + s * sliceH + displaceY, drawSize, sliceH);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+
+    // === OUTER GLOW RING (breathing) ===
+    var ringRadius = drawSize / 2 + 15 + intensity * 12 + Math.sin(time * 2) * 4;
+    var ringGrad = ctx.createRadialGradient(drawCX, drawCY, ringRadius - 20, drawCX, drawCY, ringRadius + 35);
+    ringGrad.addColorStop(0, 'rgba(' + rc + ',0)');
+    ringGrad.addColorStop(0.4, 'rgba(' + rc + ',' + (0.08 + intensity * 0.2) + ')');
+    ringGrad.addColorStop(1, 'rgba(' + rc + ',0)');
+    ctx.fillStyle = ringGrad;
+    ctx.beginPath();
+    ctx.arc(drawCX, drawCY, ringRadius + 35, 0, Math.PI * 2);
+    ctx.fill();
+
+    // === ORBITING CAUSTIC LIGHTS ===
+    for (var c = 0; c < 10; c++) {
+        var orbitSpeed = 0.3 + c * 0.05;
+        var orbitDist = 70 + Math.sin(time * 0.3 + c * 1.2) * 30 + intensity * 20;
+        var cx2 = drawCX + Math.sin(time * orbitSpeed + c * (Math.PI * 2 / 10)) * orbitDist;
+        var cy2 = drawCY + Math.cos(time * orbitSpeed * 0.7 + c * (Math.PI * 2 / 10)) * orbitDist;
+        var cSize = 6 + Math.sin(time * 2.5 + c) * 4 + intensity * 12;
+        var cAlpha = 0.04 + intensity * 0.1 + Math.sin(time * 1.8 + c * 0.9) * 0.03;
+        var cGrad = ctx.createRadialGradient(cx2, cy2, 0, cx2, cy2, cSize);
+        if (c % 3 === 0) cGrad.addColorStop(0, 'rgba(241,66,11,' + cAlpha + ')');
+        else if (c % 3 === 1) cGrad.addColorStop(0, 'rgba(42,147,193,' + cAlpha + ')');
+        else cGrad.addColorStop(0, 'rgba(255,255,255,' + cAlpha * 0.5 + ')');
+        cGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = cGrad;
+        ctx.beginPath();
+        ctx.arc(cx2, cy2, cSize, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // === SPECULAR HIGHLIGHTS (moving) ===
+    var specAngle = time * 0.2;
+    var specX = drawCX - 30 * Math.cos(specAngle);
+    var specY = drawCY - 40 * Math.sin(specAngle * 0.7);
+    var specGrad = ctx.createRadialGradient(specX, specY, 0, specX, specY, 25 + intensity * 15);
+    specGrad.addColorStop(0, 'rgba(255,255,255,' + (0.06 + intensity * 0.15) + ')');
+    specGrad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = specGrad;
+    ctx.beginPath();
+    ctx.arc(specX, specY, 25 + intensity * 15, 0, Math.PI * 2);
+    ctx.fill();
+
+    // === PULSE RINGS ===
+    if (intensity > 0.2) {
+        if (Math.random() < intensity * 0.06) {
+            pulseRings.push({ radius: drawSize / 2 + 10, maxRadius: drawSize / 2 + 100, life: 1 });
+        }
+    }
+    pulseRings = pulseRings.filter(function(pr) {
+        pr.life -= 0.015;
+        pr.radius += 1.2;
+        if (pr.life <= 0) return false;
+        ctx.beginPath();
+        ctx.arc(drawCX, drawCY, pr.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(' + rc + ',' + (pr.life * 0.25) + ')';
+        ctx.lineWidth = 1.5 * pr.life;
+        ctx.stroke();
+        return true;
+    });
+
+    // === PARTICLES (orbiting swirl) ===
+    if (Math.random() < 0.06 + intensity * 0.25) spawnParticle(intensity);
+    particles = particles.filter(function(p) {
+        p.life -= p.decay;
+        if (p.life <= 0) return false;
+        p.angle += p.orbitSpeed;
+        p.x += p.vx + Math.cos(p.angle) * 0.3;
+        p.y += p.vy + Math.sin(p.angle) * 0.3;
+        // Attract toward center slightly
+        var pdx = drawCX - p.x;
+        var pdy = drawCY - p.y;
+        var pdist = Math.sqrt(pdx * pdx + pdy * pdy);
+        if (pdist > 40) {
+            p.x += pdx / pdist * 0.15;
+            p.y += pdy / pdist * 0.15;
+        }
+        var pAlpha = p.life * 0.6;
+        var pCol = p.isOrange ? '241,66,11' : '42,147,193';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(' + pCol + ',' + pAlpha + ')';
+        ctx.fill();
+        // Particle glow
+        var pgGrad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * p.life * 4);
+        pgGrad.addColorStop(0, 'rgba(' + pCol + ',' + (pAlpha * 0.25) + ')');
+        pgGrad.addColorStop(1, 'rgba(' + pCol + ',0)');
+        ctx.fillStyle = pgGrad;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * p.life * 4, 0, Math.PI * 2);
+        ctx.fill();
+        return true;
+    });
+
+    // === VIGNETTE ===
+    var vigGrad = ctx.createRadialGradient(CX, CY, 140, CX, CY, 260);
+    vigGrad.addColorStop(0, 'rgba(6,6,18,0)');
+    vigGrad.addColorStop(1, 'rgba(6,6,18,0.65)');
+    ctx.fillStyle = vigGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    requestAnimationFrame(render);
+}
+
+// Placeholder orb while images load
+function drawPlaceholderOrb(intensity) {
+    var drawCX = CX + floatX;
+    var drawCY = CY + floatY;
+    floatAngle += 0.003;
+    floatX += (Math.sin(floatAngle * 0.7) * 5 - floatX) * 0.03;
+    floatY += (Math.cos(floatAngle * 0.5) * 4 - floatY) * 0.03;
+
+    // Pulsing orb
+    var orbSize = 80 + Math.sin(time * 1.5) * 10 + intensity * 20;
+    var orbGrad = ctx.createRadialGradient(drawCX, drawCY, 0, drawCX, drawCY, orbSize);
+    orbGrad.addColorStop(0, 'rgba(42, 147, 193, 0.3)');
+    orbGrad.addColorStop(0.5, 'rgba(42, 147, 193, 0.1)');
+    orbGrad.addColorStop(0.8, 'rgba(241, 66, 11, 0.05)');
+    orbGrad.addColorStop(1, 'rgba(6,6,18,0)');
+    ctx.fillStyle = orbGrad;
+    ctx.beginPath();
+    ctx.arc(drawCX, drawCY, orbSize, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#556677';
+    ctx.font = '13px Plus Jakarta Sans';
+    ctx.textAlign = 'center';
+    ctx.fillText('Loading avatar...', CX, CY + orbSize + 20);
+}
+
+function startAnimation() {
+    ctx.fillStyle = '#060612';
+    ctx.fillRect(0, 0, W, H);
+    render();
+}
+
+// Show loading
+ctx.fillStyle = '#060612';
+ctx.fillRect(0, 0, W, H);
+ctx.fillStyle = '#334455';
+ctx.font = '14px Plus Jakarta Sans';
+ctx.textAlign = 'center';
+ctx.fillText('Loading avatars...', CX, CY);
+
+// ============================================
+// SPEECH RECOGNITION
+// ============================================
+var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+var recognition = null;
+var isRecording = false;
+
+function toggleTalk() {
+    if (isRecording) {
+        stopRecording();
+    } else {
+        startRecording();
+    }
+}
+
+function startRecording() {
+    if (!SpeechRecognition) {
+        addMessage('system', 'Speech recognition not supported. Use Chrome or type below.');
+        return;
+    }
+
+    ensureAudioCtx();
+
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+        var source = audioCtx.createMediaStreamSource(stream);
+        source.connect(analyser);
+        window._micStream = stream;
+    }).catch(function() {});
+
+    recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = function(event) {
+        var final = '';
+        var interim = '';
+        for (var i = event.resultIndex; i < event.results.length; i++) {
+            var transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+                final += transcript;
+            } else {
+                interim += transcript;
+            }
+        }
+        if (final) {
+            stopRecording();
+            sendMessage(final.trim());
+        }
+        if (interim) {
+            document.getElementById('chatInput').value = interim;
+        }
+    };
+
+    recognition.onerror = function(event) {
+        if (event.error !== 'no-speech') {
+            addMessage('system', 'Speech error: ' + event.error);
+        }
+        stopRecording();
+    };
+
+    recognition.onend = function() {
+        if (isRecording) {
+            try { recognition.start(); } catch(e) {}
+        }
+    };
+
+    try {
+        recognition.start();
+        isRecording = true;
+        var btn = document.getElementById('talkBtn');
+        btn.classList.add('recording');
+        btn.innerHTML = '<span class="voice-indicator"></span>Listening...';
+        setAvatarState('listening');
+    } catch(e) {
+        addMessage('system', 'Could not start speech recognition.');
+    }
+}
+
+function stopRecording() {
+    isRecording = false;
+    if (recognition) { try { recognition.stop(); } catch(e) {} }
+    if (window._micStream) {
+        window._micStream.getTracks().forEach(function(t) { t.stop(); });
+        window._micStream = null;
+    }
+    var btn = document.getElementById('talkBtn');
+    btn.classList.remove('recording');
+    btn.textContent = 'Talk';
+}
+
+// ============================================
+// CHAT
+// ============================================
+function sendText() {
+    var input = document.getElementById('chatInput');
+    var text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    sendMessage(text);
+}
+
+function sendMessage(text) {
+    addMessage('user', text);
+    setAvatarState('thinking');
+
+    fetch(API_BASE + '/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, session_id: SESSION_ID })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.error) {
+            addMessage('system', 'Error: ' + data.error);
+            setAvatarState('idle');
+            return;
+        }
+        addMessage('assistant', data.response);
+        speakResponse(data.response);
+    })
+    .catch(function(err) {
+        addMessage('system', 'Connection error. Is the server running?');
+        setAvatarState('idle');
+    });
+}
+
+function addMessage(role, text) {
+    var container = document.getElementById('chatMessages');
+    var welcome = container.querySelector('.welcome-msg');
+    if (welcome) welcome.remove();
+
+    var msg = document.createElement('div');
+    msg.className = 'msg ' + role;
+
+    if (role === 'user' || role === 'assistant') {
+        var sender = document.createElement('div');
+        sender.className = 'sender';
+        sender.textContent = role === 'user' ? 'You' : 'Aether';
+        msg.appendChild(sender);
+    }
+
+    var textEl = document.createElement('div');
+    textEl.textContent = text;
+    msg.appendChild(textEl);
+
+    container.appendChild(msg);
+    container.scrollTop = container.scrollHeight;
+}
+
+// ============================================
+// TEXT-TO-SPEECH (OpenAI TTS API with fallback)
+// ============================================
+var currentAudioSource = null;
+
+function speakResponse(text) {
+    setAvatarState('speaking');
+
+    fetch(API_BASE + '/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text, voice: 'onyx' })
+    })
+    .then(function(r) { return r.arrayBuffer(); })
+    .then(function(audioData) {
+        ensureAudioCtx();
+        return audioCtx.decodeAudioData(audioData);
+    })
+    .then(function(audioBuffer) {
+        var source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(analyser);
+        currentAudioSource = source;
+
+        source.onended = function() {
+            setAvatarState('idle');
+            targetAudioLevel = 0;
+            currentAudioSource = null;
+        };
+
+        source.start(0);
+    })
+    .catch(function(err) {
+        // Fallback to browser TTS
+        var utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 0.95;
+        utterance.pitch = 0.9;
+
+        var simInterval = setInterval(function() {
+            if (state === 'speaking') {
+                targetAudioLevel = 0.3 + Math.random() * 0.4;
+            }
+        }, 50);
+
+        utterance.onend = function() {
+            clearInterval(simInterval);
+            setAvatarState('idle');
+            targetAudioLevel = 0;
+        };
+        utterance.onerror = function() {
+            clearInterval(simInterval);
+            setAvatarState('idle');
+            targetAudioLevel = 0;
+        };
+
+        speechSynthesis.speak(utterance);
+    });
+}
+
+function stopSpeaking() {
+    if (currentAudioSource) { try { currentAudioSource.stop(); } catch(e) {} currentAudioSource = null; }
+    speechSynthesis.cancel();
+    setAvatarState('idle');
+    targetAudioLevel = 0;
+}
+
+// ============================================
+// AVATAR STATE
+// ============================================
+function setAvatarState(s) {
+    state = s;
+    var el = document.getElementById('statusText');
+    var labels = { idle: 'Ready', speaking: 'Aether Speaking', listening: 'Listening to You', thinking: 'Thinking...' };
+    el.textContent = labels[s] || s;
+    el.className = 'status ' + s;
+    if (s === 'thinking') targetAudioLevel = 0.2;
+    else if (s === 'listening') targetAudioLevel = 0.1;
+    else if (s === 'idle') targetAudioLevel = 0;
+}
+
+canvas.addEventListener('click', function() {
+    if (state === 'speaking') stopSpeaking();
+});
+</script>
+
+</body>
+</html>

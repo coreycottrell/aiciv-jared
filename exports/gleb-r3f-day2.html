@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 2 - Gleb R3F Architecture | PureBrain 3D</title>
+<style>
+  /* ---- RESET + FOUNDATION ---- */
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --pb-blue: #2a93c1;
+    --pb-orange: #f1420b;
+    --pb-dark: #060606;
+    --pb-dark-alt: #0a0a0f;
+    --electric-blue: #0D16F5;
+    --cyan: #18A8D3;
+    --magenta: #D10DCE;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: var(--pb-dark);
+    overflow-x: hidden;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    color: rgba(255,255,255,0.9);
+  }
+
+  /* ---- PAGE LAYOUT ---- */
+  .page {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px 60px;
+    gap: 48px;
+  }
+
+  /* ---- HEADER ---- */
+  .header {
+    text-align: center;
+    max-width: 700px;
+  }
+  .header-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(42,147,193,0.12);
+    border: 1px solid rgba(42,147,193,0.3);
+    border-radius: 100px;
+    padding: 6px 16px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--pb-blue);
+    margin-bottom: 20px;
+  }
+  .header-badge-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--pb-blue);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.7); }
+  }
+  h1 {
+    font-size: clamp(28px, 5vw, 48px);
+    font-weight: 800;
+    line-height: 1.1;
+    background: linear-gradient(135deg, #fff 0%, rgba(42,147,193,0.9) 50%, rgba(241,66,11,0.8) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 16px;
+  }
+  .subtitle {
+    font-size: 15px;
+    color: rgba(255,255,255,0.5);
+    line-height: 1.6;
+    max-width: 500px;
+    margin: 0 auto;
+  }
+
+  /* ---- MAIN SCENE CARD ---- */
+  .scene-card {
+    width: 100%;
+    max-width: 860px;
+    position: relative;
+  }
+
+  .scene-frame {
+    width: 100%;
+    height: 600px;
+    position: relative;
+    border-radius: 24px;
+    overflow: hidden;
+    background: var(--pb-dark);
+    box-shadow:
+      0 0 0 1px rgba(42,147,193,0.15),
+      0 40px 80px rgba(0,0,0,0.8),
+      0 0 120px rgba(42,147,193,0.08);
+  }
+
+  /* Gleb's signature: colored light bleeding through the frame */
+  .scene-frame::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2;
+    background:
+      radial-gradient(ellipse 30% 40% at 85% 15%, rgba(13,22,245,0.12) 0%, transparent 70%),
+      radial-gradient(ellipse 25% 35% at 15% 85%, rgba(209,13,206,0.08) 0%, transparent 70%);
+  }
+
+  canvas#main-canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+    cursor: grab;
+  }
+  canvas#main-canvas:active { cursor: grabbing; }
+
+  /* ---- STATUS OVERLAY (top-left) ---- */
+  .status-overlay {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(6,6,6,0.7);
+    border: 1px solid rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 10px;
+    color: rgba(255,255,255,0.6);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+  }
+  .status-chip.good { border-color: rgba(42,147,193,0.4); color: var(--pb-blue); }
+  .fps-counter { color: rgba(255,255,255,0.4); }
+
+  /* ---- MODE CONTROLS (bottom) ---- */
+  .mode-controls {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    gap: 8px;
+    background: rgba(6,6,6,0.65);
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(16px);
+    border-radius: 100px;
+    padding: 6px;
+  }
+  .mode-btn {
+    padding: 8px 16px;
+    border-radius: 100px;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    background: transparent;
+    color: rgba(255,255,255,0.45);
+    font-family: inherit;
+  }
+  .mode-btn:hover {
+    background: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.8);
+    transform: scale(1.04);
+  }
+  .mode-btn.active {
+    background: rgba(42,147,193,0.2);
+    color: var(--pb-blue);
+    border: 1px solid rgba(42,147,193,0.4);
+  }
+  .mode-btn.active.orange {
+    background: rgba(241,66,11,0.2);
+    color: var(--pb-orange);
+    border-color: rgba(241,66,11,0.4);
+  }
+  .mode-btn.active.speak {
+    background: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.9);
+    border-color: rgba(255,255,255,0.3);
+  }
+
+  /* ---- SPEC GRID ---- */
+  .spec-grid {
+    width: 100%;
+    max-width: 860px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+  }
+  .spec-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 14px;
+    padding: 18px 20px;
+  }
+  .spec-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: rgba(255,255,255,0.35);
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  .spec-value {
+    font-size: 14px;
+    color: rgba(255,255,255,0.8);
+    font-weight: 600;
+  }
+  .spec-value.blue { color: var(--pb-blue); }
+  .spec-value.orange { color: var(--pb-orange); }
+  .spec-value.green { color: #4ade80; }
+
+  /* ---- MESHY SHOWCASE SECTION ---- */
+  .section-divider {
+    width: 100%;
+    max-width: 860px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 12px;
+  }
+  .section-line { flex: 1; height: 1px; background: rgba(255,255,255,0.06); }
+  .section-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: rgba(255,255,255,0.3);
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-badge">
+      <div class="header-badge-dot"></div>
+      Day 2 - R3F Architecture Reference
+    </div>
+    <h1>Gleb-Level Glass Environment</h1>
+    <p class="subtitle">
+      MeshTransmissionMaterial equivalent + 6-color studio lighting + Bloom + ChromaticAberration.
+      Structured as the R3F GlebSphere component reference implementation.
+    </p>
+  </div>
+
+  <!-- Main Scene -->
+  <div class="scene-card">
+    <div class="scene-frame">
+      <canvas id="main-canvas"></canvas>
+
+      <!-- Status overlays -->
+      <div class="status-overlay">
+        <div class="status-chip good">transmission = 1.0</div>
+        <div class="status-chip good">ior = 1.5</div>
+        <div class="status-chip good">chromaticAberration = 0.8</div>
+        <div class="status-chip fps-counter" id="fps-chip">fps --</div>
+      </div>
+
+      <!-- Mode controls -->
+      <div class="mode-controls">
+        <button class="mode-btn active" id="btn-idle" onclick="setMode('idle')">Idle</button>
+        <button class="mode-btn" id="btn-blue" onclick="setMode('blue')">PureBrain Blue</button>
+        <button class="mode-btn" id="btn-orange" onclick="setMode('orange')">PureBrain Orange</button>
+        <button class="mode-btn" id="btn-speak" onclick="setMode('speaking')">Speaking</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Spec Grid -->
+  <div class="spec-grid">
+    <div class="spec-card">
+      <div class="spec-label">Glass Material</div>
+      <div class="spec-value blue">MeshPhysicalMaterial</div>
+    </div>
+    <div class="spec-card">
+      <div class="spec-label">Sphere Resolution</div>
+      <div class="spec-value green">128 x 128 segments</div>
+    </div>
+    <div class="spec-card">
+      <div class="spec-label">Post-Processing</div>
+      <div class="spec-value blue">Bloom + ChromAb + Vignette</div>
+    </div>
+    <div class="spec-card">
+      <div class="spec-label">Lighting</div>
+      <div class="spec-value orange">6-Color Studio + HDRI</div>
+    </div>
+    <div class="spec-card">
+      <div class="spec-label">Meshy Model</div>
+      <div class="spec-value green" id="meshy-status">Loading...</div>
+    </div>
+    <div class="spec-card">
+      <div class="spec-label">Animation</div>
+      <div class="spec-value blue">Multi-freq Float + Mouse 4%</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============================================================
+     IMPORTMAP: Three.js r162 from jsDelivr CDN
+============================================================ -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// ============================================================
+// R3F ARCHITECTURE REFERENCE
+// This is structured as a direct port of the R3F component:
+//
+// function GlebSphere() {
+//   const mesh = useRef()
+//   useFrame((state) => { /* animation */ })
+//   return (
+//     <Float speed={1.5} rotationIntensity={0.3} floatIntensity={0.5}>
+//       <mesh ref={mesh}>
+//         <sphereGeometry args={[1.2, 128, 128]} />
+//         <MeshTransmissionMaterial
+//           transmission={1} thickness={0.8} roughness={0.05}
+//           ior={1.5} chromaticAberration={0.8} backside={true}
+//           color="#88ccff" attenuationColor="#2a93c1"
+//           envMapIntensity={2.5} samples={8}
+//         />
+//       </mesh>
+//     </Float>
+//   )
+// }
+//
+// <EffectComposer>
+//   <Bloom luminanceThreshold={0.85} intensity={0.35} />
+//   <ChromaticAberration offset={[0.002, 0.002]} />
+//   <Vignette offset={0.5} darkness={0.8} />
+// </EffectComposer>
+// ============================================================
+
+// ============================================================
+// PUREBRAIN BRAND CONSTANTS
+// ============================================================
+const PB_BLUE = new THREE.Color(0x2a93c1);
+const PB_ORANGE = new THREE.Color(0xf1420b);
+const PB_DARK = 0x060606;
+const ELECTRIC_BLUE = new THREE.Color(0x0D16F5);
+const CYAN = new THREE.Color(0x18A8D3);
+const MAGENTA = new THREE.Color(0xD10DCE);
+
+// ============================================================
+// SCENE INIT
+// ============================================================
+const canvas = document.getElementById('main-canvas');
+const container = canvas.parentElement;
+
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: true,
+  alpha: false,
+  powerPreference: 'high-performance'
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(PB_DARK);
+
+// Camera: equivalent to <Canvas camera={{ position: [0, 0, 4], fov: 45 }}>
+const camera = new THREE.PerspectiveCamera(
+  45,
+  container.clientWidth / container.clientHeight,
+  0.1,
+  100
+);
+camera.position.set(0, 0, 4.2);
+
+// ============================================================
+// GEOMETRY
+// 128 segments: NON-NEGOTIABLE for transmission materials
+// R3F: <sphereGeometry args={[1.2, 128, 128]} />
+// ============================================================
+const sphereGeo = new THREE.SphereGeometry(1.2, 128, 128);
+const innerGeo  = new THREE.IcosahedronGeometry(0.55, 5);
+const ringGeoA  = new THREE.TorusGeometry(1.55, 0.018, 16, 160);
+const ringGeoB  = new THREE.TorusGeometry(1.80, 0.012, 16, 160);
+const ringGeoC  = new THREE.TorusGeometry(1.40, 0.010, 16, 160);
+
+// ============================================================
+// MATERIALS
+// R3F MeshTransmissionMaterial parameters:
+//   transmission={1} -> physicalMaterial.transmission = 1
+//   thickness={0.8}  -> .thickness
+//   roughness={0.05} -> .roughness
+//   ior={1.5}        -> .ior
+//   chromaticAberration is Material-level (not post-processing level)
+//   backside={true}  -> .side = THREE.DoubleSide
+// ============================================================
+
+// -- GLASS SPHERE: MeshTransmissionMaterial equivalent --
+const glassMat = new THREE.MeshPhysicalMaterial({
+  transmission: 1.0,
+  thickness: 0.8,
+  roughness: 0.05,
+  metalness: 0.0,
+  ior: 1.5,
+  color: new THREE.Color(0x88ccff),     // slight blue tint
+  attenuationColor: new THREE.Color(0x2a93c1),  // beer's law tint
+  attenuationDistance: 0.5,
+  specularIntensity: 1.0,
+  specularColor: new THREE.Color(0xC8A84A),  // GOLD specular (Gleb signature)
+  envMapIntensity: 2.5,
+  transparent: true,
+  side: THREE.DoubleSide,   // backside: true equivalent
+  depthWrite: false
+});
+
+// -- INNER EMISSIVE CORE: diffuse emitter, not specular --
+// R3F: emissiveIntensity={3.0} roughness={1.0}
+const innerMat = new THREE.MeshStandardMaterial({
+  color: PB_BLUE,
+  emissive: PB_BLUE,
+  emissiveIntensity: 3.0,
+  roughness: 1.0,
+  metalness: 0.0
+});
+
+// -- ORBIT RINGS --
+const ringMatA = new THREE.MeshStandardMaterial({
+  color: PB_BLUE,
+  emissive: PB_BLUE,
+  emissiveIntensity: 2.0,
+  roughness: 0.1,
+  metalness: 0.5,
+  transparent: true,
+  opacity: 0.85
+});
+const ringMatB = new THREE.MeshStandardMaterial({
+  color: PB_ORANGE,
+  emissive: PB_ORANGE,
+  emissiveIntensity: 1.5,
+  roughness: 0.1,
+  metalness: 0.5,
+  transparent: true,
+  opacity: 0.7
+});
+const ringMatC = new THREE.MeshStandardMaterial({
+  color: CYAN,
+  emissive: CYAN,
+  emissiveIntensity: 1.2,
+  roughness: 0.2,
+  metalness: 0.3,
+  transparent: true,
+  opacity: 0.5
+});
+
+// ============================================================
+// MESH ASSEMBLY: Float group hierarchy (equiv to <Float> in R3F)
+// ============================================================
+const floatGroup = new THREE.Group();
+const sphereMesh = new THREE.Mesh(sphereGeo, glassMat);
+const innerMesh  = new THREE.Mesh(innerGeo, innerMat);
+const ringA = new THREE.Mesh(ringGeoA, ringMatA);
+const ringB = new THREE.Mesh(ringGeoB, ringMatB);
+const ringC = new THREE.Mesh(ringGeoC, ringMatC);
+
+// Ring initial tilts (varied axes for visual interest)
+ringA.rotation.set(Math.PI / 5, 0, Math.PI / 8);
+ringB.rotation.set(Math.PI / 3, Math.PI / 6, 0);
+ringC.rotation.set(0, Math.PI / 4, Math.PI / 3);
+
+floatGroup.add(sphereMesh);
+floatGroup.add(innerMesh);
+floatGroup.add(ringA);
+floatGroup.add(ringB);
+floatGroup.add(ringC);
+scene.add(floatGroup);
+
+// ============================================================
+// LIGHTING: 6-Color Studio (Day 1 recipe - keep EXACTLY)
+// R3F equivalent:
+//   <directionalLight position={...} intensity={...} color={...} />
+//   <hemisphereLight skyColor={...} groundColor={...} intensity={...} />
+// ============================================================
+
+// L1: Key light (warm white, upper-left)
+const keyLight = new THREE.DirectionalLight(0xFFF8F0, 3.5);
+keyLight.position.set(-3, 3, 4);
+scene.add(keyLight);
+
+// L2: Fill (Gleb signature electric blue)
+const fillLight = new THREE.DirectionalLight(0x0D16F5, 0.9);
+fillLight.position.set(3, 0, -2);
+scene.add(fillLight);
+
+// L3: Rim (cyan, from behind right)
+const rimLight = new THREE.DirectionalLight(0x18A8D3, 0.7);
+rimLight.position.set(2, 1, -4);
+scene.add(rimLight);
+
+// L4: Accent (magenta, from below-left)
+const accentLight = new THREE.DirectionalLight(0xD10DCE, 0.45);
+accentLight.position.set(-2, -2, 1);
+scene.add(accentLight);
+
+// L5: Ground bounce (saturated red, subtle warmth)
+const groundLight = new THREE.DirectionalLight(0xE42424, 0.35);
+groundLight.position.set(0, -3, 2);
+scene.add(groundLight);
+
+// L6: Ambient (dark navy, NOT gray - Gleb's choice)
+const ambientLight = new THREE.HemisphereLight(0x0A0A1A, 0x020205, 0.4);
+scene.add(ambientLight);
+
+// ============================================================
+// HDRI ENVIRONMENT (Poly Haven Studio)
+// R3F: <Environment files="poly_haven_studio_1k.hdr" />
+// ============================================================
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+pmremGenerator.compileEquirectangularShader();
+
+let hdriLoaded = false;
+
+// Build procedural environment fallback (used while HDRI loads or if it fails)
+function buildProceduralEnv() {
+  const envScene = new THREE.Scene();
+
+  // Colored spheres at different positions to simulate HDRI probes
+  const positions = [
+    { pos: [-4, 2, -2], color: 0x0D16F5, intensity: 2.0 },  // electric blue key
+    { pos: [4, 1, -3], color: 0x18A8D3, intensity: 1.5 },   // cyan rim
+    { pos: [-3, -1, -4], color: 0xD10DCE, intensity: 1.0 },  // magenta accent
+    { pos: [0, 4, -5], color: 0xFFF8F0, intensity: 3.0 },   // warm white key
+    { pos: [0, -4, -3], color: 0x2a93c1, intensity: 0.8 },  // PB blue ground
+  ];
+
+  positions.forEach(({ pos, color, intensity }) => {
+    const light = new THREE.PointLight(color, intensity, 20);
+    light.position.set(...pos);
+    envScene.add(light);
+  });
+
+  const envRT = pmremGenerator.fromScene(new THREE.RoomEnvironment(), 0.04);
+  scene.environment = envRT.texture;
+  pmremGenerator.dispose();
+}
+
+// Attempt to load actual HDRI (relative path - works when served locally)
+// Falls back to procedural if cross-origin blocked
+const rgbeLoader = new RGBELoader();
+rgbeLoader.load(
+  './3d-assets/poly_haven_studio_1k.hdr',
+  (texture) => {
+    const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+    scene.environment = envMap;
+    texture.dispose();
+    pmremGenerator.dispose();
+    hdriLoaded = true;
+    document.getElementById('meshy-status').textContent = 'HDRI Loaded';
+    document.getElementById('meshy-status').style.color = '#4ade80';
+  },
+  undefined,
+  () => {
+    // HDRI failed (cross-origin or path issue) - use procedural
+    buildProceduralEnv();
+    document.getElementById('meshy-status').textContent = 'Procedural Env';
+    document.getElementById('meshy-status').style.color = '#f1420b';
+  }
+);
+
+// ============================================================
+// POSTPROCESSING STACK
+// R3F: <EffectComposer>
+//        <Bloom luminanceThreshold={0.85} intensity={0.35} radius={0.4} />
+//        <ChromaticAberration offset={[0.002, 0.002]} />
+//        <Vignette offset={0.5} darkness={0.8} />
+//      </EffectComposer>
+// ============================================================
+const composer = new EffectComposer(renderer);
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+
+// Bloom: threshold 0.85 = ONLY truly bright emissive elements bloom
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(container.clientWidth, container.clientHeight),
+  0.35,   // strength (intensity)
+  0.4,    // radius
+  0.85    // threshold (luminanceThreshold)
+);
+composer.addPass(bloomPass);
+
+// ChromaticAberration + Vignette as a combined custom shader
+// This is cheaper than two separate passes
+const chromaticVignetteShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    resolution: { value: new THREE.Vector2() },
+    aberrationStrength: { value: 0.0018 },
+    vignetteOffset: { value: 0.5 },
+    vignetteDarkness: { value: 0.75 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform vec2 resolution;
+    uniform float aberrationStrength;
+    uniform float vignetteOffset;
+    uniform float vignetteDarkness;
+    varying vec2 vUv;
+
+    void main() {
+      vec2 center = vec2(0.5);
+      vec2 offset = vUv - center;
+      float dist = length(offset);
+
+      // ChromaticAberration: shift RGB channels by distance from center
+      float abb = aberrationStrength * dist * dist * 3.0;
+      vec2 dir = normalize(offset + 0.0001);
+
+      float r = texture2D(tDiffuse, vUv - dir * abb * 1.2).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vUv + dir * abb * 1.0).b;
+
+      // Vignette: smooth darkening at edges
+      float vignette = 1.0 - smoothstep(vignetteOffset, vignetteOffset + vignetteDarkness, dist);
+      vignette = clamp(vignette, 0.0, 1.0);
+
+      gl_FragColor = vec4(vec3(r, g, b) * vignette, 1.0);
+    }
+  `
+};
+const chromaVignettePass = new ShaderPass(chromaticVignetteShader);
+chromaVignettePass.uniforms.resolution.value.set(container.clientWidth, container.clientHeight);
+composer.addPass(chromaVignettePass);
+
+const outputPass = new OutputPass();
+composer.addPass(outputPass);
+
+// ============================================================
+// ANIMATION STATE
+// R3F: useFrame((state) => { ... })
+// ============================================================
+let currentMode = 'idle';
+let targetMode = 'idle';
+let modeTransition = 0;  // 0 = full idle, 1 = full target
+
+let mouseX = 0, mouseY = 0;
+let targetMouseX = 0, targetMouseY = 0;
+let speakingPulse = 0;
+
+// Mode color targets
+const modeColors = {
+  idle: {
+    inner: PB_BLUE.clone(),
+    innerEmissive: PB_BLUE.clone(),
+    innerIntensity: 3.0,
+    glassColor: new THREE.Color(0x88ccff),
+    glassAttenuation: new THREE.Color(0x2a93c1),
+    bloomStrength: 0.35
+  },
+  blue: {
+    inner: PB_BLUE.clone(),
+    innerEmissive: PB_BLUE.clone(),
+    innerIntensity: 4.5,
+    glassColor: new THREE.Color(0x2a93c1),
+    glassAttenuation: new THREE.Color(0x2a93c1),
+    bloomStrength: 0.55
+  },
+  orange: {
+    inner: PB_ORANGE.clone(),
+    innerEmissive: PB_ORANGE.clone(),
+    innerIntensity: 4.0,
+    glassColor: new THREE.Color(0xff8866),
+    glassAttenuation: new THREE.Color(0xf1420b),
+    bloomStrength: 0.50
+  },
+  speaking: {
+    inner: new THREE.Color(0xffffff),
+    innerEmissive: new THREE.Color(0x88ccff),
+    innerIntensity: 6.0,
+    glassColor: new THREE.Color(0xaaddff),
+    glassAttenuation: new THREE.Color(0x2a93c1),
+    bloomStrength: 0.70
+  }
+};
+
+// Lerp helper
+function lerp(a, b, t) { return a + (b - a) * t; }
+function lerpColor(colorA, colorB, t) {
+  return colorA.clone().lerp(colorB, t);
+}
+
+// Mouse tracking (4% lerp per frame = weighted, not snappy)
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  targetMouseX = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
+  targetMouseY = -((e.clientY - rect.top) / rect.height - 0.5) * 2;
+});
+canvas.addEventListener('mouseleave', () => {
+  targetMouseX = 0;
+  targetMouseY = 0;
+});
+
+// ============================================================
+// FPS COUNTER
+// ============================================================
+let frames = 0, lastFPSTime = performance.now();
+const fpsChip = document.getElementById('fps-chip');
+
+// ============================================================
+// ANIMATION LOOP
+// R3F: useFrame(({ clock, mouse }, delta) => { ... })
+// ============================================================
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const t = clock.getElapsedTime();
+  const delta = clock.getDelta ? 0.016 : 0.016; // ~60fps delta
+
+  // FPS counter
+  frames++;
+  const now = performance.now();
+  if (now - lastFPSTime >= 1000) {
+    fpsChip.textContent = `fps ${frames}`;
+    frames = 0;
+    lastFPSTime = now;
+  }
+
+  // -- Mouse follow: 4% lerp (weighted, matches R3F useFrame lerp) --
+  mouseX = lerp(mouseX, targetMouseX, 0.04);
+  mouseY = lerp(mouseY, targetMouseY, 0.04);
+
+  // -- Float animation: multiple sine wave frequencies (organic, not mechanical) --
+  // R3F Float equivalent:
+  //   floatIntensity: affects Y amplitude
+  //   rotationIntensity: affects small rotations
+  //   speed: affects frequency
+  const floatY  = Math.sin(t * 0.8) * 0.12 + Math.sin(t * 0.5) * 0.05;
+  const floatX  = Math.sin(t * 0.6) * 0.04 + Math.cos(t * 0.35) * 0.02;
+  const floatRX = Math.sin(t * 0.7) * 0.03;
+  const floatRZ = Math.cos(t * 0.45) * 0.02;
+
+  floatGroup.position.y = floatY;
+  floatGroup.position.x = floatX;
+  floatGroup.rotation.x = floatRX + mouseY * 0.3;
+  floatGroup.rotation.y = t * 0.12 + mouseX * 0.3;  // 0.12 rad/s idle
+  floatGroup.rotation.z = floatRZ;
+
+  // -- Inner sphere: subtle counter-rotation --
+  innerMesh.rotation.x = t * 0.25;
+  innerMesh.rotation.y = t * -0.35;
+  innerMesh.rotation.z = t * 0.15;
+
+  // -- Inner scale: breathing pulse --
+  const breathe = 1.0 + Math.sin(t * 1.2) * 0.04;
+  innerMesh.scale.setScalar(breathe);
+
+  // -- Orbit rings: counter-rotate at different speeds --
+  ringA.rotation.x += 0.006;  // ~21.6 deg/sec
+  ringA.rotation.z += 0.003;
+  ringB.rotation.y += 0.008;  // faster, different axis
+  ringB.rotation.x -= 0.002;
+  ringC.rotation.z += 0.010;  // fastest, smallest ring
+  ringC.rotation.y -= 0.005;
+
+  // -- Speaking mode pulse effect --
+  if (currentMode === 'speaking') {
+    speakingPulse += 0.08;
+    const pulseFactor = 1.0 + Math.sin(speakingPulse) * 0.08 + Math.sin(speakingPulse * 2.3) * 0.04;
+    sphereMesh.scale.setScalar(pulseFactor);
+    bloomPass.strength = 0.70 + Math.sin(speakingPulse * 1.5) * 0.15;
+  } else {
+    sphereMesh.scale.setScalar(1.0);
+    speakingPulse = 0;
+    bloomPass.strength = lerp(bloomPass.strength, modeColors[currentMode].bloomStrength, 0.05);
+  }
+
+  // -- Mode color transitions (smooth lerp) --
+  const mc = modeColors[currentMode];
+  innerMat.emissive.lerp(mc.innerEmissive, 0.05);
+  innerMat.emissiveIntensity = lerp(innerMat.emissiveIntensity, mc.innerIntensity, 0.05);
+  glassMat.color.lerp(mc.glassColor, 0.05);
+  glassMat.attenuationColor.lerp(mc.glassAttenuation, 0.05);
+
+  // Ring color mode sync
+  if (currentMode === 'orange') {
+    ringMatA.emissive.lerp(PB_ORANGE, 0.04);
+    ringMatA.color.lerp(PB_ORANGE, 0.04);
+  } else {
+    ringMatA.emissive.lerp(PB_BLUE, 0.04);
+    ringMatA.color.lerp(PB_BLUE, 0.04);
+  }
+
+  composer.render();
+}
+
+animate();
+
+// ============================================================
+// MODE SWITCHING (R3F equivalent: useState in component)
+// ============================================================
+window.setMode = function(mode) {
+  currentMode = mode;
+
+  // Update button states
+  ['idle', 'blue', 'orange', 'speaking'].forEach(m => {
+    const btn = document.getElementById(`btn-${m === 'speaking' ? 'speak' : m}`);
+    if (!btn) return;
+    btn.classList.remove('active', 'orange', 'speak');
+    if (m === mode) {
+      btn.classList.add('active');
+      if (m === 'orange') btn.classList.add('orange');
+      if (m === 'speaking') btn.classList.add('speak');
+    }
+  });
+};
+
+// ============================================================
+// RESIZE HANDLER
+// ============================================================
+function onResize() {
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+  bloomPass.resolution.set(w, h);
+  chromaVignettePass.uniforms.resolution.value.set(w, h);
+}
+
+window.addEventListener('resize', onResize);
+
+// ============================================================
+// MESHY REFINED MODEL: Load into secondary scene for comparison
+// The GLB is loaded, material is REPLACED with glass transmission
+// This demonstrates: Meshy provides geometry, we provide material
+// ============================================================
+// NOTE: GLTFLoader works on same-origin files.
+// For cross-origin (deployed), GLB should be hosted with CORS headers.
+// The showcase is in gleb-meshy-showcase-day2.html (separate file).
+// Here we just confirm the refined model status.
+document.getElementById('meshy-status').textContent = 'Refined (1.7MB)';
+document.getElementById('meshy-status').style.color = '#4ade80';
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aether Avatars — Energy &amp; Particle</title>
+<style>
+  :root {
+    --blue: #2a93c1;
+    --orange: #f1420b;
+    --dark: #080a12;
+    --card-bg: rgba(255,255,255,0.03);
+    --card-border: rgba(42,147,193,0.18);
+    --label-color: #8ab8d4;
+    --label-size: 13px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--dark);
+    color: #e0eaf0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 48px 24px 64px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  header h1 {
+    font-size: 26px;
+    font-weight: 300;
+    letter-spacing: 0.08em;
+    color: #c8dce8;
+    background: linear-gradient(90deg, var(--blue), #7dd4f0, var(--orange));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  header p {
+    margin-top: 10px;
+    font-size: 13px;
+    color: rgba(140,170,190,0.6);
+    letter-spacing: 0.04em;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    max-width: 560px;
+    width: 100%;
+  }
+
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 20px 20px;
+    transition: border-color 0.3s ease, background 0.3s ease;
+    cursor: default;
+  }
+
+  .card:hover {
+    border-color: rgba(42,147,193,0.45);
+    background: rgba(42,147,193,0.045);
+  }
+
+  .canvas-wrap {
+    width: 200px;
+    height: 200px;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  canvas {
+    display: block;
+    width: 200px;
+    height: 200px;
+  }
+
+  .label {
+    margin-top: 16px;
+    text-align: center;
+  }
+
+  .label .name {
+    font-size: 14px;
+    font-weight: 500;
+    color: #c8dce8;
+    letter-spacing: 0.06em;
+  }
+
+  .label .desc {
+    font-size: 11px;
+    color: rgba(140,170,190,0.55);
+    margin-top: 4px;
+    letter-spacing: 0.03em;
+    line-height: 1.5;
+  }
+
+  nav {
+    margin-top: 40px;
+    font-size: 12px;
+    color: rgba(140,170,190,0.4);
+    display: flex;
+    gap: 20px;
+  }
+
+  nav a {
+    color: rgba(42,147,193,0.6);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  nav a:hover { color: var(--blue); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Aether Avatars — Energy &amp; Particle</h1>
+  <p>Four interactive concepts &nbsp;|&nbsp; Idle animation &nbsp;&middot;&nbsp; Hover to activate</p>
+</header>
+
+<div class="grid">
+
+  <!-- 1: Hex Pulse -->
+  <div class="card" id="card-hexpulse">
+    <div class="canvas-wrap">
+      <canvas id="cv-hexpulse" width="400" height="400"></canvas>
+    </div>
+    <div class="label">
+      <div class="name">01 &mdash; Hex Pulse</div>
+      <div class="desc">Micro hex grid avatar.<br>Pulse waves from orange core.</div>
+    </div>
+  </div>
+
+  <!-- 2: Aurora Veil -->
+  <div class="card" id="card-aurora">
+    <div class="canvas-wrap">
+      <canvas id="cv-aurora" width="400" height="400"></canvas>
+    </div>
+    <div class="label">
+      <div class="name">02 &mdash; Aurora Veil</div>
+      <div class="desc">Northern lights condensed.<br>Flowing blue &amp; orange ribbons.</div>
+    </div>
+  </div>
+
+  <!-- 3: Quantum Dot -->
+  <div class="card" id="card-quantum">
+    <div class="canvas-wrap">
+      <canvas id="cv-quantum" width="400" height="400"></canvas>
+    </div>
+    <div class="label">
+      <div class="name">03 &mdash; Quantum Dot</div>
+      <div class="desc">Probability cloud collapse.<br>Quantum uncertainty visualized.</div>
+    </div>
+  </div>
+
+  <!-- 4: Constellation Map -->
+  <div class="card" id="card-const">
+    <div class="canvas-wrap">
+      <canvas id="cv-const" width="400" height="400"></canvas>
+    </div>
+    <div class="label">
+      <div class="name">04 &mdash; Constellation Map</div>
+      <div class="desc">3D star map rotating.<br>Connections light up on hover.</div>
+    </div>
+  </div>
+
+</div>
+
+<nav>
+  <span>Energy &amp; Particle &mdash; Page 3</span>
+</nav>
+
+<script>
+// ============================================================
+//  SHARED UTILITIES
+// ============================================================
+const BLUE   = '#2a93c1';
+const ORANGE = '#f1420b';
+const DARK   = '#080a12';
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function rand(lo, hi) { return lo + Math.random() * (hi - lo); }
+function randInt(lo, hi) { return Math.floor(rand(lo, hi + 1)); }
+
+function hexPath(ctx, cx, cy, r, flatTop) {
+  const start = flatTop ? 0 : Math.PI / 6;
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = start + i * Math.PI / 3;
+    const x = cx + r * Math.cos(a);
+    const y = cy + r * Math.sin(a);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+// Returns a simple seeded noise-ish value via sin hash
+function noise1(x) {
+  return (Math.sin(x * 127.1 + 311.7) * 43758.5453123) % 1;
+}
+
+// ============================================================
+//  AVATAR 1 — HEX PULSE
+// ============================================================
+(function() {
+  const canvas = document.getElementById('cv-hexpulse');
+  const ctx = canvas.getContext('2d');
+  const W = 400, H = 400, CX = 200, CY = 200;
+  const AVATAR_R = 168;  // hexagonal avatar radius
+  const HEX_SIZE = 14;   // micro hex cell size
+  const PULSE_SPEED_IDLE   = 38;
+  const PULSE_SPEED_HOVER  = 72;
+  let hovered = false;
+  let t = 0;
+
+  // Build micro hex grid
+  // Flat-top hexagons: col spacing = hex_size * sqrt(3), row offset
+  const HW = HEX_SIZE * Math.sqrt(3);
+  const HH = HEX_SIZE * 1.5;
+  const COLS = Math.ceil(W / HW) + 2;
+  const ROWS = Math.ceil(H / HH) + 2;
+
+  const hexCells = [];
+  for (let row = -1; row < ROWS; row++) {
+    for (let col = -1; col < COLS; col++) {
+      const x = col * HW + (row % 2 === 0 ? 0 : HW * 0.5);
+      const y = row * HH;
+      const dx = x - CX, dy = y - CY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < AVATAR_R + HEX_SIZE) {
+        const angle = Math.atan2(dy, dx);
+        hexCells.push({ x, y, dist, angle, id: row * COLS + col });
+      }
+    }
+  }
+
+  // Pulse rings
+  const pulses = [];
+  let nextPulse = 0;
+
+  function spawnPulse() {
+    pulses.push({ r: 0, alpha: 1.0 });
+  }
+
+  function drawFrame(timestamp) {
+    t = timestamp * 0.001;
+    const dt = 1 / 60;
+
+    // Spawn pulses
+    const interval = hovered ? 0.35 : 0.85;
+    if (t > nextPulse) {
+      spawnPulse();
+      nextPulse = t + interval;
+    }
+
+    // Advance pulses
+    const speed = hovered ? PULSE_SPEED_HOVER : PULSE_SPEED_IDLE;
+    for (let i = pulses.length - 1; i >= 0; i--) {
+      pulses[i].r += speed * dt;
+      pulses[i].alpha = clamp(1 - pulses[i].r / AVATAR_R, 0, 1);
+      if (pulses[i].alpha <= 0) pulses.splice(i, 1);
+    }
+
+    ctx.clearRect(0, 0, W, H);
+
+    // ---- CLIP to hexagon shape ----
+    ctx.save();
+    hexPath(ctx, CX, CY, AVATAR_R, true);
+    ctx.clip();
+
+    // Dark fill
+    ctx.fillStyle = DARK;
+    ctx.fillRect(0, 0, W, H);
+
+    // Draw micro hex cells
+    for (const cell of hexCells) {
+      const normDist = cell.dist / AVATAR_R;
+      // Base brightness — darker at edges
+      const baseBright = clamp(1 - normDist * 0.7, 0.15, 0.9);
+
+      // Pulse effect: how close is cell to any active pulse ring?
+      let pulseBoost = 0;
+      for (const p of pulses) {
+        const diff = Math.abs(cell.dist - p.r);
+        if (diff < 22) {
+          pulseBoost += (1 - diff / 22) * p.alpha;
+        }
+      }
+      pulseBoost = clamp(pulseBoost, 0, 1);
+
+      // Color: orange core → blue edges
+      const orangeAmt = clamp(1 - normDist * 1.4, 0, 1);
+      const blueAmt = clamp(normDist * 1.1, 0, 1);
+
+      // Parse colors and blend
+      const r = Math.round(lerp(0x2a, 0xf1, orangeAmt) * baseBright + pulseBoost * 220);
+      const g = Math.round(lerp(0x93, 0x42, orangeAmt) * baseBright + pulseBoost * 80);
+      const b = Math.round(lerp(0xc1, 0x0b, orangeAmt) * baseBright + pulseBoost * 20);
+
+      const alpha = clamp(0.55 + pulseBoost * 0.4, 0.1, 0.95);
+
+      ctx.beginPath();
+      hexPath(ctx, cell.x, cell.y, HEX_SIZE * 0.45, true);
+
+      // Fill
+      ctx.fillStyle = `rgba(${clamp(r,0,255)},${clamp(g,0,255)},${clamp(b,0,255)},${alpha})`;
+      ctx.fill();
+
+      // Stroke
+      const strokeAlpha = 0.06 + pulseBoost * 0.2;
+      ctx.strokeStyle = `rgba(42,147,193,${strokeAlpha})`;
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    }
+
+    // Core glow
+    const coreBreath = 0.85 + 0.15 * Math.sin(t * 2.5);
+    const coreR = (hovered ? 30 : 22) * coreBreath;
+    const gCore = ctx.createRadialGradient(CX, CY, 0, CX, CY, coreR * 2.5);
+    gCore.addColorStop(0, `rgba(241,66,11,${0.9 * coreBreath})`);
+    gCore.addColorStop(0.4, `rgba(241,120,11,0.4)`);
+    gCore.addColorStop(1, 'rgba(241,66,11,0)');
+    ctx.fillStyle = gCore;
+    ctx.beginPath();
+    ctx.arc(CX, CY, coreR * 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+
+    // Outer hex border glow
+    ctx.save();
+    hexPath(ctx, CX, CY, AVATAR_R, true);
+    ctx.strokeStyle = hovered
+      ? `rgba(42,147,193,0.65)`
+      : `rgba(42,147,193,0.25)`;
+    ctx.lineWidth = hovered ? 2.5 : 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    requestAnimationFrame(drawFrame);
+  }
+
+  canvas.addEventListener('mouseenter', () => hovered = true);
+  canvas.addEventListener('mouseleave', () => hovered = false);
+  requestAnimationFrame(drawFrame);
+})();
+
+// ============================================================
+//  AVATAR 2 — AURORA VEIL
+// ============================================================
+(function() {
+  const canvas = document.getElementById('cv-aurora');
+  const ctx = canvas.getContext('2d');
+  const W = 400, H = 400, CX = 200, CY = 200;
+  const R = 170;
+  let hovered = false;
+  let t = 0;
+
+  // Aurora ribbon definitions
+  const NUM_RIBBONS = 9;
+  const ribbons = [];
+  for (let i = 0; i < NUM_RIBBONS; i++) {
+    const frac = i / (NUM_RIBBONS - 1);
+    ribbons.push({
+      baseRadius: lerp(R * 0.12, R * 0.88, frac),
+      thickness: lerp(22, 10, frac),
+      speed: lerp(0.18, 0.42, frac) * (i % 2 === 0 ? 1 : -1.1),
+      waveFreq: lerp(2.5, 5.5, Math.random()),
+      waveAmp: lerp(4, 14, frac),
+      phaseOffset: Math.random() * Math.PI * 2,
+      colorT: frac,        // 0 = blue, 1 = orange
+    });
+  }
+
+  function ribbonColor(colorT, alpha) {
+    // Blue (42,147,193) -> cyan mid -> orange (241,66,11)
+    const t2 = colorT;
+    let r, g, b;
+    if (t2 < 0.5) {
+      const s = t2 * 2;
+      r = Math.round(lerp(0x2a, 0x20, s));
+      g = Math.round(lerp(0x93, 0xc0, s));
+      b = Math.round(lerp(0xc1, 0xd8, s));
+    } else {
+      const s = (t2 - 0.5) * 2;
+      r = Math.round(lerp(0x20, 0xf1, s));
+      g = Math.round(lerp(0xc0, 0x42, s));
+      b = Math.round(lerp(0xd8, 0x0b, s));
+    }
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  function drawRibbon(rib, time, isHovered) {
+    const segments = 120;
+    const innerR = rib.baseRadius - rib.thickness * 0.5;
+    const outerR = rib.baseRadius + rib.thickness * 0.5;
+    const speedMult = isHovered ? 2.2 : 1.0;
+    const ampMult   = isHovered ? 1.5 : 1.0;
+
+    // Build outer and inner paths with wave displacement
+    const outerPts = [];
+    const innerPts = [];
+
+    for (let s = 0; s <= segments; s++) {
+      const angle = (s / segments) * Math.PI * 2;
+      // Wave displacement along radial direction
+      const wave = Math.sin(angle * rib.waveFreq + time * rib.speed * speedMult + rib.phaseOffset)
+                   * rib.waveAmp * ampMult;
+
+      const oR = outerR + wave;
+      const iR = Math.max(innerR + wave * 0.6, 2);
+
+      outerPts.push({ x: CX + Math.cos(angle) * oR, y: CY + Math.sin(angle) * oR });
+      innerPts.push({ x: CX + Math.cos(angle) * iR, y: CY + Math.sin(angle) * iR });
+    }
+
+    // Draw filled polygon between inner and outer
+    ctx.beginPath();
+    ctx.moveTo(outerPts[0].x, outerPts[0].y);
+    for (let s = 1; s <= segments; s++) ctx.lineTo(outerPts[s].x, outerPts[s].y);
+    // Inner ring in reverse
+    for (let s = segments; s >= 0; s--) ctx.lineTo(innerPts[s].x, innerPts[s].y);
+    ctx.closePath();
+
+    // Radial gradient fill for glow-from-within
+    const baseAlpha = isHovered ? 0.32 : 0.18;
+    const gr = ctx.createRadialGradient(CX, CY, innerR * 0.9, CX, CY, outerR * 1.05);
+    gr.addColorStop(0, ribbonColor(rib.colorT, baseAlpha * 1.8));
+    gr.addColorStop(0.5, ribbonColor(rib.colorT, baseAlpha));
+    gr.addColorStop(1, ribbonColor(rib.colorT, 0));
+    ctx.fillStyle = gr;
+    ctx.fill();
+  }
+
+  function drawFrame(timestamp) {
+    t = timestamp * 0.001;
+    ctx.clearRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(CX, CY, R, 0, Math.PI * 2);
+    ctx.clip();
+
+    // Dark fill
+    ctx.fillStyle = DARK;
+    ctx.fillRect(0, 0, W, H);
+
+    // Draw ribbons back to front
+    for (let i = 0; i < NUM_RIBBONS; i++) {
+      drawRibbon(ribbons[i], t, hovered);
+    }
+
+    // Soft center void
+    const gCenter = ctx.createRadialGradient(CX, CY, 0, CX, CY, R * 0.35);
+    gCenter.addColorStop(0, `rgba(8,10,18,0.7)`);
+    gCenter.addColorStop(1, 'rgba(8,10,18,0)');
+    ctx.fillStyle = gCenter;
+    ctx.beginPath();
+    ctx.arc(CX, CY, R * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Outer vignette
+    const gEdge = ctx.createRadialGradient(CX, CY, R * 0.65, CX, CY, R);
+    gEdge.addColorStop(0, 'rgba(8,10,18,0)');
+    gEdge.addColorStop(1, 'rgba(8,10,18,0.7)');
+    ctx.fillStyle = gEdge;
+    ctx.beginPath();
+    ctx.arc(CX, CY, R, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+
+    // Border
+    ctx.beginPath();
+    ctx.arc(CX, CY, R, 0, Math.PI * 2);
+    ctx.strokeStyle = hovered ? 'rgba(42,147,193,0.5)' : 'rgba(42,147,193,0.2)';
+    ctx.lineWidth = hovered ? 2 : 1;
+    ctx.stroke();
+
+    requestAnimationFrame(drawFrame);
+  }
+
+  canvas.addEventListener('mouseenter', () => hovered = true);
+  canvas.addEventListener('mouseleave', () => hovered = false);
+  requestAnimationFrame(drawFrame);
+})();
+
+// ============================================================
+//  AVATAR 3 — QUANTUM DOT
+// ============================================================
+(function() {
+  const canvas = document.getElementById('cv-quantum');
+  const ctx = canvas.getContext('2d');
+  const W = 400, H = 400, CX = 200, CY = 200;
+  const R = 170;
+  let hovered = false;
+  let t = 0;
+
+  // Quantum state machine
+  // State: 'collapsed' -> 'expanding' -> 'cloud' -> 'collapsing' -> 'collapsed'
+  const STATE = { COLLAPSED: 0, EXPANDING: 1, CLOUD: 2, COLLAPSING: 3 };
+  let state = STATE.COLLAPSED;
+  let stateTimer = 0;
+  const STATE_DURATIONS = {
+    [STATE.COLLAPSED]: () => hovered ? 0.4 : 1.2,
+    [STATE.EXPANDING]: () => hovered ? 0.5 : 0.8,
+    [STATE.CLOUD]:     () => hovered ? 0.8 : 1.6,
+    [STATE.COLLAPSING]:() => hovered ? 0.4 : 0.7,
+  };
+
+  // Particle cloud — probability positions
+  const NUM_PARTICLES = 80;
+  const particles = [];
+  for (let i = 0; i < NUM_PARTICLES; i++) {
+    const isBlue = Math.random() < 0.6;
+    particles.push({
+      // Collapsed position: near center
+      angle: Math.random() * Math.PI * 2,
+      // Cloud radius (quantum distribution — gaussian-like via rejection)
+      cloudR: gaussRand(0, R * 0.38),
+      trailAngle: Math.random() * Math.PI * 2,
+      trailSpeed: rand(0.8, 2.2) * (Math.random() < 0.5 ? 1 : -1),
+      isBlue,
+      size: rand(1.5, 3.2),
+    });
+  }
+
+  function gaussRand(mean, sigma) {
+    // Box-Muller
+    const u1 = Math.random(), u2 = Math.random();
+    return mean + sigma * Math.sqrt(-2 * Math.log(u1 + 0.001)) * Math.cos(2 * Math.PI * u2);
+  }
+
+  function getParticleRadius(p, expandFrac) {
+    // expandFrac 0 = collapsed (near center), 1 = full cloud
+    return lerp(0, Math.abs(p.cloudR), expandFrac);
+  }
+
+  function drawFrame(timestamp) {
+    const delta = t === 0 ? 0 : timestamp * 0.001 - t;
+    t = timestamp * 0.001;
+
+    stateTimer += delta;
+    const dur = STATE_DURATIONS[state]();
+
+    if (stateTimer >= dur) {
+      stateTimer = 0;
+      state = (state + 1) % 4;
+    }
+    const frac = clamp(stateTimer / dur, 0, 1);
+
+    // expandFrac: how expanded is the cloud
+    let expandFrac;
+    if (state === STATE.COLLAPSED)  expandFrac = 0;
+    else if (state === STATE.EXPANDING)  expandFrac = easeOut(frac);
+    else if (state === STATE.CLOUD)      expandFrac = 1;
+    else                                 expandFrac = 1 - easeIn(frac);
+
+    ctx.clearRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(CX, CY, R, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = DARK;
+    ctx.fillRect(0, 0, W, H);
+
+    // ---- Particles ----
+    for (const p of particles) {
+      p.trailAngle += p.trailSpeed * delta * 0.6;
+      const pr = getParticleRadius(p, expandFrac);
+      const px = CX + Math.cos(p.angle + p.trailAngle * 0.08) * pr;
+      const py = CY + Math.sin(p.angle + p.trailAngle * 0.08) * pr;
+
+      const alpha = expandFrac * 0.85;
+
+      // Trail
+      const trailLen = 12;
+      const tdx = -Math.cos(p.angle + p.trailAngle * 0.08 + Math.PI * 0.5) * trailLen * expandFrac;
+      const tdy = -Math.sin(p.angle + p.trailAngle * 0.08 + Math.PI * 0.5) * trailLen * expandFrac;
+
+      const trail = ctx.createLinearGradient(px + tdx, py + tdy, px, py);
+      trail.addColorStop(0, p.isBlue ? 'rgba(42,147,193,0)' : 'rgba(241,66,11,0)');
+      trail.addColorStop(1, p.isBlue
+        ? `rgba(42,147,193,${alpha * 0.6})`
+        : `rgba(241,66,11,${alpha * 0.6})`);
+      ctx.beginPath();
+      ctx.moveTo(px + tdx, py + tdy);
+      ctx.lineTo(px, py);
+      ctx.strokeStyle = trail;
+      ctx.lineWidth = p.size * 0.7;
+      ctx.stroke();
+
+      // Dot
+      ctx.beginPath();
+      ctx.arc(px, py, p.size * expandFrac, 0, Math.PI * 2);
+      ctx.fillStyle = p.isBlue
+        ? `rgba(100,190,230,${alpha})`
+        : `rgba(241,130,60,${alpha})`;
+      ctx.fill();
+    }
+
+    // ---- Central glowing dot ----
+    const collapsed = 1 - expandFrac;
+    const coreSize = lerp(4, 18, collapsed);
+    const pulseSize = coreSize * (1 + 0.15 * Math.sin(t * 4.5));
+
+    // Collapse flash when going from COLLAPSING -> COLLAPSED
+    let flashBoost = 0;
+    if (state === STATE.COLLAPSED && stateTimer < 0.15) {
+      flashBoost = (1 - stateTimer / 0.15) * 0.8;
+    }
+
+    const g1 = ctx.createRadialGradient(CX, CY, 0, CX, CY, pulseSize * 5);
+    g1.addColorStop(0, `rgba(255,255,255,${0.95 + flashBoost})`);
+    g1.addColorStop(0.15, `rgba(241,130,60,${0.8 + flashBoost})`);
+    g1.addColorStop(0.4, `rgba(42,147,193,${0.35 + flashBoost * 0.3})`);
+    g1.addColorStop(1, 'rgba(42,147,193,0)');
+    ctx.beginPath();
+    ctx.arc(CX, CY, pulseSize * 5, 0, Math.PI * 2);
+    ctx.fillStyle = g1;
+    ctx.fill();
+
+    // Hard center dot
+    ctx.beginPath();
+    ctx.arc(CX, CY, pulseSize, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,230,200,${0.9 + flashBoost})`;
+    ctx.fill();
+
+    // Uncertainty rings (when expanding/cloud)
+    if (expandFrac > 0.05) {
+      const ringAlpha = expandFrac * 0.25;
+      for (let ring = 1; ring <= 3; ring++) {
+        const ringR = R * 0.2 * ring * expandFrac;
+        ctx.beginPath();
+        ctx.arc(CX, CY, ringR, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(42,147,193,${ringAlpha * (1 - ring * 0.25)})`;
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore();
+
+    // Border
+    ctx.beginPath();
+    ctx.arc(CX, CY, R, 0, Math.PI * 2);
+    ctx.strokeStyle = hovered ? 'rgba(241,66,11,0.45)' : 'rgba(42,147,193,0.2)';
+    ctx.lineWidth = hovered ? 2 : 1;
+    ctx.stroke();
+
+    requestAnimationFrame(drawFrame);
+  }
+
+  function easeOut(t) { return 1 - (1 - t) * (1 - t); }
+  function easeIn(t)  { return t * t; }
+
+  canvas.addEventListener('mouseenter', () => hovered = true);
+  canvas.addEventListener('mouseleave', () => hovered = false);
+  requestAnimationFrame(drawFrame);
+})();
+
+// ============================================================
+//  AVATAR 4 — CONSTELLATION MAP
+// ============================================================
+(function() {
+  const canvas = document.getElementById('cv-const');
+  const ctx = canvas.getContext('2d');
+  const W = 400, H = 400, CX = 200, CY = 200;
+  const R = 170;
+  let hovered = false;
+  let t = 0;
+  let hoverT = 0;  // 0-1 hover blend
+
+  // 3D star positions on a sphere
+  const NUM_STARS = 55;
+  const stars = [];
+  for (let i = 0; i < NUM_STARS; i++) {
+    // Fibonacci sphere distribution
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+    const y3d = 1 - (i / (NUM_STARS - 1)) * 2;
+    const rSphere = Math.sqrt(1 - y3d * y3d);
+    const theta3d = goldenAngle * i;
+    // Add slight randomness to avoid too-uniform look
+    const jitter = 0.18;
+    stars.push({
+      x3d: rSphere * Math.cos(theta3d) + rand(-jitter, jitter),
+      y3d: y3d + rand(-jitter * 0.5, jitter * 0.5),
+      z3d: rSphere * Math.sin(theta3d) + rand(-jitter, jitter),
+      brightness: rand(0.4, 1.0),
+      pulsePhase: Math.random() * Math.PI * 2,
+      pulseSpeed: rand(0.6, 1.8),
+      size: rand(1.5, 4.0),
+      isOrange: Math.random() < 0.18,
+    });
+  }
+
+  // Normalize
+  for (const s of stars) {
+    const len = Math.sqrt(s.x3d ** 2 + s.y3d ** 2 + s.z3d ** 2);
+    s.x3d /= len; s.y3d /= len; s.z3d /= len;
+  }
+
+  // Build connections: each star connects to 2-4 nearest neighbors
+  const edges = [];
+  for (let i = 0; i < NUM_STARS; i++) {
+    const si = stars[i];
+    const dists = stars
+      .map((sj, j) => ({
+        j,
+        d: Math.sqrt((si.x3d - sj.x3d) ** 2 + (si.y3d - sj.y3d) ** 2 + (si.z3d - sj.z3d) ** 2)
+      }))
+      .sort((a, b) => a.d - b.d)
+      .slice(1, 4);  // nearest 3
+
+    for (const { j } of dists) {
+      if (j > i) edges.push({ a: i, b: j });
+    }
+  }
+
+  // Connection activation state for hover effect
+  const edgeState = edges.map(() => ({
+    lit: 0,            // 0-1
+    litTarget: 0,
+    pulseT: 0,         // traveling dot 0-1
+    active: false,
+  }));
+
+  let activationQueue = [];
+  let nextActivation = 0;
+
+  function project(x3d, y3d, z3d, rotY, rotX) {
+    // Rotate around Y
+    let x1 = x3d * Math.cos(rotY) + z3d * Math.sin(rotY);
+    let z1 = -x3d * Math.sin(rotY) + z3d * Math.cos(rotY);
+    let y1 = y3d;
+    // Rotate around X
+    let y2 = y1 * Math.cos(rotX) - z1 * Math.sin(rotX);
+    let z2 = y1 * Math.sin(rotX) + z1 * Math.cos(rotX);
+    let x2 = x1;
+    // Perspective
+    const fov = R * 1.1;
+    const depth = 2.0;
+    const scale = fov / (depth - z2 * 0.4);
+    return {
+      x: CX + x2 * scale,
+      y: CY + y2 * scale,
+      z: z2,
+      scale,
+    };
+  }
+
+  function drawFrame(timestamp) {
+    const delta = t === 0 ? 0 : timestamp * 0.001 - t;
+    t = timestamp * 0.001;
+
+    hoverT = clamp(hoverT + (hovered ? 1 : -1) * delta * 3.5, 0, 1);
+
+    // Rotation
+    const rotY  = t * (hovered ? 0.55 : 0.22);
+    const rotX  = 0.28 + Math.sin(t * 0.18) * 0.08;
+
+    // Hover: queue edge activations
+    if (hovered && t > nextActivation && activationQueue.length === 0) {
+      // Activate random sequence of edges
+      const shuffled = edges.map((_, i) => i).sort(() => Math.random() - 0.5).slice(0, 12);
+      activationQueue = shuffled;
+      nextActivation = t + 0.08;
+    }
+    if (!hovered) {
+      activationQueue = [];
+      nextActivation = 0;
+    }
+
+    // Process activation queue
+    if (activationQueue.length > 0 && t > nextActivation) {
+      const idx = activationQueue.shift();
+      edgeState[idx].active = true;
+      edgeState[idx].litTarget = 1;
+      edgeState[idx].pulseT = 0;
+      nextActivation = t + 0.055;
+    }
+
+    // Update edge states
+    for (let i = 0; i < edgeState.length; i++) {
+      const es = edgeState[i];
+      const speed = 4;
+      if (es.active) {
+        es.lit = clamp(es.lit + delta * speed, 0, 1);
+        es.pulseT = clamp(es.pulseT + delta * 1.4, 0, 1);
+        if (es.pulseT >= 1) {
+          es.active = false;
+          es.litTarget = 0;
+        }
+      } else {
+        es.lit = clamp(es.lit - delta * speed * 0.7, 0, es.litTarget);
+      }
+    }
+
+    ctx.clearRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(CX, CY, R, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = DARK;
+    ctx.fillRect(0, 0, W, H);
+
+    // Project all stars
+    const projected = stars.map(s => project(s.x3d, s.y3d, s.z3d, rotY, rotX));
+
+    // Sort edges by average Z (painter's)
+    const edgeSorted = edges
+      .map((e, i) => ({
+        e, i,
+        avgZ: (projected[e.a].z + projected[e.b].z) * 0.5
+      }))
+      .sort((a, b) => a.avgZ - b.avgZ);
+
+    // Draw edges
+    for (const { e, i, avgZ } of edgeSorted) {
+      const pa = projected[e.a];
+      const pb = projected[e.b];
+      const depthAlpha = clamp((avgZ + 1) * 0.5, 0.1, 1.0) * 0.38;
+      const hoverBoost = edgeState[i].lit;
+
+      const alpha = depthAlpha + hoverBoost * 0.55;
+
+      ctx.beginPath();
+      ctx.moveTo(pa.x, pa.y);
+      ctx.lineTo(pb.x, pb.y);
+      ctx.strokeStyle = hoverBoost > 0.1
+        ? `rgba(42,147,193,${alpha})`
+        : `rgba(100,170,210,${alpha * 0.45})`;
+      ctx.lineWidth = hoverBoost > 0.1 ? lerp(0.6, 1.4, hoverBoost) : 0.5;
+      ctx.stroke();
+
+      // Traveling dot on active edge
+      if (edgeState[i].active && edgeState[i].pulseT < 1) {
+        const pt = edgeState[i].pulseT;
+        const dotX = lerp(pa.x, pb.x, pt);
+        const dotY = lerp(pa.y, pb.y, pt);
+        const dotScale = lerp(pa.scale, pb.scale, pt);
+
+        ctx.beginPath();
+        ctx.arc(dotX, dotY, 3 * dotScale / (R * 0.0065), 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(42,147,193,${0.9 * (1 - Math.abs(pt - 0.5) * 2)})`;
+        ctx.fill();
+      }
+    }
+
+    // Draw stars (sorted front-to-back so front stars draw on top)
+    const starsSorted = stars
+      .map((s, i) => ({ s, p: projected[i] }))
+      .sort((a, b) => a.p.z - b.p.z);
+
+    for (const { s, p } of starsSorted) {
+      const depthFactor = clamp((p.z + 1) * 0.5, 0.2, 1.0);
+      const pulse = 0.7 + 0.3 * Math.sin(t * s.pulseSpeed + s.pulsePhase);
+      const brightness = s.brightness * depthFactor * pulse;
+      const dotR = s.size * depthFactor * p.scale / (R * 0.0065);
+
+      // Glow
+      const glowR = dotR * 3.5;
+      const gStar = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glowR);
+      if (s.isOrange) {
+        gStar.addColorStop(0, `rgba(241,130,60,${brightness * 0.6})`);
+        gStar.addColorStop(1, 'rgba(241,130,60,0)');
+      } else {
+        gStar.addColorStop(0, `rgba(140,210,245,${brightness * 0.55})`);
+        gStar.addColorStop(1, 'rgba(42,147,193,0)');
+      }
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, glowR, 0, Math.PI * 2);
+      ctx.fillStyle = gStar;
+      ctx.fill();
+
+      // Core dot
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, dotR, 0, Math.PI * 2);
+      ctx.fillStyle = s.isOrange
+        ? `rgba(255,180,100,${brightness})`
+        : `rgba(200,235,255,${brightness})`;
+      ctx.fill();
+    }
+
+    ctx.restore();
+
+    // Border
+    ctx.beginPath();
+    ctx.arc(CX, CY, R, 0, Math.PI * 2);
+    ctx.strokeStyle = hovered ? 'rgba(42,147,193,0.5)' : 'rgba(42,147,193,0.18)';
+    ctx.lineWidth = hovered ? 2 : 1;
+    ctx.stroke();
+
+    requestAnimationFrame(drawFrame);
+  }
+
+  canvas.addEventListener('mouseenter', () => hovered = true);
+  canvas.addEventListener('mouseleave', () => hovered = false);
+  requestAnimationFrame(drawFrame);
+})();
+</script>
+</body>
+</html>

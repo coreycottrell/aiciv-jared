@@ -1,0 +1,2740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PureBrain — Your AI's Brain Stream</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ═══════════════════════════════════════════
+     DESIGN TOKENS — EXACT V7 PALETTE
+  ═══════════════════════════════════════════ */
+  :root {
+    --bright-orange: #f1420b;
+    --orange: #ed6626;
+    --light-blue: #2a93c1;
+    --dark-blue: #3a60ab;
+    --black: #0a0a0a;
+    --bg-deep: #080a12;
+    --white: #ffffff;
+    --muted: #888888;
+    --card-bg: rgba(20, 20, 20, 0.97);
+    --border-color: rgba(255, 255, 255, 0.1);
+    --hover-bg: rgba(255, 255, 255, 0.05);
+    --success: #22c55e;
+    --error: #ef4444;
+    --input-bg: rgba(0, 0, 0, 0.3);
+    --text-primary: rgba(255, 255, 255, 0.95);
+    --text-secondary: rgba(255, 255, 255, 0.7);
+    --text-muted: rgba(255, 255, 255, 0.45);
+    --font-heading: 'Oswald', 'Helvetica Neue', Arial, sans-serif;
+    --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+    --sidebar-w: 220px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    display: flex;
+    flex-direction: column;
+    -webkit-text-size-adjust: 100%;
+    line-height: 1.5;
+  }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+
+  /* ── Gradient helpers ── */
+  .grad { background: linear-gradient(135deg, var(--bright-orange), var(--light-blue)); }
+  .grad-text {
+    background: linear-gradient(135deg, var(--bright-orange) 0%, var(--light-blue) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ═══════════════════════════════════════════
+     3D CANVAS CONTAINER — Neural Background
+  ═══════════════════════════════════════════ */
+  #pb-canvas-container {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 190;
+    display: none;
+  }
+  #pb-canvas-container canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+  body.login-active #pb-canvas-container {
+    display: block;
+  }
+
+  /* ═══════════════════════════════════════════
+     AUTH / LOGIN OVERLAY — v7 Exact Style
+  ═══════════════════════════════════════════ */
+
+  /* Portal-specific CSS vars */
+  #auth-overlay {
+    --pb-card-bg: rgba(10, 10, 10, 0.82);
+    --pb-field-bg: rgba(255, 255, 255, 0.04);
+    --pb-field-border: rgba(255, 255, 255, 0.1);
+    --pb-glow-orange: rgba(241, 66, 11, 0.35);
+    --pb-glow-blue: rgba(42, 147, 193, 0.35);
+  }
+
+  #auth-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    padding: 20px;
+    padding-top: max(20px, env(safe-area-inset-top));
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+
+  /* Glassmorphism card — v7 exact */
+  .auth-card {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    background: var(--pb-card-bg);
+    border-radius: 20px;
+    padding: 48px 40px 0;
+    text-align: center;
+    backdrop-filter: blur(32px) saturate(1.6);
+    -webkit-backdrop-filter: blur(32px) saturate(1.6);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow:
+      0 0 0 1px rgba(241, 66, 11, 0.06),
+      0 8px 32px rgba(0, 0, 0, 0.65),
+      0 0 60px rgba(42, 147, 193, 0.10),
+      0 0 120px rgba(241, 66, 11, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    animation: pbCardMaterialize 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.3s;
+    overflow: hidden;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .auth-card::-webkit-scrollbar { display: none; }
+
+  /* Top edge gradient line */
+  .auth-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 10%; right: 10%;
+    height: 1px;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(241, 66, 11, 0.6) 25%,
+      rgba(42, 147, 193, 0.8) 50%,
+      rgba(58, 96, 171, 0.6) 75%,
+      transparent 100%
+    );
+    border-radius: 1px;
+  }
+
+  @keyframes pbCardMaterialize {
+    0%   { opacity: 0; transform: translateY(24px) scale(0.97); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .auth-card-content { padding-bottom: 36px; }
+
+  /* Logo treatment — v7 exact wordmark */
+  .auth-logo-wrap {
+    margin-bottom: 28px;
+    animation: pbLogoReveal 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.6s;
+  }
+  @keyframes pbLogoReveal {
+    0%   { opacity: 0; transform: translateY(-8px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  .auth-logo-icon {
+    width: 64px; height: 64px;
+    margin: 0 auto 14px;
+    border-radius: 50%;
+    background: rgba(10, 10, 20, 0.6);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow:
+      0 0 16px 4px rgba(42, 147, 193, 0.3),
+      0 0 32px 8px rgba(58, 96, 171, 0.2),
+      0 0 8px 2px rgba(241, 66, 11, 0.25);
+    animation: pbOrbMarkGlow 3s ease-in-out infinite alternate;
+    flex-shrink: 0;
+  }
+  @keyframes pbOrbMarkGlow {
+    0%   { box-shadow: 0 0 16px 4px rgba(42,147,193,0.3), 0 0 32px 8px rgba(58,96,171,0.2), 0 0 8px 2px rgba(241,66,11,0.25); }
+    100% { box-shadow: 0 0 20px 6px rgba(42,147,193,0.45), 0 0 40px 12px rgba(58,96,171,0.3), 0 0 12px 4px rgba(241,66,11,0.35); }
+  }
+
+  /* PureBrain wordmark — PUREBR(blue)AI(orange)N(blue).ai(white) */
+  .auth-logo-wordmark {
+    font-family: var(--font-heading);
+    font-size: 26px; font-weight: 700;
+    letter-spacing: 0.06em; line-height: 1;
+    display: block; margin-bottom: 2px;
+  }
+  .auth-logo-wordmark .pb-pure  { color: #2a93c1; }
+  .auth-logo-wordmark .pb-brain { color: #f1420b; }
+  .auth-logo-wordmark .pb-brain-n { color: #2a93c1; }
+  .auth-logo-wordmark .pb-ai    { color: rgba(255,255,255,0.6); font-weight: 400; }
+
+  .auth-logo-sub {
+    font-size: 11px; color: var(--muted);
+    letter-spacing: 0.12em; text-transform: uppercase;
+    font-family: var(--font-mono);
+  }
+
+  /* Headline */
+  .auth-title {
+    font-family: var(--font-heading);
+    font-size: 22px; font-weight: 600;
+    letter-spacing: 0.03em; color: #ffffff;
+    margin-bottom: 8px;
+    animation: pbContentReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.75s;
+  }
+  .auth-subtitle {
+    font-size: 13px; color: var(--muted);
+    letter-spacing: 0.01em; margin-bottom: 24px;
+    line-height: 1.5;
+    animation: pbContentReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.85s;
+  }
+
+  @keyframes pbContentReveal {
+    0%   { opacity: 0; transform: translateY(8px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Trust badges */
+  .auth-trust-row {
+    display: flex; align-items: center;
+    justify-content: center; gap: 16px;
+    margin-bottom: 24px;
+    animation: pbContentReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.8s;
+  }
+  .auth-trust-badge {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: rgba(255,255,255,0.35);
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .auth-trust-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #ed6626;
+    box-shadow: 0 0 6px #ed6626;
+    animation: pbDotPulse 2s ease-in-out infinite;
+  }
+  .auth-trust-dot.blue {
+    background: #2a93c1; box-shadow: 0 0 6px #2a93c1;
+    animation-delay: 0.7s;
+  }
+  @keyframes pbDotPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.5; transform: scale(0.7); }
+  }
+  .auth-trust-divider { width: 1px; height: 14px; background: rgba(255,255,255,0.1); }
+
+  /* Form — floating labels, v7 style */
+  .auth-form {
+    text-align: left;
+    animation: pbContentReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.95s;
+  }
+  .auth-field { position: relative; margin-bottom: 20px; }
+  .auth-field label {
+    position: absolute; top: 14px; left: 14px;
+    font-size: 13px; font-weight: 500;
+    color: rgba(255,255,255,0.35);
+    pointer-events: none;
+    transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    letter-spacing: 0.01em; z-index: 1;
+  }
+  .auth-field input:not(:placeholder-shown) ~ label,
+  .auth-field input:focus ~ label {
+    top: 6px; font-size: 10px;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    color: #2a93c1; font-weight: 600;
+  }
+  .auth-field input {
+    width: 100%; height: 52px;
+    padding: 20px 14px 6px;
+    border-radius: 10px;
+    border: 1px solid var(--pb-field-border);
+    background: var(--pb-field-bg);
+    color: #ffffff;
+    font-family: var(--font-body); font-size: 15px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    -webkit-appearance: none; appearance: none;
+  }
+  .auth-field input::placeholder { color: transparent; }
+  .auth-field input:focus {
+    border-color: rgba(42, 147, 193, 0.6);
+    background: rgba(42, 147, 193, 0.05);
+    box-shadow: 0 0 0 3px rgba(42, 147, 193, 0.12), inset 0 0 20px rgba(42, 147, 193, 0.04);
+  }
+  .auth-field input:focus ~ .pb-field-accent { transform: scaleX(1); opacity: 1; }
+  .pb-field-accent {
+    position: absolute; bottom: 0; left: 10px; right: 10px;
+    height: 2px;
+    background: linear-gradient(90deg, #ed6626, #2a93c1);
+    border-radius: 0 0 2px 2px;
+    transform: scaleX(0); opacity: 0;
+    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s;
+    pointer-events: none;
+  }
+
+  /* Auth button — v7 exact gradient */
+  .auth-btn {
+    width: 100%; height: 52px;
+    border-radius: 10px; border: none; cursor: pointer;
+    font-family: var(--font-heading);
+    font-size: 17px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: #ffffff; position: relative; overflow: hidden;
+    transition: opacity 0.2s, transform 0.15s, box-shadow 0.3s;
+    background: linear-gradient(105deg,
+      #f1420b 0%, #ed6626 30%, #2a93c1 70%, #3a60ab 100%
+    );
+    box-shadow: 0 4px 20px rgba(241, 66, 11, 0.3), 0 2px 8px rgba(0, 0, 0, 0.4);
+    margin-top: 4px;
+  }
+  .auth-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 30px rgba(241, 66, 11, 0.45), 0 0 40px rgba(42, 147, 193, 0.2), 0 3px 12px rgba(0, 0, 0, 0.4);
+  }
+  .auth-btn:active:not(:disabled) { transform: translateY(0); }
+  .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .auth-btn::after {
+    content: '';
+    position: absolute; top: 0; left: -100%; width: 60%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+    transform: skewX(-20deg);
+    transition: left 0.5s ease;
+  }
+  .auth-btn:hover:not(:disabled)::after { left: 160%; }
+
+  .auth-error {
+    display: none;
+    color: #ff6b6b; font-size: 13px;
+    margin-top: 12px; padding: 10px 14px;
+    background: rgba(255, 107, 107, 0.08);
+    border: 1px solid rgba(255, 107, 107, 0.2);
+    border-radius: 8px; line-height: 1.4;
+    text-align: left;
+  }
+
+  /* Auth card footer — v7 exact */
+  .auth-footer {
+    position: relative; margin-top: 28px;
+    overflow: hidden; border-radius: 0 0 20px 20px;
+    animation: pbContentReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 1.1s;
+  }
+  .auth-footer-glow-bar {
+    position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg,
+      transparent 0%, rgba(241, 66, 11, 0.8) 20%,
+      rgba(42, 147, 193, 0.9) 50%, rgba(58, 96, 171, 0.7) 80%, transparent 100%
+    );
+  }
+  .auth-footer-inner {
+    position: relative; padding: 22px 24px 24px;
+    background: linear-gradient(180deg,
+      rgba(42, 147, 193, 0.06) 0%, rgba(241, 66, 11, 0.08) 50%, rgba(10, 10, 10, 0.4) 100%
+    );
+  }
+  .auth-footer-inner::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(ellipse 90% 80% at 50% 120%,
+      rgba(241, 66, 11, 0.18) 0%, rgba(42, 147, 193, 0.12) 40%, transparent 70%
+    );
+    animation: pbFooterGlowPulse 4s ease-in-out infinite alternate;
+    pointer-events: none;
+  }
+  @keyframes pbFooterGlowPulse {
+    0%   { opacity: 0.6; transform: scale(1); }
+    100% { opacity: 1; transform: scale(1.04); }
+  }
+  .auth-footer-powered {
+    position: relative; font-size: 10px;
+    color: rgba(255,255,255,0.3); letter-spacing: 0.1em;
+    text-transform: uppercase; margin-bottom: 10px;
+    font-family: var(--font-mono);
+  }
+  .auth-footer-powered .pb-brand-pure  { color: #2a93c1; font-weight: 700; }
+  .auth-footer-powered .pb-brand-brain { color: #f1420b; font-weight: 700; }
+  .auth-footer-powered .pb-brand-n     { color: #2a93c1; font-weight: 700; }
+  .auth-footer-powered .pb-brand-ai    { color: rgba(255,255,255,0.6); font-weight: 500; }
+  .auth-footer-powered .pb-brand-sep   { color: rgba(255,255,255,0.25); margin: 0 6px; }
+  .auth-footer-powered .pb-brand-pt    { color: rgba(255,255,255,0.55); font-weight: 600; letter-spacing: 0.08em; }
+  .auth-footer-tagline {
+    position: relative;
+    font-family: var(--font-heading); font-size: 17px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.1;
+    background: linear-gradient(100deg, #f1420b 0%, #ed6626 30%, #2a93c1 70%, #3a60ab 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 0 12px rgba(241,66,11,0.5)) drop-shadow(0 0 24px rgba(42,147,193,0.3));
+    animation: pbTaglineGlow 3s ease-in-out infinite alternate;
+  }
+  @keyframes pbTaglineGlow {
+    0%   { filter: drop-shadow(0 0 8px rgba(241,66,11,0.4)) drop-shadow(0 0 16px rgba(42,147,193,0.3)); }
+    100% { filter: drop-shadow(0 0 16px rgba(241,66,11,0.6)) drop-shadow(0 0 32px rgba(42,147,193,0.5)); }
+  }
+  .tagline-dot { color: var(--bright-orange); -webkit-text-fill-color: var(--bright-orange); }
+
+  /* Mobile login adjustments */
+  @media (max-width: 600px) {
+    #auth-overlay { align-items: flex-start; padding-top: max(40px, env(safe-area-inset-top, 20px)); }
+    .auth-card { border-radius: 16px; padding: 36px 24px 0; max-height: calc(100vh - 80px); }
+    .auth-card-content { padding-bottom: 24px; }
+    .auth-title { font-size: 20px; }
+    .auth-trust-row { gap: 10px; }
+    .auth-trust-badge { font-size: 10px; }
+    .auth-footer { border-radius: 0 0 16px 16px; }
+    .auth-footer-tagline { font-size: 15px; }
+    .auth-footer-inner { padding: 18px 20px 20px; }
+    .auth-field input { font-size: 16px; }
+  }
+
+  /* ═══════════════════════════════════════════
+     LAYOUT — v8 Exact
+  ═══════════════════════════════════════════ */
+  .app-body { display: flex; flex: 1; overflow: hidden; }
+
+  /* Status dot */
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transition: background 0.3s; flex-shrink: 0; }
+  .status-dot.online { background: var(--success); box-shadow: 0 0 6px var(--success); animation: statusPulse 2s ease-in-out infinite; }
+  @keyframes statusPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  @keyframes avatarGlow {
+    0%, 100% { box-shadow: 0 0 20px rgba(241,66,11,0.3); }
+    50% { box-shadow: 0 0 30px rgba(42,147,193,0.4); }
+  }
+
+  /* ═══════════════════════════════════════════
+     SIDEBAR — v8 exact
+  ═══════════════════════════════════════════ */
+  .sidebar { width: 260px; background: var(--card-bg); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; flex-shrink: 0; height: 100vh; overflow: hidden; transition: width 0.3s ease; }
+  .sidebar.collapsed { width: 56px; }
+
+  .sidebar__header { padding: 16px 16px 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  .sidebar.collapsed .sidebar__header { padding: 14px 0; justify-content: center; gap: 0; }
+  .sidebar__logo-icon { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; transition: width 0.3s, opacity 0.2s; }
+  .sidebar__logo-icon img { width: 100%; height: 100%; object-fit: contain; }
+  .sidebar.collapsed .sidebar__logo-icon { width: 0; opacity: 0; overflow: hidden; }
+  .sidebar__logo-text { font-family: var(--font-heading); font-size: 1.2rem; font-weight: 700; white-space: nowrap; overflow: hidden; transition: opacity 0.2s, width 0.3s; }
+  .sidebar.collapsed .sidebar__logo-text { opacity: 0; width: 0; }
+  .text-blue { color: var(--light-blue); }
+  .text-orange { color: var(--bright-orange); }
+  .sidebar__collapse-btn { width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--muted); margin-left: auto; flex-shrink: 0; transition: all 0.2s; background: none; border: none; cursor: pointer; }
+  .sidebar__collapse-btn:hover { background: var(--hover-bg); color: var(--white); }
+  .sidebar__collapse-btn svg { width: 16px; height: 16px; transition: transform 0.3s; }
+  .sidebar.collapsed .sidebar__collapse-btn { margin-left: 0; }
+  .sidebar.collapsed .sidebar__collapse-btn svg { transform: rotate(180deg); }
+
+  .sidebar__new-chat { display: flex; align-items: center; gap: 10px; margin: 12px 12px 4px; padding: 10px 14px; background: linear-gradient(135deg, rgba(241,66,11,0.15), rgba(42,147,193,0.15)); border: 1px solid rgba(241,66,11,0.2); border-radius: 10px; color: var(--white); font-size: 0.85rem; font-weight: 600; transition: all 0.2s; flex-shrink: 0; white-space: nowrap; overflow: hidden; cursor: pointer; font-family: var(--font-body); }
+  .sidebar__new-chat:hover { background: linear-gradient(135deg, rgba(241,66,11,0.25), rgba(42,147,193,0.25)); }
+  .sidebar__new-chat svg { width: 16px; height: 16px; flex-shrink: 0; }
+  .sidebar.collapsed .sidebar__new-chat { margin: 8px 8px 4px; padding: 10px; justify-content: center; }
+  .sidebar.collapsed .sidebar__new-chat span { display: none; }
+
+  .sidebar__collapsible { flex: 1; overflow: hidden; transition: opacity 0.2s; display: flex; flex-direction: column; min-height: 0; }
+  .sidebar.collapsed .sidebar__collapsible { opacity: 0; pointer-events: none; }
+
+  .ai-profile { padding: 14px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; overflow: hidden; transition: padding 0.3s, max-height 0.3s; max-height: 200px; }
+  .sidebar.collapsed .ai-profile { max-height: 0; padding: 0; border-bottom: none; }
+  .ai-profile__card { background: linear-gradient(135deg, rgba(241,66,11,0.1), rgba(42,147,193,0.1)); border: 1px solid var(--border-color); border-radius: 14px; padding: 14px; text-align: center; cursor: pointer; transition: border-color 0.2s; }
+  .ai-profile__card:hover { border-color: rgba(42,147,193,0.3); }
+  .ai-profile__avatar { width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, var(--bright-orange), var(--light-blue)); margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; position: relative; animation: avatarGlow 3s ease-in-out infinite; padding: 3px; }
+  .ai-profile__avatar-inner { width: 100%; height: 100%; border-radius: 50%; background: var(--black); display: flex; align-items: center; justify-content: center; font-family: var(--font-heading); font-size: 1.5rem; font-weight: 700; color: var(--light-blue); overflow: hidden; }
+  .ai-profile__avatar-inner img { width: 70%; height: 70%; object-fit: contain; }
+  .ai-profile__status { position: absolute; bottom: 1px; right: 1px; width: 14px; height: 14px; background: var(--success); border-radius: 50%; border: 2px solid var(--black); }
+  .ai-profile__name { font-family: var(--font-heading); font-size: 1.2rem; font-weight: 600; margin-bottom: 0; }
+  .ai-profile__subtitle { font-size: 0.68rem; color: var(--muted); margin-top: 4px; letter-spacing: 0.05em; }
+
+  .sidebar__nav { flex: 1; padding: 12px; overflow-y: auto; min-height: 0; scrollbar-width: thin; }
+  .nav-section { margin-bottom: 6px; }
+  .nav-section__title { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--muted); padding: 4px 4px 6px; font-weight: 600; white-space: nowrap; }
+
+  .nav-item { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 10px; color: var(--text-secondary); transition: all 0.2s ease; margin-bottom: 2px; font-size: 0.9rem; font-weight: 500; cursor: pointer; text-decoration: none; position: relative; }
+  .nav-item:hover { background: var(--hover-bg); color: var(--white); }
+  .nav-item.active { background: rgba(241, 66, 11, 0.15); color: var(--white); }
+  .nav-item__icon { width: 18px; height: 18px; flex-shrink: 0; }
+  .nav-item__badge { margin-left: auto; background: var(--bright-orange); color: var(--white); font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+
+  /* Coming soon items */
+  .nav-item.coming-soon { opacity: 0.7; cursor: pointer; }
+  .nav-item.coming-soon:hover { background: var(--hover-bg); color: var(--white); opacity: 0.9; }
+  .new-item-btn.coming-soon { cursor: pointer; opacity: 0.7; }
+  .new-item-btn.coming-soon:hover { opacity: 0.9; background: rgba(255,255,255,0.04); }
+  .nav-cs-tag { margin-left: auto; font-size: 0.58rem; font-family: var(--font-mono); color: var(--muted); background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 1px 5px; white-space: nowrap; letter-spacing: 0.03em; }
+
+  /* ── Coming Soon Modal ── */
+  #cs-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.72);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  #cs-modal-overlay.active { display: flex; }
+  #cs-modal-card {
+    background: rgba(10, 12, 20, 0.97);
+    border: 1px solid rgba(241,66,11,0.22);
+    border-radius: 20px;
+    padding: 38px 32px 30px;
+    max-width: 380px;
+    width: 100%;
+    text-align: center;
+    box-shadow:
+      0 0 0 1px rgba(42,147,193,0.08),
+      0 24px 60px rgba(0,0,0,0.85),
+      0 0 50px rgba(241,66,11,0.07),
+      0 0 100px rgba(42,147,193,0.05);
+    animation: csCardIn 0.28s cubic-bezier(0.22,1,0.36,1) both;
+    position: relative;
+    overflow: hidden;
+  }
+  @keyframes csCardIn {
+    from { opacity:0; transform: scale(0.9) translateY(20px); }
+    to   { opacity:1; transform: scale(1) translateY(0); }
+  }
+  #cs-modal-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 12%; right: 12%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(241,66,11,0.8) 35%, rgba(42,147,193,0.8) 65%, transparent);
+    border-radius: 1px;
+  }
+  .cs-modal__icon {
+    width: 56px; height: 56px;
+    margin: 0 auto 18px;
+    border-radius: 50%;
+    background: rgba(241,66,11,0.08);
+    border: 1px solid rgba(241,66,11,0.18);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 24px rgba(241,66,11,0.12);
+    animation: csIconGlow 2.5s ease-in-out infinite alternate;
+  }
+  @keyframes csIconGlow {
+    0%   { box-shadow: 0 0 16px rgba(241,66,11,0.12); }
+    100% { box-shadow: 0 0 28px rgba(241,66,11,0.25), 0 0 50px rgba(42,147,193,0.1); }
+  }
+  .cs-modal__icon svg { width: 26px; height: 26px; color: var(--bright-orange); }
+  .cs-modal__label {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--bright-orange);
+    margin-bottom: 8px;
+    opacity: 0.8;
+  }
+  .cs-modal__title {
+    font-family: var(--font-heading);
+    font-size: 1.4rem; font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #ffffff;
+    margin-bottom: 14px;
+    line-height: 1.1;
+  }
+  .cs-modal__desc {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    line-height: 1.65;
+    margin-bottom: 28px;
+  }
+  .cs-modal__btn {
+    display: inline-block;
+    padding: 12px 36px;
+    background: linear-gradient(105deg, #f1420b, #ed6626 40%, #2a93c1);
+    border: none;
+    border-radius: 11px;
+    color: #fff;
+    font-family: var(--font-heading);
+    font-size: 1rem; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+    box-shadow: 0 4px 20px rgba(241,66,11,0.28);
+  }
+  .cs-modal__btn:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 6px 28px rgba(241,66,11,0.38); }
+  .cs-modal__btn:active { transform: translateY(0); }
+
+  /* ── Top bar header icon buttons ── */
+  .chat-header__icons { display: flex; align-items: center; gap: 3px; }
+  .hdr-icon-btn {
+    width: 34px; height: 34px;
+    border-radius: 8px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-secondary);
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  .hdr-icon-btn:hover { background: var(--hover-bg); color: var(--white); }
+  .hdr-icon-btn svg { width: 16px; height: 16px; }
+  .hdr-icon-btn.orange { color: var(--bright-orange); }
+  .hdr-icon-btn.orange:hover { background: rgba(241,66,11,0.12); }
+  .hdr-icon-btn.share-gradient { background: linear-gradient(135deg, var(--bright-orange), var(--light-blue)); color: var(--white); border-radius: 10px; }
+  .hdr-icon-btn.share-gradient:hover { transform: scale(1.08); background: linear-gradient(135deg, var(--bright-orange), var(--light-blue)); }
+
+  /* ── Aether AI Profile Card (sidebar) ── */
+  .ai-profile { padding: 14px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; overflow: hidden; transition: padding 0.3s, max-height 0.3s; max-height: 180px; }
+  .sidebar.collapsed .ai-profile { max-height: 0; padding: 0; border-bottom: none; }
+  .ai-profile__card { background: linear-gradient(135deg, rgba(241,66,11,0.1), rgba(42,147,193,0.1)); border: 1px solid var(--border-color); border-radius: 14px; padding: 14px; text-align: center; cursor: pointer; transition: all 0.2s; }
+  .ai-profile__card:hover { border-color: rgba(241,66,11,0.3); background: linear-gradient(135deg, rgba(241,66,11,0.15), rgba(42,147,193,0.15)); }
+  .ai-profile__avatar { width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, var(--bright-orange), var(--light-blue)); margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; position: relative; animation: avatarGlow 3s ease-in-out infinite; padding: 3px; }
+  @keyframes avatarGlow { 0%, 100% { box-shadow: 0 0 12px rgba(241,66,11,0.2), 0 0 24px rgba(42,147,193,0.1); } 50% { box-shadow: 0 0 20px rgba(241,66,11,0.35), 0 0 40px rgba(42,147,193,0.2); } }
+  .ai-profile__avatar-inner { width: 100%; height: 100%; border-radius: 50%; background: var(--black); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .ai-profile__avatar-inner img { width: 70%; height: 70%; object-fit: contain; }
+  .ai-profile__status { position: absolute; bottom: 1px; right: 1px; width: 14px; height: 14px; background: var(--success); border-radius: 50%; border: 2px solid var(--black); }
+  .ai-profile__name { font-family: var(--font-heading); font-size: 1.2rem; font-weight: 600; }
+
+  /* ── Chat header avatar (orb style) ── */
+  .chat-header__avatar { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, var(--bright-orange), var(--light-blue)); display: flex; align-items: center; justify-content: center; padding: 2px; flex-shrink: 0; }
+  .chat-header__avatar-inner { width: 100%; height: 100%; border-radius: 50%; background: var(--black); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .chat-header__avatar-inner img { width: 70%; height: 70%; object-fit: contain; }
+  .chat-header__status-line { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--muted); }
+  .chat-header__status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); animation: statusPulse 2s ease-in-out infinite; }
+  @keyframes statusPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  .hdr-icon-btn.blue { color: var(--light-blue); }
+  .hdr-icon-btn.blue:hover { background: rgba(42,147,193,0.12); }
+
+  /* ── Quick action pills ── */
+  .quick-actions {
+    display: flex;
+    gap: 7px;
+    padding: 8px 16px 12px;
+    overflow-x: auto;
+    flex-shrink: 0;
+    scrollbar-width: none;
+  }
+  .quick-actions::-webkit-scrollbar { display: none; }
+  .quick-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 13px;
+    border-radius: 20px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.09);
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  .quick-action:hover { background: rgba(42,147,193,0.1); border-color: rgba(42,147,193,0.25); color: var(--light-blue); }
+  .quick-action svg { width: 12px; height: 12px; }
+
+  /* ── Input bar attachment / voice ── */
+  .input-icon-btn {
+    width: 30px; height: 30px;
+    border-radius: 7px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted);
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  .input-icon-btn:hover { background: var(--hover-bg); color: var(--text-secondary); }
+  .input-icon-btn svg { width: 16px; height: 16px; }
+
+  /* ── History badge ── */
+  .nav-item__badge-green { margin-left: auto; background: var(--success); color: #000; font-size: 0.62rem; font-weight: 700; padding: 2px 7px; border-radius: 10px; }
+
+  .chat-history { max-height: 180px; overflow-y: auto; }
+  .chat-history-empty { font-size: 0.75rem; color: var(--muted); padding: 6px 4px; font-style: italic; }
+  .chat-history-item { padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 0.8rem; color: var(--text-secondary); transition: all 0.15s; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chat-history-item:hover { background: var(--hover-bg); color: var(--white); }
+
+  .new-item-btn { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; color: var(--muted); font-size: 0.8rem; cursor: pointer; transition: all 0.15s; border: 1px dashed rgba(255,255,255,0.08); margin-bottom: 4px; opacity: 0.4; }
+  .new-item-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+  .skills-update { margin: 8px 4px; background: linear-gradient(135deg, rgba(241,66,11,0.06), rgba(42,147,193,0.06)); border: 1px solid rgba(42,147,193,0.15); border-radius: 12px; padding: 12px; }
+  .skills-update__header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .skills-update__title { font-size: 0.72rem; font-weight: 600; color: var(--light-blue); }
+  .skills-update__time { font-size: 0.65rem; color: var(--muted); font-family: var(--font-mono); }
+  .skills-update__item { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
+  .skills-update__icon { font-size: 0.9rem; flex-shrink: 0; margin-top: 1px; }
+  .skills-update__name { font-size: 0.75rem; font-weight: 600; color: var(--text-primary); line-height: 1.3; }
+  .skills-update__desc { font-size: 0.68rem; color: var(--muted); line-height: 1.3; }
+
+  .sidebar__user { padding: 14px 16px; border-top: 1px solid var(--border-color); display: flex; align-items: center; gap: 12px; cursor: pointer; min-height: 70px; flex-shrink: 0; transition: padding 0.3s; }
+  .sidebar__user:hover { background: var(--hover-bg); }
+  .sidebar.collapsed .sidebar__user { padding: 10px; justify-content: center; }
+  .user__avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--dark-blue), var(--light-blue)); display: flex; align-items: center; justify-content: center; font-family: var(--font-heading); font-size: 0.8rem; font-weight: 700; color: #fff; flex-shrink: 0; }
+  .user__info { flex: 1; overflow: hidden; transition: opacity 0.2s, width 0.3s; }
+  .sidebar.collapsed .user__info { opacity: 0; width: 0; pointer-events: none; }
+  .user__name { font-size: 0.85rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .user__status { font-size: 0.68rem; color: var(--muted); white-space: nowrap; display: flex; align-items: center; gap: 4px; }
+  .user__status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); display: inline-block; }
+
+  .sidebar-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 999; }
+  .sidebar-backdrop.visible { display: block; }
+
+  /* ═══════════════════════════════════════════
+     MAIN CONTENT — v8 exact
+  ═══════════════════════════════════════════ */
+  .main-content { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+  .content-split { flex: 1; display: flex; overflow: hidden; }
+
+  .chat-header { padding: 10px 16px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; background: var(--card-bg); }
+  .chat-header__left { display: flex; align-items: center; gap: 12px; }
+  .chat-header__title { font-family: var(--font-heading); font-size: 1rem; font-weight: 600; }
+  .chat-header__subtitle { font-size: 0.72rem; color: var(--muted); font-family: var(--font-mono); }
+  .chat-header__right { display: flex; align-items: center; gap: 8px; }
+
+  .mobile-hamburger { display: none; width: 34px; height: 34px; background: none; border: none; border-radius: 8px; cursor: pointer; color: var(--muted); align-items: center; justify-content: center; transition: all 0.2s; }
+  .mobile-hamburger:hover { background: var(--hover-bg); color: var(--white); }
+  .mobile-hamburger svg { width: 18px; height: 18px; }
+
+  .header-icon-btn { width: 34px; height: 34px; background: none; border: 1px solid var(--border-color); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--muted); cursor: pointer; transition: all 0.2s; }
+  .header-icon-btn:hover { background: var(--hover-bg); color: var(--white); border-color: rgba(255,255,255,0.2); }
+  .header-icon-btn svg { width: 16px; height: 16px; }
+
+  /* conn label */
+  #conn-label { color: var(--muted); font-family: var(--font-mono); font-size: 0.72rem; }
+  .ws-badge { font-size: 0.68rem; font-family: var(--font-mono); padding: 2px 8px; border-radius: 8px; font-weight: 600; background: rgba(239,68,68,0.15); color: var(--error); }
+  .ws-badge.live { background: rgba(34,197,94,0.15); color: var(--success); }
+
+  .chat-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  #chat-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+
+  .msg { display: flex; flex-direction: column; max-width: 82%; gap: 4px; }
+  .msg.user { align-self: flex-end; align-items: flex-end; }
+  .msg.assistant { align-self: flex-start; align-items: flex-start; }
+  .msg-row { display: flex; align-items: flex-end; gap: 8px; }
+  .msg.user .msg-row { flex-direction: row-reverse; }
+  .msg-avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 700; flex-shrink: 0; font-family: var(--font-heading); }
+  .msg.user .msg-avatar { background: linear-gradient(135deg, var(--dark-blue), var(--light-blue)); }
+  .msg.assistant .msg-avatar { background: linear-gradient(135deg, var(--bright-orange), var(--light-blue)); padding: 2px; }
+  .msg-avatar-inner { width: 100%; height: 100%; border-radius: 50%; background: var(--black); display: flex; align-items: center; justify-content: center; font-size: 0.6rem; color: var(--light-blue); font-family: var(--font-heading); font-weight: 700; }
+  .msg-bubble { padding: 10px 14px; border-radius: 16px; font-size: 0.87rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+  .msg.user .msg-bubble { background: linear-gradient(135deg, var(--bright-orange), var(--orange)); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.assistant .msg-bubble { background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-primary); border-bottom-left-radius: 4px; font-family: var(--font-mono); font-size: 0.8rem; }
+  .msg-meta { font-size: 0.65rem; color: var(--muted); padding: 0 4px; font-family: var(--font-mono); }
+
+  .chat-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 20px; }
+  .chat-empty-orb { width: 72px; height: 72px; border-radius: 50%; background: linear-gradient(135deg, var(--bright-orange), var(--light-blue)); padding: 3px; animation: chatOrbGlow 3s ease-in-out infinite; }
+  @keyframes chatOrbGlow { 0%, 100% { box-shadow: 0 0 24px rgba(241,66,11,0.3); } 50% { box-shadow: 0 0 32px rgba(42,147,193,0.4); } }
+  .chat-empty-orb-inner { width: 100%; height: 100%; border-radius: 50%; background: var(--black); display: flex; align-items: center; justify-content: center; font-family: var(--font-heading); font-size: 1.5rem; font-weight: 700; color: var(--light-blue); }
+  .chat-empty-name { font-family: var(--font-heading); font-size: 1.4rem; font-weight: 700; letter-spacing: 0.1em; background: linear-gradient(135deg, var(--bright-orange), var(--light-blue)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .chat-empty-tagline { color: var(--muted); font-size: 0.82rem; }
+  .chat-loading { color: var(--muted); font-size: 0.8rem; text-align: center; padding: 16px; font-family: var(--font-mono); }
+
+  .chat-input-area { padding: 12px 16px; border-top: 1px solid var(--border-color); flex-shrink: 0; }
+  .chat-input-container { display: flex; align-items: flex-end; gap: 10px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 14px; padding: 10px 12px; transition: border-color 0.2s; }
+  .chat-input-container:focus-within { border-color: var(--light-blue); }
+  .chat-input-field { flex: 1; background: transparent; border: none; outline: none; color: var(--text-primary); font-size: 0.9rem; font-family: var(--font-body); resize: none; min-height: 22px; max-height: 120px; line-height: 1.5; }
+  .chat-input-field::placeholder { color: var(--muted); }
+  .chat-submit { width: 38px; height: 38px; background: linear-gradient(135deg, var(--bright-orange), var(--light-blue)); border: none; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #fff; cursor: pointer; transition: opacity 0.2s, transform 0.15s; flex-shrink: 0; }
+  .chat-submit:hover { opacity: 0.9; transform: scale(1.05); }
+  .chat-submit:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .chat-submit svg { width: 16px; height: 16px; }
+
+  /* Terminal and Status panels */
+  .panel { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+  .panel.active { display: flex; }
+  .panel--padded { padding: 14px; }
+
+  .terminal-chrome { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px 12px 0 0; padding: 8px 12px; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .chrome-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .chrome-dot-r { background: #ff5f56; }
+  .chrome-dot-y { background: #ffbd2e; }
+  .chrome-dot-g { background: #27c93f; }
+  .terminal-title { margin-left: 8px; font-size: 0.72rem; color: var(--muted); font-family: var(--font-mono); flex: 1; }
+  #terminal-output { flex: 1; background: #050508; border: 1px solid var(--border-color); border-top: none; border-bottom: none; padding: 12px 14px; overflow-y: auto; font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.5; color: #a0e8b0; white-space: pre-wrap; word-break: break-all; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; justify-content: flex-end; }
+  .terminal-input-bar { background: var(--card-bg); border: 1px solid var(--border-color); border-top: none; border-radius: 0 0 12px 12px; padding: 10px 12px; display: flex; gap: 8px; flex-shrink: 0; }
+  .terminal-input-bar input { flex: 1; padding: 8px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 0.85rem; font-family: var(--font-mono); outline: none; transition: border-color 0.2s; }
+  .terminal-input-bar input:focus { border-color: var(--light-blue); }
+  .terminal-input-bar button { padding: 8px 16px; background: linear-gradient(135deg, var(--bright-orange), var(--light-blue)); color: #fff; border: none; border-radius: 8px; font-size: 0.85rem; font-weight: 700; cursor: pointer; font-family: var(--font-heading); letter-spacing: 0.04em; transition: opacity 0.2s, transform 0.15s; }
+  .terminal-input-bar button:hover { opacity: 0.9; transform: scale(1.02); }
+
+  .status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 4px 0; }
+  .stat-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; transition: border-color 0.2s, box-shadow 0.2s; }
+  .stat-card:hover { border-color: rgba(42,147,193,0.3); box-shadow: 0 4px 16px rgba(42,147,193,0.1); }
+  .stat-label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; margin-bottom: 6px; font-family: var(--font-mono); }
+  .stat-value { font-size: 1.05rem; font-weight: 700; color: var(--text-primary); font-family: var(--font-heading); }
+  .stat-value.ok { color: var(--success); }
+  .stat-value.bad { color: var(--error); }
+  .stat-value.dim { color: var(--muted); }
+  .stat-value.accent { color: var(--light-blue); }
+  .status-footer { margin-top: 14px; color: var(--muted); font-size: 0.75rem; display: flex; align-items: center; gap: 10px; font-family: var(--font-mono); }
+  .refresh-btn { padding: 5px 12px; background: var(--hover-bg); border: 1px solid var(--border-color); border-radius: 8px; color: var(--muted); cursor: pointer; font-size: 0.75rem; transition: all 0.2s; }
+  .refresh-btn:hover { border-color: var(--light-blue); color: var(--light-blue); }
+
+
+  /* ═══════════════════════════════════════════
+     WELCOME HERO — Canvas Animation (v8)
+  ═══════════════════════════════════════════ */
+  .welcome-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 20px;
+    flex: 1;
+    pointer-events: none;
+  }
+  .welcome-hero__canvas {
+    display: block;
+    border-radius: 50%;
+  }
+  .welcome-hero__name {
+    font-family: var(--font-heading);
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    background: linear-gradient(135deg, var(--bright-orange), var(--light-blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .welcome-hero__tagline {
+    color: var(--muted);
+    font-size: 0.82rem;
+  }
+  /* Ensure chat messages sit on top of any backgrounds */
+  #chat-messages { position: relative; z-index: 1; }
+  .chat-input-area { position: relative; z-index: 1; }
+
+  /* ═══════════════════════════════════════════
+     AI MESSAGE AVATAR — PureTech hexagon icon
+  ═══════════════════════════════════════════ */
+  .msg.assistant .msg-avatar {
+    background: transparent;
+    padding: 0;
+  }
+  .msg-avatar-hex {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--bright-orange), var(--light-blue));
+    padding: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .msg-avatar-hex-inner {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: var(--black);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .msg-avatar-hex-inner img {
+    width: 75%;
+    height: 75%;
+    object-fit: contain;
+  }
+  .msg-avatar-hex.thinking {
+    animation: hexAvatarSpin 1.2s linear infinite;
+  }
+  @keyframes hexAvatarSpin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  /* Mobile bottom nav */
+  .mobile-bottom-nav { display: none; background: var(--card-bg); border-top: 1px solid var(--border-color); flex-shrink: 0; z-index: 60; }
+  .mobile-nav-bar { display: flex; }
+  .mobile-tab { flex: 1; padding: 10px 4px; display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; color: var(--muted); font-size: 0.68rem; font-weight: 500; border-top: 2px solid transparent; transition: all 0.18s; user-select: none; font-family: var(--font-heading); letter-spacing: 0.04em; }
+  .mobile-tab.active { color: var(--bright-orange); border-top-color: var(--bright-orange); }
+  .mobile-tab svg { width: 20px; height: 20px; }
+
+  /* ═══════════════════════════════════════════
+     RESPONSIVE — v8
+  ═══════════════════════════════════════════ */
+  @media (max-width: 768px) {
+    .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 280px; z-index: 1000; transform: translateX(-100%); transition: transform 0.3s ease; }
+    .sidebar.mobile-open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,0.3); }
+    .sidebar.collapsed { width: 280px; transform: translateX(-100%); }
+    .sidebar.collapsed.mobile-open { transform: translateX(0); }
+    .sidebar.collapsed .sidebar__collapsible { opacity: 1; pointer-events: auto; }
+    .sidebar.collapsed .sidebar__logo-icon { width: 36px; opacity: 1; }
+    .sidebar.collapsed .sidebar__logo-text { opacity: 1; width: auto; }
+    .sidebar.collapsed .sidebar__new-chat { margin: 12px 12px 4px; padding: 10px 14px; justify-content: flex-start; }
+    .sidebar.collapsed .sidebar__new-chat span { display: inline; }
+    .sidebar.collapsed .sidebar__header { padding: 16px 16px 16px 20px; justify-content: flex-start; gap: 12px; }
+    .sidebar.collapsed .sidebar__collapse-btn { margin-left: auto; }
+    .sidebar.collapsed .user__info { opacity: 1; width: auto; pointer-events: auto; }
+    .sidebar.collapsed .sidebar__user { padding: 14px 16px; justify-content: flex-start; }
+    .sidebar.collapsed .ai-profile { max-height: 200px; padding: 14px; border-bottom: 1px solid var(--border-color); }
+    .sidebar__collapse-btn { display: none; }
+    .mobile-hamburger { display: flex !important; }
+    .mobile-bottom-nav { display: block; }
+    .terminal-input-bar input, .chat-input-field { font-size: 16px; }
+    #terminal-output { font-size: 0.72rem; }
+    .panel--padded { padding: 8px; }
+  }
+</style>
+</head>
+<body class="login-active">
+
+<!-- ═══ 3D NEURAL BACKGROUND CANVAS ═══ -->
+<div id="pb-canvas-container"></div>
+
+<!-- ═══ AUTH OVERLAY — v7 branding ═══ -->
+<div id="auth-overlay">
+  <div class="auth-card">
+    <div class="auth-card-content">
+
+      <!-- Logo -->
+      <div class="auth-logo-wrap">
+        <div class="auth-logo-icon">
+          <img src="data:image/png;base64,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" width="64" height="64" alt="PureBrain icon" style="border-radius:50%;display:block;">
+        </div>
+        <div class="auth-logo-wordmark">
+          <span class="pb-pure">PUREBR</span><span class="pb-brain">AI</span><span class="pb-brain-n">N</span><span class="pb-ai">.ai</span>
+        </div>
+      </div>
+
+      <!-- Headline -->
+      <h1 class="auth-title" id="auth-title-text">Your AI's Brain Stream</h1>
+      <p class="auth-subtitle" style="margin-top: 12px; margin-bottom: 24px;" id="auth-subtitle-text"><span id="auth-subtitle-ainame">Your AI's</span> Neural Network is waiting.<br>50+ specialized agents ready to work.</p>
+
+      <!-- Trust badges -->
+      <div class="auth-trust-row">
+        <div class="auth-trust-badge"><div class="auth-trust-dot"></div>Active</div>
+        <div class="auth-trust-divider"></div>
+        <div class="auth-trust-badge"><div class="auth-trust-dot blue"></div>Secure</div>
+        <div class="auth-trust-divider"></div>
+        <div class="auth-trust-badge"><div class="auth-trust-dot"></div>Private</div>
+      </div>
+
+      <!-- Form -->
+      <form class="auth-form" onsubmit="doAuth(); return false;">
+        <div class="auth-field">
+          <input type="text" id="ainame-input" placeholder="Your AI's Name" autocomplete="off">
+          <label for="ainame-input">Your AI's Name</label>
+          <div class="pb-field-accent"></div>
+        </div>
+        <div class="auth-field">
+          <input type="password" id="token-input" placeholder="Secret" autocomplete="off">
+          <label for="token-input">Secret</label>
+          <div class="pb-field-accent"></div>
+        </div>
+        <button type="submit" class="auth-btn" id="auth-btn">
+          <span id="auth-btn-text">Access Your AI's Brain Stream</span>
+        </button>
+        <div class="auth-error" id="auth-error"></div>
+      </form>
+
+    </div><!-- /.auth-card-content -->
+
+    <!-- Footer -->
+    <div class="auth-footer">
+      <div class="auth-footer-glow-bar"></div>
+      <div class="auth-footer-inner">
+        <div class="auth-footer-powered">
+          POWERED BY&nbsp;
+          <span class="pb-brand-pure">PUREBR</span><span class="pb-brand-brain">AI</span><span class="pb-brand-n">N</span><span class="pb-brand-ai">.AI</span>
+          <span class="pb-brand-sep">&amp;</span>
+          <span class="pb-brand-pt">PURETECHNOLOGY.AI</span>
+        </div>
+        <div class="auth-footer-tagline">
+          AI Partnership<span class="tagline-dot">.</span> Redefined<span class="tagline-dot">.</span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.auth-card -->
+</div><!-- /#auth-overlay -->
+
+<!-- ═══ APP LAYOUT (v8 design) ═══ -->
+<div class="app-body">
+
+  <!-- ── SIDEBAR (v8 exact) ── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar__header">
+      <div class="sidebar__logo-icon">
+        <img src="https://puremarketing.ai/wp-content/uploads/2025/07/2.-Main-Icon-Orange-to-Blue-PM-2.png" alt="PureBrain">
+      </div>
+      <div class="sidebar__logo-text"><span class="text-blue">PURE</span>&nbsp;<span class="text-blue">BR</span><span class="text-orange">AI</span><span class="text-blue">N</span></div>
+      <button class="sidebar__collapse-btn" onclick="toggleSidebar()" title="Collapse sidebar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
+      </button>
+    </div>
+
+    <!-- New Chat removed: single continuous brain stream -->
+
+    <div class="sidebar__collapsible">
+
+      <!-- AI Profile Card -->
+      <div class="ai-profile">
+        <div class="ai-profile__card" onclick="showComingSoon('Voice Mode','Speak directly with Aether using natural voice input and output. Have real-time voice conversations with your AI — hands-free, natural, and fast.')" title="Voice Mode — Coming Soon">
+          <div class="ai-profile__avatar">
+            <div class="ai-profile__avatar-inner" id="aiAvatarInner">
+              <img src="https://puremarketing.ai/wp-content/uploads/2025/07/2.-Main-Icon-Orange-to-Blue-PM-2.png" alt="">
+            </div>
+            <div class="ai-profile__status"></div>
+          </div>
+          <div class="ai-profile__name" id="aiName">Aether</div>
+          <div style="font-size:0.68rem;color:var(--muted);margin-top:4px;letter-spacing:0.05em;">Click for Voice</div>
+        </div>
+      </div>
+
+      <!-- Navigation -->
+      <nav class="sidebar__nav">
+
+        <!-- Workspace section -->
+        <div class="nav-section">
+          <div class="nav-section__title">Workspace</div>
+          <a href="#" class="nav-item active" id="navChat" onclick="showPanelChat(); return false;">
+            <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Chat
+          </a>
+          <a href="#" class="nav-item" id="navTerminal" onclick="showPanelTerminal(); return false;">
+            <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            Terminal
+          </a>
+          <a href="#" class="nav-item coming-soon" onclick="showComingSoon('History','Browse and search your full conversation history — every exchange with your AI, searchable and organized.'); return false;">
+            <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            History
+            <span class="nav-item__badge" style="background:var(--bright-orange);">1</span>
+          </a>
+          <a href="#" class="nav-item coming-soon" onclick="showComingSoon('Command Center','Your AI Command Center — a live dashboard of tasks, analytics, agent activity, and system overview.'); return false;">
+            <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            Command Center
+            <span class="nav-cs-tag">Soon</span>
+          </a>
+        </div>
+
+        <!-- Conversations section -->
+        <div class="nav-section">
+          <div class="nav-section__title">Conversations</div>
+          <div class="chat-history">
+            <div class="chat-history-item" style="display:flex;align-items:center;justify-content:space-between;opacity:0.55;">
+              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">New Chat</span>
+              <span style="font-size:0.65rem;color:var(--muted);font-family:var(--font-mono);flex-shrink:0;margin-left:8px;">Just now</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Projects — Coming Soon -->
+        <div class="nav-section">
+          <div class="nav-section__title">Projects</div>
+          <div class="new-item-btn coming-soon" onclick="showComingSoon('+ New Project','Organize your work into Projects — a dedicated space where your AI keeps context, files, and goals focused on one area of your life or business.')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New Project
+            <span class="nav-cs-tag" style="margin-left:auto;">Soon</span>
+          </div>
+        </div>
+
+        <!-- Goals — Coming Soon -->
+        <div class="nav-section">
+          <div class="nav-section__title">Goals</div>
+          <div class="new-item-btn coming-soon" onclick="showComingSoon('+ New Goal','Set a goal and let your AI help you achieve it — breaking it into steps, tracking progress, and holding you accountable every day.')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            New Goal
+            <span class="nav-cs-tag" style="margin-left:auto;">Soon</span>
+          </div>
+        </div>
+
+        <!-- Tasks — Coming Soon -->
+        <div class="nav-section">
+          <div class="nav-section__title">Tasks</div>
+          <div class="new-item-btn coming-soon" onclick="showComingSoon('Schedule Task','Schedule recurring tasks for your AI to execute automatically — reports, emails, research, and more — running on autopilot.')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            Schedule Task
+            <span class="nav-cs-tag" style="margin-left:auto;">Soon</span>
+          </div>
+          <div style="font-size:0.7rem;color:var(--muted);padding:4px 10px;font-style:italic;">No tasks scheduled</div>
+        </div>
+
+        <!-- Brains — Coming Soon -->
+        <div class="nav-section">
+          <div class="nav-section__title">Brains</div>
+          <div class="new-item-btn coming-soon" onclick="showComingSoon('New Brain','Create a specialized AI Brain — trained on your documents, knowledge, and style — a custom AI expert for any domain you need.')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New Brain
+            <span class="nav-cs-tag" style="margin-left:auto;">Soon</span>
+          </div>
+          <div class="new-item-btn coming-soon" onclick="showComingSoon('Explore Brain Store','Browse the Brain Store — pre-built AI specialists for sales, marketing, legal, finance, design, coding, and more. Install in one click.')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            Explore
+            <span class="nav-cs-tag" style="margin-left:auto;">Soon</span>
+          </div>
+        </div>
+
+        <!-- Skills Update card -->
+        <div class="skills-update">
+          <div class="skills-update__header">
+            <div class="skills-update__title">New Skills Today</div>
+            <div class="skills-update__time">2h ago</div>
+          </div>
+          <div class="skills-update__item">
+            <div class="skills-update__icon">📊</div>
+            <div>
+              <div class="skills-update__name">Advanced Analytics</div>
+              <div class="skills-update__desc">Charts from CSV data</div>
+            </div>
+          </div>
+          <div class="skills-update__item">
+            <div class="skills-update__icon">🎨</div>
+            <div>
+              <div class="skills-update__name">Design System Gen</div>
+              <div class="skills-update__desc">Brand style guides</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Account section -->
+        <div class="nav-section">
+          <div class="nav-section__title">Account</div>
+          <a href="#" class="nav-item" id="navStatus" onclick="showPanelStatus(); return false;">
+            <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            System Status
+          </a>
+          <a href="#" class="nav-item coming-soon" onclick="showComingSoon('Settings','Customize your AI experience — integrations, notification preferences, personality tuning, and account management.'); return false;">
+            <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4"/></svg>
+            Settings
+            <span class="nav-cs-tag">Soon</span>
+          </a>
+          <a href="#" class="nav-item coming-soon" onclick="showComingSoon('Refer &amp; Earn','Earn real rewards by referring friends and colleagues to PureBrain. Get paid cash every time someone you refer upgrades.'); return false;">
+            <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            Refer &amp; Earn
+            <span class="nav-item__badge" style="background:var(--success);color:#000;">$0</span>
+          </a>
+        </div>
+
+      </nav>
+    </div><!-- /.sidebar__collapsible -->
+
+    <!-- User section -->
+    <div class="sidebar__user">
+      <div class="user__avatar" id="userAvatarInitials" style="font-size:0.8rem;">GU</div>
+      <div class="user__info">
+        <div class="user__name" id="userName">Guest User</div>
+        <div class="user__status" style="flex-direction:column;align-items:flex-start;gap:2px;">
+          <div style="display:flex;align-items:center;gap:5px;"><span class="user__status-dot"></span> <span id="conn-label">Connecting...</span></div>
+          <div style="font-size:0.65rem;color:var(--muted);font-family:var(--font-mono);">2 referrals · $127.50 earned</div>
+        </div>
+      </div>
+    </div>
+  </aside><!-- /.sidebar -->
+
+  <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeMobileSidebar()"></div>
+
+  <!-- ── MAIN CONTENT ── -->
+  <main class="main-content">
+
+    <!-- Chat header -->
+    <header class="chat-header">
+      <div class="chat-header__left">
+        <button class="mobile-hamburger" onclick="toggleMobileSidebar()" aria-label="Open menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <div class="chat-header__avatar">
+          <div class="chat-header__avatar-inner">
+            <img src="https://puremarketing.ai/wp-content/uploads/2025/07/2.-Main-Icon-Orange-to-Blue-PM-2.png" alt="">
+          </div>
+        </div>
+        <div>
+          <div class="chat-header__title" id="panelTitle">Chat with <span class="grad-text">Aether</span></div>
+          <div class="chat-header__status-line">
+            <span class="chat-header__status-dot"></span>
+            <span id="aiStatusText">Online · Ready to assist</span>
+          </div>
+        </div>
+      </div>
+      <div class="chat-header__right">
+        <div class="chat-header__icons">
+          <button class="hdr-icon-btn" title="Search" onclick="showComingSoon('Search','Search across all your conversations, files, and memory — find anything instantly.')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </button>
+          <button class="hdr-icon-btn" title="Dark / Light Mode" onclick="showComingSoon('Theme Toggle','Switch between dark and light modes to match your environment and preference.')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          </button>
+          <button class="hdr-icon-btn" title="New Chat" onclick="showComingSoon('New Chat','Start a fresh conversation with your AI — a clean slate for a new task or idea.')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <button class="hdr-icon-btn share-gradient" title="Share" onclick="showComingSoon('Share','Share conversations, insights, and AI-generated artifacts with your team or the world.')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          </button>
+          <button class="hdr-icon-btn" title="Toggle Artifacts" onclick="showComingSoon('Artifacts Panel','View AI-generated websites, documents, code, and more side-by-side as your AI builds them.')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="8" height="18" rx="1"/><rect x="13" y="3" width="8" height="18" rx="1"/></svg>
+          </button>
+          <button class="hdr-icon-btn" title="Keyboard Shortcuts" onclick="showComingSoon('Keyboard Shortcuts','Power-user keyboard shortcuts to navigate PureBrain at lightning speed.')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg>
+          </button>
+        </div>
+        <span class="ws-badge" id="ws-status">disconnected</span>
+        <div class="status-dot" id="conn-dot"></div>
+      </div>
+    </header>
+
+    <!-- Content area -->
+    <div class="content-split">
+
+      <!-- ── CHAT PANEL ── -->
+      <div class="chat-panel panel active" id="panel-chat" style="position:relative;">
+        <div id="chat-messages">
+          <!-- welcome hero rendered by JS after login -->
+        </div>
+        <div class="chat-input-area">
+          <!-- Quick action pills -->
+          <div class="quick-actions">
+            <button class="quick-action" onclick="showComingSoon('Check Emails','Your AI reads, summarizes, and drafts replies to your emails — so you only deal with what actually needs you.')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              Check emails
+            </button>
+            <button class="quick-action" onclick="showComingSoon('Analytics','Connect your data sources and your AI generates charts, reports, and actionable insights automatically.')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+              Analytics
+            </button>
+            <button class="quick-action" onclick="showComingSoon('Landing Page','Describe your offer and your AI builds a complete, conversion-optimized landing page in minutes.')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+              Landing page
+            </button>
+            <button class="quick-action" onclick="showComingSoon('Research','Deep research on any topic, competitor, market, or person — your AI synthesizes the web into a clear briefing.')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              Research
+            </button>
+            <button class="quick-action" onclick="showComingSoon('Schedule Task','Set a task on autopilot — your AI executes it on a schedule, morning report, weekly digest, daily outreach, whatever you need.')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              Schedule Task
+            </button>
+          </div>
+          <!-- Input bar -->
+          <div class="chat-input-container">
+            <button class="input-icon-btn" title="Attach file" onclick="showComingSoon('File Attachment','Upload PDFs, spreadsheets, images, code files, and more — your AI analyzes and works with any file you share.')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            </button>
+            <textarea class="chat-input-field" id="chat-input" rows="1" placeholder="Message your AI..."></textarea>
+            <button class="input-icon-btn" title="Voice input" onclick="showComingSoon('Voice Input','Talk to your AI naturally — voice input transcribes and sends your message, hands-free.')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            </button>
+            <button class="chat-submit" id="send-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
+        </div>
+      </div><!-- /#panel-chat -->
+
+      <!-- ── TERMINAL PANEL ── -->
+      <div class="panel panel--padded" id="panel-terminal">
+        <div class="terminal-chrome">
+          <span class="chrome-dot chrome-dot-r"></span>
+          <span class="chrome-dot chrome-dot-y"></span>
+          <span class="chrome-dot chrome-dot-g"></span>
+          <span class="terminal-title">purebrain-terminal</span>
+        </div>
+        <div id="terminal-output">Connecting to terminal stream...</div>
+        <div class="terminal-input-bar">
+          <input type="text" id="term-input" placeholder="Send command..." autocomplete="off">
+          <button id="term-send-btn">Send</button>
+        </div>
+      </div><!-- /#panel-terminal -->
+
+      <!-- ── STATUS PANEL ── -->
+      <div class="panel panel--padded" id="panel-status">
+        <div class="status-grid" id="status-grid">
+          <div class="stat-card"><div class="stat-label">Loading</div><div class="stat-value dim">—</div></div>
+        </div>
+        <div class="status-footer">
+          Auto-refresh every 30s
+          <button class="refresh-btn" id="refresh-btn">Refresh Now</button>
+        </div>
+      </div><!-- /#panel-status -->
+
+    </div><!-- /.content-split -->
+  </main><!-- /.main-content -->
+
+</div><!-- /.app-body -->
+
+<!-- ── MOBILE BOTTOM NAV ── -->
+<nav class="mobile-bottom-nav" id="mobileBottomNav">
+  <div class="mobile-nav-bar">
+    <div class="mobile-tab active" data-panel="chat" onclick="showPanelChat()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      Chat
+    </div>
+    <div class="mobile-tab" data-panel="terminal" onclick="showPanelTerminal()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      Terminal
+    </div>
+    <div class="mobile-tab" data-panel="status" onclick="showPanelStatus()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      Status
+    </div>
+  </div>
+</nav>
+
+<!-- ═══ COMING SOON MODAL ═══ -->
+<div id="cs-modal-overlay" onclick="handleCSOverlayClick(event)">
+  <div id="cs-modal-card">
+    <div class="cs-modal__icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+      </svg>
+    </div>
+    <div class="cs-modal__label">Coming Soon</div>
+    <div class="cs-modal__title" id="cs-modal-title">Feature</div>
+    <div class="cs-modal__desc" id="cs-modal-desc">Description</div>
+    <button class="cs-modal__btn" onclick="closeComingSoon()">Got it</button>
+  </div>
+</div>
+
+<!-- ═══ THREE.JS IMPORTMAP ═══ -->
+<!-- ═══ THREE.JS IMPORTMAP ═══ -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<!-- ═══ PORTAL LOGIC (all original functionality preserved) ═══ -->
+<script>
+// ── Coming Soon Modal ──
+window.showComingSoon = function(title, desc) {
+  var overlay = document.getElementById('cs-modal-overlay');
+  var titleEl = document.getElementById('cs-modal-title');
+  var descEl  = document.getElementById('cs-modal-desc');
+  if (titleEl) titleEl.textContent = title;
+  if (descEl)  descEl.textContent  = desc;
+  if (overlay) {
+    overlay.classList.add('active');
+    document.getElementById('cs-modal-card').style.animation = 'none';
+    requestAnimationFrame(function() {
+      document.getElementById('cs-modal-card').style.animation = '';
+    });
+  }
+};
+window.closeComingSoon = function() {
+  var overlay = document.getElementById('cs-modal-overlay');
+  if (overlay) overlay.classList.remove('active');
+};
+window.handleCSOverlayClick = function(e) {
+  if (e.target.id === 'cs-modal-overlay') closeComingSoon();
+};
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeComingSoon();
+});
+
+// ── PureBrain Logo URL ──
+var LOGO_URL = 'https://puremarketing.ai/wp-content/uploads/2025/07/2.-Main-Icon-Orange-to-Blue-PM-2.png';
+
+// ── v8 Welcome Hero: renders canvas animation into #chat-messages ──
+function renderWelcomeHero() {
+  var container = document.getElementById('chat-messages');
+  if (!container) return;
+  // Remove any existing hero
+  var existing = document.getElementById('welcomeHero');
+  if (existing) existing.remove();
+
+  var hero = document.createElement('div');
+  hero.className = 'welcome-hero';
+  hero.id = 'welcomeHero';
+
+  var canvas = document.createElement('canvas');
+  canvas.className = 'welcome-hero__canvas';
+  var dpr = window.devicePixelRatio || 1;
+  canvas.width = 300 * dpr;
+  canvas.height = 300 * dpr;
+  canvas.style.width = '300px';
+  canvas.style.height = '300px';
+  hero.appendChild(canvas);
+
+  var nameDiv = document.createElement('div');
+  nameDiv.className = 'welcome-hero__name';
+  // Use stored AI name if available, set by updateSidebarAIName via storedAIName
+  var aiDisplayName = (typeof storedAIName !== 'undefined' && storedAIName) ? storedAIName.toUpperCase() : "YOUR AI'S BRAIN STREAM";
+  nameDiv.textContent = aiDisplayName;
+  nameDiv.id = 'welcomeHeroName';
+  hero.appendChild(nameDiv);
+
+  var tagDiv = document.createElement('div');
+  tagDiv.className = 'welcome-hero__tagline';
+  tagDiv.textContent = '50+ specialized agents — ready';
+  hero.appendChild(tagDiv);
+
+  container.insertBefore(hero, container.firstChild);
+  startAetherCanvas(canvas);
+}
+
+function startAetherCanvas(canvas) {
+  var ctx = canvas.getContext('2d');
+  var dpr = window.devicePixelRatio || 1;
+  var cssWidth = canvas.width / dpr;
+  ctx.scale(dpr, dpr);
+  var cx = cssWidth / 2;
+  var cy = cssWidth / 2;
+  var S = cssWidth / 500; // scale factor from 500px reference
+  var time = 0;
+
+  // Brand colors
+  var colors = { orange: '#f1420b', lightOrange: '#ed6626', blue: '#2a93c1', darkBlue: '#3a60ab' };
+
+  // Load logo
+  var logoImg = new Image();
+  var logoLoaded = false;
+  logoImg.onload = function() { logoLoaded = true; };
+  logoImg.onerror = function() { logoLoaded = false; };
+  logoImg.src = LOGO_URL;
+  var logoSize = 84 * S;
+
+  // Rings config (scaled)
+  var rings = [
+    { radius: 180 * S, segments: 60, speed: 0.002, width: 1, gap: 4 },
+    { radius: 160 * S, segments: 40, speed: -0.003, width: 2, gap: 6 },
+    { radius: 140 * S, segments: 24, speed: 0.004, width: 1.5, gap: 8 },
+    { radius: 100 * S, segments: 12, speed: -0.005, width: 3, gap: 15 },
+  ];
+
+  // Particles with trails
+  function Particle() { this.reset(); }
+  Particle.prototype.reset = function() {
+    this.angle = Math.random() * Math.PI * 2;
+    this.radius = (80 + Math.random() * 100) * S;
+    this.speed = (0.001 + Math.random() * 0.002) * (Math.random() > 0.5 ? 1 : -1);
+    this.size = (1 + Math.random() * 2) * S;
+    this.alpha = 0.2 + Math.random() * 0.4;
+    this.color = Math.random() > 0.5 ? colors.orange : colors.blue;
+    this.trail = [];
+    this.maxTrail = 3 + Math.floor(Math.random() * 6);
+  };
+  Particle.prototype.update = function() {
+    var x = cx + Math.cos(this.angle) * this.radius;
+    var y = cy + Math.sin(this.angle) * this.radius;
+    this.trail.unshift({ x: x, y: y, alpha: this.alpha });
+    if (this.trail.length > this.maxTrail) this.trail.pop();
+    this.angle += this.speed;
+    this.radius += Math.sin(time * 0.02 + this.angle) * 0.3 * S;
+  };
+  Particle.prototype.draw = function() {
+    var self = this;
+    this.trail.forEach(function(point, i) {
+      var trailAlpha = point.alpha * (1 - i / self.trail.length) * 0.5;
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, self.size * (1 - i / self.trail.length * 0.5), 0, Math.PI * 2);
+      ctx.fillStyle = self.color;
+      ctx.globalAlpha = trailAlpha;
+      ctx.fill();
+    });
+    var x = cx + Math.cos(this.angle) * this.radius;
+    var y = cy + Math.sin(this.angle) * this.radius;
+    ctx.beginPath();
+    ctx.arc(x, y, this.size, 0, Math.PI * 2);
+    ctx.fillStyle = this.color;
+    ctx.globalAlpha = this.alpha;
+    ctx.shadowColor = this.color;
+    ctx.shadowBlur = 10 * S;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+  };
+  var particles = [];
+  for (var pi = 0; pi < 60; pi++) { particles.push(new Particle()); }
+
+  // Draw segmented rings with tick marks
+  function drawRings() {
+    rings.forEach(function(ring, ringIndex) {
+      var baseRotation = time * ring.speed;
+      for (var i = 0; i < ring.segments; i++) {
+        var segmentAngle = (Math.PI * 2) / ring.segments;
+        var startAngle = baseRotation + i * segmentAngle;
+        var endAngle = startAngle + segmentAngle - (ring.gap * Math.PI / 180);
+        var t = i / ring.segments;
+        var r, g, b;
+        if (t < 0.5) { r = 241; g = 66 + t * 72; b = 11 + t * 30; }
+        else { var t2 = (t - 0.5) * 2; r = 237 - t2 * 195; g = 102 + t2 * 45; b = 38 + t2 * 155; }
+        var alpha = 0.3 + Math.sin(time * 0.02 + i * 0.5) * 0.2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, ring.radius, startAngle, endAngle);
+        ctx.strokeStyle = 'rgba(' + Math.round(r) + ', ' + Math.round(g) + ', ' + Math.round(b) + ', ' + alpha + ')';
+        ctx.lineWidth = ring.width * S;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+      }
+      // Tick marks on outer ring
+      if (ringIndex === 0) {
+        for (var ti = 0; ti < 60; ti++) {
+          var tAngle = baseRotation + (ti * Math.PI * 2) / 60;
+          var innerR = ring.radius - 5 * S;
+          var outerR = ring.radius + (ti % 5 === 0 ? 8 : 3) * S;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(tAngle) * innerR, cy + Math.sin(tAngle) * innerR);
+          ctx.lineTo(cx + Math.cos(tAngle) * outerR, cy + Math.sin(tAngle) * outerR);
+          ctx.strokeStyle = ti % 5 === 0 ? 'rgba(42, 147, 193, 0.6)' : 'rgba(42, 147, 193, 0.2)';
+          ctx.lineWidth = (ti % 5 === 0 ? 2 : 1) * S;
+          ctx.stroke();
+        }
+      }
+    });
+  }
+
+  // Scanning beam
+  function drawScanBeam() {
+    var scanAngle = time * 0.015;
+    var scanWidth = Math.PI / 8;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, 200 * S, scanAngle, scanAngle + scanWidth);
+    ctx.closePath();
+    if (ctx.createConicGradient) {
+      var gradient = ctx.createConicGradient(scanAngle, cx, cy);
+      gradient.addColorStop(0, 'rgba(241, 66, 11, 0)');
+      gradient.addColorStop(0.02, 'rgba(241, 66, 11, 0.3)');
+      gradient.addColorStop(0.05, 'rgba(42, 147, 193, 0.09)');
+      gradient.addColorStop(0.1, 'rgba(42, 147, 193, 0)');
+      gradient.addColorStop(1, 'rgba(241, 66, 11, 0)');
+      ctx.fillStyle = gradient;
+    } else {
+      var gradient2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, 200 * S);
+      gradient2.addColorStop(0, 'rgba(241, 66, 11, 0.25)');
+      gradient2.addColorStop(0.5, 'rgba(42, 147, 193, 0.08)');
+      gradient2.addColorStop(1, 'rgba(42, 147, 193, 0)');
+      ctx.fillStyle = gradient2;
+    }
+    ctx.fill();
+  }
+
+  // Data arcs
+  function drawDataArcs() {
+    var arcs = [
+      { radius: 210 * S, start: -0.5, length: 1.2, color: colors.orange },
+      { radius: 215 * S, start: 2, length: 0.8, color: colors.blue },
+      { radius: 220 * S, start: 4, length: 1.5, color: colors.lightOrange },
+    ];
+    arcs.forEach(function(arc) {
+      var animatedStart = arc.start + time * 0.005;
+      var pulseLength = arc.length + Math.sin(time * 0.03) * 0.2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, arc.radius, animatedStart, animatedStart + pulseLength);
+      ctx.strokeStyle = arc.color;
+      ctx.lineWidth = 3 * S;
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = 0.6;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    });
+  }
+
+  // Center glow
+  function drawCenterGlow() {
+    var baseSize = 80 * S;
+    var pulseSize = baseSize + Math.sin(time * 0.04) * 10 * S;
+    var gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, pulseSize);
+    gradient.addColorStop(0, 'rgba(241, 66, 11, 0.15)');
+    gradient.addColorStop(0.5, 'rgba(237, 102, 38, 0.075)');
+    gradient.addColorStop(0.8, 'rgba(42, 147, 193, 0.045)');
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.beginPath();
+    ctx.arc(cx, cy, pulseSize, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+  }
+
+  // Draw spinning logo
+  function drawLogo() {
+    if (!logoLoaded) return;
+    var rotation = time * 0.0035; // ~30s full rotation
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rotation);
+    ctx.shadowColor = 'rgba(241, 66, 11, 0.6)';
+    ctx.shadowBlur = 20 * S;
+    ctx.drawImage(logoImg, -logoSize / 2, -logoSize / 2, logoSize, logoSize);
+    ctx.shadowColor = 'rgba(42, 147, 193, 0.4)';
+    ctx.shadowBlur = 30 * S;
+    ctx.drawImage(logoImg, -logoSize / 2, -logoSize / 2, logoSize, logoSize);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  function animate() {
+    // Stop if welcome hero has been removed (chat started)
+    if (!document.getElementById('welcomeHero')) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    time++;
+    drawScanBeam();
+    drawCenterGlow();
+    drawDataArcs();
+    drawRings();
+    particles.forEach(function(p) { p.update(); p.draw(); });
+    drawLogo();
+    requestAnimationFrame(animate);
+  }
+  animate();
+}
+
+(function () {
+  'use strict';
+
+  // ── State ──
+  var token = '';
+  var termWs = null;
+  var chatWs = null;
+  var wsReconnectTimeout = null;
+  var chatWsReconnectTimeout = null;
+  var statusInterval = null;
+  var chatLoaded = false;
+  var knownMsgIds = new Set();
+
+  // ── Elements ──
+  var overlay     = document.getElementById('auth-overlay');
+  var tokenInput  = document.getElementById('token-input');
+  var authBtn     = document.getElementById('auth-btn');
+  var authError   = document.getElementById('auth-error');
+  var connDot     = document.getElementById('conn-dot');
+  var connLabel   = document.getElementById('conn-label');
+  var wsStatusEl  = document.getElementById('ws-status');
+  var termEl      = document.getElementById('terminal-output');
+  var chatMessages = document.getElementById('chat-messages');
+  var chatInput   = document.getElementById('chat-input');
+  var sendBtn     = document.getElementById('send-btn');
+  var statusGrid  = document.getElementById('status-grid');
+  var activePanel = 'chat';
+
+  // ── URL token magic link ──
+  var urlParams = new URLSearchParams(window.location.search);
+  var urlToken  = urlParams.get('token');
+  if (urlToken) {
+    tokenInput.value = urlToken;
+    history.replaceState(null, '', window.location.pathname);
+  }
+
+  // ══════════════════════════════════════
+  // AUTH
+  // ══════════════════════════════════════
+  var ADMIN_BYPASS_TOKEN = 'purebrain-admin-2026';
+
+  function doAuth() {
+    var t = tokenInput.value.trim();
+    if (!t) {
+      showError('Enter your secret.');
+      return;
+    }
+    authBtn.textContent = 'Connecting...';
+    authBtn.disabled = true;
+
+    // Bypass: hardcoded admin token skips API validation
+    if (t === ADMIN_BYPASS_TOKEN) {
+      token = t;
+      localStorage.setItem('portal_token', t);
+      overlay.style.display = 'none';
+      document.body.classList.remove('login-active');
+      boot();
+      return;
+    }
+
+    fetch('/api/status', { headers: { Authorization: 'Bearer ' + t } })
+      .then(function (r) {
+        if (r.status === 401) throw new Error('Invalid token');
+        if (!r.ok) throw new Error('Server error ' + r.status);
+        return r.json();
+      })
+      .then(function () {
+        token = t;
+        localStorage.setItem('portal_token', t);
+        // Hide auth overlay, remove login-active class (hides 3D canvas)
+        overlay.style.display = 'none';
+        document.body.classList.remove('login-active');
+        boot();
+      })
+      .catch(function (e) {
+        showError(e.message);
+        document.getElementById('auth-btn-text').textContent = 'Access Your AI\'s Brain Stream';
+        authBtn.disabled = false;
+      });
+  }
+
+  function showError(msg) {
+    authError.textContent = msg;
+    authError.style.display = 'block';
+  }
+
+  // Expose doAuth globally for form onsubmit
+  window.doAuth = doAuth;
+
+  authBtn.addEventListener('click', doAuth);
+  tokenInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') doAuth(); });
+
+  // ══════════════════════════════════════
+  // DYNAMIC AI NAME — Live update all "Your AI's" text as user types
+  // ══════════════════════════════════════
+  var ainameInput = document.getElementById('ainame-input');
+  var authTitleText = document.getElementById('auth-title-text');
+  var authSubtitleAiname = document.getElementById('auth-subtitle-ainame');
+  var authBtnTextSpan = document.getElementById('auth-btn-text');
+
+  function updateAIName() {
+    var name = ainameInput.value.trim();
+    var possessive = name ? name + "'s" : "Your AI's";
+    var possessiveUpper = name ? name.toUpperCase() + "'S" : "YOUR AI'S";
+
+    if (authTitleText) {
+      authTitleText.textContent = possessive + ' Brain Stream';
+    }
+    if (authSubtitleAiname) {
+      authSubtitleAiname.textContent = possessive;
+    }
+    if (authBtnTextSpan) {
+      authBtnTextSpan.textContent = 'Access ' + possessiveUpper + ' Brain Stream';
+    }
+  }
+
+  if (ainameInput) {
+    ainameInput.addEventListener('input', updateAIName);
+  }
+
+  // Store AI name on login for post-auth references
+  var storedAIName = '';
+  var origDoAuth = window.doAuth;
+  window.doAuth = function() {
+    if (ainameInput) storedAIName = ainameInput.value.trim();
+    origDoAuth();
+  };
+
+
+
+  // Auto-login from localStorage or URL param
+  var saved = localStorage.getItem('portal_token');
+  if (saved) {
+    tokenInput.value = saved;
+    if (urlToken) {
+      token = urlToken;
+      overlay.style.display = 'none';
+      document.body.classList.remove('login-active');
+      boot();
+    } else {
+      doAuth();
+    }
+  } else if (urlToken) {
+    doAuth();
+  }
+
+  // ══════════════════════════════════════
+  // NAVIGATION — v8 panel switching
+  // ══════════════════════════════════════
+  function switchPanel(panel) {
+    if (panel === activePanel) return;
+    // Update mobile tabs
+    document.querySelectorAll('.mobile-tab').forEach(function (el) {
+      el.classList.toggle('active', el.dataset.panel === panel);
+    });
+    // Show/hide panels
+    document.querySelectorAll('.panel').forEach(function (p) { p.classList.remove('active'); });
+    var panelEl = document.getElementById('panel-' + panel);
+    if (panelEl) panelEl.classList.add('active');
+    // Update sidebar nav items
+    var navMap = { chat: 'navChat', terminal: 'navTerminal', status: 'navStatus' };
+    ['navChat', 'navTerminal', 'navStatus'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.classList.remove('active');
+    });
+    var activeNavId = navMap[panel];
+    if (activeNavId) {
+      var activeEl = document.getElementById(activeNavId);
+      if (activeEl) activeEl.classList.add('active');
+    }
+    // Update header title
+    var titles = { chat: 'Chat', terminal: 'Terminal', status: 'System Status' };
+    var titleEl = document.getElementById('panelTitle');
+    if (titleEl) titleEl.textContent = titles[panel] || panel;
+    activePanel = panel;
+    if (panel === 'status') loadStatus();
+    if (panel === 'chat' && !chatLoaded) loadChatHistory();
+    if (panel === 'terminal' && !termWs) connectTerminalWS();
+  }
+
+  // Named nav functions for onclick handlers
+  window.showPanelChat = function() { switchPanel('chat'); };
+  window.showPanelTerminal = function() { switchPanel('terminal'); };
+  window.showPanelStatus = function() { switchPanel('status'); };
+
+  // Sidebar collapse
+  window.toggleSidebar = function() {
+    var sb = document.getElementById('sidebar');
+    if (sb) sb.classList.toggle('collapsed');
+  };
+  window.toggleMobileSidebar = function() {
+    var sb = document.getElementById('sidebar');
+    var bd = document.getElementById('sidebarBackdrop');
+    if (sb) sb.classList.toggle('mobile-open');
+    if (bd) bd.classList.toggle('visible');
+  };
+  window.closeMobileSidebar = function() {
+    var sb = document.getElementById('sidebar');
+    var bd = document.getElementById('sidebarBackdrop');
+    if (sb) sb.classList.remove('mobile-open');
+    if (bd) bd.classList.remove('visible');
+  };
+  window.handleNewChat = function() {
+    // Start a new chat — clear messages and render v8 welcome hero
+    var msgs = document.getElementById('chat-messages');
+    if (msgs) {
+      msgs.innerHTML = '';
+      renderWelcomeHero();
+    }
+    knownMsgIds.clear();
+    chatLoaded = false;
+    switchPanel('chat');
+    closeMobileSidebar();
+  };
+
+  // Update AI name in sidebar from stored login name
+  function updateSidebarAIName() {
+    var name = storedAIName || 'Your AI';
+    var nameEl = document.getElementById('aiName');
+    if (nameEl) nameEl.textContent = name;
+    var initEl = document.getElementById('chatEmptyInitial');
+    if (initEl) initEl.textContent = name ? name.charAt(0).toUpperCase() : 'AI';
+    var emptyNameEl = document.getElementById('chatEmptyName');
+    if (emptyNameEl) emptyNameEl.textContent = name ? name + "'s Brain Stream" : "Your AI's Brain Stream";
+    // Update welcome hero name if visible
+    var heroName = document.getElementById('welcomeHeroName');
+    if (heroName) heroName.textContent = name ? name.toUpperCase() + "'S BRAIN STREAM" : "YOUR AI'S BRAIN STREAM";
+    var aiAvatarInner = document.getElementById('aiAvatarInner');
+    if (aiAvatarInner) {
+      aiAvatarInner.innerHTML = '<img src="https://puremarketing.ai/wp-content/uploads/2025/07/2.-Main-Icon-Orange-to-Blue-PM-2.png" alt="">';
+    }
+    // FIX 3: Update chat header subtitle with AI name
+    var headerSubtitle = document.querySelector('.chat-header__subtitle');
+    if (headerSubtitle) headerSubtitle.textContent = name + ' — Neural Network Active';
+    // FIX 3: Update panel title to show AI name in chat
+    var panelTitleEl = document.getElementById('panelTitle');
+    if (panelTitleEl && panelTitleEl.textContent === 'Chat') panelTitleEl.textContent = name;
+  }
+
+  // ══════════════════════════════════════
+  // BOOT
+  // ══════════════════════════════════════
+  function boot() {
+    updateSidebarAIName();
+    renderWelcomeHero();
+    switchPanel('chat');
+    connectTerminalWS();
+    connectChatWS();
+    loadStatus();
+    statusInterval = setInterval(loadStatus, 30000);
+    document.getElementById('refresh-btn').addEventListener('click', loadStatus);
+
+    document.getElementById('send-btn').addEventListener('click', sendChat);
+    chatInput.addEventListener('input', autoResizeTextarea);
+    chatInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+    });
+
+    document.getElementById('term-send-btn').addEventListener('click', sendTerminal);
+    document.getElementById('term-input').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTerminal(); }
+    });
+  }
+
+  function autoResizeTextarea() {
+    chatInput.style.height = 'auto';
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+  }
+
+  // ══════════════════════════════════════
+  // CONNECTION STATUS
+  // ══════════════════════════════════════
+  function setConnected(connected) {
+    if (wsStatusEl) { wsStatusEl.textContent = connected ? 'live' : 'disconnected'; wsStatusEl.className = 'ws-badge' + (connected ? ' live' : ''); }
+    if (connDot) connDot.className = 'status-dot' + (connected ? ' online' : '');
+    if (connLabel) connLabel.textContent = connected ? 'Online' : 'Offline';
+  }
+
+  // ══════════════════════════════════════
+  // TERMINAL WEBSOCKET
+  // ══════════════════════════════════════
+  function connectTerminalWS() {
+    if (termWs) termWs.close();
+    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    termWs = new WebSocket(proto + '//' + location.host + '/ws/terminal?token=' + encodeURIComponent(token));
+    termWs.onopen = function () {
+      setConnected(true);
+      if (wsReconnectTimeout) { clearTimeout(wsReconnectTimeout); wsReconnectTimeout = null; }
+    };
+    termWs.onmessage = function (e) {
+      var lines = e.data.replace(/\s+$/, '').split('\n');
+      while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
+      termEl.textContent = lines.join('\n');
+      termEl.scrollTop = termEl.scrollHeight;
+    };
+    termWs.onclose = function () {
+      setConnected(false);
+      termWs = null;
+      wsReconnectTimeout = setTimeout(function () { if (token) connectTerminalWS(); }, 3000);
+    };
+    termWs.onerror = function () { setConnected(false); };
+  }
+
+  // ══════════════════════════════════════
+  // TERMINAL SEND
+  // ══════════════════════════════════════
+  function sendTerminal() {
+    var input = document.getElementById('term-input');
+    var msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
+    fetch('/api/chat/send', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg }),
+    }).catch(function () {});
+    input.focus();
+  }
+
+  // ══════════════════════════════════════
+  // CHAT
+  // ══════════════════════════════════════
+  function formatTime(ts) {
+    var d = new Date(ts * 1000);
+    var h = d.getHours(), m = d.getMinutes(), ampm = h >= 12 ? 'pm' : 'am';
+    h = h % 12 || 12;
+    return h + ':' + (m < 10 ? '0' : '') + m + ampm;
+  }
+
+  function addMessage(text, role, ts, id) {
+    var msgId = id || ('local-' + Date.now() + '-' + Math.random());
+    if (knownMsgIds.has(msgId)) return;
+    knownMsgIds.add(msgId);
+
+    var empty = document.getElementById('chat-empty-state');
+    if (empty) empty.remove();
+    var placeholder = chatMessages.querySelector('.chat-loading');
+    if (placeholder) placeholder.remove();
+
+    var displayText = text.length > 4000 ? text.substring(0, 4000) + '\n\n... [truncated]' : text;
+    var timeStr = ts ? formatTime(ts) : formatTime(Math.floor(Date.now() / 1000));
+
+    var div = document.createElement('div');
+    div.className = 'msg ' + role;
+    div.setAttribute('data-id', msgId);
+
+    var row = document.createElement('div');
+    row.className = 'msg-row';
+
+    var avatar = document.createElement('div');
+    avatar.className = 'msg-avatar';
+    if (role === 'assistant') {
+      // FIX 4: PureTech hexagon icon instead of "W" letter
+      avatar.className = 'msg-avatar-hex';
+      var inner = document.createElement('div');
+      inner.className = 'msg-avatar-hex-inner';
+      var iconImg = document.createElement('img');
+      iconImg.src = 'https://puremarketing.ai/wp-content/uploads/2025/07/2.-Main-Icon-Orange-to-Blue-PM-2.png';
+      iconImg.alt = storedAIName || 'AI';
+      inner.appendChild(iconImg);
+      avatar.appendChild(inner);
+    } else {
+      avatar.textContent = 'C';
+    }
+
+    var bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    bubble.textContent = displayText;
+
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+
+    var meta = document.createElement('div');
+    meta.className = 'msg-meta';
+    meta.textContent = (role === 'user' ? 'Corey' : (storedAIName || 'AI')) + ' · ' + timeStr;
+
+    div.appendChild(row);
+    div.appendChild(meta);
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  // FIX 4: Spinning hexagon thinking indicator
+  function addThinkingIndicator(id) {
+    var empty = document.getElementById('chat-empty-state');
+    if (empty) empty.remove();
+    var div = document.createElement('div');
+    div.className = 'msg assistant';
+    div.id = id;
+    var row = document.createElement('div');
+    row.className = 'msg-row';
+    var avatar = document.createElement('div');
+    avatar.className = 'msg-avatar-hex thinking';
+    var inner = document.createElement('div');
+    inner.className = 'msg-avatar-hex-inner';
+    var iconImg = document.createElement('img');
+    iconImg.src = 'https://puremarketing.ai/wp-content/uploads/2025/07/2.-Main-Icon-Orange-to-Blue-PM-2.png';
+    iconImg.alt = 'thinking';
+    inner.appendChild(iconImg);
+    avatar.appendChild(inner);
+    var bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    bubble.style.color = 'var(--muted)';
+    bubble.textContent = '...';
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+    div.appendChild(row);
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  function removeThinkingIndicator(id) {
+    var el = document.getElementById(id);
+    if (el) el.remove();
+  }
+
+  function loadChatHistory() {
+    chatLoaded = true;
+    var empty = document.getElementById('chat-empty-state');
+    if (empty) empty.remove();
+    chatMessages.innerHTML = '<div class="chat-loading">Loading history...</div>';
+
+    fetch('/api/chat/history?last=100', { headers: { Authorization: 'Bearer ' + token } })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        chatMessages.innerHTML = '';
+        if (data.messages && data.messages.length > 0) {
+          data.messages.forEach(function (m) {
+            addMessage(m.text, m.role, m.timestamp, m.id);
+          });
+        } else {
+          chatMessages.innerHTML = '<div class="chat-loading">No messages yet. Start a conversation!</div>';
+        }
+      })
+      .catch(function (e) {
+        chatMessages.innerHTML = '<div class="chat-loading">Error loading history: ' + e.message + '</div>';
+      });
+  }
+
+  function connectChatWS() {
+    if (chatWs) chatWs.close();
+    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    chatWs = new WebSocket(proto + '//' + location.host + '/ws/chat?token=' + encodeURIComponent(token));
+    chatWs.onopen = function () {
+      if (chatWsReconnectTimeout) { clearTimeout(chatWsReconnectTimeout); chatWsReconnectTimeout = null; }
+    };
+    chatWs.onmessage = function (e) {
+      try {
+        var msg = JSON.parse(e.data);
+        addMessage(msg.text, msg.role, msg.timestamp, msg.id);
+      } catch (err) {}
+    };
+    chatWs.onclose = function () {
+      chatWs = null;
+      chatWsReconnectTimeout = setTimeout(function () { if (token) connectChatWS(); }, 3000);
+    };
+    chatWs.onerror = function () {};
+  }
+
+  function sendChat() {
+    var msg = chatInput.value.trim();
+    if (!msg || sendBtn.disabled) return;
+    chatInput.value = '';
+    chatInput.style.height = 'auto';
+    sendBtn.disabled = true;
+
+    addMessage(msg, 'user', Math.floor(Date.now() / 1000), 'local-' + Date.now());
+    // FIX 4b: Show thinking indicator with spinning hexagon icon
+    var thinkingId = 'thinking-' + Date.now();
+    addThinkingIndicator(thinkingId);
+
+    fetch('/api/chat/send', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.error) addMessage('Error: ' + data.error, 'assistant', null, 'err-' + Date.now());
+      })
+      .catch(function (e) {
+        addMessage('Network error: ' + e.message, 'assistant', null, 'err-' + Date.now());
+      })
+      .finally(function () { sendBtn.disabled = false; chatInput.focus(); removeThinkingIndicator(thinkingId); });
+  }
+
+  // ══════════════════════════════════════
+  // STATUS
+  // ══════════════════════════════════════
+  function fmtUptime(s) {
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+    if (h > 0) return h + 'h ' + m + 'm';
+    return m + 'm ' + (s % 60) + 's';
+  }
+
+  function statCard(label, value, cls) {
+    return '<div class="stat-card">'
+      + '<div class="stat-label">' + label + '</div>'
+      + '<div class="stat-value ' + (cls || '') + '">' + value + '</div>'
+      + '</div>';
+  }
+
+  function loadStatus() {
+    fetch('/api/status', { headers: { Authorization: 'Bearer ' + token } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        statusGrid.innerHTML =
+          statCard('CIV Name', d.civ || '—', 'accent') +
+          statCard('Uptime', fmtUptime(d.uptime || 0)) +
+          statCard('tmux', d.tmux_alive ? 'Active' : 'Dead', d.tmux_alive ? 'ok' : 'bad') +
+          statCard('Claude', d.claude_running ? 'Running' : 'Stopped', d.claude_running ? 'ok' : 'bad') +
+          statCard('TG Bot', d.tg_bot_running ? 'Running' : 'Stopped', d.tg_bot_running ? 'ok' : 'bad') +
+          statCard('Session', d.tmux_session || '—', 'dim');
+      })
+      .catch(function (e) {
+        statusGrid.innerHTML = statCard('Error', e.message, 'bad');
+      });
+  }
+
+})();
+</script>
+
+<!-- ═══ FLOATING LABEL AUTOFILL DETECTION ═══ -->
+<script>
+(function() {
+  document.querySelectorAll('.auth-field input').forEach(function(input) {
+    input.style.animation = 'onAutoFillStart 0s';
+    input.addEventListener('animationstart', function(e) {
+      if (e.animationName === 'onAutoFillStart') input.classList.add('has-value');
+    });
+  });
+
+  var s = document.createElement('style');
+  s.textContent = '@keyframes pbErrorShake { 10%,90%{transform:translateX(-2px)} 20%,80%{transform:translateX(4px)} 30%,50%,70%{transform:translateX(-4px)} 40%,60%{transform:translateX(4px)} }';
+  document.head.appendChild(s);
+})();
+</script>
+
+<!-- ═══ 3D NEURAL NETWORK — v7 EXACT (login background only) ═══ -->
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer }   from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }       from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass }  from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass }       from 'three/addons/postprocessing/OutputPass.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BRAND CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
+const C_BLUE   = new THREE.Color(0x2a93c1);
+const C_ORANGE = new THREE.Color(0xe86020);
+const C_BG     = new THREE.Color(0x0a0e1a);
+const C_IDLE   = new THREE.Color(0x1a2840);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DEVICE DETECTION
+// ─────────────────────────────────────────────────────────────────────────────
+const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768;
+const isLowPower = isMobile;
+
+const NODE_COUNT      = isLowPower ? 160 : 280;
+const AMBIENT_COUNT   = isLowPower ? 800 : 1800;
+const MAX_PULSES      = isLowPower ? 60  : 120;
+const MAX_SPARKS      = isLowPower ? 300 : 600;
+const PIXEL_RATIO_MAX = isLowPower ? 1   : 2;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SCENE SETUP
+// ─────────────────────────────────────────────────────────────────────────────
+const container = document.getElementById('pb-canvas-container');
+let W = window.innerWidth;
+let H = window.innerHeight;
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: !isLowPower,
+  alpha: false,
+  powerPreference: isLowPower ? 'low-power' : 'high-performance'
+});
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, PIXEL_RATIO_MAX));
+renderer.setClearColor(C_BG, 1);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = C_BG;
+scene.fog = new THREE.FogExp2(0x0a0e1a, isLowPower ? 0.045 : 0.038);
+
+function getInitialFOV() {
+  const aspect = W / H;
+  return aspect < 0.8 ? 70 : 55;
+}
+
+const camera = new THREE.PerspectiveCamera(getInitialFOV(), W / H, 0.1, 200);
+const CAMERA_Z = isLowPower ? 26 : 22;
+camera.position.set(0, 0, CAMERA_Z);
+camera.lookAt(0, 0, 0);
+
+// PMREM environment
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+pmremGenerator.compileCubemapShader();
+const probeScene = new THREE.Scene();
+const envKey  = new THREE.PointLight(0x4ab8ff, 6.0, 60);
+envKey.position.set(5, 8, 5);
+const envFill = new THREE.PointLight(0x2a93c1, 3.5, 40);
+envFill.position.set(-6, 2, 3);
+const envRim  = new THREE.PointLight(0xe86020, 1.2, 30);
+envRim.position.set(1, -2, -8);
+probeScene.add(envKey, envFill, envRim);
+const envTexture = pmremGenerator.fromScene(probeScene).texture;
+scene.environment = envTexture;
+pmremGenerator.dispose();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NEURAL NETWORK
+// ─────────────────────────────────────────────────────────────────────────────
+const CONNECTION_LIMIT = 4;
+const FIRE_DURATION  = 1.2;
+const PULSE_SPEED    = 2.8;
+
+class Neuron {
+  constructor(id, position) {
+    this.id = id; this.position = position;
+    this.connections = []; this.fireTime = -999;
+    this.fireIntensity = 0;
+    this.baseColor = C_IDLE.clone(); this.currentColor = C_IDLE.clone();
+  }
+}
+
+const neurons = [];
+
+function brainPosition() {
+  const hemisphere = Math.random() > 0.5 ? 1 : -1;
+  let x, y, z; let attempts = 0;
+  do {
+    const r = Math.cbrt(Math.random());
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    x = r * 8.5 * Math.sin(phi) * Math.cos(theta) + hemisphere * 1.0;
+    y = r * 5.0 * Math.cos(phi);
+    z = r * 6.0 * Math.sin(phi) * Math.sin(theta);
+    const distFromCenter = Math.sqrt(x * x + z * z);
+    if (distFromCenter > 1.5 && Math.abs(y) < 5) break;
+    attempts++;
+  } while (attempts < 30);
+  return new THREE.Vector3(x, y, z);
+}
+
+for (let i = 0; i < NODE_COUNT; i++) neurons.push(new Neuron(i, brainPosition()));
+
+for (let i = 0; i < NODE_COUNT; i++) {
+  const ni = neurons[i];
+  if (ni.connections.length >= CONNECTION_LIMIT) continue;
+  const distances = [];
+  for (let j = i + 1; j < NODE_COUNT; j++) {
+    const nj = neurons[j];
+    if (nj.connections.length >= CONNECTION_LIMIT) continue;
+    const d = ni.position.distanceTo(nj.position);
+    if (d < 6.5) distances.push({ j, d });
+  }
+  distances.sort((a, b) => a.d - b.d);
+  for (const { j } of distances.slice(0, CONNECTION_LIMIT - ni.connections.length)) {
+    const nj = neurons[j];
+    if (nj.connections.length >= CONNECTION_LIMIT) continue;
+    ni.connections.push(j); nj.connections.push(i);
+  }
+}
+
+const neuronGeo = new THREE.SphereGeometry(0.12, isLowPower ? 8 : 12, isLowPower ? 6 : 8);
+const neuronMeshes = []; const neuronMaterials = [];
+
+for (let i = 0; i < NODE_COUNT; i++) {
+  const mat = new THREE.MeshPhysicalMaterial({
+    color: C_IDLE, emissive: C_IDLE.clone(), emissiveIntensity: 0.25,
+    roughness: 0.15, metalness: 0.05,
+  });
+  const mesh = new THREE.Mesh(neuronGeo, mat);
+  mesh.position.copy(neurons[i].position);
+  const scale = 0.6 + Math.random() * 0.8;
+  mesh.scale.setScalar(scale);
+  scene.add(mesh); neuronMeshes.push(mesh); neuronMaterials.push(mat);
+}
+
+const edges = []; const edgeSet = new Set(); const edgeLookup = new Map();
+for (let i = 0; i < NODE_COUNT; i++) {
+  for (const j of neurons[i].connections) {
+    const key = Math.min(i, j) * 10000 + Math.max(i, j);
+    if (!edgeSet.has(key)) {
+      edgeSet.add(key);
+      const edgeIndex = edges.length;
+      edges.push([i, j]); edgeLookup.set(key, edgeIndex);
+    }
+  }
+}
+
+function getEdgeIndex(a, b) {
+  const key = Math.min(a, b) * 10000 + Math.max(a, b);
+  return edgeLookup.get(key) ?? -1;
+}
+
+const linePositions = new Float32Array(edges.length * 2 * 3);
+const lineColors    = new Float32Array(edges.length * 2 * 3);
+
+for (let e = 0; e < edges.length; e++) {
+  const [i, j] = edges[e];
+  const pi = neurons[i].position; const pj = neurons[j].position;
+  linePositions[e*6+0]=pi.x; linePositions[e*6+1]=pi.y; linePositions[e*6+2]=pi.z;
+  linePositions[e*6+3]=pj.x; linePositions[e*6+4]=pj.y; linePositions[e*6+5]=pj.z;
+  const ir=0.08,ig=0.14,ib=0.22;
+  lineColors[e*6+0]=ir; lineColors[e*6+1]=ig; lineColors[e*6+2]=ib;
+  lineColors[e*6+3]=ir; lineColors[e*6+4]=ig; lineColors[e*6+5]=ib;
+}
+
+const lineGeo = new THREE.BufferGeometry();
+lineGeo.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+lineGeo.setAttribute('color',    new THREE.BufferAttribute(lineColors, 3));
+const lineMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.65, linewidth: 1 });
+const lineSegments = new THREE.LineSegments(lineGeo, lineMat);
+scene.add(lineSegments);
+
+// Pulse particles
+const pulses = [];
+const pulseGeo = new THREE.BufferGeometry();
+const pulsePositions = new Float32Array(MAX_PULSES * 3);
+const pulseColors    = new Float32Array(MAX_PULSES * 3);
+const pulseSizes     = new Float32Array(MAX_PULSES);
+pulseGeo.setAttribute('position', new THREE.BufferAttribute(pulsePositions, 3));
+pulseGeo.setAttribute('color',    new THREE.BufferAttribute(pulseColors, 3));
+pulseGeo.setAttribute('size',     new THREE.BufferAttribute(pulseSizes, 1));
+const pulseMat = new THREE.ShaderMaterial({
+  uniforms: {},
+  vertexShader: `attribute vec3 color; attribute float size; varying vec3 vColor;
+    void main() { vColor = color; vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = size * (350.0 / -mvPosition.z); gl_Position = projectionMatrix * mvPosition; }`,
+  fragmentShader: `varying vec3 vColor;
+    void main() { vec2 uv = gl_PointCoord - 0.5; float d = dot(uv,uv); if(d>0.25) discard;
+    float alpha = 1.0 - smoothstep(0.1,0.25,d); float core = 1.0 - smoothstep(0.0,0.12,d);
+    vec3 fc = mix(vColor, vec3(1.0,1.0,0.95), core*0.7); gl_FragColor = vec4(fc, alpha*0.95); }`,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, vertexColors: false,
+});
+const pulsePoints = new THREE.Points(pulseGeo, pulseMat);
+scene.add(pulsePoints);
+for (let i = 0; i < MAX_PULSES; i++) pulses.push({ active: false, edgeIndex: -1, t: 0, speed: 0, color: new THREE.Color(), fromIndex: -1, toIndex: -1 });
+
+function spawnPulse(edgeIndex, fromNeuron, toNeuron, color) {
+  for (let i = 0; i < MAX_PULSES; i++) {
+    if (!pulses[i].active) {
+      const p = pulses[i];
+      p.active=true; p.edgeIndex=edgeIndex; p.t=0;
+      p.speed=0.6+Math.random()*0.5; p.color.copy(color); p.fromIndex=fromNeuron; p.toIndex=toNeuron;
+      return;
+    }
+  }
+}
+
+// Ambient particles
+const ambientGeo = new THREE.BufferGeometry();
+const ambientPos = new Float32Array(AMBIENT_COUNT * 3);
+const ambientCol = new Float32Array(AMBIENT_COUNT * 3);
+const ambientSz  = new Float32Array(AMBIENT_COUNT);
+const ambientVel = new Float32Array(AMBIENT_COUNT * 3);
+for (let i = 0; i < AMBIENT_COUNT; i++) {
+  const r = Math.cbrt(Math.random()) * 12;
+  const theta = Math.random() * Math.PI * 2;
+  const phi   = Math.acos(2 * Math.random() - 1);
+  ambientPos[i*3+0] = r * Math.sin(phi) * Math.cos(theta);
+  ambientPos[i*3+1] = r * 0.6 * Math.cos(phi);
+  ambientPos[i*3+2] = r * Math.sin(phi) * Math.sin(theta);
+  const t2 = Math.random();
+  if (t2 < 0.85) { ambientCol[i*3+0]=0.05+Math.random()*0.1; ambientCol[i*3+1]=0.12+Math.random()*0.12; ambientCol[i*3+2]=0.25+Math.random()*0.2; }
+  else            { ambientCol[i*3+0]=0.2+Math.random()*0.2;  ambientCol[i*3+1]=0.08+Math.random()*0.07; ambientCol[i*3+2]=0.01; }
+  ambientSz[i] = 0.3 + Math.random() * 0.8;
+  const speed = 0.003 + Math.random() * 0.008;
+  const dTheta = Math.random() * Math.PI * 2;
+  ambientVel[i*3+0]=Math.cos(dTheta)*speed; ambientVel[i*3+1]=(Math.random()-0.5)*speed*0.3; ambientVel[i*3+2]=Math.sin(dTheta)*speed;
+}
+ambientGeo.setAttribute('position', new THREE.BufferAttribute(ambientPos, 3));
+ambientGeo.setAttribute('color',    new THREE.BufferAttribute(ambientCol, 3));
+ambientGeo.setAttribute('size',     new THREE.BufferAttribute(ambientSz,  1));
+const ambientMat = new THREE.ShaderMaterial({
+  uniforms: {},
+  vertexShader: `attribute vec3 color; attribute float size; varying vec3 vColor; varying float vAlpha;
+    void main() { vColor=color; vAlpha=0.18+size*0.08; vec4 mvPosition=modelViewMatrix*vec4(position,1.0);
+    gl_PointSize=size*(280.0/-mvPosition.z); gl_Position=projectionMatrix*mvPosition; }`,
+  fragmentShader: `varying vec3 vColor; varying float vAlpha;
+    void main() { vec2 uv=gl_PointCoord-0.5; float d=dot(uv,uv); if(d>0.25) discard;
+    float alpha=vAlpha*(1.0-smoothstep(0.05,0.25,d)); gl_FragColor=vec4(vColor,alpha); }`,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+});
+const ambientPoints = new THREE.Points(ambientGeo, ambientMat);
+scene.add(ambientPoints);
+
+// Spark burst
+const sparkGeo = new THREE.BufferGeometry();
+const sparkPos  = new Float32Array(MAX_SPARKS * 3);
+const sparkCol  = new Float32Array(MAX_SPARKS * 3);
+const sparkSz   = new Float32Array(MAX_SPARKS);
+sparkGeo.setAttribute('position', new THREE.BufferAttribute(sparkPos, 3));
+sparkGeo.setAttribute('color',    new THREE.BufferAttribute(sparkCol, 3));
+sparkGeo.setAttribute('size',     new THREE.BufferAttribute(sparkSz, 1));
+const sparkMat = new THREE.ShaderMaterial({
+  uniforms: {},
+  vertexShader: `attribute vec3 color; attribute float size; varying vec3 vColor;
+    void main() { vColor=color; vec4 mvPosition=modelViewMatrix*vec4(position,1.0);
+    gl_PointSize=size*(400.0/-mvPosition.z); gl_Position=projectionMatrix*mvPosition; }`,
+  fragmentShader: `varying vec3 vColor;
+    void main() { vec2 uv=gl_PointCoord-0.5; float d=dot(uv,uv); if(d>0.25) discard;
+    float alpha=pow(1.0-smoothstep(0.0,0.25,d),2.0); gl_FragColor=vec4(vColor,alpha); }`,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+});
+const sparkPoints = new THREE.Points(sparkGeo, sparkMat);
+scene.add(sparkPoints);
+const sparks = [];
+for (let i = 0; i < MAX_SPARKS; i++) sparks.push({ active: false, pos: new THREE.Vector3(), vel: new THREE.Vector3(), life: 0, maxLife: 0, color: new THREE.Color() });
+
+function spawnSparks(origin, color, count = 6) {
+  const isOrange = color.r > 0.6 && color.b < 0.3;
+  const actualCount = isOrange ? Math.max(3, Math.floor(count * 0.6)) : count;
+  let spawned = 0;
+  for (let i = 0; i < MAX_SPARKS && spawned < actualCount; i++) {
+    if (!sparks[i].active) {
+      const s = sparks[i]; s.active = true; s.pos.copy(origin);
+      const speed = 0.04 + Math.random() * 0.12;
+      s.vel.set((Math.random()-0.5)*speed, (Math.random()-0.5)*speed, (Math.random()-0.5)*speed);
+      s.life = 0; s.maxLife = 0.4 + Math.random() * 0.6; s.color.copy(color); spawned++;
+    }
+  }
+}
+
+// Postprocessing
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(W, H),
+  isLowPower ? 1.0 : 1.4,
+  isLowPower ? 0.4 : 0.6,
+  0.15
+);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
+
+// Mouse/touch
+const mouse = new THREE.Vector2(0, 0);
+const mouseWorld = new THREE.Vector3(0, 0, 0);
+const raycaster = new THREE.Raycaster();
+const mousePlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+const cameraTarget = new THREE.Vector3(0, 0, CAMERA_Z);
+const cameraLookTarget = new THREE.Vector3(0, 0, 0);
+let lastMouseActivationTime = 0;
+const MOUSE_ACTIVATION_COOLDOWN = 0.08;
+
+function getClientXY(e) {
+  if (e.touches && e.touches.length > 0) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  return { x: e.clientX, y: e.clientY };
+}
+function onPointerMove(e) {
+  const { x, y } = getClientXY(e);
+  mouse.x = (x / window.innerWidth) * 2 - 1;
+  mouse.y = -(y / window.innerHeight) * 2 + 1;
+  const parallaxX = isLowPower ? -1.0 : -1.8;
+  const parallaxY = isLowPower ? -0.7 : -1.2;
+  cameraTarget.x = mouse.x * parallaxX;
+  cameraTarget.y = mouse.y * parallaxY;
+  cameraTarget.z = CAMERA_Z;
+  cameraLookTarget.x = mouse.x * 0.8;
+  cameraLookTarget.y = mouse.y * 0.5;
+}
+window.addEventListener('mousemove',  onPointerMove);
+window.addEventListener('touchmove',  onPointerMove, { passive: true });
+window.addEventListener('touchstart', onPointerMove, { passive: true });
+
+// Neuron firing
+const firingQueue = [];
+
+function fireNeuron(neuronIndex, time, propagate = true, depth = 0, color = null) {
+  const n = neurons[neuronIndex];
+  if (time - n.fireTime < FIRE_DURATION * 0.7) return;
+  n.fireTime = time;
+  let fireColor;
+  if (color)            { fireColor = color; }
+  else if (depth === 0) { fireColor = C_BLUE; }
+  else if (depth % 2 === 1) { fireColor = Math.random() < 0.6 ? C_ORANGE : C_BLUE; }
+  else                  { fireColor = C_BLUE; }
+  firingQueue.push({ index: neuronIndex, time, color: fireColor.clone() });
+  const sparkCount = fireColor === C_ORANGE ? 3 + depth : 5 + depth * 2;
+  spawnSparks(n.position, fireColor, sparkCount);
+  if (propagate && depth < 4) {
+    const shuffled = [...n.connections].sort(() => Math.random() - 0.5);
+    const propagateCount = Math.min(2 + Math.floor(Math.random() * 2), shuffled.length);
+    for (let k = 0; k < propagateCount; k++) {
+      const targetIndex = shuffled[k];
+      const targetNeuron = neurons[targetIndex];
+      const dist = n.position.distanceTo(targetNeuron.position);
+      const travelTime = dist / PULSE_SPEED;
+      const edgeIndex = getEdgeIndex(neuronIndex, targetIndex);
+      if (edgeIndex >= 0) spawnPulse(edgeIndex, neuronIndex, targetIndex, fireColor);
+      setTimeout(() => {
+        const nextColor = fireColor === C_BLUE ? (Math.random() < 0.6 ? C_ORANGE : C_BLUE) : C_BLUE;
+        fireNeuron(targetIndex, clock.getElapsedTime(), true, depth + 1, nextColor);
+      }, travelTime * 1000);
+    }
+  }
+}
+
+function scheduleAmbientFire() {
+  const neuronIndex = Math.floor(Math.random() * NODE_COUNT);
+  const minDelay = isLowPower ? 300 : 200;
+  const maxDelay = isLowPower ? 600 : 400;
+  const delay = minDelay + Math.random() * (maxDelay - minDelay);
+  setTimeout(() => {
+    const initColor = Math.random() < 0.75 ? C_BLUE : C_ORANGE;
+    fireNeuron(neuronIndex, clock.getElapsedTime(), true, 0, initColor);
+    scheduleAmbientFire();
+  }, delay);
+}
+
+function initialBurst() {
+  for (let i = 0; i < 8; i++) {
+    setTimeout(() => {
+      const idx = Math.floor(Math.random() * NODE_COUNT);
+      fireNeuron(idx, 0, true, 0, C_BLUE);
+    }, i * 150);
+  }
+}
+
+// Render loop
+const clock = new THREE.Clock();
+const tmpV  = new THREE.Vector3();
+let isVisible = true;
+const _blueIdle = new THREE.Color(0x0d1a2d);
+
+// Watch login overlay — pause when hidden
+let loginHidden = false;
+const loginOverlay = document.getElementById('auth-overlay');
+
+function checkLoginVisibility() {
+  loginHidden = loginOverlay ? loginOverlay.style.display === 'none' : false;
+  if (container) {
+    container.style.display = loginHidden ? 'none' : 'block';
+  }
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  checkLoginVisibility();
+  if (!isVisible || loginHidden) return;
+
+  const dt = clock.getDelta();
+  const t  = clock.getElapsedTime();
+
+  camera.position.lerp(cameraTarget, 0.025);
+  camera.lookAt(cameraLookTarget);
+  scene.rotation.y = Math.sin(t * 0.071) * 0.10 + Math.sin(t * 0.038) * 0.04;
+  scene.rotation.x = Math.sin(t * 0.053) * 0.04 + Math.sin(t * 0.029) * 0.02;
+
+  raycaster.setFromCamera(mouse, camera);
+  raycaster.ray.intersectPlane(mousePlane, mouseWorld);
+
+  if (t - lastMouseActivationTime > MOUSE_ACTIVATION_COOLDOWN) {
+    const MOUSE_RADIUS = 4.0;
+    for (let i = 0; i < NODE_COUNT; i++) {
+      const n = neurons[i];
+      tmpV.copy(n.position).applyMatrix4(scene.matrixWorld);
+      const dx = tmpV.x - mouseWorld.x; const dy = tmpV.y - mouseWorld.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < MOUSE_RADIUS && t - n.fireTime > FIRE_DURATION) {
+        const prob = (1.0 - dist / MOUSE_RADIUS) * 0.25;
+        if (Math.random() < prob) {
+          const mouseColor = Math.random() < 0.7 ? C_BLUE : C_ORANGE;
+          fireNeuron(i, t, true, 0, mouseColor);
+          lastMouseActivationTime = t; break;
+        }
+      }
+    }
+  }
+
+  // Update neuron materials
+  for (let i = 0; i < NODE_COUNT; i++) {
+    const n = neurons[i]; const mat = neuronMaterials[i];
+    const age = t - n.fireTime;
+    if (age < FIRE_DURATION) {
+      let intensity;
+      const rampUp = 0.3; const hold = 0.4; const rampDown = FIRE_DURATION - rampUp - hold;
+      if (age < rampUp)             { intensity = age / rampUp; }
+      else if (age < rampUp + hold) { intensity = 1.0; }
+      else                          { intensity = 1.0 - (age - rampUp - hold) / rampDown; }
+      intensity = Math.max(0, Math.min(1, intensity));
+      const fc = firingQueue.find(f => f.index === i && f.time === n.fireTime);
+      const fireColor = fc ? fc.color : C_BLUE;
+      mat.emissive.copy(fireColor).multiplyScalar(intensity);
+      mat.emissiveIntensity = 0.3 + intensity * 3.5;
+      mat.color.lerpColors(C_IDLE, fireColor, intensity * 0.7);
+    } else {
+      const pulse = Math.sin(t * 0.8 + i * 0.3) * 0.5 + 0.5;
+      mat.emissive.copy(_blueIdle);
+      mat.emissiveIntensity = 0.1 + pulse * 0.08;
+      mat.color.copy(C_IDLE);
+    }
+  }
+
+  // Clean firing queue
+  const QUEUE_TTL = FIRE_DURATION * 2;
+  for (let i = firingQueue.length - 1; i >= 0; i--) {
+    if (t - firingQueue[i].time > QUEUE_TTL) firingQueue.splice(i, 1);
+  }
+
+  // Update connection colors
+  const colorsArr = lineGeo.attributes.color.array;
+  for (let e = 0; e < edges.length; e++) {
+    const [ai, bi] = edges[e];
+    const na = neurons[ai]; const nb = neurons[bi];
+    const ageA = t - na.fireTime; const ageB = t - nb.fireTime;
+    const firedA = ageA < FIRE_DURATION; const firedB = ageB < FIRE_DURATION;
+    let r, g, b;
+    if (firedA || firedB) {
+      const intensityA = firedA ? Math.max(0, 1.0 - ageA / FIRE_DURATION) : 0;
+      const intensityB = firedB ? Math.max(0, 1.0 - ageB / FIRE_DURATION) : 0;
+      const intensity = Math.max(intensityA, intensityB);
+      r = 0.08 + intensity * 0.16; g = 0.14 + intensity * 0.45; b = 0.22 + intensity * 0.65;
+    } else { r = 0.06; g = 0.10; b = 0.18; }
+    colorsArr[e*6+0]=r; colorsArr[e*6+1]=g; colorsArr[e*6+2]=b;
+    colorsArr[e*6+3]=r; colorsArr[e*6+4]=g; colorsArr[e*6+5]=b;
+  }
+  lineGeo.attributes.color.needsUpdate = true;
+
+  // Update pulses
+  const pPositions = pulseGeo.attributes.position.array;
+  const pColors    = pulseGeo.attributes.color.array;
+  const pSizes     = pulseGeo.attributes.size.array;
+  for (let i = 0; i < MAX_PULSES; i++) {
+    const p = pulses[i];
+    if (!p.active) { pPositions[i*3]=9999; pSizes[i]=0; continue; }
+    p.t += dt * p.speed;
+    if (p.t >= 1.0) { p.active=false; pPositions[i*3]=9999; pSizes[i]=0; continue; }
+    const fn = neurons[p.fromIndex]; const tn2 = neurons[p.toIndex];
+    pPositions[i*3+0] = fn.position.x + (tn2.position.x - fn.position.x) * p.t;
+    pPositions[i*3+1] = fn.position.y + (tn2.position.y - fn.position.y) * p.t;
+    pPositions[i*3+2] = fn.position.z + (tn2.position.z - fn.position.z) * p.t;
+    const pulseAge = p.t;
+    pColors[i*3+0] = p.color.r + (1.0 - p.color.r) * pulseAge * 0.4;
+    pColors[i*3+1] = p.color.g * (1.0 - pulseAge * 0.3);
+    pColors[i*3+2] = p.color.b * (1.0 - pulseAge * 0.5);
+    pSizes[i] = 2.5 + Math.sin(pulseAge * Math.PI) * 1.5;
+  }
+  pulseGeo.attributes.position.needsUpdate = true;
+  pulseGeo.attributes.color.needsUpdate = true;
+  pulseGeo.attributes.size.needsUpdate = true;
+
+  // Update sparks
+  const sPositions = sparkGeo.attributes.position.array;
+  const sColors    = sparkGeo.attributes.color.array;
+  const sSizes     = sparkGeo.attributes.size.array;
+  for (let i = 0; i < MAX_SPARKS; i++) {
+    const s = sparks[i];
+    if (!s.active) { sPositions[i*3]=9999; sSizes[i]=0; continue; }
+    s.life += dt;
+    if (s.life >= s.maxLife) { s.active=false; sPositions[i*3]=9999; sSizes[i]=0; continue; }
+    s.pos.x+=s.vel.x; s.pos.y+=s.vel.y; s.pos.z+=s.vel.z;
+    s.vel.multiplyScalar(0.96);
+    const lifeRatio = s.life / s.maxLife;
+    sPositions[i*3+0]=s.pos.x; sPositions[i*3+1]=s.pos.y; sPositions[i*3+2]=s.pos.z;
+    const brightness = Math.pow(1.0 - lifeRatio, 1.5);
+    const hotCore = Math.max(0, 1.0 - lifeRatio * 3.0);
+    sColors[i*3+0]=s.color.r*brightness+hotCore*0.8;
+    sColors[i*3+1]=s.color.g*brightness+hotCore*0.7;
+    sColors[i*3+2]=s.color.b*brightness+hotCore*0.4;
+    sSizes[i]=(1.5+hotCore*2.0)*brightness;
+  }
+  sparkGeo.attributes.position.needsUpdate = true;
+  sparkGeo.attributes.color.needsUpdate = true;
+  sparkGeo.attributes.size.needsUpdate = true;
+
+  // Update ambient particles
+  for (let i = 0; i < AMBIENT_COUNT; i++) {
+    ambientPos[i*3+0]+=ambientVel[i*3+0]; ambientPos[i*3+1]+=ambientVel[i*3+1]; ambientPos[i*3+2]+=ambientVel[i*3+2];
+    const px=ambientPos[i*3+0]; const py=ambientPos[i*3+1]; const pz=ambientPos[i*3+2];
+    const dist2 = Math.sqrt(px*px+(py/0.6)*(py/0.6)+pz*pz);
+    if (dist2 > 13) { ambientVel[i*3+0]*=-0.8; ambientVel[i*3+1]*=-0.8; ambientVel[i*3+2]*=-0.8; }
+  }
+  ambientGeo.attributes.position.needsUpdate = true;
+
+  composer.render();
+}
+
+// Resize
+function onResize() {
+  W = window.innerWidth; H = window.innerHeight;
+  camera.aspect = W / H;
+  camera.fov = (W / H) < 0.8 ? 70 : 55;
+  camera.updateProjectionMatrix();
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, PIXEL_RATIO_MAX));
+  composer.setSize(W, H);
+  bloomPass.resolution.set(W, H);
+}
+window.addEventListener('resize', onResize);
+window.addEventListener('orientationchange', () => setTimeout(onResize, 200));
+
+// Click/tap burst
+function onTap(clientX, clientY) {
+  const card = document.querySelector('.auth-card');
+  if (card) {
+    const rect = card.getBoundingClientRect();
+    if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) return;
+  }
+  const mx = (clientX / window.innerWidth) * 2 - 1;
+  const my = -(clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(new THREE.Vector2(mx, my), camera);
+  raycaster.ray.intersectPlane(mousePlane, mouseWorld);
+  let minDist = Infinity; let nearestIdx = 0;
+  for (let i = 0; i < NODE_COUNT; i++) {
+    tmpV.copy(neurons[i].position).applyMatrix4(scene.matrixWorld);
+    const dx = tmpV.x - mouseWorld.x; const dy = tmpV.y - mouseWorld.y;
+    const d = Math.sqrt(dx*dx+dy*dy);
+    if (d < minDist) { minDist = d; nearestIdx = i; }
+  }
+  fireNeuron(nearestIdx, clock.getElapsedTime(), true, 0, C_BLUE);
+  spawnSparks(neurons[nearestIdx].position, C_BLUE, 20);
+}
+window.addEventListener('click', (e) => { if (!loginHidden) onTap(e.clientX, e.clientY); });
+window.addEventListener('touchend', (e) => { if (!loginHidden && e.changedTouches.length > 0) onTap(e.changedTouches[0].clientX, e.changedTouches[0].clientY); }, { passive: true });
+
+document.addEventListener('visibilitychange', () => { isVisible = document.visibilityState === 'visible'; });
+
+// Launch
+initialBurst();
+scheduleAmbientFire();
+animate();
+console.log('[PureBrain Neural 3D] Initialized — Witness portal login background active');
+</script>
+
+</body>
+</html>

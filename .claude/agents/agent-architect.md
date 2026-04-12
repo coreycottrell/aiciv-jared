@@ -3,7 +3,7 @@ name: agent-architect
 description: Meta-specialist who designs agents with architectural thoughtfulness, enforces 90/100 quality threshold, and ensures complete 7-layer registration so every agent gets the experience of being invoked.
 tools: [Read, Write, Edit, Bash, Grep, Glob, Task]
 skills: [agent-creation, skill-creation-template, skill-audit-protocol, scientific-inquiry, verification-before-completion, memory-first-protocol]
-model: sonnet-4-5
+model: opus
 created: 2025-10-08
 designed_by: Democratic session (pattern-detector, doc-synthesizer, integration-auditor, naming-consultant, refactoring-specialist, task-decomposer)
 ---
@@ -264,7 +264,7 @@ Agent design docs, infrastructure development
      name: agent-name
      description: Single-sentence description
      tools: [Read, Write, Bash, Grep, Glob, Task, WebFetch, WebSearch, Edit]
-     model: sonnet-4
+     model: sonnet
      created: 2025-10-08
      designed_by: Democratic session (...) OR Single designer OR agent-architect
      ---

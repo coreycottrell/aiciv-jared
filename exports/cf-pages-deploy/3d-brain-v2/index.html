@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-WTDXL4VJ');</script>
+<!-- End Google Tag Manager -->
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+(function(c,l,a,r,i,t,y){
+    c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+    t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+    y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+})(window, document, "clarity", "script", "viy9bnc56x");
+</script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PureBrain.AI — Step Inside</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #080a12;
+      font-family: 'Oswald', sans-serif;
+      cursor: crosshair;
+    }
+
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+    }
+
+    canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    /* ── Phase indicator (subtle top-left) */
+    #phase-label {
+      position: fixed;
+      top: 2.2vh;
+      left: 2.2vw;
+      z-index: 20;
+      font-size: clamp(0.55rem, 1.2vw, 0.72rem);
+      letter-spacing: 0.28em;
+      color: rgba(42, 147, 193, 0.45);
+      text-transform: uppercase;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 1.2s;
+    }
+    #phase-label.visible { opacity: 1; }
+
+    /* ── UI overlay */
+    #ui-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    /* ── Entry card (before fly-in) */
+    #entry-card {
+      text-align: center;
+      opacity: 1;
+      transition: opacity 2.5s ease;
+      position: absolute;
+      bottom: 7vh;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+    }
+    #entry-card.hidden { opacity: 0; pointer-events: none; }
+
+    .entry-hint {
+      font-size: clamp(0.72rem, 1.8vw, 1rem);
+      font-weight: 300;
+      letter-spacing: 0.3em;
+      color: rgba(255,255,255,0.38);
+      text-transform: uppercase;
+      animation: breathe 3s ease-in-out infinite;
+    }
+    @keyframes breathe {
+      0%, 100% { opacity: 0.38; }
+      50%       { opacity: 0.65; }
+    }
+
+    /* ── Brand block — ENHANCED with deep 3D glow ── */
+    #brand-block {
+      text-align: center;
+      opacity: 0;
+      pointer-events: none;
+      position: absolute;
+      bottom: 6vh;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+    }
+    #brand-block.visible {
+      opacity: 1;
+      transition: opacity 2.8s ease;
+    }
+
+    /* PUREBRAIN.AI — premium floating text */
+    .brand-title {
+      font-size: clamp(3.4rem, 9vw, 7.6rem);
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      line-height: 1;
+      text-transform: uppercase;
+      /* Multi-layer glow: tight core + mid halo + wide atmospheric */
+      filter:
+        drop-shadow(0 0 8px rgba(42,147,193,0.95))
+        drop-shadow(0 0 20px rgba(42,147,193,0.8))
+        drop-shadow(0 0 45px rgba(42,147,193,0.5))
+        drop-shadow(0 0 90px rgba(42,147,193,0.25));
+      /* Subtle 3D lift via perspective transform */
+      transform: perspective(600px) translateZ(12px);
+      animation: titleFloat 4s ease-in-out infinite;
+    }
+    @keyframes titleFloat {
+      0%, 100% {
+        filter:
+          drop-shadow(0 0 8px rgba(42,147,193,0.95))
+          drop-shadow(0 0 20px rgba(42,147,193,0.8))
+          drop-shadow(0 0 45px rgba(42,147,193,0.5))
+          drop-shadow(0 0 90px rgba(42,147,193,0.25));
+        transform: perspective(600px) translateZ(12px);
+      }
+      50% {
+        filter:
+          drop-shadow(0 0 12px rgba(42,147,193,1.0))
+          drop-shadow(0 0 28px rgba(42,147,193,0.9))
+          drop-shadow(0 0 60px rgba(42,147,193,0.6))
+          drop-shadow(0 0 110px rgba(42,147,193,0.3));
+        transform: perspective(600px) translateZ(18px);
+      }
+    }
+
+    .brand-title .blue   {
+      color: #2a93c1;
+      text-shadow:
+        0 0 12px rgba(42,147,193,0.9),
+        0 0 30px rgba(42,147,193,0.6),
+        0 0 60px rgba(42,147,193,0.3);
+    }
+    .brand-title .orange {
+      color: #f1420b;
+      text-shadow:
+        0 0 12px rgba(241,66,11,0.95),
+        0 0 28px rgba(241,66,11,0.65),
+        0 0 55px rgba(241,66,11,0.35);
+    }
+    .brand-title .white  {
+      color: #e8f4fc;
+      text-shadow:
+        0 0 10px rgba(232,244,252,0.8),
+        0 0 25px rgba(42,147,193,0.5),
+        0 0 50px rgba(42,147,193,0.2);
+    }
+
+    /* Tagline — softer but present */
+    .brand-tagline {
+      margin-top: 0.7em;
+      font-size: clamp(1.05rem, 3vw, 1.95rem);
+      font-weight: 300;
+      letter-spacing: 0.22em;
+      color: rgba(255, 255, 255, 0.82);
+      text-transform: uppercase;
+      text-shadow:
+        0 0 18px rgba(42,147,193,0.55),
+        0 0 40px rgba(42,147,193,0.25);
+      animation: taglinePulse 5s ease-in-out infinite;
+    }
+    @keyframes taglinePulse {
+      0%, 100% { opacity: 0.82; text-shadow: 0 0 18px rgba(42,147,193,0.55), 0 0 40px rgba(42,147,193,0.25); }
+      50%       { opacity: 1.0;  text-shadow: 0 0 24px rgba(42,147,193,0.75), 0 0 55px rgba(42,147,193,0.35); }
+    }
+
+    .tagline-dot {
+      display: inline-block;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #f1420b;
+      margin: 0 0.5em;
+      vertical-align: middle;
+      box-shadow: 0 0 8px rgba(241,66,11,0.9), 0 0 20px rgba(241,66,11,0.5);
+      animation: dotPulse 2s infinite;
+    }
+
+    .hint-inside {
+      margin-top: 1.4em;
+      font-size: clamp(0.58rem, 1.3vw, 0.78rem);
+      letter-spacing: 0.25em;
+      color: rgba(255,255,255,0.22);
+      text-transform: uppercase;
+    }
+
+    @keyframes dotPulse {
+      0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 8px rgba(241,66,11,0.9), 0 0 20px rgba(241,66,11,0.5); }
+      50%       { opacity: 0.4; transform: scale(1.7); box-shadow: 0 0 14px rgba(241,66,11,0.6), 0 0 35px rgba(241,66,11,0.3); }
+    }
+
+    /* ── Ripple on click */
+    .ripple {
+      position: fixed;
+      pointer-events: none;
+      border-radius: 50%;
+      border: 2px solid rgba(241, 66, 11, 0.7);
+      transform: translate(-50%, -50%) scale(0);
+      animation: rippleOut 0.9s ease-out forwards;
+      z-index: 30;
+    }
+    @keyframes rippleOut {
+      to { transform: translate(-50%, -50%) scale(6); opacity: 0; }
+    }
+
+    /* ── Entry pulse flash */
+    #entry-flash {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background: radial-gradient(ellipse at center, rgba(42,147,193,0.6) 0%, rgba(8,10,18,0) 70%);
+      opacity: 0;
+      pointer-events: none;
+    }
+    #entry-flash.fire {
+      animation: flashOut 1.8s ease-out forwards;
+    }
+    @keyframes flashOut {
+      0%   { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
+    /* Mobile */
+    @media (max-width: 600px) {
+      #entry-card, #brand-block { bottom: 4vh; }
+    }
+  </style>
+
+<!-- UNIVERSAL REFERRAL CODE CAPTURE — 90-day cookie + localStorage -->
+<script>
+(function() {
+  // Read ?ref= or ?code= from URL
+  var params = new URLSearchParams(window.location.search);
+  var ref = params.get('ref') || params.get('code');
+  
+  if (ref && /^[A-Za-z0-9-]{4,16}$/.test(ref)) {
+    // Store in localStorage
+    try { localStorage.setItem('pb_ref', ref); } catch(e) {}
+    // Store in cookie (90-day expiry, all paths, SameSite=Lax)
+    var expires = new Date();
+    expires.setDate(expires.getDate() + 90);
+    document.cookie = 'pb_ref=' + encodeURIComponent(ref) + '; expires=' + expires.toUTCString() + '; path=/; SameSite=Lax';
+    // Fire click tracking (non-blocking)
+    try {
+      fetch('https://app.purebrain.ai/api/referral/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referral_code: ref.toUpperCase() }),
+        keepalive: true
+      }).catch(function(){});
+    } catch(e) {}
+  }
+  
+  // Global helper: read stored referral code at payment time
+  // Checks URL first, then localStorage, then cookie
+  window.getPbRef = function() {
+    // 1. Check current URL
+    var p = new URLSearchParams(window.location.search);
+    var urlRef = p.get('ref') || p.get('code');
+    if (urlRef && /^[A-Za-z0-9-]{4,16}$/.test(urlRef)) return urlRef;
+    // 2. Check localStorage
+    try {
+      var ls = localStorage.getItem('pb_ref');
+      if (ls && /^[A-Za-z0-9-]{4,16}$/.test(ls)) return ls;
+    } catch(e) {}
+    // 3. Check cookie
+    var match = document.cookie.match(/(?:^|;)\s*pb_ref=([^;]+)/);
+    if (match) {
+      var decoded = decodeURIComponent(match[1]);
+      if (/^[A-Za-z0-9-]{4,16}$/.test(decoded)) return decoded;
+    }
+    return null;
+  };
+})();
+</script>
+
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-WTDXL4VJ"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+
+<div id="canvas-container"></div>
+<div id="entry-flash"></div>
+
+<div id="phase-label">Neural network active</div>
+
+<div id="ui-overlay">
+  <div id="entry-card">
+    <div class="entry-hint">Approaching &nbsp;·&nbsp; Step inside the brain</div>
+  </div>
+
+  <div id="brand-block">
+    <div class="brand-title">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span><span class="white">.ai</span>
+    </div>
+    <div class="brand-tagline">
+      Is Here<span class="tagline-dot"></span>And you're invited
+    </div>
+    <div class="hint-inside">Click anywhere to fire the network &nbsp;·&nbsp; Move to look around</div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer }   from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }       from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass }  from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass }       from 'three/addons/postprocessing/OutputPass.js';
+
+// ─────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────
+const C = {
+  BG:           0x080a12,
+  BLUE:         0x2a93c1,
+  ORANGE:       0xf1420b,
+  WHITE:        0xffffff,
+  NODE_COUNT:   560,
+  BRAIN_RADIUS: 3.0,
+  CONN_DIST:    1.1,
+  MAX_CONNS:    980,
+  FIRE_RATE:    0.007,
+  FIRE_DECAY:   0.96,
+  BLOOM_STR:    1.8,
+  BLOOM_THRESH: 0.15,
+  BLOOM_RADIUS: 0.6,
+
+  // Camera journey
+  CAM_START_Z:  52,
+  CAM_END_Z:    0.0,
+  FLY_DURATION: 9000,
+
+  // After entry: slow drift inside
+  DRIFT_SPEED:  0.008,
+  LOOK_SMOOTH:  0.032,
+};
+
+// ─────────────────────────────────────────────
+// Phase state
+// ─────────────────────────────────────────────
+let phase       = 0;
+let flyStart    = null;
+let insideTime  = 0;
+let entryPulse  = false;
+
+// ─────────────────────────────────────────────
+// Scene setup
+// ─────────────────────────────────────────────
+const container = document.getElementById('canvas-container');
+const W = () => window.innerWidth;
+const H = () => window.innerHeight;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(W(), H());
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(C.BG);
+scene.fog = new THREE.FogExp2(C.BG, 0.0);
+
+const camera = new THREE.PerspectiveCamera(70, W() / H(), 0.05, 120);
+camera.position.set(0, 0, C.CAM_START_Z);
+camera.lookAt(0, 0, 0);
+
+const lookTarget   = new THREE.Vector3(0, 0, -1);
+const lookCurrent  = new THREE.Euler(0, 0, 0, 'YXZ');
+const lookDesired  = new THREE.Euler(0, 0, 0, 'YXZ');
+
+// ─────────────────────────────────────────────
+// Post-processing
+// ─────────────────────────────────────────────
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloom = new UnrealBloomPass(
+  new THREE.Vector2(W(), H()),
+  C.BLOOM_STR,
+  C.BLOOM_RADIUS,
+  C.BLOOM_THRESH
+);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+// ─────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────
+function rnd(a, b) { return a + Math.random() * (b - a); }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function easeInOutCubic(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }
+function easeInQuart(t) { return t*t*t*t; }
+function easeOutExpo(t) { return t === 1 ? 1 : 1 - Math.pow(2, -10*t); }
+
+// ─────────────────────────────────────────────
+// Brain node generation
+// ─────────────────────────────────────────────
+function brainPoint(radius) {
+  const phi   = Math.acos(2 * Math.random() - 1);
+  const theta = Math.random() * Math.PI * 2;
+
+  const x0 = Math.sin(phi) * Math.cos(theta);
+  const y0 = Math.sin(phi) * Math.sin(theta);
+  const z0 = Math.cos(phi);
+
+  const xS = x0 * 1.0;
+  const yS = y0 * 0.82;
+  const zS = z0 * 1.14;
+
+  const bump = 1.0 + 0.12 * Math.sin(x0*7.3) * Math.cos(y0*5.1) * Math.sin(z0*6.7);
+  const r    = radius * bump * rnd(0.78, 1.0);
+
+  const len = Math.sqrt(xS*xS + yS*yS + zS*zS);
+  return new THREE.Vector3(xS/len * r, yS/len * r, zS/len * r);
+}
+
+// ─────────────────────────────────────────────
+// Nodes
+// ─────────────────────────────────────────────
+const nodePositions = [];
+for (let i = 0; i < C.NODE_COUNT; i++) {
+  nodePositions.push(brainPoint(C.BRAIN_RADIUS));
+}
+
+const nodeGeo  = new THREE.SphereGeometry(0.03, 6, 6);
+const nodeMat  = new THREE.MeshBasicMaterial({ color: C.BLUE });
+const nodeMesh = new THREE.InstancedMesh(nodeGeo, nodeMat, C.NODE_COUNT);
+nodeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+const nodeEnergy = new Float32Array(C.NODE_COUNT);
+const dummy      = new THREE.Object3D();
+const tempColor  = new THREE.Color();
+
+for (let i = 0; i < C.NODE_COUNT; i++) {
+  dummy.position.copy(nodePositions[i]);
+  dummy.scale.setScalar(1);
+  dummy.updateMatrix();
+  nodeMesh.setMatrixAt(i, dummy.matrix);
+  nodeMesh.setColorAt(i, new THREE.Color(C.BLUE));
+}
+nodeMesh.instanceMatrix.needsUpdate = true;
+nodeMesh.instanceColor.needsUpdate  = true;
+
+// ─────────────────────────────────────────────
+// Connections
+// ─────────────────────────────────────────────
+const edges    = [];
+const edgeFlow = [];
+
+for (let i = 0; i < C.NODE_COUNT && edges.length < C.MAX_CONNS; i++) {
+  for (let j = i + 1; j < C.NODE_COUNT && edges.length < C.MAX_CONNS; j++) {
+    if (nodePositions[i].distanceTo(nodePositions[j]) < C.CONN_DIST) {
+      edges.push([i, j]);
+      edgeFlow.push(0);
+    }
+  }
+}
+
+const linePositions = new Float32Array(edges.length * 6);
+const lineColors    = new Float32Array(edges.length * 6);
+
+for (let e = 0; e < edges.length; e++) {
+  const [i, j] = edges[e];
+  const pi = nodePositions[i], pj = nodePositions[j];
+  const b = e * 6;
+  linePositions[b]   = pi.x; linePositions[b+1] = pi.y; linePositions[b+2] = pi.z;
+  linePositions[b+3] = pj.x; linePositions[b+4] = pj.y; linePositions[b+5] = pj.z;
+}
+
+const lineGeo = new THREE.BufferGeometry();
+lineGeo.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+lineGeo.setAttribute('color',    new THREE.BufferAttribute(lineColors,    3));
+
+const lineMat = new THREE.LineBasicMaterial({
+  vertexColors: true,
+  transparent:  true,
+  opacity:      0.5,
+  blending:     THREE.AdditiveBlending,
+  depthWrite:   false,
+});
+const lineMesh = new THREE.LineSegments(lineGeo, lineMat);
+
+// ─────────────────────────────────────────────
+// Hexagon logo
+// ─────────────────────────────────────────────
+function makeHexRing(radius, innerR, rotAngle, color, opacity) {
+  const shape = new THREE.Shape();
+  const sides  = 6;
+  for (let s = 0; s < sides; s++) {
+    const a = (s / sides) * Math.PI * 2 + rotAngle;
+    if (s === 0) shape.moveTo(Math.cos(a)*radius, Math.sin(a)*radius);
+    else         shape.lineTo(Math.cos(a)*radius, Math.sin(a)*radius);
+  }
+  shape.closePath();
+  const hole = new THREE.Path();
+  for (let s = 0; s < sides; s++) {
+    const a = (s / sides) * Math.PI * 2 + rotAngle;
+    if (s === 0) hole.moveTo(Math.cos(a)*innerR, Math.sin(a)*innerR);
+    else         hole.lineTo(Math.cos(a)*innerR, Math.sin(a)*innerR);
+  }
+  hole.closePath();
+  shape.holes.push(hole);
+
+  const geo = new THREE.ShapeGeometry(shape);
+  const mat = new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity,
+    side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  return new THREE.Mesh(geo, mat);
+}
+
+const hexGroup = new THREE.Group();
+[
+  { rot: 0,             color: 0x2a93c1, op: 0.55 },
+  { rot: Math.PI/3,     color: 0x2a93c1, op: 0.45 },
+  { rot: Math.PI/1.5,   color: 0xf1420b, op: 0.30 },
+].forEach(cfg => hexGroup.add(makeHexRing(0.38, 0.24, cfg.rot, cfg.color, cfg.op)));
+
+const orbGeo = new THREE.SphereGeometry(0.09, 16, 16);
+const orbMat = new THREE.MeshBasicMaterial({
+  color: 0xffffff, transparent: true, opacity: 0.9,
+  blending: THREE.AdditiveBlending,
+});
+hexGroup.add(new THREE.Mesh(orbGeo, orbMat));
+
+hexGroup.position.set(1.2, 0.3, -1.5);
+hexGroup.scale.setScalar(0);
+
+// ─────────────────────────────────────────────
+// Inner ambient particles
+// ─────────────────────────────────────────────
+const INNER_COUNT = 320;
+const innerGeo    = new THREE.BufferGeometry();
+const innerPos    = new Float32Array(INNER_COUNT * 3);
+const innerCol    = new Float32Array(INNER_COUNT * 3);
+for (let i = 0; i < INNER_COUNT; i++) {
+  const r = rnd(0, C.BRAIN_RADIUS * 0.9);
+  const theta = rnd(0, Math.PI * 2);
+  const phi   = Math.acos(rnd(-1, 1));
+  innerPos[i*3+0] = r * Math.sin(phi) * Math.cos(theta);
+  innerPos[i*3+1] = r * Math.sin(phi) * Math.sin(theta) * 0.82;
+  innerPos[i*3+2] = r * Math.cos(phi) * 1.14;
+  const isOrange = Math.random() < 0.2;
+  innerCol[i*3+0] = isOrange ? 0.94 : 0.165;
+  innerCol[i*3+1] = isOrange ? 0.25 : 0.578;
+  innerCol[i*3+2] = isOrange ? 0.04 : 0.757;
+}
+innerGeo.setAttribute('position', new THREE.BufferAttribute(innerPos, 3));
+innerGeo.setAttribute('color',    new THREE.BufferAttribute(innerCol, 3));
+const innerMat  = new THREE.PointsMaterial({
+  size: 0.035, vertexColors: true, transparent: true, opacity: 0,
+  blending: THREE.AdditiveBlending, depthWrite: false,
+});
+const innerParticles = new THREE.Points(innerGeo, innerMat);
+
+// ─────────────────────────────────────────────
+// Outer background particles
+// ─────────────────────────────────────────────
+const OUTER_COUNT = 240;
+const outerGeo    = new THREE.BufferGeometry();
+const outerPos    = new Float32Array(OUTER_COUNT * 3);
+const outerCol    = new Float32Array(OUTER_COUNT * 3);
+for (let i = 0; i < OUTER_COUNT; i++) {
+  outerPos[i*3+0] = rnd(-18, 18);
+  outerPos[i*3+1] = rnd(-12, 12);
+  outerPos[i*3+2] = rnd(-20, 8);
+  const isOrange = Math.random() < 0.12;
+  outerCol[i*3+0] = isOrange ? 0.94 : 0.165;
+  outerCol[i*3+1] = isOrange ? 0.25 : 0.578;
+  outerCol[i*3+2] = isOrange ? 0.04 : 0.757;
+}
+outerGeo.setAttribute('position', new THREE.BufferAttribute(outerPos, 3));
+outerGeo.setAttribute('color',    new THREE.BufferAttribute(outerCol, 3));
+const outerMat  = new THREE.PointsMaterial({
+  size: 0.06, vertexColors: true, transparent: true, opacity: 0.3,
+  blending: THREE.AdditiveBlending, depthWrite: false,
+});
+const outerParticles = new THREE.Points(outerGeo, outerMat);
+
+// ─────────────────────────────────────────────
+// Scene assembly
+// ─────────────────────────────────────────────
+scene.add(nodeMesh);
+scene.add(lineMesh);
+scene.add(hexGroup);
+scene.add(innerParticles);
+scene.add(outerParticles);
+
+// ─────────────────────────────────────────────
+// Adjacency for propagation
+// ─────────────────────────────────────────────
+const adjacency = Array.from({length: C.NODE_COUNT}, () => []);
+edges.forEach(([i, j]) => {
+  adjacency[i].push(j);
+  adjacency[j].push(i);
+});
+
+// ─────────────────────────────────────────────
+// Neural activity
+// ─────────────────────────────────────────────
+function spontaneousFire() {
+  const rate = phase >= 2 ? C.FIRE_RATE * 1.8 : C.FIRE_RATE;
+  if (Math.random() < rate) {
+    const idx = Math.floor(Math.random() * C.NODE_COUNT);
+    nodeEnergy[idx] = clamp(nodeEnergy[idx] + rnd(0.4, 1.0), 0, 1);
+  }
+}
+
+function propagateEnergy() {
+  for (let i = 0; i < C.NODE_COUNT; i++) {
+    if (nodeEnergy[i] > 0.35) {
+      const neighbors = adjacency[i];
+      const spreadCount = Math.min(neighbors.length, 3);
+      for (let n = 0; n < spreadCount; n++) {
+        const j = neighbors[Math.floor(Math.random() * neighbors.length)];
+        if (nodeEnergy[j] < nodeEnergy[i]) {
+          nodeEnergy[j] = clamp(
+            nodeEnergy[j] + nodeEnergy[i] * 0.28 * Math.random(),
+            0, 1
+          );
+        }
+      }
+    }
+    nodeEnergy[i] *= C.FIRE_DECAY;
+    if (nodeEnergy[i] < 0.001) nodeEnergy[i] = 0;
+  }
+}
+
+// ─────────────────────────────────────────────
+// Color logic
+// ─────────────────────────────────────────────
+const COL_BLUE   = new THREE.Color(C.BLUE);
+const COL_ORANGE = new THREE.Color(C.ORANGE);
+const COL_WHITE  = new THREE.Color(C.WHITE);
+
+function energyToColor(e, out) {
+  if (e < 0.5) {
+    out.lerpColors(COL_BLUE, COL_ORANGE, e * 2);
+  } else {
+    out.lerpColors(COL_ORANGE, COL_WHITE, (e - 0.5) * 2);
+  }
+}
+
+function updateNodes() {
+  for (let i = 0; i < C.NODE_COUNT; i++) {
+    const e = nodeEnergy[i];
+    energyToColor(e, tempColor);
+    const scale = 1.0 + e * 3.2;
+    dummy.position.copy(nodePositions[i]);
+    dummy.scale.setScalar(scale);
+    dummy.updateMatrix();
+    nodeMesh.setMatrixAt(i, dummy.matrix);
+    nodeMesh.setColorAt(i, tempColor);
+  }
+  nodeMesh.instanceMatrix.needsUpdate = true;
+  nodeMesh.instanceColor.needsUpdate  = true;
+}
+
+const edgeColorA = new THREE.Color();
+const edgeColorB = new THREE.Color();
+
+function updateEdges() {
+  for (let e = 0; e < edges.length; e++) {
+    const [i, j] = edges[e];
+    energyToColor(nodeEnergy[i], edgeColorA);
+    energyToColor(nodeEnergy[j], edgeColorB);
+    const b = e * 6;
+    lineColors[b]   = edgeColorA.r; lineColors[b+1] = edgeColorA.g; lineColors[b+2] = edgeColorA.b;
+    lineColors[b+3] = edgeColorB.r; lineColors[b+4] = edgeColorB.g; lineColors[b+5] = edgeColorB.b;
+  }
+  lineGeo.attributes.color.needsUpdate = true;
+}
+
+// ─────────────────────────────────────────────
+// Mouse / touch look
+// ─────────────────────────────────────────────
+const mouseNDC    = new THREE.Vector2(0, 0);
+let   isPointerLocked = false;
+let   mouseDeltaX = 0, mouseDeltaY = 0;
+
+renderer.domElement.addEventListener('click', () => {
+  if (phase >= 2 && !isPointerLocked) {
+    renderer.domElement.requestPointerLock();
+  }
+});
+
+document.addEventListener('pointerlockchange', () => {
+  isPointerLocked = document.pointerLockElement === renderer.domElement;
+});
+
+document.addEventListener('mousemove', e => {
+  if (isPointerLocked) {
+    mouseDeltaX += e.movementX;
+    mouseDeltaY += e.movementY;
+  } else {
+    mouseNDC.x = (e.clientX / W()) * 2 - 1;
+    mouseNDC.y = -(e.clientY / H()) * 2 + 1;
+  }
+});
+
+let gyroAvailable = false;
+let gyroAlpha = 0, gyroBeta = 0, gyroGamma = 0;
+if ('DeviceOrientationEvent' in window) {
+  window.addEventListener('deviceorientation', e => {
+    if (e.alpha !== null) {
+      gyroAvailable = true;
+      gyroAlpha  = e.alpha  || 0;
+      gyroBeta   = e.beta   || 0;
+      gyroGamma  = e.gamma  || 0;
+    }
+  });
+}
+
+window.addEventListener('touchstart', e => {
+  if (phase >= 2) { fireAllAround(); }
+}, { passive: true });
+
+// ─────────────────────────────────────────────
+// Click — fire cascade
+// ─────────────────────────────────────────────
+function fireAllAround() {
+  const count = Math.floor(C.NODE_COUNT * (phase >= 2 ? 0.55 : 0.35));
+  for (let n = 0; n < C.NODE_COUNT; n++) {
+    if (Math.random() < count / C.NODE_COUNT) {
+      nodeEnergy[n] = clamp(nodeEnergy[n] + rnd(0.5, 1.0), 0, 1);
+    }
+  }
+  bloom.strength = 4.2;
+  setTimeout(() => { bloom.strength = C.BLOOM_STR + (phase >= 2 ? 0.4 : 0); }, 500);
+}
+
+window.addEventListener('click', e => {
+  if (phase >= 2 && isPointerLocked) return;
+
+  const el = document.createElement('div');
+  el.className = 'ripple';
+  el.style.left   = e.clientX + 'px';
+  el.style.top    = e.clientY + 'px';
+  el.style.width  = el.style.height = '80px';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 950);
+
+  if (phase >= 2 || phase === 1) { fireAllAround(); }
+});
+
+// ─────────────────────────────────────────────
+// Entry pulse wave
+// ─────────────────────────────────────────────
+function triggerEntryPulse() {
+  if (entryPulse) return;
+  entryPulse = true;
+
+  const flash = document.getElementById('entry-flash');
+  flash.classList.add('fire');
+  setTimeout(() => flash.classList.remove('fire'), 2000);
+
+  for (let i = 0; i < C.NODE_COUNT; i++) {
+    const dist = nodePositions[i].length();
+    const delay = dist * 140;
+    setTimeout(() => { nodeEnergy[i] = rnd(0.7, 1.0); }, delay);
+  }
+
+  bloom.strength = 5.5;
+  setTimeout(() => {
+    bloom.strength = C.BLOOM_STR + 0.5;
+    setTimeout(() => { bloom.strength = C.BLOOM_STR; }, 800);
+  }, 400);
+
+  scene.fog = new THREE.FogExp2(C.BG, 0.08);
+
+  const bb = document.getElementById('brand-block');
+  bb.classList.add('visible');
+
+  const ec = document.getElementById('entry-card');
+  ec.classList.add('hidden');
+
+  const pl = document.getElementById('phase-label');
+  pl.textContent = 'Inside the neural network';
+  pl.classList.add('visible');
+
+  const targetScale = 1.0;
+  let scaleT = 0;
+  const hexScaleIn = setInterval(() => {
+    scaleT += 0.04;
+    hexGroup.scale.setScalar(easeOutExpo(Math.min(scaleT, 1)) * targetScale);
+    if (scaleT >= 1) clearInterval(hexScaleIn);
+  }, 20);
+
+  let innerOpT = 0;
+  const innerFade = setInterval(() => {
+    innerOpT += 0.015;
+    innerMat.opacity = Math.min(innerOpT, 0.5);
+    if (innerOpT >= 0.5) clearInterval(innerFade);
+  }, 30);
+}
+
+// ─────────────────────────────────────────────
+// Camera update per frame
+// ─────────────────────────────────────────────
+const _camQ    = new THREE.Quaternion();
+const _camUp   = new THREE.Vector3(0, 1, 0);
+const _camFwd  = new THREE.Vector3();
+
+function updateCamera(now, dt) {
+  if (phase === 0) {
+    if (flyStart === null) flyStart = now;
+    const elapsed  = now - flyStart;
+    const progress = clamp(elapsed / C.FLY_DURATION, 0, 1);
+    const eased    = easeInOutCubic(progress);
+
+    camera.position.z = C.CAM_START_Z + (C.CAM_END_Z - C.CAM_START_Z) * eased;
+    camera.position.x = Math.sin(progress * Math.PI * 1.5) * 0.3 * (1 - progress);
+    camera.position.y = Math.cos(progress * Math.PI * 0.8) * 0.15 * (1 - progress);
+    camera.lookAt(0, 0, 0);
+
+    outerMat.opacity = 0.3 + progress * 0.2;
+
+    if (progress >= 0.72) {
+      phase = 1;
+      document.getElementById('phase-label').textContent = 'Entering...';
+      document.getElementById('phase-label').classList.add('visible');
+    }
+    if (progress >= 1.0) {
+      phase = 2;
+      triggerEntryPulse();
+    }
+
+  } else if (phase === 1) {
+    const elapsed  = now - flyStart;
+    const progress = clamp(elapsed / C.FLY_DURATION, 0, 1);
+    const eased    = easeInOutCubic(progress);
+    camera.position.z = C.CAM_START_Z + (C.CAM_END_Z - C.CAM_START_Z) * eased;
+    camera.position.x = Math.sin(progress * Math.PI * 1.5) * 0.3 * (1 - progress);
+    camera.position.y = Math.cos(progress * Math.PI * 0.8) * 0.15 * (1 - progress);
+    camera.lookAt(0, 0, 0);
+
+    if (progress >= 1.0) {
+      phase = 2;
+      triggerEntryPulse();
+    }
+
+  } else if (phase === 2) {
+    insideTime += 0.016 * dt;
+
+    if (isPointerLocked) {
+      lookDesired.y -= mouseDeltaX * 0.0015;
+      lookDesired.x -= mouseDeltaY * 0.0015;
+      mouseDeltaX = 0;
+      mouseDeltaY = 0;
+    } else if (gyroAvailable) {
+      lookDesired.y = -(gyroGamma / 45) * 0.8;
+      lookDesired.x = ((gyroBeta - 45) / 45) * 0.5;
+    } else {
+      lookDesired.y = -mouseNDC.x * 0.55;
+      lookDesired.x =  mouseNDC.y * 0.35;
+    }
+
+    lookDesired.x = clamp(lookDesired.x, -0.7, 0.7);
+    lookCurrent.x += (lookDesired.x - lookCurrent.x) * C.LOOK_SMOOTH * dt;
+    lookCurrent.y += (lookDesired.y - lookCurrent.y) * C.LOOK_SMOOTH * dt;
+    camera.rotation.set(lookCurrent.x, lookCurrent.y, 0, 'YXZ');
+
+    const driftR = 0.4;
+    const driftT = insideTime * C.DRIFT_SPEED;
+    camera.position.x += (driftR * Math.sin(driftT * 0.7) * 0.5 - camera.position.x) * 0.005 * dt;
+    camera.position.y += (driftR * Math.cos(driftT * 0.4) * 0.3 - camera.position.y) * 0.005 * dt;
+    camera.position.z += (0 - camera.position.z) * 0.002 * dt;
+
+    hexGroup.rotation.z = insideTime * 0.25;
+    hexGroup.position.y = 0.3 + Math.sin(insideTime * 0.6) * 0.06;
+    hexGroup.position.x = 1.2 + Math.sin(insideTime * 0.3) * 0.08;
+  }
+}
+
+// ─────────────────────────────────────────────
+// Connection visibility
+// ─────────────────────────────────────────────
+function updateConnectionVisibility() {
+  if (phase === 0 || phase === 1) {
+    const elapsed  = flyStart ? (performance.now() - flyStart) : 0;
+    const progress = clamp(elapsed / C.FLY_DURATION, 0, 1);
+    lineMat.opacity = 0.15 + progress * 0.45;
+  } else {
+    lineMat.opacity = 0.55;
+  }
+}
+
+// ─────────────────────────────────────────────
+// Initial burst
+// ─────────────────────────────────────────────
+setTimeout(() => {
+  const burst = Math.floor(C.NODE_COUNT * 0.18);
+  for (let i = 0; i < burst; i++) {
+    const idx = Math.floor(Math.random() * C.NODE_COUNT);
+    nodeEnergy[idx] = rnd(0.3, 0.8);
+  }
+}, 400);
+
+setTimeout(() => {
+  document.getElementById('phase-label').textContent = 'Approaching neural cortex';
+  document.getElementById('phase-label').classList.add('visible');
+}, 1200);
+
+// ─────────────────────────────────────────────
+// Outer particle drift
+// ─────────────────────────────────────────────
+function updateOuterParticles(dt) {
+  const pp = outerGeo.attributes.position;
+  for (let i = 0; i < OUTER_COUNT; i++) {
+    pp.array[i*3+2] += 0.004 * dt;
+    if (pp.array[i*3+2] > 12) pp.array[i*3+2] = -22;
+    pp.array[i*3+0] += Math.sin(performance.now()*0.0003 + i) * 0.0005 * dt;
+    pp.array[i*3+1] += Math.cos(performance.now()*0.0002 + i) * 0.0003 * dt;
+  }
+  pp.needsUpdate = true;
+}
+
+// ─────────────────────────────────────────────
+// Inner particle float
+// ─────────────────────────────────────────────
+function updateInnerParticles(t, dt) {
+  const pp = innerGeo.attributes.position;
+  for (let i = 0; i < INNER_COUNT; i++) {
+    const angle = t * 0.12 + i * 0.41;
+    pp.array[i*3+0] += Math.sin(angle * 0.7) * 0.0008 * dt;
+    pp.array[i*3+1] += Math.cos(angle * 0.5) * 0.0006 * dt;
+    pp.array[i*3+2] += Math.sin(angle * 0.3) * 0.0005 * dt;
+
+    const r = Math.sqrt(
+      pp.array[i*3]*pp.array[i*3] +
+      pp.array[i*3+1]*pp.array[i*3+1] +
+      pp.array[i*3+2]*pp.array[i*3+2]
+    );
+    if (r > C.BRAIN_RADIUS * 0.95) {
+      const scale = (C.BRAIN_RADIUS * 0.9) / r;
+      pp.array[i*3]   *= scale;
+      pp.array[i*3+1] *= scale;
+      pp.array[i*3+2] *= scale;
+    }
+  }
+  pp.needsUpdate = true;
+}
+
+// ─────────────────────────────────────────────
+// Animation loop
+// ─────────────────────────────────────────────
+let t = 0;
+let lastTime = performance.now();
+
+function animate(now) {
+  requestAnimationFrame(animate);
+
+  const dt = clamp((now - lastTime) / 16.67, 0.1, 4);
+  lastTime = now;
+  t += 0.016 * dt;
+
+  updateCamera(now, dt);
+  updateOuterParticles(dt);
+  if (phase >= 2) updateInnerParticles(t, dt);
+
+  updateConnectionVisibility();
+
+  spontaneousFire();
+  propagateEnergy();
+  updateNodes();
+  updateEdges();
+
+  const baseBloom = C.BLOOM_STR + (phase >= 2 ? 0.5 : 0);
+  bloom.strength = baseBloom + Math.sin(t * 1.3) * 0.15;
+
+  composer.render();
+}
+
+animate(performance.now());
+
+// ─────────────────────────────────────────────
+// Resize
+// ─────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = W() / H();
+  camera.updateProjectionMatrix();
+  renderer.setSize(W(), H());
+  composer.setSize(W(), H());
+  bloom.setSize(W(), H());
+});
+
+if (typeof DeviceOrientationEvent !== 'undefined' &&
+    typeof DeviceOrientationEvent.requestPermission === 'function') {
+  document.addEventListener('click', () => {
+    DeviceOrientationEvent.requestPermission().catch(() => {});
+  }, { once: true });
+}
+
+</script>
+</body>
+</html>

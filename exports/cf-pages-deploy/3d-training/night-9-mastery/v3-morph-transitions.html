@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 9 V3 — Morph Transitions</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #020305; overflow: hidden; }
+  canvas { display: block; }
+  #info {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    color: rgba(255,255,255,0.10);
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    z-index: 10;
+    pointer-events: none;
+  }
+  #state-label {
+    position: fixed;
+    top: 50%;
+    right: 30px;
+    transform: translateY(-50%);
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    color: rgba(42,147,193,0.15);
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    writing-mode: vertical-rl;
+    z-index: 10;
+    pointer-events: none;
+    transition: opacity 0.5s;
+  }
+  #fps {
+    position: fixed;
+    top: 12px;
+    right: 16px;
+    font-family: monospace;
+    color: rgba(42,147,193,0.2);
+    font-size: 10px;
+    z-index: 10;
+    pointer-events: none;
+  }
+  #hint {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    color: rgba(255,255,255,0.08);
+    font-size: 9px;
+    letter-spacing: 1px;
+    z-index: 10;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="info">Night 9 V3 — Morph Transitions — Click to Morph Between States</div>
+<div id="state-label">STATE: SPHERE</div>
+<div id="fps">--</div>
+<div id="hint">click anywhere to morph</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ─── STUDY: Morph Transitions Between Composition States ───
+// Gap: Animated transitions between compositions
+// Technique: Vertex shader morphing with GLSL lerp + easing
+// Click cycles through 4 states: Sphere → Torus → Icosahedron → Dispersed Cloud
+// Each morph takes 2.5s with custom easing
+
+const BLUE = new THREE.Color(0x2a93c1);
+const ORANGE = new THREE.Color(0xf1420b);
+const NEAR_BLACK = new THREE.Color(0x020305);
+
+const scene = new THREE.Scene();
+scene.background = NEAR_BLACK;
+
+const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 0, 6);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.body.appendChild(renderer.domElement);
+
+// ─── Environment ───
+function makeEnvMap() {
+  const size = 512, h = size / 2;
+  const data = new Float32Array(size * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4;
+      const theta = (y / h) * Math.PI;
+      const phi = (x / size) * Math.PI * 2;
+      const dy = Math.cos(theta), dx = Math.sin(theta) * Math.cos(phi);
+
+      let r = 0.003, g = 0.004, b = 0.008;
+      const k = Math.pow(Math.max(0, dy * 0.7 + dx * 0.5), 48) * 5;
+      r += k * 0.9; g += k * 0.8; b += k * 1.0;
+      const f = Math.pow(Math.max(0, -dx * 0.6 + dy * 0.2), 32) * 2;
+      r += f * 0.2; g += f * 0.4; b += f * 0.9;
+
+      data[i] = r; data[i+1] = g; data[i+2] = b; data[i+3] = 1;
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, h, THREE.RGBAFormat, THREE.FloatType);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.needsUpdate = true;
+  return tex;
+}
+scene.environment = makeEnvMap();
+
+// ─── Generate target positions for each state ───
+const VERTEX_COUNT = 5000;
+
+function spherePositions(count, radius) {
+  const arr = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const phi = Math.acos(2 * Math.random() - 1);
+    const theta = Math.random() * Math.PI * 2;
+    arr[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+    arr[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+    arr[i * 3 + 2] = radius * Math.cos(phi);
+  }
+  return arr;
+}
+
+function torusPositions(count, R, r) {
+  const arr = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const u = Math.random() * Math.PI * 2;
+    const v = Math.random() * Math.PI * 2;
+    arr[i * 3] = (R + r * Math.cos(v)) * Math.cos(u);
+    arr[i * 3 + 1] = (R + r * Math.cos(v)) * Math.sin(u);
+    arr[i * 3 + 2] = r * Math.sin(v);
+  }
+  return arr;
+}
+
+function icoPositions(count, radius) {
+  // Points on icosahedron faces
+  const arr = new Float32Array(count * 3);
+  const phi_g = (1 + Math.sqrt(5)) / 2;
+  const verts = [
+    [-1, phi_g, 0], [1, phi_g, 0], [-1, -phi_g, 0], [1, -phi_g, 0],
+    [0, -1, phi_g], [0, 1, phi_g], [0, -1, -phi_g], [0, 1, -phi_g],
+    [phi_g, 0, -1], [phi_g, 0, 1], [-phi_g, 0, -1], [-phi_g, 0, 1],
+  ].map(v => {
+    const l = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+    return [v[0]/l * radius, v[1]/l * radius, v[2]/l * radius];
+  });
+  const faces = [
+    [0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11],
+    [1,5,9],[5,11,4],[11,10,2],[10,7,6],[7,1,8],
+    [3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],
+    [4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1],
+  ];
+
+  for (let i = 0; i < count; i++) {
+    const face = faces[i % faces.length];
+    const a = verts[face[0]], b = verts[face[1]], c = verts[face[2]];
+    let u = Math.random(), v = Math.random();
+    if (u + v > 1) { u = 1 - u; v = 1 - v; }
+    const w = 1 - u - v;
+    arr[i*3]   = a[0]*w + b[0]*u + c[0]*v;
+    arr[i*3+1] = a[1]*w + b[1]*u + c[1]*v;
+    arr[i*3+2] = a[2]*w + b[2]*u + c[2]*v;
+  }
+  return arr;
+}
+
+function cloudPositions(count, spread) {
+  const arr = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    // Gaussian-ish distribution for organic cloud feel
+    const r = spread * Math.pow(Math.random(), 0.5);
+    const phi = Math.acos(2 * Math.random() - 1);
+    const theta = Math.random() * Math.PI * 2;
+    arr[i*3]   = r * Math.sin(phi) * Math.cos(theta) * (0.8 + Math.random() * 0.4);
+    arr[i*3+1] = r * Math.sin(phi) * Math.sin(theta) * (0.5 + Math.random() * 0.6);
+    arr[i*3+2] = r * Math.cos(phi) * (0.8 + Math.random() * 0.4);
+  }
+  return arr;
+}
+
+const states = [
+  { positions: spherePositions(VERTEX_COUNT, 1.2), name: 'SPHERE', color: new THREE.Color(0x2a93c1) },
+  { positions: torusPositions(VERTEX_COUNT, 1.0, 0.4), name: 'TORUS', color: new THREE.Color(0x3ab5e0) },
+  { positions: icoPositions(VERTEX_COUNT, 1.3), name: 'ICOSAHEDRON', color: new THREE.Color(0x1a6fa8) },
+  { positions: cloudPositions(VERTEX_COUNT, 2.5), name: 'DISPERSED', color: new THREE.Color(0xf1420b) },
+];
+
+// ─── Particle System with Custom Morph Shader ───
+const geometry = new THREE.BufferGeometry();
+geometry.setAttribute('position', new THREE.BufferAttribute(states[0].positions.slice(), 3));
+geometry.setAttribute('aTarget', new THREE.BufferAttribute(states[1].positions.slice(), 3));
+
+// Per-particle random seed for staggered morph timing
+const seeds = new Float32Array(VERTEX_COUNT);
+for (let i = 0; i < VERTEX_COUNT; i++) seeds[i] = Math.random();
+geometry.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
+
+const morphMaterial = new THREE.ShaderMaterial({
+  uniforms: {
+    uMorph: { value: 0.0 },
+    uTime: { value: 0.0 },
+    uColor: { value: states[0].color.clone() },
+    uTargetColor: { value: states[1].color.clone() },
+    uPointSize: { value: 2.5 },
+  },
+  vertexShader: `
+    attribute vec3 aTarget;
+    attribute float aSeed;
+    uniform float uMorph;
+    uniform float uTime;
+    uniform float uPointSize;
+    varying float vAlpha;
+    varying float vMorph;
+
+    // Smooth easing
+    float easeInOutCubic(float t) {
+      return t < 0.5 ? 4.0 * t * t * t : 1.0 - pow(-2.0 * t + 2.0, 3.0) / 2.0;
+    }
+
+    void main() {
+      // Stagger each particle's morph by its seed (creates wave effect)
+      float stagger = aSeed * 0.4; // 0-0.4s stagger
+      float localMorph = clamp((uMorph - stagger) / (1.0 - stagger), 0.0, 1.0);
+      float eased = easeInOutCubic(localMorph);
+
+      vec3 pos = mix(position, aTarget, eased);
+
+      // Subtle turbulence during transition
+      float turbulence = sin(uMorph * 3.14159) * 0.15; // Peaks at morph=0.5
+      pos += turbulence * vec3(
+        sin(aSeed * 100.0 + uTime * 2.0),
+        cos(aSeed * 200.0 + uTime * 1.5),
+        sin(aSeed * 300.0 + uTime * 2.5)
+      );
+
+      // Gentle ambient motion
+      pos += 0.02 * vec3(
+        sin(uTime * 0.5 + aSeed * 6.28),
+        cos(uTime * 0.4 + aSeed * 4.0),
+        sin(uTime * 0.6 + aSeed * 8.0)
+      );
+
+      vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+      gl_Position = projectionMatrix * mvPos;
+
+      // Size attenuation
+      gl_PointSize = uPointSize * (300.0 / -mvPos.z);
+
+      vAlpha = 0.6 + 0.4 * (1.0 - turbulence * 3.0); // Dim during peak turbulence
+      vMorph = eased;
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 uColor;
+    uniform vec3 uTargetColor;
+    varying float vAlpha;
+    varying float vMorph;
+
+    void main() {
+      // Soft circle
+      float d = length(gl_PointCoord - 0.5);
+      if (d > 0.5) discard;
+      float alpha = smoothstep(0.5, 0.2, d) * vAlpha;
+
+      // Color interpolation
+      vec3 color = mix(uColor, uTargetColor, vMorph);
+
+      // Slight glow at edges
+      color += 0.1 * smoothstep(0.3, 0.5, d);
+
+      gl_FragColor = vec4(color, alpha);
+    }
+  `,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+
+const particles = new THREE.Points(geometry, morphMaterial);
+scene.add(particles);
+
+// ─── Morph State Machine ───
+let currentState = 0;
+let morphProgress = 0;
+let isMorphing = false;
+const MORPH_DURATION = 2.5; // seconds
+let morphStartTime = 0;
+
+function triggerMorph() {
+  if (isMorphing) return;
+  isMorphing = true;
+  morphStartTime = clock.getElapsedTime();
+  morphProgress = 0;
+
+  const nextState = (currentState + 1) % states.length;
+
+  // Set target positions
+  const targetAttr = geometry.getAttribute('aTarget');
+  const targetPositions = states[nextState].positions;
+  for (let i = 0; i < VERTEX_COUNT * 3; i++) {
+    targetAttr.array[i] = targetPositions[i];
+  }
+  targetAttr.needsUpdate = true;
+
+  morphMaterial.uniforms.uTargetColor.value.copy(states[nextState].color);
+
+  document.getElementById('state-label').textContent = `MORPHING → ${states[nextState].name}`;
+}
+
+function completeMorph() {
+  const nextState = (currentState + 1) % states.length;
+
+  // Copy target to position
+  const posAttr = geometry.getAttribute('position');
+  const targetAttr = geometry.getAttribute('aTarget');
+  for (let i = 0; i < VERTEX_COUNT * 3; i++) {
+    posAttr.array[i] = targetAttr.array[i];
+  }
+  posAttr.needsUpdate = true;
+
+  morphMaterial.uniforms.uColor.value.copy(states[nextState].color);
+  morphMaterial.uniforms.uMorph.value = 0;
+
+  currentState = nextState;
+  isMorphing = false;
+  morphProgress = 0;
+
+  document.getElementById('state-label').textContent = `STATE: ${states[currentState].name}`;
+}
+
+window.addEventListener('click', triggerMorph);
+window.addEventListener('touchstart', triggerMorph);
+
+// ─── Central Glass Orb (anchors the composition) ───
+const orbGeo = new THREE.SphereGeometry(0.15, 64, 64);
+const orbMat = new THREE.MeshPhysicalMaterial({
+  color: new THREE.Color(0xaaccff),
+  metalness: 0.0,
+  roughness: 0.0,
+  transmission: 0.95,
+  thickness: 0.5,
+  ior: 1.8,
+  envMapIntensity: 1.5,
+  clearcoat: 1.0,
+});
+const orb = new THREE.Mesh(orbGeo, orbMat);
+scene.add(orb);
+
+// ─── Post-Processing ───
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(innerWidth, innerHeight),
+  0.6,  // Slightly more bloom for particle glow
+  0.7,
+  0.6
+);
+composer.addPass(bloomPass);
+
+const postShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uTime: { value: 0 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uTime;
+    varying vec2 vUv;
+
+    float rand(vec2 co) { return fract(sin(dot(co, vec2(12.9898,78.233))) * 43758.5453); }
+
+    void main() {
+      vec2 dir = vUv - 0.5;
+      float dist = length(dir);
+
+      // Chromatic aberration
+      float ca = 0.0007 * smoothstep(0.0, 0.7, dist);
+      float r = texture2D(tDiffuse, vUv + dir * ca).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vUv - dir * ca).b;
+      vec3 color = vec3(r, g, b);
+
+      // Film grain
+      color += (rand(vUv * uTime) - 0.5) * 0.04;
+
+      // Vignette
+      float vig = 1.0 - smoothstep(0.3, 1.1, dist * 1.2);
+      color *= mix(0.45, 1.0, vig);
+
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `
+};
+const postPass = new ShaderPass(postShader);
+composer.addPass(postPass);
+composer.addPass(new OutputPass());
+
+// ─── Mouse ───
+const mouse = new THREE.Vector2(0, 0);
+const targetMouse = new THREE.Vector2(0, 0);
+window.addEventListener('mousemove', (e) => {
+  targetMouse.x = (e.clientX / innerWidth) * 2 - 1;
+  targetMouse.y = -(e.clientY / innerHeight) * 2 + 1;
+});
+
+// ─── Resize ───
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+
+// ─── Animation ───
+const clock = new THREE.Clock();
+let frameCount = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  mouse.lerp(targetMouse, 0.04);
+
+  // Handle morphing
+  if (isMorphing) {
+    morphProgress = Math.min(1.0, (t - morphStartTime) / MORPH_DURATION);
+    morphMaterial.uniforms.uMorph.value = morphProgress;
+
+    if (morphProgress >= 1.0) {
+      completeMorph();
+    }
+  }
+
+  morphMaterial.uniforms.uTime.value = t;
+
+  // Rotate particle system slowly
+  particles.rotation.y = t * 0.05 + mouse.x * 0.2;
+  particles.rotation.x = mouse.y * 0.15;
+
+  // Central orb breathes
+  orb.scale.setScalar(0.15 + Math.sin(t * 0.8) * 0.02);
+
+  // Camera orbit
+  camera.position.x = Math.sin(t * 0.08) * 0.5 + mouse.x * 0.5;
+  camera.position.y = mouse.y * 0.3;
+  camera.position.z = 6;
+  camera.lookAt(0, 0, 0);
+
+  postPass.uniforms.uTime.value = t * 100;
+
+  composer.render();
+
+  frameCount++;
+  if (frameCount % 30 === 0) {
+    document.getElementById('fps').textContent = Math.round(1 / clock.getDelta()) || '--';
+  }
+}
+animate();
+</script>
+</body>
+</html>

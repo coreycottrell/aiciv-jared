@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AETHER Night 21 — Production Thin-Film Glass</title>
+<style>
+  :root { --navy: #080a12; --blue: #2a93c1; --orange: #f1420b; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--navy); }
+  canvas { display: block; width: 100%; height: 100%; }
+  #info {
+    position: fixed; top: 16px; left: 16px; color: rgba(255,255,255,0.5);
+    font: 11px/1.4 'SF Mono', monospace; pointer-events: none; z-index: 10;
+  }
+  #info h3 { color: rgba(255,255,255,0.8); font-size: 13px; margin-bottom: 4px; }
+  #fps {
+    position: fixed; top: 16px; right: 16px; color: rgba(255,255,255,0.4);
+    font: 11px 'SF Mono', monospace; z-index: 10;
+  }
+</style>
+</head>
+<body>
+<div id="info">
+  <h3>Night 21 / Prototype 2</h3>
+  Production Thin-Film: 2-Layer for 60fps<br>
+  Fresnel iridescence + pearlescent animation<br>
+  Hexagonal Aether brand geometry
+</div>
+<div id="fps">-- fps</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+/* =====================================================================
+   PRODUCTION THIN-FILM GLASS — 2-Layer Transfer-Matrix on Hex Geometry
+   Night 20 had 3-layer (20 spectral samples). Production version:
+   - 2 layers (MgF2 + TiO2) = most visual impact per compute
+   - 12 spectral samples (reduced from 20)
+   - Optimized per-fragment math
+   Target: 60fps on GTX 1060 / M1 MacBook Air
+   ===================================================================== */
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x080a12);
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0, 1.5, 5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+document.body.appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.8;
+
+/* ---- Production Thin-Film Shader ---- */
+const thinFilmVert = `
+varying vec3 vNormal;
+varying vec3 vWorldPos;
+varying vec3 vViewDir;
+varying vec2 vUv;
+
+void main() {
+  vUv = uv;
+  vNormal = normalize(normalMatrix * normal);
+  vec4 worldPos = modelMatrix * vec4(position, 1.0);
+  vWorldPos = worldPos.xyz;
+  vViewDir = normalize(cameraPosition - worldPos.xyz);
+  gl_Position = projectionMatrix * viewMatrix * worldPos;
+}`;
+
+const thinFilmFrag = `
+precision highp float;
+
+uniform float uTime;
+uniform vec3 uLightPos;
+uniform float uThicknessBase;
+uniform float uThicknessAnim;
+
+varying vec3 vNormal;
+varying vec3 vWorldPos;
+varying vec3 vViewDir;
+varying vec2 vUv;
+
+#define PI 3.14159265
+
+// 2-Layer thin film: MgF2 (n=1.38, anti-reflection) + TiO2 (n=2.4, high-index)
+// Simplified transfer-matrix for production performance
+
+// Wavelength to approximate RGB (simplified CIE)
+vec3 wavelengthToRGB(float wl) {
+  float r = 0.0, g = 0.0, b = 0.0;
+  if (wl >= 380.0 && wl < 440.0) { r = -(wl-440.0)/60.0; b = 1.0; }
+  else if (wl < 490.0) { g = (wl-440.0)/50.0; b = 1.0; }
+  else if (wl < 510.0) { g = 1.0; b = -(wl-510.0)/20.0; }
+  else if (wl < 580.0) { r = (wl-510.0)/70.0; g = 1.0; }
+  else if (wl < 645.0) { r = 1.0; g = -(wl-645.0)/65.0; }
+  else if (wl <= 780.0) { r = 1.0; }
+  // Intensity falloff at edges
+  float factor = 1.0;
+  if (wl < 420.0) factor = 0.3 + 0.7*(wl-380.0)/40.0;
+  else if (wl > 700.0) factor = 0.3 + 0.7*(780.0-wl)/80.0;
+  return vec3(r, g, b) * factor;
+}
+
+// Fresnel reflectance at interface (s-polarization, simplified)
+float fresnelR(float n1, float n2, float cosI) {
+  float sinT2 = (n1/n2) * (n1/n2) * (1.0 - cosI*cosI);
+  if (sinT2 > 1.0) return 1.0; // TIR
+  float cosT = sqrt(1.0 - sinT2);
+  float rs = (n1*cosI - n2*cosT) / (n1*cosI + n2*cosT);
+  float rp = (n2*cosI - n1*cosT) / (n2*cosI + n1*cosT);
+  return 0.5 * (rs*rs + rp*rp);
+}
+
+// 2-layer Airy reflectance (coherent summation)
+float twoLayerReflectance(float wl, float cosI, float d1, float d2,
+                           float n0, float n1, float n2, float n3) {
+  // Snell's law through layers
+  float sinI = sqrt(1.0 - cosI*cosI);
+  float sinT1 = n0/n1 * sinI; if(sinT1 > 1.0) return 1.0;
+  float cosT1 = sqrt(1.0 - sinT1*sinT1);
+  float sinT2 = n1/n2 * sinT1; if(sinT2 > 1.0) return 1.0;
+  float cosT2 = sqrt(1.0 - sinT2*sinT2);
+
+  // Phase in each layer
+  float phi1 = 4.0*PI * n1 * d1 * cosT1 / wl;
+  float phi2 = 4.0*PI * n2 * d2 * cosT2 / wl;
+
+  // Fresnel at each interface
+  float r01 = fresnelR(n0, n1, cosI);
+  float r12 = fresnelR(n1, n2, cosT1);
+  float r23 = fresnelR(n2, n3, cosT2);
+
+  // Amplitude coefficients (simplified)
+  float R01 = sqrt(r01);
+  float R12 = sqrt(r12);
+  float R23 = sqrt(r23);
+
+  // Two-layer interference (Airy-like approximation)
+  // Coherent sum of reflections from 3 interfaces
+  float c1 = cos(phi1), s1 = sin(phi1);
+  float c2 = cos(phi2), s2 = sin(phi2);
+
+  // Resultant via phasor addition
+  float realPart = R01 + R12*c1*(1.0-r01) + R23*c2*c1*(1.0-r01)*(1.0-r12);
+  float imagPart = R12*s1*(1.0-r01) + R23*(s2*c1 + c2*s1)*(1.0-r01)*(1.0-r12);
+
+  return clamp(realPart*realPart + imagPart*imagPart, 0.0, 1.0);
+}
+
+void main() {
+  vec3 N = normalize(vNormal);
+  vec3 V = normalize(vViewDir);
+  vec3 L = normalize(uLightPos - vWorldPos);
+  vec3 H = normalize(L + V);
+
+  float NdotV = max(dot(N, V), 0.001);
+  float NdotL = max(dot(N, L), 0.0);
+  float NdotH = max(dot(N, H), 0.0);
+
+  // Animated film thickness (nanometers)
+  float spatialVar = sin(vUv.x * 12.0 + vUv.y * 8.0 + uTime * 0.3) * 0.3 + 0.7;
+  float breathe = sin(uTime * 0.8) * 0.15 + 1.0;
+  float d1 = (uThicknessBase + sin(uTime * 0.5 + uThicknessAnim) * 30.0) * spatialVar * breathe; // MgF2 layer (nm)
+  float d2 = (uThicknessBase * 0.6 + cos(uTime * 0.7) * 20.0) * spatialVar * breathe; // TiO2 layer (nm)
+
+  // Spectral integration (12 samples for production)
+  vec3 filmColor = vec3(0.0);
+  float n_air = 1.0, n_mgf2 = 1.38, n_tio2 = 2.4, n_glass = 1.52;
+
+  for (int i = 0; i < 12; i++) {
+    float wl = 400.0 + float(i) * 30.0; // 400-730nm
+    float R = twoLayerReflectance(wl, NdotV, d1, d2, n_air, n_mgf2, n_tio2, n_glass);
+    filmColor += wavelengthToRGB(wl) * R;
+  }
+  filmColor /= 12.0;
+  filmColor *= 3.0; // boost
+
+  // Base glass properties
+  float fresnel = pow(1.0 - NdotV, 4.0);
+  vec3 baseGlass = vec3(0.05, 0.12, 0.18); // dark blue-green glass
+
+  // Specular
+  float spec = pow(NdotH, 256.0);
+
+  // Rim glow (PureBrain blue)
+  vec3 rimColor = mix(vec3(0.165, 0.576, 0.757), vec3(0.945, 0.259, 0.043), sin(uTime * 0.3) * 0.5 + 0.5);
+  float rim = pow(1.0 - NdotV, 3.0) * 0.6;
+
+  // Environment reflection (procedural)
+  vec3 refl = reflect(-V, N);
+  float envBright = smoothstep(-0.3, 0.5, refl.y);
+  vec3 envColor = mix(vec3(0.02, 0.04, 0.08), vec3(0.15, 0.25, 0.4), envBright);
+  envColor += vec3(0.165, 0.576, 0.757) * smoothstep(0.8, 1.0, abs(refl.x)) * 0.2;
+
+  // Transmission (back-face darkening as depth cue)
+  vec3 transmit = vec3(0.04, 0.08, 0.12) * (1.0 - fresnel);
+
+  // Combine
+  vec3 color = vec3(0.0);
+  color += filmColor * (fresnel * 0.7 + 0.3); // Film interference dominates at glancing angles
+  color += envColor * fresnel * 0.5;           // Environment reflection
+  color += transmit;                            // Transmitted light
+  color += spec * vec3(1.0, 0.98, 0.96) * 3.0; // Sharp specular
+  color += rimColor * rim;                      // Rim accent
+  color += baseGlass * NdotL * 0.15;           // Diffuse fill
+
+  // Inner glow (fake SSS)
+  float backLight = max(dot(-N, L), 0.0);
+  color += vec3(0.1, 0.2, 0.35) * backLight * 0.3;
+
+  gl_FragColor = vec4(color, 0.85); // Slight transparency
+}`;
+
+/* ---- Create Hexagonal Geometry ---- */
+function createHexPrism(radius, height, segments) {
+  // High-res hex prism with beveled edges
+  const geo = new THREE.CylinderGeometry(radius, radius, height, 6, segments, false);
+  // Smooth the normals slightly for film effect
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/* ---- Scene Objects ---- */
+const filmMaterial = new THREE.ShaderMaterial({
+  vertexShader: thinFilmVert,
+  fragmentShader: thinFilmFrag,
+  uniforms: {
+    uTime: { value: 0 },
+    uLightPos: { value: new THREE.Vector3(3, 4, 2) },
+    uThicknessBase: { value: 180.0 }, // nm
+    uThicknessAnim: { value: 0 }
+  },
+  transparent: true,
+  side: THREE.DoubleSide,
+  depthWrite: false
+});
+
+// Main hexagonal prism
+const hexGeo = createHexPrism(1.2, 0.4, 32);
+const hexMesh = new THREE.Mesh(hexGeo, filmMaterial);
+scene.add(hexMesh);
+
+// Smaller orbiting hexagons
+const orbiters = [];
+for (let i = 0; i < 5; i++) {
+  const mat = filmMaterial.clone();
+  mat.uniforms.uThicknessBase = { value: 140.0 + i * 25.0 };
+  mat.uniforms.uThicknessAnim = { value: i * 1.2 };
+  const mesh = new THREE.Mesh(createHexPrism(0.35 + i * 0.08, 0.15, 16), mat);
+  scene.add(mesh);
+  orbiters.push({ mesh, phase: i * (Math.PI * 2 / 5), radius: 2.2 + i * 0.3, speed: 0.3 + i * 0.05, tilt: i * 0.15 });
+}
+
+// Inner sphere (visible through hex glass)
+const innerGeo = new THREE.IcosahedronGeometry(0.5, 4);
+const innerMat = new THREE.MeshStandardMaterial({
+  color: 0x2a93c1,
+  emissive: 0x2a93c1,
+  emissiveIntensity: 0.8,
+  metalness: 0.9,
+  roughness: 0.2
+});
+const innerSphere = new THREE.Mesh(innerGeo, innerMat);
+scene.add(innerSphere);
+
+/* ---- Lighting ---- */
+const mainLight = new THREE.PointLight(0xffffff, 2, 20);
+mainLight.position.set(3, 4, 2);
+scene.add(mainLight);
+
+const fillLight = new THREE.PointLight(0x2a93c1, 0.8, 15);
+fillLight.position.set(-3, 1, -2);
+scene.add(fillLight);
+
+const accentLight = new THREE.PointLight(0xf1420b, 0.4, 10);
+accentLight.position.set(0, -2, 3);
+scene.add(accentLight);
+
+const ambLight = new THREE.AmbientLight(0x111122, 0.3);
+scene.add(ambLight);
+
+// Ground plane (subtle)
+const groundGeo = new THREE.PlaneGeometry(20, 20);
+const groundMat = new THREE.MeshStandardMaterial({
+  color: 0x080a12,
+  metalness: 0.8,
+  roughness: 0.5
+});
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI/2;
+ground.position.y = -2.5;
+scene.add(ground);
+
+/* ---- Particle field ---- */
+const particleCount = 200;
+const particleGeo = new THREE.BufferGeometry();
+const positions = new Float32Array(particleCount * 3);
+const particleSpeeds = [];
+for (let i = 0; i < particleCount; i++) {
+  positions[i*3] = (Math.random() - 0.5) * 10;
+  positions[i*3+1] = (Math.random() - 0.5) * 6;
+  positions[i*3+2] = (Math.random() - 0.5) * 10;
+  particleSpeeds.push(0.002 + Math.random() * 0.005);
+}
+particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+const particleMat = new THREE.PointsMaterial({ color: 0x2a93c1, size: 0.02, transparent: true, opacity: 0.4 });
+const particles = new THREE.Points(particleGeo, particleMat);
+scene.add(particles);
+
+/* ---- FPS Counter ---- */
+let frameCount = 0, lastFPSTime = performance.now();
+const fpsEl = document.getElementById('fps');
+
+/* ---- Animation ---- */
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  const dt = clock.getDelta();
+
+  // Update film materials
+  filmMaterial.uniforms.uTime.value = t;
+
+  // Main hex rotation
+  hexMesh.rotation.y = t * 0.15;
+  hexMesh.rotation.x = Math.sin(t * 0.3) * 0.1;
+
+  // Orbiting hexagons
+  orbiters.forEach(o => {
+    o.mesh.position.x = Math.cos(t * o.speed + o.phase) * o.radius;
+    o.mesh.position.y = Math.sin(t * o.speed * 1.3 + o.phase) * 0.5 + o.tilt;
+    o.mesh.position.z = Math.sin(t * o.speed + o.phase) * o.radius;
+    o.mesh.rotation.y = t * 0.5 + o.phase;
+    o.mesh.rotation.x = Math.sin(t * 0.7 + o.phase) * 0.3;
+    o.mesh.material.uniforms.uTime.value = t;
+    o.mesh.material.uniforms.uLightPos.value.copy(mainLight.position);
+  });
+
+  // Inner sphere pulse
+  const pulse = 1.0 + Math.sin(t * 2.0) * 0.05;
+  innerSphere.scale.setScalar(pulse);
+  innerMat.emissiveIntensity = 0.6 + Math.sin(t * 1.5) * 0.3;
+
+  // Orbiting main light
+  mainLight.position.x = Math.sin(t * 0.3) * 4;
+  mainLight.position.z = Math.cos(t * 0.3) * 4;
+  filmMaterial.uniforms.uLightPos.value.copy(mainLight.position);
+
+  // Particles drift
+  const posArr = particles.geometry.attributes.position.array;
+  for (let i = 0; i < particleCount; i++) {
+    posArr[i*3+1] += particleSpeeds[i];
+    if (posArr[i*3+1] > 3) posArr[i*3+1] = -3;
+  }
+  particles.geometry.attributes.position.needsUpdate = true;
+
+  controls.update();
+  renderer.render(scene, camera);
+
+  // FPS
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFPSTime >= 1000) {
+    fpsEl.textContent = frameCount + ' fps';
+    frameCount = 0;
+    lastFPSTime = now;
+  }
+}
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+animate();
+</script>
+</body>
+</html>

@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neural Brain Crystal — PureBrain 3D</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; background: #040608; overflow: hidden; }
+  canvas { display: block; }
+  #label {
+    position: fixed; top: 32px; left: 50%; transform: translateX(-50%);
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: rgba(255,255,255,0.22); pointer-events: none;
+  }
+  #mode-hint {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 11px; letter-spacing: 0.12em; color: rgba(255,255,255,0.18);
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="label">PureBrain — Neural Brain Crystal</div>
+<div id="mode-hint">Click to pulse neural pathways</div>
+<canvas id="c"></canvas>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ─────────────────────────────────────────────────────────────
+// PureBrain Brand Colors
+// ─────────────────────────────────────────────────────────────
+const PB_BLUE   = new THREE.Color(0x2a93c1);
+const PB_ORANGE = new THREE.Color(0xf1420b);
+const PB_DARK   = new THREE.Color(0x040608);
+
+// ─────────────────────────────────────────────────────────────
+// RENDERER
+// ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.autoClear = false;
+
+// ─────────────────────────────────────────────────────────────
+// CAMERA
+// ─────────────────────────────────────────────────────────────
+const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0, 6.5);
+
+// ─────────────────────────────────────────────────────────────
+// SCENES
+// ─────────────────────────────────────────────────────────────
+const scene = new THREE.Scene();
+const bgScene = new THREE.Scene();
+const bgCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+// ─────────────────────────────────────────────────────────────
+// BACKGROUND — deep space with blue/orange nebula hints
+// ─────────────────────────────────────────────────────────────
+const bgMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position,1.);}`,
+  fragmentShader: `
+    uniform float uTime;
+    varying vec2 vUv;
+    float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5);}
+    float n(vec2 p){vec2 i=floor(p);vec2 f=fract(p);vec2 u=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1,0)),u.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x),u.y);}
+    float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*n(p);p*=2.2;a*=.46;}return v;}
+    void main(){
+      vec2 uv=vUv-.5;
+      float d=length(uv);
+      float f=fbm(uv*3.+vec2(uTime*.03,uTime*.025));
+      // Deep dark base
+      vec3 col=vec3(.010,.014,.026);
+      // Blue nebula center
+      float nb=exp(-d*5.)*(.5+.5*sin(uTime*.2));
+      col+=vec3(.015,.04,.072)*nb*1.2;
+      // Orange accent — corner
+      float oa=exp(-length(uv+vec2(.3,-.3))*6.);
+      col+=vec3(.04,.012,.006)*oa*.6;
+      // fBm noise variation
+      col+=(f-.5)*vec3(.004,.006,.01);
+      gl_FragColor=vec4(col,1.);
+    }
+  `,
+  depthTest: false, depthWrite: false,
+});
+bgScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bgMat));
+
+// ─────────────────────────────────────────────────────────────
+// PMREM — PureBrain-tuned probe
+// ─────────────────────────────────────────────────────────────
+const pmrem = new THREE.PMREMGenerator(renderer);
+pmrem.compileEquirectangularShader();
+const probeS = new THREE.Scene();
+[
+  { color: 0xfff8f0, intensity: 3.8, pos: [10, 14, 8] },    // warm key
+  { color: 0x2a93c1, intensity: 2.5, pos: [-10, 5, -8] },   // PB blue fill
+  { color: 0xf1420b, intensity: 2.0, pos: [7, -5, -10] },   // PB orange rim
+  { color: 0x5adaff, intensity: 0.9, pos: [0, -10, 5] },    // cool bounce
+  { color: 0xffffff, intensity: 0.4, pos: [3, 8, -3] },     // neutral specular
+].forEach(d => {
+  const l = new THREE.PointLight(d.color, d.intensity, 60);
+  l.position.set(...d.pos); probeS.add(l);
+});
+const envRT = pmrem.fromScene(probeS);
+scene.environment = envRT.texture;
+scene.environmentIntensity = 1.1;
+
+// ─────────────────────────────────────────────────────────────
+// NEURAL NETWORK — Fibonacci lattice node distribution
+// ─────────────────────────────────────────────────────────────
+function fibonacciSphere(count, radius) {
+  const points = [];
+  const phi = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < count; i++) {
+    const y = 1 - (i / (count - 1)) * 2;
+    const r = Math.sqrt(1 - y * y);
+    const theta = phi * i;
+    points.push(new THREE.Vector3(
+      Math.cos(theta) * r * radius,
+      y * radius,
+      Math.sin(theta) * r * radius
+    ));
+  }
+  return points;
+}
+
+const N_NODES = 80;
+const NETWORK_RADIUS = 1.55;
+const nodePositions = fibonacciSphere(N_NODES, NETWORK_RADIUS);
+
+// Assign left/right hemisphere (blue/orange)
+// Left: x < 0 = blue intelligence, Right: x > 0 = orange energy
+const networkGroup = new THREE.Group();
+scene.add(networkGroup);
+
+// Node spheres — glass material
+const nodeMats = {
+  blue: new THREE.MeshPhysicalMaterial({
+    transmission: 1.0, thickness: 0.12, roughness: 0.04,
+    ior: 1.5, iridescence: 0.3, iridescenceIOR: 1.65,
+    clearcoat: 0.8, clearcoatRoughness: 0.04,
+    color: new THREE.Color(0x88ccff), envMapIntensity: 1.6,
+    transparent: true, depthWrite: false,
+  }),
+  orange: new THREE.MeshPhysicalMaterial({
+    transmission: 1.0, thickness: 0.12, roughness: 0.04,
+    ior: 1.5, iridescence: 0.25, iridescenceIOR: 1.55,
+    clearcoat: 0.8, clearcoatRoughness: 0.04,
+    color: new THREE.Color(0xffcca8), envMapIntensity: 1.6,
+    transparent: true, depthWrite: false,
+  }),
+};
+
+// Hub nodes (largest)
+const hubNodeGeo = new THREE.SphereGeometry(0.085, 32, 32);
+const stdNodeGeo = new THREE.SphereGeometry(0.042, 16, 16);
+const miniNodeGeo = new THREE.SphereGeometry(0.022, 12, 12);
+
+const nodes = [];
+nodePositions.forEach((pos, i) => {
+  const isBlue = pos.x < 0;
+  const isHub = i < 4;
+  const mat = isBlue ? nodeMats.blue : nodeMats.orange;
+  const geo = isHub ? hubNodeGeo : (i < 15 ? stdNodeGeo : miniNodeGeo);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(pos);
+  mesh.userData = {
+    basePos: pos.clone(),
+    phaseX: Math.random() * Math.PI * 2,
+    phaseY: Math.random() * Math.PI * 2,
+    floatFreq: [0.55, 0.38, 0.22, 0.13][i % 4] + Math.random() * 0.08,
+    isHub,
+    isBlue,
+    emissivePhase: Math.random() * Math.PI * 2,
+    pulseActive: false,
+  };
+  nodes.push(mesh);
+  networkGroup.add(mesh);
+});
+
+// Emissive glow meshes for hub nodes
+const hubEmissiveMat = new THREE.MeshStandardMaterial({
+  color: PB_BLUE, emissive: PB_BLUE, emissiveIntensity: 1.2,
+  transparent: true, opacity: 0.55, depthWrite: false,
+});
+const orangeEmissiveMat = new THREE.MeshStandardMaterial({
+  color: PB_ORANGE, emissive: PB_ORANGE, emissiveIntensity: 1.2,
+  transparent: true, opacity: 0.55, depthWrite: false,
+});
+
+nodes.slice(0, 4).forEach((n, i) => {
+  const glowMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.095, 16, 16),
+    i < 2 ? hubEmissiveMat.clone() : orangeEmissiveMat.clone()
+  );
+  glowMesh.position.copy(n.userData.basePos);
+  n.userData.glowMesh = glowMesh;
+  networkGroup.add(glowMesh);
+});
+
+// ─────────────────────────────────────────────────────────────
+// EDGES — neural pathways
+// Only connect nearby nodes (max distance threshold)
+// ─────────────────────────────────────────────────────────────
+const MAX_EDGE_DIST = 0.85;
+const edges = [];
+const edgePositionsArr = [];
+const edgeColorsArr = [];
+
+for (let i = 0; i < N_NODES; i++) {
+  for (let j = i + 1; j < N_NODES; j++) {
+    const d = nodePositions[i].distanceTo(nodePositions[j]);
+    if (d < MAX_EDGE_DIST && edges.length < 280) {
+      edges.push({ i, j, dist: d, phase: Math.random() * Math.PI * 2 });
+      edgePositionsArr.push(
+        nodePositions[i].x, nodePositions[i].y, nodePositions[i].z,
+        nodePositions[j].x, nodePositions[j].y, nodePositions[j].z
+      );
+      // Color: blue if both blue, orange if both orange, white if mixed
+      const iBlue = nodePositions[i].x < 0;
+      const jBlue = nodePositions[j].x < 0;
+      const col = iBlue && jBlue ? new THREE.Color(0x2a93c1)
+                : !iBlue && !jBlue ? new THREE.Color(0xf1420b)
+                : new THREE.Color(0xffffff);
+      edgeColorsArr.push(col.r, col.g, col.b, col.r, col.g, col.b);
+    }
+  }
+}
+
+const edgeGeo = new THREE.BufferGeometry();
+const posAttr = new Float32Array(edgePositionsArr);
+const colAttr = new Float32Array(edgeColorsArr);
+edgeGeo.setAttribute('position', new THREE.BufferAttribute(posAttr, 3));
+edgeGeo.setAttribute('color', new THREE.BufferAttribute(colAttr, 3));
+const edgeMat = new THREE.LineBasicMaterial({
+  vertexColors: true, transparent: true, opacity: 0.18,
+  depthWrite: false, blending: THREE.AdditiveBlending,
+});
+const edgeLines = new THREE.LineSegments(edgeGeo, edgeMat);
+networkGroup.add(edgeLines);
+
+// ─────────────────────────────────────────────────────────────
+// GLASS CRYSTAL SHELL — outer container
+// The brain's "skull" — glass sphere enclosing the network
+// ─────────────────────────────────────────────────────────────
+const shellMat = new THREE.MeshPhysicalMaterial({
+  transmission: 1.0,
+  thickness: 0.4,
+  roughness: 0.02,
+  ior: 1.44,
+  metalness: 0.0,
+  iridescence: 0.42,
+  iridescenceIOR: 1.68,
+  clearcoat: 1.0,
+  clearcoatRoughness: 0.02,
+  color: new THREE.Color(0xbbd8f0),
+  envMapIntensity: 1.8,
+  side: THREE.DoubleSide,
+  transparent: true,
+  depthWrite: false,
+  opacity: 0.92,
+});
+const shell = new THREE.Mesh(new THREE.SphereGeometry(2.0, 128, 128), shellMat);
+scene.add(shell);
+
+// ─────────────────────────────────────────────────────────────
+// CORE — the brain's center of consciousness
+// ─────────────────────────────────────────────────────────────
+const coreMat = new THREE.MeshPhysicalMaterial({
+  transmission: 0.75,
+  thickness: 0.3,
+  roughness: 0.01,
+  ior: 1.6,
+  emissive: PB_BLUE,
+  emissiveIntensity: 0.45,
+  iridescence: 0.5,
+  iridescenceIOR: 1.8,
+  color: new THREE.Color(0x44aadd),
+  envMapIntensity: 2.0,
+  transparent: true,
+  depthWrite: false,
+});
+const coreMesh = new THREE.Mesh(new THREE.SphereGeometry(0.32, 64, 64), coreMat);
+scene.add(coreMesh);
+
+// Orange accent ring
+const ringGeo = new THREE.TorusGeometry(0.42, 0.018, 12, 80);
+const ringMat = new THREE.MeshStandardMaterial({
+  color: PB_ORANGE, emissive: PB_ORANGE, emissiveIntensity: 1.6,
+  transparent: true, opacity: 0.7, depthWrite: false,
+});
+const ring1 = new THREE.Mesh(ringGeo, ringMat);
+ring1.rotation.x = Math.PI / 2;
+const ring2 = new THREE.Mesh(ringGeo, ringMat.clone());
+ring2.rotation.x = Math.PI / 3;
+ring2.rotation.z = Math.PI / 4;
+scene.add(ring1, ring2);
+
+// ─────────────────────────────────────────────────────────────
+// PULSE PARTICLES — travel along neural pathways
+// ─────────────────────────────────────────────────────────────
+const MAX_PULSES = 60;
+const pulsePool = [];
+
+const pulseMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: `
+    attribute float aProgress;
+    attribute float aEdgeIdx;
+    attribute vec3 aColor;
+    uniform float uTime;
+    varying vec3 vColor;
+    varying float vA;
+    void main(){
+      // aProgress 0→1 along edge, fade in/out at ends
+      vColor = aColor;
+      float fade = sin(aProgress * 3.14159);
+      vA = fade * 0.85;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = 4.5 * (200.0 / -mv.z);
+      gl_Position = projectionMatrix * mv;
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vColor; varying float vA;
+    void main(){
+      float d = length(gl_PointCoord - .5)*2.;
+      if(d>1.)discard;
+      float a = (1.-d)*(1.-d)*vA;
+      gl_FragColor = vec4(vColor, a);
+    }
+  `,
+});
+
+// Pulse state: active pulses as { edgeIdx, progress, speed, color }
+const activePulses = [];
+
+function spawnPulse(edgeIdx) {
+  const isBlue = edgeColorsArr[edgeIdx * 6] > 0.1 && edgeColorsArr[edgeIdx * 6 + 2] > 0.3;
+  const isOrange = edgeColorsArr[edgeIdx * 6] > 0.7 && edgeColorsArr[edgeIdx * 6 + 2] < 0.1;
+  activePulses.push({
+    edgeIdx,
+    progress: 0,
+    speed: 0.6 + Math.random() * 0.6,
+    color: isBlue ? [0.2, 0.65, 0.95] : isOrange ? [0.98, 0.28, 0.05] : [0.9, 0.9, 1.0],
+  });
+}
+
+// Pulse geometry — single point per pulse (update positions each frame)
+const pulseGeo = new THREE.BufferGeometry();
+const pulsePosArr = new Float32Array(MAX_PULSES * 3);
+const pulseColorArr = new Float32Array(MAX_PULSES * 3);
+const pulseProgressArr = new Float32Array(MAX_PULSES);
+pulseGeo.setAttribute('position', new THREE.BufferAttribute(pulsePosArr, 3));
+pulseGeo.setAttribute('aColor', new THREE.BufferAttribute(pulseColorArr, 3));
+pulseGeo.setAttribute('aProgress', new THREE.BufferAttribute(pulseProgressArr, 1));
+pulseGeo.setDrawRange(0, 0);
+const pulsePoints = new THREE.Points(pulseGeo, pulseMat);
+networkGroup.add(pulsePoints);
+
+// Spawn initial pulses along interesting edges
+for (let i = 0; i < 18; i++) {
+  spawnPulse(Math.floor(Math.random() * edges.length));
+}
+
+// ─────────────────────────────────────────────────────────────
+// ATMOSPHERIC PARTICLES — neural dust
+// ─────────────────────────────────────────────────────────────
+const DUST_COUNT = 1200;
+const dustPos = new Float32Array(DUST_COUNT * 3);
+const dustPhase = new Float32Array(DUST_COUNT);
+for (let i = 0; i < DUST_COUNT; i++) {
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos(2 * Math.random() - 1);
+  const r = 2.2 + (Math.random() - 0.5) * 1.6;
+  dustPos[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+  dustPos[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+  dustPos[i*3+2] = r * Math.cos(phi);
+  dustPhase[i] = Math.random() * Math.PI * 2;
+}
+const dustGeo = new THREE.BufferGeometry();
+dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+dustGeo.setAttribute('aPhase', new THREE.BufferAttribute(dustPhase, 1));
+const dustMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: `
+    attribute float aPhase;
+    uniform float uTime;
+    varying float vAlpha;
+    void main(){
+      vAlpha = .25 + .25*sin(uTime*.7+aPhase);
+      float angle = uTime*.08+aPhase*.3;
+      vec3 p = position;
+      float r = length(p.xz);
+      float a0 = atan(p.z,p.x);
+      p.x = r*cos(a0+angle*.25);
+      p.z = r*sin(a0+angle*.25);
+      p.y += sin(uTime*.35+aPhase)*.012;
+      vec4 mv=modelViewMatrix*vec4(p,1.);
+      gl_PointSize=1.8*(250./-mv.z);
+      gl_Position=projectionMatrix*mv;
+    }
+  `,
+  fragmentShader: `
+    varying float vAlpha;
+    void main(){
+      float d=length(gl_PointCoord-.5)*2.;
+      if(d>1.)discard;
+      float a=(1.-d)*vAlpha;
+      gl_FragColor=vec4(.38,.72,.88,a*.5);
+    }
+  `,
+});
+const dustPoints = new THREE.Points(dustGeo, dustMat);
+scene.add(dustPoints);
+
+// ─────────────────────────────────────────────────────────────
+// POSTPROCESSING
+// ─────────────────────────────────────────────────────────────
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloom = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.52, 0.28, 0.80   // Conservative: bloom confirms, does not create
+);
+composer.addPass(bloom);
+
+const finalShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uCA: { value: 1.4 },
+    uVig: { value: 0.35 },
+    uTime: { value: 0 },
+    uPulse: { value: 0.0 },
+  },
+  vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uCA, uVig, uTime, uPulse;
+    varying vec2 vUv;
+    float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5);}
+    void main(){
+      vec2 uv=vUv; vec2 c=uv-.5; float d=length(c);
+      float ca=uCA*(1.+uPulse*.5);
+      vec2 off=normalize(c)*d*ca*.009;
+      float r=texture2D(tDiffuse,uv+off*1.1).r;
+      float g=texture2D(tDiffuse,uv).g;
+      float b=texture2D(tDiffuse,uv-off*1.1).b;
+      vec3 col=vec3(r,g,b);
+      // Vignette
+      col*=1.-pow(d*1.42,2.4)*uVig;
+      // Grain
+      col+=(hash(uv+uTime*.002)-.5)*.016;
+      // Subtle orange color grade in corners
+      col.r += pow(d,3.)*0.015*uPulse;
+      gl_FragColor=vec4(col,1.);
+    }
+  `,
+};
+const finalPass = new ShaderPass(finalShader);
+composer.addPass(finalPass);
+composer.addPass(new OutputPass());
+
+// ─────────────────────────────────────────────────────────────
+// MOUSE + CLICK INTERACTION
+// ─────────────────────────────────────────────────────────────
+const mouse = new THREE.Vector2();
+const smoothMouse = new THREE.Vector2();
+let clickPulse = 0;
+let autoSpawnTimer = 0;
+
+window.addEventListener('mousemove', e => {
+  mouse.x = (e.clientX / window.innerWidth - 0.5) * 2;
+  mouse.y = -(e.clientY / window.innerHeight - 0.5) * 2;
+});
+
+window.addEventListener('click', () => {
+  clickPulse = 1.0;
+  // Trigger burst of pulses
+  for (let i = 0; i < 12; i++) {
+    if (activePulses.length < MAX_PULSES) {
+      spawnPulse(Math.floor(Math.random() * edges.length));
+    }
+  }
+  // Flash core
+  coreMat.emissiveIntensity = 1.2;
+});
+
+// ─────────────────────────────────────────────────────────────
+// ANIMATION
+// ─────────────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  const dt = 0.016;
+
+  // Mouse smooth
+  smoothMouse.x += (mouse.x - smoothMouse.x) * 0.04;
+  smoothMouse.y += (mouse.y - smoothMouse.y) * 0.04;
+
+  // Camera
+  camera.position.x = smoothMouse.x * 0.4;
+  camera.position.y = smoothMouse.y * 0.3 + 0.0;
+  camera.position.z = 6.5 + Math.sin(t * 0.1) * 0.05;
+  camera.lookAt(0, 0, 0);
+
+  // Network group slow rotation
+  networkGroup.rotation.y = t * 0.055;
+  networkGroup.rotation.x = Math.sin(t * 0.08) * 0.05;
+
+  // Nodes — float independently at prime frequencies
+  nodes.forEach((n, i) => {
+    const u = n.userData;
+    const floatScale = 0.022;
+    n.position.x = u.basePos.x + Math.sin(t * u.floatFreq + u.phaseX) * floatScale;
+    n.position.y = u.basePos.y + Math.sin(t * u.floatFreq * 0.88 + u.phaseY) * floatScale;
+    n.position.z = u.basePos.z + Math.sin(t * u.floatFreq * 0.73 + u.phaseX * 0.5) * floatScale;
+    // Hub nodes pulse emissive
+    if (u.isHub && u.glowMesh) {
+      const ei = 1.0 + 0.4 * Math.sin(t * 1.4 + u.emissivePhase);
+      u.glowMesh.material.emissiveIntensity = ei;
+      u.glowMesh.position.copy(n.position);
+      u.glowMesh.scale.setScalar(1.0 + 0.05 * Math.sin(t * 0.55 + u.emissivePhase));
+    }
+  });
+
+  // Edge pulsing (dim/bright per edge, async)
+  // Update edge colors per frame for "data flow" effect
+  edges.forEach((e, i) => {
+    const pulse = 0.12 + 0.1 * Math.sin(t * 1.4 + e.phase);
+    edgeColorsArr[i * 6] = edgeColors_base[i * 6] * pulse / 0.12;
+    edgeColorsArr[i * 6 + 1] = edgeColors_base[i * 6 + 1] * pulse / 0.12;
+    edgeColorsArr[i * 6 + 2] = edgeColors_base[i * 6 + 2] * pulse / 0.12;
+    edgeColorsArr[i * 6 + 3] = edgeColors_base[i * 6 + 3] * pulse / 0.12;
+    edgeColorsArr[i * 6 + 4] = edgeColors_base[i * 6 + 4] * pulse / 0.12;
+    edgeColorsArr[i * 6 + 5] = edgeColors_base[i * 6 + 5] * pulse / 0.12;
+  });
+  edgeGeo.attributes.color.needsUpdate = true;
+  edgeMat.opacity = 0.18 + 0.04 * Math.sin(t * 0.3);
+
+  // Pulse particles — travel along edges
+  autoSpawnTimer += dt;
+  if (autoSpawnTimer > 0.12 && activePulses.length < MAX_PULSES) {
+    autoSpawnTimer = 0;
+    spawnPulse(Math.floor(Math.random() * edges.length));
+  }
+
+  let pCount = 0;
+  for (let pi = activePulses.length - 1; pi >= 0; pi--) {
+    const p = activePulses[pi];
+    p.progress += p.speed * dt;
+    if (p.progress >= 1.0) { activePulses.splice(pi, 1); continue; }
+
+    const e = edges[p.edgeIdx];
+    const pA = nodePositions[e.i];
+    const pB = nodePositions[e.j];
+    const px = pA.x + (pB.x - pA.x) * p.progress;
+    const py = pA.y + (pB.y - pA.y) * p.progress;
+    const pz = pA.z + (pB.z - pA.z) * p.progress;
+
+    pulsePosArr[pCount*3]   = px;
+    pulsePosArr[pCount*3+1] = py;
+    pulsePosArr[pCount*3+2] = pz;
+    pulseColorArr[pCount*3]   = p.color[0];
+    pulseColorArr[pCount*3+1] = p.color[1];
+    pulseColorArr[pCount*3+2] = p.color[2];
+    pulseProgressArr[pCount] = p.progress;
+    pCount++;
+  }
+  pulseGeo.setDrawRange(0, pCount);
+  pulseGeo.attributes.position.needsUpdate = true;
+  pulseGeo.attributes.aColor.needsUpdate = true;
+  pulseGeo.attributes.aProgress.needsUpdate = true;
+
+  // Crystal shell breathes — prime frequencies
+  const breathe = 1.0
+    + Math.sin(t * 0.55) * 0.012
+    + Math.sin(t * 0.38) * 0.007
+    + Math.sin(t * 0.22) * 0.004;
+  shell.scale.setScalar(breathe);
+
+  // Core — higher frequency pulse
+  const coreBreath = 1.0 + 0.08 * Math.sin(t * 1.8);
+  coreMesh.scale.setScalar(coreBreath);
+  coreMat.emissiveIntensity += (0.45 - coreMat.emissiveIntensity) * 0.02;
+
+  // Rings — orbit
+  ring1.rotation.z = t * 0.25;
+  ring1.rotation.y = t * 0.12;
+  ring2.rotation.y = -t * 0.18;
+  ring2.rotation.z = t * 0.3 + Math.PI * 0.5;
+
+  // Click pulse decay
+  clickPulse *= 0.94;
+  finalPass.uniforms.uPulse.value = clickPulse;
+  bloom.strength = 0.50 + 0.12 * clickPulse + 0.06 * Math.sin(t * 0.45);
+
+  // Dust particles
+  dustMat.uniforms.uTime.value = t;
+
+  // Background
+  bgMat.uniforms.uTime.value = t;
+  finalPass.uniforms.uTime.value = t;
+  pulseMat.uniforms.uTime.value = t;
+
+  renderer.clear();
+  renderer.render(bgScene, bgCamera);
+  composer.render();
+}
+
+// Store base edge colors for pulsing calculation
+const edgeColors_base = [...edgeColorsArr];
+
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

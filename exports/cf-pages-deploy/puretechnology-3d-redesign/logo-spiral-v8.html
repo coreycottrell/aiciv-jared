@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology — Logo Spiral v8</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: #888;
+  }
+  canvas { display: block; }
+  .controls {
+    margin-top: 28px;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px 36px;
+    width: 580px;
+    padding: 22px 26px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 14px;
+  }
+  .ctrl-row { display: flex; flex-direction: column; gap: 5px; }
+  .ctrl-label {
+    font-size: 11px;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    display: flex;
+    justify-content: space-between;
+  }
+  .ctrl-label span { color: #bbb; font-weight: 600; font-size: 12px; }
+  input[type="range"] {
+    width: 100%;
+    accent-color: #2B93C1;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div class="controls">
+
+  <div class="ctrl-row">
+    <div class="ctrl-label">Rotation offset between copies <span id="v-offset">7</span>°</div>
+    <input type="range" id="s-offset" min="0" max="20" step="0.5" value="7">
+  </div>
+
+  <div class="ctrl-row">
+    <div class="ctrl-label">Twist per step <span id="v-twist">4.5</span>°</div>
+    <input type="range" id="s-twist" min="0" max="15" step="0.25" value="4.5">
+  </div>
+
+  <div class="ctrl-row">
+    <div class="ctrl-label">Number of steps <span id="v-steps">33</span></div>
+    <input type="range" id="s-steps" min="10" max="50" step="1" value="33">
+  </div>
+
+  <div class="ctrl-row">
+    <div class="ctrl-label">Line thickness <span id="v-thick">1.4</span>px</div>
+    <input type="range" id="s-thick" min="0.5" max="4" step="0.1" value="1.4">
+  </div>
+
+  <div class="ctrl-row">
+    <div class="ctrl-label">Center void radius <span id="v-void">6</span>%</div>
+    <input type="range" id="s-void" min="1" max="20" step="0.5" value="6">
+  </div>
+
+  <div class="ctrl-row">
+    <div class="ctrl-label">Overall size <span id="v-size">420</span>px</div>
+    <input type="range" id="s-size" min="200" max="700" step="10" value="420">
+  </div>
+
+  <div class="ctrl-row">
+    <div class="ctrl-label">Color midpoint (outer↔inner) <span id="v-mid">50</span>%</div>
+    <input type="range" id="s-mid" min="10" max="90" step="1" value="50">
+  </div>
+
+  <div class="ctrl-row">
+    <div class="ctrl-label">Color curve sharpness <span id="v-curve">1.5</span></div>
+    <input type="range" id="s-curve" min="0.3" max="4" step="0.1" value="1.5">
+  </div>
+
+</div>
+
+<script>
+// ─── COLOR CONSTANTS ─────────────────────────────────────────────────────────
+const BLUE   = [43,  147, 193]; // #2B93C1 — outer lines
+const ORANGE = [241, 66,  11 ]; // #F1420B — inner lines
+
+// Sigmoid blend: t=0 → BLUE, t=1 → ORANGE
+// mid in [0,1], curve > 0
+function blendColor(t, mid, curve) {
+  const s = 1 / (1 + Math.exp(-curve * 6 * (t - mid)));
+  return [
+    BLUE[0] + (ORANGE[0] - BLUE[0]) * s,
+    BLUE[1] + (ORANGE[1] - BLUE[1]) * s,
+    BLUE[2] + (ORANGE[2] - BLUE[2]) * s,
+  ];
+}
+
+// ─── GEOMETRY ────────────────────────────────────────────────────────────────
+
+/**
+ * Returns 6 [x,y] vertices of a pointy-top regular hexagon.
+ * cx, cy: center
+ * r: circumradius
+ * angle: base rotation in radians (added to each vertex angle)
+ *
+ * Pointy-top means vertex 0 is at the top (angle = -PI/2).
+ * We add PI/6 per spec, giving final starting angle = -PI/2 + PI/6 = -PI/3
+ */
+function hexVerts(cx, cy, r, angle) {
+  const verts = [];
+  for (let i = 0; i < 6; i++) {
+    const a = angle + (-Math.PI / 2 + Math.PI / 6) + i * (Math.PI / 3);
+    verts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+  }
+  return verts;
+}
+
+// ─── DRAWING ─────────────────────────────────────────────────────────────────
+
+function drawSpiral(ctx, cx, cy, outerR, baseAngle, steps, twistDeg, voidR, thick, colorMid, colorCurve) {
+  // Each step: radius strictly decreasing from outerR → voidR
+  // Twist: counter-clockwise (negative, matching reference image)
+  const twistRad = -(twistDeg * Math.PI / 180);
+
+  for (let i = 0; i < steps; i++) {
+    const t = i / (steps - 1); // 0 = outermost, 1 = innermost
+    const r = outerR + (voidR - outerR) * t; // strictly decreasing
+
+    // Guard: never go below void
+    if (r <= voidR) break;
+
+    const angle = baseAngle + i * twistRad;
+    const verts = hexVerts(cx, cy, r, angle);
+
+    const [cr, cg, cb] = blendColor(t, colorMid, colorCurve);
+    const alpha = 0.82 + t * 0.18; // inner lines slightly more opaque
+
+    ctx.beginPath();
+    ctx.moveTo(verts[0][0], verts[0][1]);
+    for (let j = 1; j < 6; j++) ctx.lineTo(verts[j][0], verts[j][1]);
+    ctx.closePath();
+    ctx.strokeStyle = `rgba(${cr|0},${cg|0},${cb|0},${alpha})`;
+    ctx.lineWidth = thick;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  }
+}
+
+// ─── RENDER ──────────────────────────────────────────────────────────────────
+
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+
+function render(p) {
+  const dpr = window.devicePixelRatio || 1;
+  const sz  = p.size;
+
+  canvas.style.width  = sz + 'px';
+  canvas.style.height = sz + 'px';
+  canvas.width  = sz * dpr;
+  canvas.height = sz * dpr;
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, sz, sz);
+
+  const cx = sz / 2;
+  const cy = sz / 2;
+  // outerRadius fills ~88% of half-canvas, leaving visual breathing room
+  const outerR = sz * 0.44;
+  const voidR  = outerR * (p.voidPct / 100);
+
+  const offsetRad = p.offsetDeg * Math.PI / 180;
+
+  // Draw 3 copies: center, +offset, -offset
+  drawSpiral(ctx, cx, cy, outerR,  0,          p.steps, p.twistDeg, voidR, p.thick, p.colorMid, p.colorCurve);
+  drawSpiral(ctx, cx, cy, outerR,  offsetRad,  p.steps, p.twistDeg, voidR, p.thick, p.colorMid, p.colorCurve);
+  drawSpiral(ctx, cx, cy, outerR, -offsetRad,  p.steps, p.twistDeg, voidR, p.thick, p.colorMid, p.colorCurve);
+
+  // Void center: subtle dark radial gradient occludes center
+  if (voidR > 1) {
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, voidR * 1.3);
+    g.addColorStop(0,    'rgba(0,0,0,1)');
+    g.addColorStop(0.65, 'rgba(0,0,0,0.9)');
+    g.addColorStop(1,    'rgba(0,0,0,0)');
+    ctx.beginPath();
+    ctx.arc(cx, cy, voidR * 1.3, 0, Math.PI * 2);
+    ctx.fillStyle = g;
+    ctx.fill();
+  }
+}
+
+// ─── PARAMS ──────────────────────────────────────────────────────────────────
+
+const params = {
+  offsetDeg:  7,
+  twistDeg:   4.5,
+  steps:      33,
+  thick:      1.4,
+  voidPct:    6,
+  size:       420,
+  colorMid:   0.5,
+  colorCurve: 1.5,
+};
+
+// ─── SLIDERS ─────────────────────────────────────────────────────────────────
+
+const sliders = [
+  { id: 's-offset', vid: 'v-offset', key: 'offsetDeg',  parse: parseFloat, display: v => v },
+  { id: 's-twist',  vid: 'v-twist',  key: 'twistDeg',   parse: parseFloat, display: v => v },
+  { id: 's-steps',  vid: 'v-steps',  key: 'steps',      parse: parseInt,   display: v => v },
+  { id: 's-thick',  vid: 'v-thick',  key: 'thick',      parse: parseFloat, display: v => v },
+  { id: 's-void',   vid: 'v-void',   key: 'voidPct',    parse: parseFloat, display: v => v },
+  { id: 's-size',   vid: 'v-size',   key: 'size',       parse: parseInt,   display: v => v },
+  // colorMid: slider 10-90 (integer), stored internally as 0-1
+  { id: 's-mid',    vid: 'v-mid',    key: 'colorMid',   parse: v => parseInt(v) / 100, display: v => Math.round(v * 100) },
+  { id: 's-curve',  vid: 'v-curve',  key: 'colorCurve', parse: parseFloat, display: v => v },
+];
+
+sliders.forEach(({ id, vid, key, parse, display }) => {
+  const slider = document.getElementById(id);
+  const label  = document.getElementById(vid);
+  // Sync initial label
+  label.textContent = display(params[key]);
+  slider.addEventListener('input', () => {
+    params[key] = parse(slider.value);
+    label.textContent = display(params[key]);
+    render(params);
+  });
+});
+
+// ─── INITIAL RENDER ──────────────────────────────────────────────────────────
+render(params);
+</script>
+</body>
+</html>

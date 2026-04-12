@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology Logo — Concentric Hexagon Recreation</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: #ccc;
+  }
+
+  h1 {
+    font-size: 13px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #2B93C1;
+    margin-bottom: 24px;
+    opacity: 0.7;
+  }
+
+  #canvas-wrap {
+    position: relative;
+    margin-bottom: 32px;
+  }
+
+  canvas {
+    display: block;
+    border-radius: 4px;
+  }
+
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 32px;
+    max-width: 680px;
+    width: 100%;
+    padding: 24px 28px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 8px;
+    margin-bottom: 16px;
+  }
+
+  .ctrl {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .ctrl label {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #2B93C1;
+    opacity: 0.8;
+  }
+
+  .ctrl-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  input[type=range] {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 2px;
+    background: rgba(43,147,193,0.25);
+    border-radius: 2px;
+    outline: none;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #2B93C1;
+    cursor: pointer;
+  }
+
+  .val {
+    font-size: 11px;
+    color: #F1420B;
+    min-width: 36px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .section-label {
+    grid-column: 1 / -1;
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(241,66,11,0.5);
+    border-bottom: 1px solid rgba(241,66,11,0.15);
+    padding-bottom: 4px;
+    margin-top: 6px;
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 4px;
+  }
+
+  button {
+    padding: 7px 18px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border-radius: 4px;
+    border: 1px solid;
+    cursor: pointer;
+    background: transparent;
+    transition: all 0.2s;
+  }
+
+  .btn-reset {
+    color: #2B93C1;
+    border-color: rgba(43,147,193,0.4);
+  }
+  .btn-reset:hover { background: rgba(43,147,193,0.1); }
+
+  .btn-export {
+    color: #F1420B;
+    border-color: rgba(241,66,11,0.4);
+  }
+  .btn-export:hover { background: rgba(241,66,11,0.1); }
+</style>
+</head>
+<body>
+
+<h1>Pure Technology — Concentric Hexagon Logo</h1>
+
+<div id="canvas-wrap">
+  <canvas id="c" width="520" height="520"></canvas>
+</div>
+
+<div class="controls">
+
+  <!-- STRUCTURE -->
+  <div class="section-label">Structure</div>
+
+  <div class="ctrl">
+    <label>Rotation Offset between 3 hexagons (°)</label>
+    <div class="ctrl-row">
+      <input type="range" id="hexRotOffset" min="0" max="20" step="0.5" value="6">
+      <span class="val" id="hexRotOffsetVal">6°</span>
+    </div>
+  </div>
+
+  <div class="ctrl">
+    <label>Strokes per hexagon</label>
+    <div class="ctrl-row">
+      <input type="range" id="numStrokes" min="5" max="80" step="1" value="33">
+      <span class="val" id="numStrokesVal">30</span>
+    </div>
+  </div>
+
+  <div class="ctrl">
+    <label>Twist per level (° rotation per ring)</label>
+    <div class="ctrl-row">
+      <input type="range" id="twistPerLevel" min="0" max="15" step="0.5" value="4">
+      <span class="val" id="twistPerLevelVal">4°</span>
+    </div>
+  </div>
+
+  <div class="ctrl">
+    <label>Base shrink rate (% per ring)</label>
+    <div class="ctrl-row">
+      <input type="range" id="shrinkRate" min="1" max="12" step="0.25" value="4">
+      <span class="val" id="shrinkRateVal">4%</span>
+    </div>
+  </div>
+
+  <!-- DENSITY -->
+  <div class="section-label">Density Curve</div>
+
+  <div class="ctrl">
+    <label>Inner density boost (strokes pack tighter toward center)</label>
+    <div class="ctrl-row">
+      <input type="range" id="densityBoost" min="1" max="5" step="0.1" value="2.2">
+      <span class="val" id="densityBoostVal">2.2</span>
+    </div>
+  </div>
+
+  <div class="ctrl">
+    <label>Outer radius (size)</label>
+    <div class="ctrl-row">
+      <input type="range" id="outerRadius" min="80" max="240" step="2" value="200">
+      <span class="val" id="outerRadiusVal">200</span>
+    </div>
+  </div>
+
+  <!-- APPEARANCE -->
+  <div class="section-label">Appearance</div>
+
+  <div class="ctrl">
+    <label>Line thickness (px)</label>
+    <div class="ctrl-row">
+      <input type="range" id="lineThickness" min="0.3" max="4" step="0.1" value="1.1">
+      <span class="val" id="lineThicknessVal">1.1</span>
+    </div>
+  </div>
+
+  <div class="ctrl">
+    <label>Void radius (px)</label>
+    <div class="ctrl-row">
+      <input type="range" id="voidRadius" min="4" max="60" step="1" value="20">
+      <span class="val" id="voidRadiusVal">20</span>
+    </div>
+  </div>
+
+  <div class="ctrl">
+    <label>Line opacity</label>
+    <div class="ctrl-row">
+      <input type="range" id="lineOpacity" min="0.1" max="1" step="0.05" value="0.85">
+      <span class="val" id="lineOpacityVal">0.85</span>
+    </div>
+  </div>
+
+  <div class="ctrl">
+    <label>Color outer (blue side)</label>
+    <div class="ctrl-row">
+      <input type="color" id="colorOuter" value="#2B93C1" style="width:44px;height:24px;border:none;background:none;cursor:pointer;border-radius:3px;">
+      <span class="val" style="font-size:9px;" id="colorOuterVal">#2B93C1</span>
+    </div>
+  </div>
+
+  <div class="ctrl">
+    <label>Color inner (orange side)</label>
+    <div class="ctrl-row">
+      <input type="color" id="colorInner" value="#F1420B" style="width:44px;height:24px;border:none;background:none;cursor:pointer;border-radius:3px;">
+      <span class="val" style="font-size:9px;" id="colorInnerVal">#F1420B</span>
+    </div>
+  </div>
+
+  <!-- COLOR GRADIENT -->
+  <div class="section-label">Color Gradient</div>
+
+  <div class="ctrl">
+    <label>Color transition point (% from outer — blue dominates this far)</label>
+    <div class="ctrl-row">
+      <input type="range" id="transitionPoint" min="20" max="90" step="1" value="68">
+      <span class="val" id="transitionPointVal">68%</span>
+    </div>
+  </div>
+
+  <div class="ctrl">
+    <label>Color curve sharpness (1=linear, 10=sharp step)</label>
+    <div class="ctrl-row">
+      <input type="range" id="colorCurve" min="1" max="10" step="0.5" value="5">
+      <span class="val" id="colorCurveVal">5</span>
+    </div>
+  </div>
+
+</div>
+
+<div class="btn-row">
+  <button class="btn-reset" onclick="resetDefaults()">Reset Defaults</button>
+  <button class="btn-export" onclick="exportPNG()">Export PNG</button>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+const defaults = {
+  hexRotOffset:    6,
+  numStrokes:      33,
+  twistPerLevel:   4,
+  shrinkRate:      4,
+  densityBoost:    2.2,
+  lineThickness:   1.1,
+  voidRadius:      20,
+  outerRadius:     200,
+  lineOpacity:     0.85,
+  transitionPoint: 68,
+  colorCurve:      5,
+  colorOuter: '#2B93C1',
+  colorInner: '#F1420B',
+};
+
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return [r,g,b];
+}
+
+/**
+ * Compute color given t (0=outer/blue, 1=inner/orange).
+ *
+ * transitionPoint: value 0-1, where the transition center falls.
+ *   At transitionPoint=0.68, blue stays dominant until 68% inward,
+ *   orange only takes over in the inner 32%.
+ *
+ * colorCurve: 1=linear, higher=sharper sigmoid-like step.
+ *   We use a power-curve remapping: remap t so most of the
+ *   range stays near 0, then rapidly shoots to 1 past the threshold.
+ */
+function computeColor(t, cOuter, cInner, transitionPoint, colorCurve) {
+  // Normalize t relative to the transition point.
+  // Before transitionPoint: t maps to [0, 0.5] slowly.
+  // After transitionPoint: t maps to [0.5, 1] rapidly.
+  let colorT;
+  const tp = transitionPoint / 100;
+
+  if (t <= tp) {
+    // Outer zone: compress the color range — stays blue
+    // Map t [0..tp] -> colorT [0..0.5] with a slow curve
+    const normalized = t / tp;  // 0..1
+    colorT = 0.5 * Math.pow(normalized, colorCurve);
+  } else {
+    // Inner zone: rapidly transitions to orange
+    // Map t (tp..1] -> colorT [0.5..1] with a fast curve
+    const normalized = (t - tp) / (1 - tp);  // 0..1
+    colorT = 0.5 + 0.5 * Math.pow(normalized, 1 / colorCurve);
+  }
+
+  const r = Math.round(cOuter[0] + (cInner[0]-cOuter[0]) * colorT);
+  const g = Math.round(cOuter[1] + (cInner[1]-cOuter[1]) * colorT);
+  const b = Math.round(cOuter[2] + (cInner[2]-cOuter[2]) * colorT);
+  return `rgb(${r},${g},${b})`;
+}
+
+function getParam(id) {
+  return parseFloat(document.getElementById(id).value);
+}
+
+function getColor(id) {
+  return document.getElementById(id).value;
+}
+
+/**
+ * Draw a single hexagon outline rotated by angleDeg.
+ * +Math.PI/6 offset keeps pointy-top (vertex up/down) orientation.
+ */
+function hexPath(cx, cy, radius, angleDeg) {
+  const a = angleDeg * Math.PI / 180;
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const angle = a + (Math.PI / 3) * i + Math.PI / 6;
+    const x = cx + radius * Math.cos(angle);
+    const y = cy + radius * Math.sin(angle);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+/**
+ * Compute radius for ring i using a non-linear shrink curve.
+ *
+ * Instead of uniform shrink (r * shrinkFrac^i), we use a density boost
+ * that causes rings to pack tighter toward the center.
+ *
+ * densityBoost > 1 means inner rings are closer together than outer rings.
+ * We achieve this by using an exponential spacing where the step size
+ * decreases as we go inward.
+ *
+ * The formula: position along radius from 0 (outer) to 1 (inner)
+ * is mapped via: pos = (Math.pow(densityBoost, normI) - 1) / (densityBoost - 1)
+ * where normI = i / numStrokes, giving a curve that starts slow
+ * (wide outer spacing) and accelerates (tight inner spacing).
+ *
+ * Then radius = outerR * (1 - pos) * shrinkTotal + voidRadius
+ */
+function computeRadius(i, numStrokes, outerR, voidRadius, shrinkRate, densityBoost) {
+  // Simple exponential shrink per ring — like the original v5/v7 that was "closest"
+  // Each ring is (1 - shrinkRate/100) times the previous ring's radius
+  const factor = Math.pow(1 - shrinkRate / 100, i);
+  const r = outerR * factor;
+
+  // Don't go below void
+  return Math.max(r, voidRadius);
+}
+
+/**
+ * Draw one "hexagon unit" = many concentric hexagonal outlines
+ * spiraling inward, each ring at a density-curved radius and rotated.
+ */
+function drawHexUnit(cx, cy, baseAngle, outerR, numStrokes, shrinkRate, densityBoost, twistPerLevel, colorOuter, colorInner, lineThickness, lineOpacity, voidRadius, transitionPoint, colorCurve) {
+  const cOuter = hexToRgb(colorOuter);
+  const cInner = hexToRgb(colorInner);
+
+  for (let i = 0; i < numStrokes; i++) {
+    // t=0 is outermost (blue), t=1 is innermost (orange)
+    const t = i / Math.max(numStrokes - 1, 1);
+
+    // Compute radius with density boost (non-linear spacing)
+    const r = computeRadius(i, numStrokes, outerR, voidRadius, shrinkRate, densityBoost);
+
+    // Rotation accumulates each ring (negative = correct spiral direction)
+    const angleDeg = baseAngle - twistPerLevel * i;
+
+    // Color with transition point and curve sharpness
+    const color = computeColor(t, cOuter, cInner, transitionPoint, colorCurve);
+
+    ctx.save();
+    hexPath(cx, cy, r, angleDeg);
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = lineOpacity;
+    ctx.lineWidth = lineThickness;
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function draw() {
+  const hexRotOffset   = getParam('hexRotOffset');
+  const numStrokes     = getParam('numStrokes');
+  const twistPerLevel  = getParam('twistPerLevel');
+  const shrinkRate     = getParam('shrinkRate');
+  const densityBoost   = getParam('densityBoost');
+  const lineThickness  = getParam('lineThickness');
+  const voidRadius     = getParam('voidRadius');
+  const outerRadius    = getParam('outerRadius');
+  const lineOpacity    = getParam('lineOpacity');
+  const transitionPoint = getParam('transitionPoint');
+  const colorCurve     = getParam('colorCurve');
+  const colorOuter     = getColor('colorOuter');
+  const colorInner     = getColor('colorInner');
+
+  const w = canvas.width;
+  const h = canvas.height;
+  const cx = w / 2;
+  const cy = h / 2;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Black background
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, w, h);
+
+  // Draw 3 hexagon units stacked with rotation offsets.
+  // No clipping — all 3 hexagons extend past each other on the outside
+  // Center one at 0, one rotated +hexRotOffset, one rotated -hexRotOffset.
+  const offsets = [0, hexRotOffset, -hexRotOffset];
+
+  for (let i = 0; i < 3; i++) {
+    drawHexUnit(
+      cx, cy,
+      offsets[i],
+      outerRadius,
+      numStrokes,
+      shrinkRate,
+      densityBoost,
+      twistPerLevel,
+      colorOuter,
+      colorInner,
+      lineThickness,
+      lineOpacity,
+      voidRadius,
+      transitionPoint,
+      colorCurve
+    );
+  }
+
+  // Draw the black center void circle
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, voidRadius, 0, Math.PI * 2);
+  ctx.fillStyle = '#000000';
+  ctx.globalAlpha = 1;
+  ctx.fill();
+  ctx.restore();
+}
+
+function resetDefaults() {
+  Object.keys(defaults).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = defaults[id];
+  });
+  syncAllValues();
+  draw();
+}
+
+const sliderSuffixes = {
+  hexRotOffset:    '°',
+  numStrokes:      '',
+  twistPerLevel:   '°',
+  shrinkRate:      '%',
+  densityBoost:    '',
+  lineThickness:   '',
+  voidRadius:      '',
+  outerRadius:     '',
+  lineOpacity:     '',
+  transitionPoint: '%',
+  colorCurve:      '',
+};
+
+function syncAllValues() {
+  Object.keys(sliderSuffixes).forEach(id => {
+    const el = document.getElementById(id);
+    const valEl = document.getElementById(id + 'Val');
+    if (el && valEl) valEl.textContent = el.value + sliderSuffixes[id];
+  });
+  const co = document.getElementById('colorOuter');
+  const ci = document.getElementById('colorInner');
+  if (co) document.getElementById('colorOuterVal').textContent = co.value;
+  if (ci) document.getElementById('colorInnerVal').textContent = ci.value;
+}
+
+function exportPNG() {
+  const link = document.createElement('a');
+  link.download = 'puretechnology-logo.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+// Wire all range sliders
+Object.keys(sliderSuffixes).forEach(id => {
+  const el = document.getElementById(id);
+  const valEl = document.getElementById(id + 'Val');
+  if (!el || !valEl) return;
+  el.addEventListener('input', () => {
+    valEl.textContent = el.value + sliderSuffixes[id];
+    draw();
+  });
+});
+
+// Wire color pickers
+['colorOuter','colorInner'].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('input', () => {
+    document.getElementById(id+'Val').textContent = el.value;
+    draw();
+  });
+});
+
+// Initial render
+syncAllValues();
+draw();
+</script>
+</body>
+</html>

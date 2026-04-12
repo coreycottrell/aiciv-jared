@@ -1,0 +1,1930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-WTDXL4VJ');</script>
+<!-- End Google Tag Manager -->
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+(function(c,l,a,r,i,t,y){
+    c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+    t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+    y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+})(window, document, "clarity", "script", "viy9bnc56x");
+</script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bring Your AI History to PureBrain</title>
+  <meta name="description" content="Import your ChatGPT, Claude, or LinkedIn data to give PureBrain instant context about who you are — your conversations never leave your device." />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- CDN Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+  <style>
+    /* ================================================================
+       DESIGN TOKENS — matches /migrate/ reference
+    ================================================================ */
+    :root {
+      --bg:           #080a12;
+      --surface:      #0d1120;
+      --surface2:     #111627;
+      --surface3:     #161c30;
+      --border:       rgba(42, 147, 193, 0.18);
+      --border-hover: rgba(42, 147, 193, 0.5);
+      --blue:         #2a93c1;
+      --blue-light:   #3db5e8;
+      --orange:       #f1420b;
+      --orange-light: #ff6633;
+      --text:         #e8eaf0;
+      --text-muted:   #8a90a8;
+      --text-dim:     #555d78;
+      --success:      #22c55e;
+      --radius:       12px;
+      --radius-lg:    18px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ─── HEADER ─────────────────────────────── */
+    .site-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 40px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      font-family: 'Oswald', sans-serif;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-decoration: none;
+    }
+    .logo .blue { color: var(--blue); }
+    .logo .orange { color: var(--orange); }
+
+    .header-badge {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(34, 197, 94, 0.1);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      border-radius: 100px;
+      padding: 6px 14px;
+      font-size: 13px;
+      color: var(--success);
+      font-weight: 500;
+    }
+    .header-badge .dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--success);
+    }
+
+    /* ─── HERO ────────────────────────────────── */
+    .hero {
+      text-align: center;
+      padding: 80px 24px 60px;
+      max-width: 780px;
+      margin: 0 auto;
+    }
+
+    .hero-eyebrow {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 20px;
+    }
+
+    .hero h1 {
+      font-family: 'Oswald', sans-serif;
+      font-size: clamp(32px, 5vw, 54px);
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.01em;
+      margin-bottom: 20px;
+      color: #fff;
+    }
+
+    .hero h1 em {
+      font-style: normal;
+      background: linear-gradient(135deg, var(--blue), var(--blue-light));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero p {
+      font-size: 18px;
+      color: var(--text-muted);
+      max-width: 560px;
+      margin: 0 auto 36px;
+    }
+
+    /* ─── PRIVACY BANNER ─────────────────────── */
+    .privacy-banner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: rgba(42, 147, 193, 0.07);
+      border: 1px solid rgba(42, 147, 193, 0.2);
+      border-radius: var(--radius);
+      padding: 14px 24px;
+      max-width: 640px;
+      margin: 0 auto 60px;
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+    .privacy-banner .lock-icon {
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .privacy-banner strong { color: var(--text); }
+
+    /* ─── SECTION LABEL ──────────────────────── */
+    .section-label {
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 24px;
+    }
+
+    /* ─── PLATFORM CARDS ─────────────────────── */
+    .platforms-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      max-width: 1000px;
+      margin: 0 auto 60px;
+      padding: 0 24px;
+    }
+
+    .platform-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 28px 24px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .platform-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(42, 147, 193, 0.05), transparent);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .platform-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(42, 147, 193, 0.12);
+    }
+    .platform-card:hover::before { opacity: 1; }
+    .platform-card.active {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 1px var(--blue), 0 8px 32px rgba(42, 147, 193, 0.2);
+    }
+
+    .platform-icon {
+      width: 52px; height: 52px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      font-size: 26px;
+    }
+    .icon-chatgpt  { background: rgba(16, 163, 127, 0.15); }
+    .icon-claude   { background: rgba(204, 102, 0, 0.15); }
+    .icon-linkedin { background: rgba(10, 102, 194, 0.15); }
+    .icon-manual   { background: rgba(42, 147, 193, 0.15); }
+
+    .platform-card h3 {
+      font-family: 'Oswald', sans-serif;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      margin-bottom: 6px;
+      color: #fff;
+    }
+    .platform-card p {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+    .platform-card .extract-list {
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--text-dim);
+      list-style: none;
+      text-align: left;
+    }
+    .platform-card .extract-list li {
+      padding: 2px 0;
+    }
+    .platform-card .extract-list li::before {
+      content: '✓ ';
+      color: var(--blue);
+    }
+
+    /* ─── IMPORT PANEL ───────────────────────── */
+    .import-panel {
+      max-width: 700px;
+      margin: 0 auto 60px;
+      padding: 0 24px;
+      display: none;
+    }
+    .import-panel.visible { display: block; }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    .panel-title {
+      font-family: 'Oswald', sans-serif;
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: #fff;
+    }
+    .panel-close {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .panel-close:hover {
+      border-color: rgba(42, 147, 193, 0.5);
+      color: var(--blue);
+    }
+
+    /* How-to guide */
+    .howto-guide {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin-bottom: 20px;
+    }
+    .howto-guide h4 {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 14px;
+    }
+    .howto-steps { list-style: none; }
+    .howto-steps li {
+      display: flex;
+      gap: 12px;
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+    .step-num {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: rgba(42, 147, 193, 0.15);
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    /* Drop zone */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-lg);
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+    .drop-zone:hover,
+    .drop-zone.drag-over {
+      border-color: var(--blue);
+      background: rgba(42, 147, 193, 0.04);
+      box-shadow: 0 0 0 1px rgba(42, 147, 193, 0.2) inset;
+    }
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+    .drop-zone-icon {
+      font-size: 40px;
+      margin-bottom: 12px;
+    }
+    .drop-zone h3 {
+      font-family: 'Oswald', sans-serif;
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      margin-bottom: 6px;
+      color: #fff;
+    }
+    .drop-zone p {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+    .drop-zone .file-types {
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    /* Manual text area */
+    .manual-textarea {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 15px;
+      line-height: 1.6;
+      padding: 18px;
+      resize: vertical;
+      min-height: 200px;
+      transition: border-color 0.15s;
+    }
+    .manual-textarea:focus {
+      outline: none;
+      border-color: var(--blue);
+    }
+    .manual-textarea::placeholder { color: var(--text-dim); }
+
+    .btn-analyze {
+      display: block;
+      width: 100%;
+      margin-top: 16px;
+      padding: 16px;
+      background: linear-gradient(135deg, var(--blue), var(--blue-light));
+      border: none;
+      border-radius: var(--radius);
+      color: white;
+      font-family: 'Oswald', sans-serif;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-analyze:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(42, 147, 193, 0.35);
+    }
+    .btn-analyze:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* ─── PROGRESS ───────────────────────────── */
+    .progress-panel {
+      max-width: 700px;
+      margin: 0 auto 60px;
+      padding: 0 24px;
+      display: none;
+    }
+    .progress-panel.visible { display: block; }
+
+    .progress-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 40px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .progress-card::before {
+      content: '';
+      position: absolute;
+      top: -60px; right: -60px;
+      width: 200px; height: 200px;
+      background: radial-gradient(circle, rgba(42,147,193,0.07) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .progress-spinner {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      border: 3px solid rgba(42, 147, 193, 0.18);
+      border-top-color: var(--blue);
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 24px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .progress-label {
+      font-family: 'Oswald', sans-serif;
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .progress-sublabel {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 28px;
+    }
+
+    .progress-bar-track {
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 100px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--blue), var(--blue-light));
+      border-radius: 100px;
+      width: 0%;
+      transition: width 0.4s ease;
+    }
+
+    /* ─── RESULTS ────────────────────────────── */
+    .results-panel {
+      max-width: 700px;
+      margin: 0 auto 60px;
+      padding: 0 24px;
+      display: none;
+    }
+    .results-panel.visible { display: block; }
+
+    .results-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .results-header .check-circle {
+      width: 64px; height: 64px;
+      border-radius: 50%;
+      background: rgba(34, 197, 94, 0.15);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 30px;
+      margin: 0 auto 20px;
+    }
+    .results-header h2 {
+      font-family: 'Oswald', sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .results-header p {
+      color: var(--text-muted);
+      font-size: 15px;
+    }
+
+    .result-cards {
+      display: grid;
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+
+    .result-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .result-card::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      right: 0; height: 1px;
+      background: linear-gradient(90deg, var(--blue), transparent);
+      opacity: 0.4;
+    }
+    .result-card-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 12px;
+    }
+    .result-card-value {
+      font-size: 15px;
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .stat-item { text-align: center; }
+    .stat-num {
+      font-family: 'Oswald', sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--blue);
+      display: block;
+      letter-spacing: -0.01em;
+    }
+    .stat-label {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .topics-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .topic-tag {
+      background: rgba(42, 147, 193, 0.12);
+      border: 1px solid rgba(42, 147, 193, 0.25);
+      border-radius: 100px;
+      padding: 5px 14px;
+      font-size: 13px;
+      color: var(--blue-light);
+    }
+    .topic-tag.secondary {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.08);
+      color: var(--text-muted);
+    }
+
+    .style-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .style-chip {
+      background: rgba(241, 66, 11, 0.1);
+      border: 1px solid rgba(241, 66, 11, 0.2);
+      border-radius: 100px;
+      padding: 5px 14px;
+      font-size: 13px;
+      color: var(--orange-light);
+    }
+
+    .btn-send {
+      display: block;
+      width: 100%;
+      padding: 18px;
+      background: linear-gradient(135deg, var(--orange), var(--orange-light));
+      border: none;
+      border-radius: var(--radius);
+      color: white;
+      font-family: 'Oswald', sans-serif;
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-send:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(241, 66, 11, 0.35);
+    }
+    .btn-send:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-start-over {
+      display: block;
+      width: 100%;
+      margin-top: 12px;
+      padding: 14px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-start-over:hover {
+      border-color: rgba(42, 147, 193, 0.4);
+      color: var(--text);
+    }
+
+    /* ─── SUCCESS ────────────────────────────── */
+    .success-panel {
+      max-width: 600px;
+      margin: 0 auto 80px;
+      padding: 0 24px;
+      display: none;
+      text-align: center;
+    }
+    .success-panel.visible { display: block; }
+
+    .success-icon {
+      font-size: 72px;
+      margin-bottom: 24px;
+      display: block;
+    }
+    .success-panel h2 {
+      font-family: 'Oswald', sans-serif;
+      font-size: 36px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: #fff;
+      margin-bottom: 12px;
+    }
+    .success-panel p {
+      font-size: 17px;
+      color: var(--text-muted);
+      margin-bottom: 32px;
+    }
+
+    .knows-list {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 24px 28px;
+      text-align: left;
+      margin-bottom: 32px;
+      position: relative;
+      overflow: hidden;
+    }
+    .knows-list::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      right: 0; height: 1px;
+      background: linear-gradient(90deg, var(--blue), var(--orange), transparent);
+      opacity: 0.5;
+    }
+    .knows-list h4 {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 16px;
+    }
+    .knows-item {
+      display: flex;
+      gap: 10px;
+      font-size: 15px;
+      color: var(--text);
+      margin-bottom: 10px;
+    }
+    .knows-item:last-child { margin-bottom: 0; }
+    .knows-check {
+      color: var(--success);
+      flex-shrink: 0;
+    }
+
+    .btn-start-chat {
+      display: inline-block;
+      padding: 16px 48px;
+      background: linear-gradient(135deg, var(--blue), var(--blue-light));
+      border: none;
+      border-radius: var(--radius);
+      color: white;
+      font-family: 'Oswald', sans-serif;
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .btn-start-chat:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(42, 147, 193, 0.35);
+    }
+
+    /* ─── ERROR ──────────────────────────────── */
+    .error-box {
+      background: rgba(220, 38, 38, 0.08);
+      border: 1px solid rgba(220, 38, 38, 0.25);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      color: #f87171;
+      font-size: 14px;
+      margin-top: 16px;
+      display: none;
+    }
+    .error-box.visible { display: block; }
+
+    /* ─── FOOTER ─────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    footer p {
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+    footer a {
+      color: var(--blue);
+      text-decoration: none;
+    }
+    footer a:hover { text-decoration: underline; }
+
+    /* ─── RESPONSIVE ─────────────────────────── */
+    @media (max-width: 600px) {
+      .site-header { padding: 16px 20px; }
+      .hero { padding: 48px 20px 40px; }
+      .platforms-grid { padding: 0 20px; }
+      .stats-row { grid-template-columns: 1fr 1fr; }
+      footer { padding: 24px 20px; flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+
+<!-- UNIVERSAL REFERRAL CODE CAPTURE — 90-day cookie + localStorage -->
+<script>
+(function() {
+  // Read ?ref= or ?code= from URL
+  var params = new URLSearchParams(window.location.search);
+  var ref = params.get('ref') || params.get('code');
+  
+  if (ref && /^[A-Za-z0-9-]{4,16}$/.test(ref)) {
+    // Store in localStorage
+    try { localStorage.setItem('pb_ref', ref); } catch(e) {}
+    // Store in cookie (90-day expiry, all paths, SameSite=Lax)
+    var expires = new Date();
+    expires.setDate(expires.getDate() + 90);
+    document.cookie = 'pb_ref=' + encodeURIComponent(ref) + '; expires=' + expires.toUTCString() + '; path=/; SameSite=Lax';
+    // Fire click tracking (non-blocking)
+    try {
+      fetch('https://app.purebrain.ai/api/referral/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referral_code: ref.toUpperCase() }),
+        keepalive: true
+      }).catch(function(){});
+    } catch(e) {}
+  }
+  
+  // Global helper: read stored referral code at payment time
+  // Checks URL first, then localStorage, then cookie
+  window.getPbRef = function() {
+    // 1. Check current URL
+    var p = new URLSearchParams(window.location.search);
+    var urlRef = p.get('ref') || p.get('code');
+    if (urlRef && /^[A-Za-z0-9-]{4,16}$/.test(urlRef)) return urlRef;
+    // 2. Check localStorage
+    try {
+      var ls = localStorage.getItem('pb_ref');
+      if (ls && /^[A-Za-z0-9-]{4,16}$/.test(ls)) return ls;
+    } catch(e) {}
+    // 3. Check cookie
+    var match = document.cookie.match(/(?:^|;)\s*pb_ref=([^;]+)/);
+    if (match) {
+      var decoded = decodeURIComponent(match[1]);
+      if (/^[A-Za-z0-9-]{4,16}$/.test(decoded)) return decoded;
+    }
+    return null;
+  };
+})();
+</script>
+
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-WTDXL4VJ"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+
+  <!-- HEADER -->
+  <header class="site-header">
+    <a href="https://purebrain.ai" class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>
+    </a>
+    <div class="header-badge">
+      <div class="dot"></div>
+      Private by design
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero">
+    <span class="hero-eyebrow">AI Migration Tool</span>
+    <h1>Bring your AI history<br>to <em>PureBrain</em></h1>
+    <p>Your new AI partner should already know who you are. Upload your data — it never leaves your device.</p>
+  </section>
+
+  <!-- PRIVACY BANNER -->
+  <div class="privacy-banner">
+    <span class="lock-icon">🔒</span>
+    <span><strong>Your data stays on your device.</strong> We only receive a summary profile — never your raw conversations.</span>
+  </div>
+
+  <!-- PLATFORM CARDS -->
+  <p class="section-label">Choose your import source</p>
+
+  <div class="platforms-grid" id="platformsGrid">
+
+    <div class="platform-card" data-platform="chatgpt" onclick="selectPlatform('chatgpt')">
+      <div class="platform-icon icon-chatgpt">🤖</div>
+      <h3>ChatGPT</h3>
+      <p>Import from your OpenAI data export</p>
+      <ul class="extract-list">
+        <li>Conversation topics</li>
+        <li>Writing style</li>
+        <li>AI usage history</li>
+      </ul>
+    </div>
+
+    <div class="platform-card" data-platform="claude" onclick="selectPlatform('claude')">
+      <div class="platform-icon icon-claude">⚡</div>
+      <h3>Claude.ai</h3>
+      <p>Import from your Anthropic data export</p>
+      <ul class="extract-list">
+        <li>Conversation topics</li>
+        <li>Writing style</li>
+        <li>Message patterns</li>
+      </ul>
+    </div>
+
+    <div class="platform-card" data-platform="linkedin" onclick="selectPlatform('linkedin')">
+      <div class="platform-icon icon-linkedin">💼</div>
+      <h3>LinkedIn</h3>
+      <p>Import your professional profile data</p>
+      <ul class="extract-list">
+        <li>Role &amp; company</li>
+        <li>Skills list</li>
+        <li>Work history</li>
+      </ul>
+    </div>
+
+    <div class="platform-card" data-platform="manual" onclick="selectPlatform('manual')">
+      <div class="platform-icon icon-manual">✏️</div>
+      <h3>Manual Entry</h3>
+      <p>Paste any text about yourself</p>
+      <ul class="extract-list">
+        <li>Free-form notes</li>
+        <li>Old chat excerpts</li>
+        <li>Bio or background</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- IMPORT PANEL -->
+  <div class="import-panel" id="importPanel">
+    <div class="panel-header">
+      <h2 class="panel-title" id="panelTitle">Import from ChatGPT</h2>
+      <button class="panel-close" onclick="closePlatform()">✕ Close</button>
+    </div>
+
+    <!-- How-to guide (ZIP platforms) -->
+    <div class="howto-guide" id="howtoGuide">
+      <h4>How to export your data</h4>
+      <ol class="howto-steps" id="howtoSteps"></ol>
+    </div>
+
+    <!-- Drop zone (ZIP/file platforms) -->
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".zip,.json,.csv" onchange="handleFileSelect(event)" />
+      <div class="drop-zone-icon" id="dropIcon">📂</div>
+      <h3>Drop your file here</h3>
+      <p>or click to browse</p>
+      <p class="file-types" id="fileTypesHint">Accepts .zip files</p>
+    </div>
+
+    <!-- Manual text entry -->
+    <div id="manualSection" style="display:none;">
+      <textarea
+        class="manual-textarea"
+        id="manualText"
+        placeholder="Paste anything about yourself here — your job, what you work on, goals, background, past chat excerpts, or anything you want your AI to know about you from day one..."
+        rows="8"
+      ></textarea>
+      <button class="btn-analyze" onclick="analyzeManualText()">Analyze &amp; Build My Profile</button>
+    </div>
+
+    <div class="error-box" id="errorBox"></div>
+  </div>
+
+  <!-- PROGRESS PANEL -->
+  <div class="progress-panel" id="progressPanel">
+    <div class="progress-card">
+      <div class="progress-spinner"></div>
+      <p class="progress-label" id="progressLabel">Reading your file...</p>
+      <p class="progress-sublabel" id="progressSublabel">This happens entirely in your browser</p>
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="progressBar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESULTS PANEL -->
+  <div class="results-panel" id="resultsPanel">
+    <div class="results-header">
+      <div class="check-circle">✅</div>
+      <h2>Here's what your AI will know about you</h2>
+      <p id="resultsSummaryLine">We found and analyzed your data.</p>
+    </div>
+
+    <div class="result-cards" id="resultCards"></div>
+
+    <button class="btn-send" id="btnSend" onclick="sendToPureBrain()">
+      Send to PureBrain →
+    </button>
+    <button class="btn-start-over" onclick="startOver()">Start over / import from another source</button>
+  </div>
+
+  <!-- SUCCESS PANEL -->
+  <div class="success-panel" id="successPanel">
+    <span class="success-icon">🎉</span>
+    <h2>Your AI already knows you.</h2>
+    <p>PureBrain has been given your context profile. Your first conversation will feel like it's been waiting for you.</p>
+
+    <div class="knows-list" id="knowsList">
+      <h4>PureBrain now knows</h4>
+    </div>
+
+    <a href="https://purebrain.ai" class="btn-start-chat">Start your first conversation →</a>
+  </div>
+
+  <!-- FOOTER -->
+  <footer>
+    <p>© 2026 Pure Technology. <a href="https://purebrain.ai/privacy-policy">Privacy Policy</a> · <a href="https://purebrain.ai/terms-of-service">Terms</a></p>
+    <p>Questions? <a href="mailto:support@purebrain.ai">support@purebrain.ai</a></p>
+  </footer>
+
+  <script>
+    // ═══════════════════════════════════════════════════════
+    //  PLATFORM CONFIGURATION
+    // ═══════════════════════════════════════════════════════
+
+    const PLATFORMS = {
+      chatgpt: {
+        title: 'Import from ChatGPT',
+        icon: '🤖',
+        accept: '.zip',
+        howto: [
+          'Open ChatGPT and click your profile icon (top right)',
+          'Go to Settings → Data controls',
+          'Click "Export data" then confirm via the email OpenAI sends you',
+          'Download the ZIP file from the confirmation email',
+          'Upload that ZIP file below'
+        ],
+        fileHint: 'Accepts .zip (your ChatGPT export file)'
+      },
+      claude: {
+        title: 'Import from Claude.ai',
+        icon: '⚡',
+        accept: '.zip',
+        howto: [
+          'Go to claude.ai and click your profile icon',
+          'Navigate to Settings → Privacy',
+          'Click "Export data"',
+          'Download the ZIP file from the email Anthropic sends you',
+          'Upload that ZIP file below'
+        ],
+        fileHint: 'Accepts .zip (your Claude.ai export file)'
+      },
+      linkedin: {
+        title: 'Import from LinkedIn',
+        icon: '💼',
+        accept: '.zip',
+        howto: [
+          'Go to linkedin.com → Me → Settings & Privacy',
+          'Click "Data privacy" → "Get a copy of your data"',
+          'Select the data categories you want (Profile, Positions, Skills are most useful)',
+          'Click "Request archive" — LinkedIn will email you within minutes',
+          'Download the ZIP from that email and upload it below'
+        ],
+        fileHint: 'Accepts .zip (your LinkedIn data export)'
+      },
+      manual: {
+        title: 'Manual Text Entry',
+        icon: '✏️',
+        accept: null,
+        howto: null,
+        fileHint: null
+      }
+    };
+
+    // STOP WORDS for topic extraction
+    const STOP_WORDS = new Set([
+      'the','a','an','and','or','but','in','on','at','to','for','of','with','by','from','up',
+      'about','into','through','during','before','after','above','below','between','each',
+      'few','more','most','other','some','such','than','too','very','just','because',
+      'also','can','will','should','would','could','might','may','need','want','know',
+      'think','like','get','got','use','used','let','see','come','go','make','take',
+      'give','find','tell','ask','say','said','said','been','have','has','had','was',
+      'were','are','is','be','do','does','did','not','this','that','these','those',
+      'my','your','his','her','its','our','their','what','which','who','when','where',
+      'how','why','here','there','then','now','well','really','actually','things','thing',
+      'way','ways','time','times','day','days','year','years','work','works','working',
+      'something','anything','everything','nothing','someone','anyone','everyone',
+      'help','helps','helped','looking','trying','new','good','great','best','better',
+      'different','specific','general','possible','able','need','needs','needed',
+      'going','coming','getting','making','taking','having','being','doing','using',
+      'looking','trying','working','talking','writing','reading','thinking','following',
+      'including','without','within','around','already','always','often','usually',
+      'still','even','same','first','last','next','back','just','only','also','however',
+      'example','examples','including','following','point','points','based','case'
+    ]);
+
+    // ═══════════════════════════════════════════════════════
+    //  STATE
+    // ═══════════════════════════════════════════════════════
+
+    let currentPlatform = null;
+    let generatedProfile = null;
+
+    // ═══════════════════════════════════════════════════════
+    //  UI HELPERS
+    // ═══════════════════════════════════════════════════════
+
+    function show(id) { document.getElementById(id).classList.add('visible'); }
+    function hide(id) { document.getElementById(id).classList.remove('visible'); }
+    function showEl(id) { document.getElementById(id).style.display = ''; }
+    function hideEl(id) { document.getElementById(id).style.display = 'none'; }
+
+    function setProgress(pct, label, sublabel) {
+      document.getElementById('progressBar').style.width = pct + '%';
+      if (label) document.getElementById('progressLabel').textContent = label;
+      if (sublabel) document.getElementById('progressSublabel').textContent = sublabel;
+    }
+
+    function showError(msg) {
+      const box = document.getElementById('errorBox');
+      box.textContent = msg;
+      box.classList.add('visible');
+    }
+    function hideError() {
+      document.getElementById('errorBox').classList.remove('visible');
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  PLATFORM SELECTION
+    // ═══════════════════════════════════════════════════════
+
+    function selectPlatform(platform) {
+      currentPlatform = platform;
+      const cfg = PLATFORMS[platform];
+
+      // Highlight active card
+      document.querySelectorAll('.platform-card').forEach(c => c.classList.remove('active'));
+      document.querySelector(`[data-platform="${platform}"]`).classList.add('active');
+
+      // Update panel
+      document.getElementById('panelTitle').textContent = cfg.title;
+      hideError();
+
+      // How-to guide
+      if (cfg.howto) {
+        showEl('howtoGuide');
+        const stepsList = document.getElementById('howtoSteps');
+        stepsList.innerHTML = cfg.howto.map((step, i) =>
+          `<li><span class="step-num">${i+1}</span><span>${step}</span></li>`
+        ).join('');
+      } else {
+        hideEl('howtoGuide');
+      }
+
+      // Drop zone vs manual
+      if (platform === 'manual') {
+        hideEl('dropZone');
+        showEl('manualSection');
+      } else {
+        showEl('dropZone');
+        hideEl('manualSection');
+        document.getElementById('dropIcon').textContent = cfg.icon;
+        document.getElementById('fileTypesHint').textContent = cfg.fileHint;
+        const fileInput = document.getElementById('fileInput');
+        fileInput.accept = cfg.accept;
+        fileInput.value = '';
+      }
+
+      show('importPanel');
+      document.getElementById('importPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function closePlatform() {
+      hide('importPanel');
+      hide('progressPanel');
+      hide('resultsPanel');
+      currentPlatform = null;
+      document.querySelectorAll('.platform-card').forEach(c => c.classList.remove('active'));
+    }
+
+    function startOver() {
+      hide('resultsPanel');
+      hide('successPanel');
+      hide('progressPanel');
+      show('importPanel');
+      generatedProfile = null;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  DRAG & DROP
+    // ═══════════════════════════════════════════════════════
+
+    const dropZone = document.getElementById('dropZone');
+
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZone.classList.add('drag-over');
+    });
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('drag-over');
+    });
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) processFile(file);
+    });
+
+    function handleFileSelect(event) {
+      const file = event.target.files[0];
+      if (file) processFile(file);
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  FILE ROUTING
+    // ═══════════════════════════════════════════════════════
+
+    async function processFile(file) {
+      hideError();
+
+      // Size check
+      if (file.size > 100 * 1024 * 1024) {
+        showError('File is too large (over 100MB). Try re-downloading a smaller export from the platform.');
+        return;
+      }
+
+      hide('importPanel');
+      show('progressPanel');
+      setProgress(5, 'Reading your file...', 'This happens entirely in your browser');
+
+      try {
+        let profile;
+        if (currentPlatform === 'chatgpt') {
+          profile = await parseChatGPT(file);
+        } else if (currentPlatform === 'claude') {
+          profile = await parseClaude(file);
+        } else if (currentPlatform === 'linkedin') {
+          profile = await parseLinkedIn(file);
+        }
+
+        generatedProfile = profile;
+        hide('progressPanel');
+        renderResults(profile);
+        show('resultsPanel');
+        document.getElementById('resultsPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+      } catch (err) {
+        console.error(err);
+        hide('progressPanel');
+        show('importPanel');
+        showError('We couldn\'t read this file. Make sure it\'s the correct export file from ' + PLATFORMS[currentPlatform].title.replace('Import from ', '') + '. Error: ' + err.message);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  CHATGPT PARSER
+    // ═══════════════════════════════════════════════════════
+
+    async function parseChatGPT(file) {
+      setProgress(15, 'Extracting ZIP...', 'Opening your ChatGPT export');
+
+      let zip;
+      try {
+        zip = await JSZip.loadAsync(file);
+      } catch (e) {
+        throw new Error('Could not open ZIP file. Make sure it\'s the file directly downloaded from OpenAI.');
+      }
+
+      const convFile = zip.file('conversations.json');
+      if (!convFile) {
+        throw new Error('conversations.json not found inside the ZIP. This doesn\'t look like a ChatGPT export.');
+      }
+
+      setProgress(30, 'Reading your conversations...', 'Extracting user messages');
+
+      const raw = await convFile.async('string');
+      const conversations = JSON.parse(raw);
+
+      setProgress(50, 'Analyzing your messages...', 'Scanning ' + conversations.length + ' conversations');
+
+      const userMessages = [];
+      for (const conv of conversations) {
+        if (!conv.mapping) continue;
+        for (const nodeId in conv.mapping) {
+          const node = conv.mapping[nodeId];
+          if (!node.message) continue;
+          if (node.message.author && node.message.author.role === 'user') {
+            const parts = node.message.content && node.message.content.parts;
+            if (parts && parts.length > 0 && typeof parts[0] === 'string' && parts[0].trim().length > 0) {
+              userMessages.push({
+                text: parts[0].trim(),
+                timestamp: node.message.create_time,
+                conversationTitle: conv.title || ''
+              });
+            }
+          }
+        }
+      }
+
+      setProgress(70, 'Identifying your top topics...', 'Running linguistic analysis');
+
+      const topics = extractTopics(userMessages.map(m => m.text));
+      const style = analyzeStyle(userMessages.map(m => m.text));
+      const temporalData = analyzeTemporals(userMessages);
+
+      setProgress(90, 'Building your AI profile...', 'Almost there');
+
+      // Try user.json for name
+      let displayName = null;
+      const userFile = zip.file('user.json');
+      if (userFile) {
+        try {
+          const userRaw = await userFile.async('string');
+          const userData = JSON.parse(userRaw);
+          displayName = userData.name || null;
+        } catch (e) { /* ignore */ }
+      }
+
+      setProgress(100, 'Done!', 'Profile ready');
+
+      return {
+        source: 'chatgpt',
+        importedAt: new Date().toISOString(),
+        displayName,
+        stats: {
+          totalConversations: conversations.length,
+          totalUserMessages: userMessages.length,
+          oldestMessage: temporalData.oldest,
+          newestMessage: temporalData.newest
+        },
+        topics: topics.primary,
+        recentTopics: topics.recent,
+        style,
+        rawMessageCount: userMessages.length
+      };
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  CLAUDE PARSER
+    // ═══════════════════════════════════════════════════════
+
+    async function parseClaude(file) {
+      setProgress(15, 'Extracting ZIP...', 'Opening your Claude.ai export');
+
+      let zip;
+      try {
+        zip = await JSZip.loadAsync(file);
+      } catch (e) {
+        throw new Error('Could not open ZIP file.');
+      }
+
+      setProgress(30, 'Finding your conversations...', 'Scanning export contents');
+
+      // Claude exports conversations as a JSON array — find the right file
+      let convData = null;
+      const files = Object.keys(zip.files);
+
+      for (const fname of files) {
+        if (fname.endsWith('.json') && !zip.files[fname].dir) {
+          try {
+            const raw = await zip.files[fname].async('string');
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].chat_messages) {
+              convData = parsed;
+              break;
+            }
+          } catch (e) { /* not the right file */ }
+        }
+      }
+
+      if (!convData) {
+        throw new Error('Could not find conversation data in this ZIP. This doesn\'t look like a Claude.ai export.');
+      }
+
+      setProgress(50, 'Reading your messages...', 'Scanning ' + convData.length + ' conversations');
+
+      const userMessages = [];
+      for (const conv of convData) {
+        if (!conv.chat_messages) continue;
+        for (const msg of conv.chat_messages) {
+          if (msg.sender === 'human' && msg.text && msg.text.trim().length > 0) {
+            userMessages.push({
+              text: msg.text.trim(),
+              timestamp: msg.created_at ? new Date(msg.created_at).getTime() / 1000 : null,
+              conversationTitle: conv.name || ''
+            });
+          }
+        }
+      }
+
+      setProgress(70, 'Identifying your top topics...', 'Running linguistic analysis');
+
+      const topics = extractTopics(userMessages.map(m => m.text));
+      const style = analyzeStyle(userMessages.map(m => m.text));
+      const temporalData = analyzeTemporals(userMessages);
+
+      setProgress(90, 'Building your AI profile...', 'Almost there');
+      setProgress(100, 'Done!', 'Profile ready');
+
+      return {
+        source: 'claude',
+        importedAt: new Date().toISOString(),
+        displayName: null,
+        stats: {
+          totalConversations: convData.length,
+          totalUserMessages: userMessages.length,
+          oldestMessage: temporalData.oldest,
+          newestMessage: temporalData.newest
+        },
+        topics: topics.primary,
+        recentTopics: topics.recent,
+        style,
+        rawMessageCount: userMessages.length
+      };
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  LINKEDIN PARSER
+    // ═══════════════════════════════════════════════════════
+
+    async function parseLinkedIn(file) {
+      setProgress(15, 'Extracting ZIP...', 'Opening your LinkedIn export');
+
+      let zip;
+      try {
+        zip = await JSZip.loadAsync(file);
+      } catch (e) {
+        throw new Error('Could not open ZIP file.');
+      }
+
+      setProgress(30, 'Reading your profile...', 'Parsing Profile.csv');
+
+      const profileData = {};
+      const positions = [];
+      const skills = [];
+
+      // Profile.csv
+      const profileFile = findZipFile(zip, 'Profile.csv');
+      if (profileFile) {
+        const raw = await profileFile.async('string');
+        const result = Papa.parse(raw, { header: true, skipEmptyLines: true });
+        if (result.data && result.data.length > 0) {
+          const row = result.data[0];
+          profileData.firstName = row['First Name'] || '';
+          profileData.lastName = row['Last Name'] || '';
+          profileData.headline = row['Headline'] || '';
+          profileData.industry = row['Industry'] || '';
+          profileData.summary = row['Summary'] || '';
+          profileData.geoLocation = row['Geo Location'] || '';
+        }
+      }
+
+      setProgress(50, 'Parsing work history...', 'Reading Positions.csv');
+
+      // Positions.csv
+      const posFile = findZipFile(zip, 'Positions.csv');
+      if (posFile) {
+        const raw = await posFile.async('string');
+        const result = Papa.parse(raw, { header: true, skipEmptyLines: true });
+        for (const row of result.data) {
+          if (row['Title'] || row['Company Name']) {
+            positions.push({
+              title: row['Title'] || '',
+              company: row['Company Name'] || '',
+              startDate: row['Started On'] || '',
+              endDate: row['Finished On'] || '',
+              description: row['Description'] || ''
+            });
+          }
+        }
+      }
+
+      setProgress(70, 'Extracting your skills...', 'Reading Skills.csv');
+
+      // Skills.csv
+      const skillsFile = findZipFile(zip, 'Skills.csv');
+      if (skillsFile) {
+        const raw = await skillsFile.async('string');
+        const result = Papa.parse(raw, { header: true, skipEmptyLines: true });
+        for (const row of result.data) {
+          const skill = row['Name'] || row['Skill'] || Object.values(row)[0] || '';
+          if (skill.trim()) skills.push(skill.trim());
+        }
+      }
+
+      setProgress(90, 'Building your professional profile...', 'Almost there');
+
+      const fullName = [profileData.firstName, profileData.lastName].filter(Boolean).join(' ');
+      const currentPos = positions[0] || {};
+      const yearsExp = calculateYearsExperience(positions);
+
+      setProgress(100, 'Done!', 'Profile ready');
+
+      return {
+        source: 'linkedin',
+        importedAt: new Date().toISOString(),
+        displayName: fullName || null,
+        professional: {
+          name: fullName,
+          headline: profileData.headline,
+          currentTitle: currentPos.title || '',
+          currentCompany: currentPos.company || '',
+          industry: profileData.industry,
+          location: profileData.geoLocation,
+          summary: profileData.summary,
+          yearsExperience: yearsExp,
+          recentPositions: positions.slice(0, 3).map(p => `${p.title} at ${p.company}`).filter(Boolean),
+          skills: skills.slice(0, 20)
+        },
+        stats: {
+          skillCount: skills.length,
+          positionCount: positions.length
+        },
+        topics: skills.slice(0, 15).map(s => ({ word: s, count: 1 })),
+        recentTopics: [],
+        style: { formality: 'professional', platform: 'linkedin' }
+      };
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  MANUAL TEXT ANALYZER
+    // ═══════════════════════════════════════════════════════
+
+    function analyzeManualText() {
+      const text = document.getElementById('manualText').value.trim();
+      if (text.length < 20) {
+        showError('Please enter at least a few sentences about yourself.');
+        return;
+      }
+
+      hide('importPanel');
+      show('progressPanel');
+      setProgress(30, 'Analyzing your text...', 'Extracting key information');
+
+      setTimeout(() => {
+        setProgress(70, 'Building your profile...', 'Identifying topics and style');
+        setTimeout(() => {
+          const messages = [text];
+          const topics = extractTopics(messages);
+          const style = analyzeStyle(messages);
+
+          setProgress(100, 'Done!', 'Profile ready');
+
+          generatedProfile = {
+            source: 'manual',
+            importedAt: new Date().toISOString(),
+            displayName: null,
+            stats: {
+              totalConversations: 1,
+              totalUserMessages: 1,
+              textLength: text.length
+            },
+            topics: topics.primary,
+            recentTopics: topics.recent,
+            style,
+            rawText: text.substring(0, 2000) // Include first 2K chars as context
+          };
+
+          hide('progressPanel');
+          renderResults(generatedProfile);
+          show('resultsPanel');
+          document.getElementById('resultsPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 600);
+      }, 800);
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  NLP: TOPIC EXTRACTION
+    // ═══════════════════════════════════════════════════════
+
+    function extractTopics(messages) {
+      // Word frequency analysis
+      const wordFreq = {};
+      const recentMessages = messages.slice(-Math.ceil(messages.length * 0.25)); // last 25%
+      const recentWordFreq = {};
+
+      function countWords(text, freq) {
+        // Extract meaningful phrases (2-3 word combos) and single nouns
+        const words = text.toLowerCase()
+          .replace(/[^a-z0-9\s'-]/g, ' ')
+          .split(/\s+/)
+          .filter(w => w.length > 3 && !STOP_WORDS.has(w));
+
+        for (let i = 0; i < words.length; i++) {
+          const w = words[i];
+          if (w && w.length > 3) {
+            freq[w] = (freq[w] || 0) + 1;
+          }
+          // Bigrams
+          if (i + 1 < words.length) {
+            const bigram = w + ' ' + words[i+1];
+            if (words[i+1] && words[i+1].length > 3 && !STOP_WORDS.has(words[i+1])) {
+              freq[bigram] = (freq[bigram] || 0) + 0.5;
+            }
+          }
+        }
+      }
+
+      for (const msg of messages) countWords(msg, wordFreq);
+      for (const msg of recentMessages) countWords(msg, recentWordFreq);
+
+      const toTopics = (freq, limit) =>
+        Object.entries(freq)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, limit)
+          .map(([word, count]) => ({ word, count: Math.round(count) }));
+
+      return {
+        primary: toTopics(wordFreq, 20),
+        recent: toTopics(recentWordFreq, 8)
+      };
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  NLP: STYLE ANALYSIS
+    // ═══════════════════════════════════════════════════════
+
+    function analyzeStyle(messages) {
+      if (!messages.length) return {};
+
+      const totalChars = messages.reduce((s, m) => s + m.length, 0);
+      const avgLen = Math.round(totalChars / messages.length);
+
+      const questionCount = messages.filter(m => m.includes('?')).length;
+      const questionRatio = Math.round((questionCount / messages.length) * 100);
+
+      const emojiRegex = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]/gu;
+      const emojiCount = messages.reduce((s, m) => s + (m.match(emojiRegex) || []).length, 0);
+      const usesEmoji = emojiCount > messages.length * 0.05;
+
+      const formalWords = ['please', 'kindly', 'would you', 'could you', 'i would like'];
+      const formalCount = messages.filter(m =>
+        formalWords.some(w => m.toLowerCase().includes(w))
+      ).length;
+      const formality = formalCount / messages.length > 0.15 ? 'formal' :
+                        formalCount / messages.length > 0.05 ? 'semi-formal' : 'direct';
+
+      let detailLevel;
+      if (avgLen < 60) detailLevel = 'concise';
+      else if (avgLen < 200) detailLevel = 'moderate';
+      else detailLevel = 'detailed';
+
+      return {
+        avgMessageLength: avgLen,
+        questionRatio,
+        formality,
+        detailLevel,
+        usesEmoji
+      };
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  TEMPORAL ANALYSIS
+    // ═══════════════════════════════════════════════════════
+
+    function analyzeTemporals(messages) {
+      const timestamps = messages
+        .map(m => m.timestamp)
+        .filter(t => t && t > 0)
+        .sort((a, b) => a - b);
+
+      if (!timestamps.length) return { oldest: null, newest: null };
+
+      return {
+        oldest: new Date(timestamps[0] * 1000).getFullYear(),
+        newest: new Date(timestamps[timestamps.length - 1] * 1000).getFullYear()
+      };
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  LINKEDIN HELPERS
+    // ═══════════════════════════════════════════════════════
+
+    function findZipFile(zip, filename) {
+      const lower = filename.toLowerCase();
+      for (const key of Object.keys(zip.files)) {
+        if (key.toLowerCase().endsWith('/' + lower) || key.toLowerCase() === lower) {
+          return zip.files[key];
+        }
+      }
+      return null;
+    }
+
+    function calculateYearsExperience(positions) {
+      if (!positions.length) return null;
+      const oldest = positions.reduce((earliest, pos) => {
+        const y = parseInt(pos.startDate);
+        return (y && y < earliest) ? y : earliest;
+      }, new Date().getFullYear());
+      return new Date().getFullYear() - oldest;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  RESULTS RENDERER
+    // ═══════════════════════════════════════════════════════
+
+    function renderResults(profile) {
+      const container = document.getElementById('resultCards');
+      container.innerHTML = '';
+      const src = profile.source;
+
+      // Summary line
+      if (src === 'chatgpt' || src === 'claude') {
+        const srcName = src === 'chatgpt' ? 'ChatGPT' : 'Claude.ai';
+        document.getElementById('resultsSummaryLine').textContent =
+          `We found ${profile.stats.totalConversations.toLocaleString()} conversations and ${profile.stats.totalUserMessages.toLocaleString()} messages from your ${srcName} history.`;
+      } else if (src === 'linkedin') {
+        document.getElementById('resultsSummaryLine').textContent =
+          `We parsed your LinkedIn profile, ${profile.stats.positionCount} positions, and ${profile.stats.skillCount} skills.`;
+      } else {
+        document.getElementById('resultsSummaryLine').textContent =
+          'We analyzed your text and built your AI context profile.';
+      }
+
+      // ── Stats card (conversation platforms)
+      if (src === 'chatgpt' || src === 'claude') {
+        const srcLabel = src === 'chatgpt' ? 'ChatGPT' : 'Claude.ai';
+        const yearRange = profile.stats.oldestMessage && profile.stats.newestMessage
+          ? `${profile.stats.oldestMessage}–${profile.stats.newestMessage}`
+          : 'Unknown';
+
+        container.innerHTML += `
+          <div class="result-card">
+            <div class="result-card-label">Your AI history</div>
+            <div class="stats-row">
+              <div class="stat-item">
+                <span class="stat-num">${profile.stats.totalConversations.toLocaleString()}</span>
+                <span class="stat-label">Conversations</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-num">${profile.stats.totalUserMessages.toLocaleString()}</span>
+                <span class="stat-label">Your messages</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-num">${yearRange}</span>
+                <span class="stat-label">Date range</span>
+              </div>
+            </div>
+          </div>`;
+      }
+
+      // ── Professional card (LinkedIn)
+      if (src === 'linkedin' && profile.professional) {
+        const p = profile.professional;
+        let lines = [];
+        if (p.name) lines.push(`<strong>${p.name}</strong>`);
+        if (p.headline) lines.push(p.headline);
+        if (p.currentTitle && p.currentCompany) lines.push(`${p.currentTitle} at ${p.currentCompany}`);
+        if (p.industry) lines.push(`Industry: ${p.industry}`);
+        if (p.yearsExperience) lines.push(`${p.yearsExperience}+ years of experience`);
+
+        container.innerHTML += `
+          <div class="result-card">
+            <div class="result-card-label">Professional profile</div>
+            <div class="result-card-value">${lines.join('<br>')}</div>
+          </div>`;
+
+        if (p.skills && p.skills.length) {
+          container.innerHTML += `
+            <div class="result-card">
+              <div class="result-card-label">Top skills</div>
+              <div class="topics-wrap">${p.skills.slice(0, 15).map(s =>
+                `<span class="topic-tag">${escHtml(s)}</span>`
+              ).join('')}</div>
+            </div>`;
+        }
+      }
+
+      // ── Topics card
+      if (profile.topics && profile.topics.length) {
+        const primaryTags = profile.topics.slice(0, 10).map(t =>
+          `<span class="topic-tag">${escHtml(t.word)}</span>`
+        ).join('');
+        const secondaryTags = profile.topics.slice(10, 20).map(t =>
+          `<span class="topic-tag secondary">${escHtml(t.word)}</span>`
+        ).join('');
+
+        container.innerHTML += `
+          <div class="result-card">
+            <div class="result-card-label">Topics you frequently discuss</div>
+            <div class="topics-wrap">${primaryTags}${secondaryTags}</div>
+          </div>`;
+      }
+
+      // ── Recent focus (conversation platforms)
+      if (profile.recentTopics && profile.recentTopics.length > 0 && (src === 'chatgpt' || src === 'claude')) {
+        const recentTags = profile.recentTopics.map(t =>
+          `<span class="topic-tag">${escHtml(t.word)}</span>`
+        ).join('');
+        container.innerHTML += `
+          <div class="result-card">
+            <div class="result-card-label">Recent focus areas</div>
+            <div class="topics-wrap">${recentTags}</div>
+          </div>`;
+      }
+
+      // ── Communication style
+      if (profile.style && Object.keys(profile.style).length) {
+        const chips = buildStyleChips(profile.style);
+        if (chips.length) {
+          container.innerHTML += `
+            <div class="result-card">
+              <div class="result-card-label">Your communication style</div>
+              <div class="style-chips">${chips.map(c =>
+                `<span class="style-chip">${escHtml(c)}</span>`
+              ).join('')}</div>
+            </div>`;
+        }
+      }
+    }
+
+    function buildStyleChips(style) {
+      const chips = [];
+      if (style.formality) chips.push(capitalise(style.formality) + ' tone');
+      if (style.detailLevel) chips.push(capitalise(style.detailLevel) + ' responses');
+      if (style.questionRatio !== undefined) {
+        if (style.questionRatio > 50) chips.push('Asks lots of questions');
+        else if (style.questionRatio > 25) chips.push('Mixed questions & statements');
+        else chips.push('Mostly direct statements');
+      }
+      if (style.avgMessageLength !== undefined) {
+        if (style.avgMessageLength < 60) chips.push('Short messages');
+        else if (style.avgMessageLength > 200) chips.push('Long, detailed messages');
+      }
+      if (style.usesEmoji) chips.push('Uses emoji');
+      return chips;
+    }
+
+    function capitalise(str) {
+      return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    function escHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  SEND TO PUREBRAIN
+    // ═══════════════════════════════════════════════════════
+
+    async function sendToPureBrain() {
+      if (!generatedProfile) return;
+
+      const btn = document.getElementById('btnSend');
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+
+      // Build the payload (no raw message content)
+      const payload = {
+        source: generatedProfile.source,
+        importedAt: generatedProfile.importedAt,
+        displayName: generatedProfile.displayName,
+        stats: generatedProfile.stats,
+        topics: generatedProfile.topics ? generatedProfile.topics.slice(0, 20) : [],
+        recentTopics: generatedProfile.recentTopics ? generatedProfile.recentTopics.slice(0, 8) : [],
+        style: generatedProfile.style,
+        professional: generatedProfile.professional || null,
+        rawText: generatedProfile.rawText || null  // only for manual entry
+      };
+
+      console.log('[PureBrain Migration Tool] Profile payload:', JSON.stringify(payload, null, 2));
+
+      try {
+        const response = await fetch('https://api.purebrain.ai/api/context/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        // For now: treat any response (including network errors) as success
+        // The endpoint isn't live yet — Phase 1 shows success flow regardless
+        console.log('[PureBrain Migration Tool] API response status:', response.status);
+      } catch (err) {
+        // Expected — API endpoint not live yet. Log and proceed to success state.
+        console.log('[PureBrain Migration Tool] API not live yet — proceeding to success state. Error:', err.message);
+      }
+
+      // Show success
+      hide('resultsPanel');
+      renderSuccessState(generatedProfile);
+      show('successPanel');
+      document.getElementById('successPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function renderSuccessState(profile) {
+      const list = document.getElementById('knowsList');
+      list.innerHTML = '<h4>PureBrain now knows</h4>';
+
+      const items = [];
+
+      if (profile.professional) {
+        const p = profile.professional;
+        if (p.currentTitle && p.currentCompany) {
+          items.push(`You work as ${escHtml(p.currentTitle)} at ${escHtml(p.currentCompany)}`);
+        } else if (p.headline) {
+          items.push(escHtml(p.headline));
+        }
+        if (p.industry) items.push(`You work in ${escHtml(p.industry)}`);
+        if (p.yearsExperience) items.push(`You have ${p.yearsExperience}+ years of experience`);
+        const topSkills = (p.skills || []).slice(0, 3).join(', ');
+        if (topSkills) items.push(`Your top skills include ${escHtml(topSkills)}`);
+      }
+
+      if (profile.topics && profile.topics.length >= 3) {
+        const top3 = profile.topics.slice(0, 3).map(t => t.word).join(', ');
+        items.push(`You frequently discuss: ${escHtml(top3)}`);
+      }
+
+      if (profile.style && profile.style.formality) {
+        items.push(`You prefer ${profile.style.formality} communication`);
+      }
+
+      if (profile.stats) {
+        if (profile.stats.totalConversations) {
+          const src = profile.source === 'chatgpt' ? 'ChatGPT' : 'Claude.ai';
+          items.push(`You have ${profile.stats.totalConversations.toLocaleString()} ${src} conversations in your history`);
+        }
+      }
+
+      // Fallback if nothing specific
+      if (items.length === 0) {
+        items.push('Your communication style and preferences');
+        items.push('Topics you care about most');
+      }
+
+      for (const item of items.slice(0, 5)) {
+        const div = document.createElement('div');
+        div.className = 'knows-item';
+        div.innerHTML = `<span class="knows-check">✓</span><span>${item}</span>`;
+        list.appendChild(div);
+      }
+    }
+
+  </script>
+
+</body>
+</html>

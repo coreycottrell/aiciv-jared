@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dual Glass FBO Ping-Pong Avatar - Training Session Apr 01</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #040608; overflow: hidden; font-family: system-ui; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #info {
+    position: fixed; bottom: 20px; left: 20px;
+    color: rgba(255,255,255,0.3); font-size: 12px;
+    pointer-events: none; z-index: 10;
+  }
+</style>
+</head>
+<body>
+<div id="info">Dual Glass FBO Ping-Pong | True Inter-Object Refraction | Training Apr 01 2026</div>
+<canvas id="c"></canvas>
+
+<script>
+// ============================================================
+// PURE WEBGL2: DUAL GLASS SPHERES WITH FBO PING-PONG REFRACTION
+//
+// Architecture:
+//   Pass 0: Render sphere B into FBO-A (sphere A samples FBO-A for refraction of B)
+//   Pass 1: Render sphere A into FBO-B (sphere B samples FBO-B for refraction of A)
+//   Pass 2: Composite both FBOs + background into final frame
+//   Each sphere refracts the OTHER through its glass material.
+//
+// This demonstrates true inter-object refraction via ping-pong FBOs.
+// ============================================================
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias: true, alpha: false });
+if (!gl) { document.body.innerHTML = '<h1 style="color:white;padding:40px">WebGL2 required</h1>'; throw 'No WebGL2'; }
+
+// ============================================================
+// CONSTANTS
+// ============================================================
+const PI = Math.PI;
+const TAU = PI * 2;
+const PHI = 1.618033988749895;
+const BLUE  = [0.165, 0.576, 0.757]; // #2a93c1
+const ORANGE = [0.945, 0.259, 0.043]; // #f1420b
+
+// ============================================================
+// SHADER UTILITIES
+// ============================================================
+function compileShader(src, type) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(s), '\n---\n', src);
+    throw 'Shader compile error';
+  }
+  return s;
+}
+
+function createProgram(vSrc, fSrc) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compileShader(vSrc, gl.VERTEX_SHADER));
+  gl.attachShader(p, compileShader(fSrc, gl.FRAGMENT_SHADER));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+    console.error(gl.getProgramInfoLog(p));
+    throw 'Program link error';
+  }
+  return p;
+}
+
+// ============================================================
+// SPHERE GEOMETRY (high tessellation for glass)
+// ============================================================
+function createSphere(latBands, lonBands) {
+  const positions = [], normals = [], indices = [];
+  for (let lat = 0; lat <= latBands; lat++) {
+    const theta = lat * PI / latBands;
+    const sinT = Math.sin(theta), cosT = Math.cos(theta);
+    for (let lon = 0; lon <= lonBands; lon++) {
+      const phi = lon * TAU / lonBands;
+      const x = Math.cos(phi) * sinT;
+      const y = cosT;
+      const z = Math.sin(phi) * sinT;
+      positions.push(x, y, z);
+      normals.push(x, y, z);
+    }
+  }
+  for (let lat = 0; lat < latBands; lat++) {
+    for (let lon = 0; lon < lonBands; lon++) {
+      const a = lat * (lonBands + 1) + lon;
+      const b = a + lonBands + 1;
+      indices.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+  }
+  return { positions: new Float32Array(positions), normals: new Float32Array(normals), indices: new Uint16Array(indices) };
+}
+
+function uploadSphere(sphere) {
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+
+  const posBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, sphere.positions, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+
+  const normBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, normBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, sphere.normals, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(1);
+  gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
+
+  const idxBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuf);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, sphere.indices, gl.STATIC_DRAW);
+
+  gl.bindVertexArray(null);
+  return { vao, count: sphere.indices.length };
+}
+
+// Fullscreen quad
+function createQuad() {
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  gl.bindVertexArray(null);
+  return vao;
+}
+
+// ============================================================
+// FBO CREATION
+// ============================================================
+function createFBO(w, h) {
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+
+  const colorTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, colorTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colorTex, 0);
+
+  const depthRB = gl.createRenderbuffer();
+  gl.bindRenderbuffer(gl.RENDERBUFFER, depthRB);
+  gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, w, h);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthRB);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { fbo, colorTex, w, h };
+}
+
+// ============================================================
+// MATRIX UTILITIES (minimal, no libraries)
+// ============================================================
+function mat4Identity() { const m = new Float32Array(16); m[0]=m[5]=m[10]=m[15]=1; return m; }
+
+function mat4Perspective(fov, aspect, near, far) {
+  const f = 1.0 / Math.tan(fov / 2);
+  const nf = 1 / (near - far);
+  const m = new Float32Array(16);
+  m[0] = f / aspect; m[5] = f;
+  m[10] = (far + near) * nf; m[11] = -1;
+  m[14] = 2 * far * near * nf;
+  return m;
+}
+
+function mat4LookAt(eye, center, up) {
+  const m = new Float32Array(16);
+  let zx = eye[0]-center[0], zy = eye[1]-center[1], zz = eye[2]-center[2];
+  let len = Math.hypot(zx,zy,zz); zx/=len; zy/=len; zz/=len;
+  let xx = up[1]*zz-up[2]*zy, xy = up[2]*zx-up[0]*zz, xz = up[0]*zy-up[1]*zx;
+  len = Math.hypot(xx,xy,xz); xx/=len; xy/=len; xz/=len;
+  let yx = zy*xz-zz*xy, yy = zz*xx-zx*xz, yz = zx*xy-zy*xx;
+  m[0]=xx; m[1]=yx; m[2]=zx; m[3]=0;
+  m[4]=xy; m[5]=yy; m[6]=zy; m[7]=0;
+  m[8]=xz; m[9]=yz; m[10]=zz; m[11]=0;
+  m[12]=-(xx*eye[0]+xy*eye[1]+xz*eye[2]);
+  m[13]=-(yx*eye[0]+yy*eye[1]+yz*eye[2]);
+  m[14]=-(zx*eye[0]+zy*eye[1]+zz*eye[2]);
+  m[15]=1;
+  return m;
+}
+
+function mat4Translate(m, tx, ty, tz) {
+  const out = new Float32Array(m);
+  out[12] += m[0]*tx + m[4]*ty + m[8]*tz;
+  out[13] += m[1]*tx + m[5]*ty + m[9]*tz;
+  out[14] += m[2]*tx + m[6]*ty + m[10]*tz;
+  return out;
+}
+
+function mat4Scale(m, s) {
+  const out = new Float32Array(m);
+  out[0]*=s; out[1]*=s; out[2]*=s;
+  out[4]*=s; out[5]*=s; out[6]*=s;
+  out[8]*=s; out[9]*=s; out[10]*=s;
+  return out;
+}
+
+function mat4RotateY(m, a) {
+  const c = Math.cos(a), s = Math.sin(a);
+  const out = new Float32Array(m);
+  const m0=m[0],m1=m[1],m2=m[2],m3=m[3];
+  const m8=m[8],m9=m[9],m10=m[10],m11=m[11];
+  out[0]=m0*c+m8*s; out[1]=m1*c+m9*s; out[2]=m2*c+m10*s; out[3]=m3*c+m11*s;
+  out[8]=m8*c-m0*s; out[9]=m9*c-m1*s; out[10]=m10*c-m2*s; out[11]=m11*c-m3*s;
+  return out;
+}
+
+// ============================================================
+// GLASS SPHERE SHADER
+// ============================================================
+const glassVert = `#version 300 es
+precision highp float;
+layout(location=0) in vec3 aPosition;
+layout(location=1) in vec3 aNormal;
+uniform mat4 uProjection;
+uniform mat4 uView;
+uniform mat4 uModel;
+out vec3 vWorldPos;
+out vec3 vWorldNormal;
+out vec4 vScreenPos;
+void main() {
+  vec4 worldPos = uModel * vec4(aPosition, 1.0);
+  vWorldPos = worldPos.xyz;
+  // Transform normal (no non-uniform scale assumed)
+  vWorldNormal = normalize(mat3(uModel) * aNormal);
+  gl_Position = uProjection * uView * worldPos;
+  vScreenPos = gl_Position;
+}`;
+
+const glassFrag = `#version 300 es
+precision highp float;
+in vec3 vWorldPos;
+in vec3 vWorldNormal;
+in vec4 vScreenPos;
+uniform vec3 uCamPos;
+uniform vec3 uColor;
+uniform float uIOR;
+uniform float uFresnelPower;
+uniform float uTime;
+uniform sampler2D uOtherFBO; // The OTHER sphere's rendered FBO texture
+uniform vec2 uResolution;
+out vec4 fragColor;
+
+// Fresnel: Schlick approximation
+float fresnel(vec3 viewDir, vec3 normal, float power) {
+  float NdotV = max(dot(normal, viewDir), 0.0);
+  return pow(1.0 - NdotV, power);
+}
+
+// Chromatic dispersion: 3 IOR values for R, G, B
+vec3 chromaticRefract(vec3 I, vec3 N, float baseIOR) {
+  float iorR = baseIOR - 0.03;
+  float iorG = baseIOR;
+  float iorB = baseIOR + 0.03;
+  vec3 refR = refract(I, N, 1.0 / iorR);
+  vec3 refG = refract(I, N, 1.0 / iorG);
+  vec3 refB = refract(I, N, 1.0 / iorB);
+  // Project refracted rays to screen-space UV to sample other FBO
+  return vec3(
+    dot(refR, vec3(1,0,0)),
+    dot(refG, vec3(0,1,0)),
+    dot(refB, vec3(0,0,1))
+  );
+}
+
+void main() {
+  vec3 N = normalize(vWorldNormal);
+  vec3 V = normalize(uCamPos - vWorldPos);
+  vec3 I = -V; // incident ray
+
+  // Fresnel
+  float F = fresnel(V, N, uFresnelPower);
+
+  // Screen-space UV for FBO sampling
+  vec2 screenUV = (vScreenPos.xy / vScreenPos.w) * 0.5 + 0.5;
+
+  // Per-channel refraction offset for chromatic dispersion
+  float iorR = uIOR - 0.04;
+  float iorG = uIOR;
+  float iorB = uIOR + 0.04;
+
+  vec3 refractR = refract(I, N, 1.0 / iorR);
+  vec3 refractG = refract(I, N, 1.0 / iorG);
+  vec3 refractB = refract(I, N, 1.0 / iorB);
+
+  // Convert refraction directions to UV offsets
+  // Use refracted direction's xy deviation as UV offset
+  vec2 offsetR = refractR.xy * 0.15;
+  vec2 offsetG = refractG.xy * 0.15;
+  vec2 offsetB = refractB.xy * 0.15;
+
+  // Sample the OTHER sphere's FBO with chromatic offsets
+  float sampR = texture(uOtherFBO, screenUV + offsetR).r;
+  float sampG = texture(uOtherFBO, screenUV + offsetG).g;
+  float sampB = texture(uOtherFBO, screenUV + offsetB).b;
+  vec3 refracted = vec3(sampR, sampG, sampB);
+
+  // Reflection (simple env approximation -- gradient sky)
+  vec3 R = reflect(-V, N);
+  float skyGrad = R.y * 0.5 + 0.5;
+  vec3 reflection = mix(
+    vec3(0.01, 0.02, 0.05),                   // dark bottom
+    uColor * 0.5 + vec3(0.1, 0.15, 0.25),     // tinted top
+    skyGrad
+  );
+
+  // Combine: glass = Fresnel blend of reflection and refracted other-sphere
+  vec3 glass = mix(refracted, reflection, F);
+
+  // Edge glow (iridescence approximation)
+  float edge = pow(1.0 - max(dot(V, N), 0.0), 4.0);
+  vec3 iridescence = mix(uColor, vec3(1.0, 0.6, 0.2), sin(edge * 6.28 + uTime * 2.0) * 0.5 + 0.5);
+  glass += iridescence * edge * 0.3;
+
+  // Slight color tint from glass body
+  glass = mix(glass, glass * uColor * 2.0, 0.15);
+
+  fragColor = vec4(glass, 1.0);
+}`;
+
+// ============================================================
+// BACKGROUND SHADER (dark gradient with subtle noise)
+// ============================================================
+const bgVert = `#version 300 es
+precision highp float;
+layout(location=0) in vec2 aPosition;
+out vec2 vUv;
+void main() {
+  vUv = aPosition * 0.5 + 0.5;
+  gl_Position = vec4(aPosition, 0.0, 1.0);
+}`;
+
+const bgFrag = `#version 300 es
+precision highp float;
+in vec2 vUv;
+uniform float uTime;
+out vec4 fragColor;
+
+float hash(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+void main() {
+  // Dark gradient
+  float grad = 1.0 - length(vUv - 0.5) * 0.8;
+  vec3 bg = vec3(0.015, 0.02, 0.035) * grad;
+
+  // Subtle animated noise
+  float n = hash(vUv * 500.0 + uTime * 10.0) * 0.015;
+  bg += n;
+
+  fragColor = vec4(bg, 1.0);
+}`;
+
+// ============================================================
+// COMPOSITE SHADER (blend FBOs + bloom)
+// ============================================================
+const compVert = bgVert; // same fullscreen quad
+
+const compFrag = `#version 300 es
+precision highp float;
+in vec2 vUv;
+uniform sampler2D uFBO_A;
+uniform sampler2D uFBO_B;
+uniform sampler2D uBG;
+uniform float uTime;
+out vec4 fragColor;
+
+void main() {
+  vec3 bg = texture(uBG, vUv).rgb;
+  vec3 sphereA = texture(uFBO_A, vUv).rgb;
+  vec3 sphereB = texture(uFBO_B, vUv).rgb;
+
+  // Composite: additive blend of both spheres over background
+  float lumA = dot(sphereA, vec3(0.299, 0.587, 0.114));
+  float lumB = dot(sphereB, vec3(0.299, 0.587, 0.114));
+
+  vec3 color = bg;
+  // Use screen blend mode for glass layers
+  color = 1.0 - (1.0 - color) * (1.0 - sphereA * min(lumA * 3.0, 1.0));
+  color = 1.0 - (1.0 - color) * (1.0 - sphereB * min(lumB * 3.0, 1.0));
+
+  // Simple bloom: add bright areas with soft threshold
+  vec3 bloomA = max(sphereA - 0.5, 0.0) * 0.6;
+  vec3 bloomB = max(sphereB - 0.5, 0.0) * 0.6;
+  color += bloomA + bloomB;
+
+  // Film grain
+  float grain = fract(sin(dot(vUv * 1000.0 + uTime * 50.0, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+  color += grain * 0.03;
+
+  // Vignette
+  float vig = 1.0 - dot((vUv - 0.5) * 1.2, (vUv - 0.5) * 1.2);
+  color *= smoothstep(0.0, 1.0, vig);
+
+  // Tone mapping (simple Reinhard)
+  color = color / (1.0 + color);
+
+  // Gamma
+  color = pow(color, vec3(1.0 / 2.2));
+
+  fragColor = vec4(color, 1.0);
+}`;
+
+// ============================================================
+// INITIALIZATION
+// ============================================================
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio, 2);
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+}
+resize();
+
+// Programs
+const glassProg = createProgram(glassVert, glassFrag);
+const bgProg = createProgram(bgVert, bgFrag);
+const compProg = createProgram(compVert, compFrag);
+
+// Geometry
+const sphere = uploadSphere(createSphere(96, 96));
+const quad = createQuad();
+
+// FBOs (2 for ping-pong + 1 for background)
+let fboA = createFBO(canvas.width, canvas.height);
+let fboB = createFBO(canvas.width, canvas.height);
+let fboBG = createFBO(canvas.width, canvas.height);
+
+// Uniform locations -- glass program
+const gl_uProj = gl.getUniformLocation(glassProg, 'uProjection');
+const gl_uView = gl.getUniformLocation(glassProg, 'uView');
+const gl_uModel = gl.getUniformLocation(glassProg, 'uModel');
+const gl_uCamPos = gl.getUniformLocation(glassProg, 'uCamPos');
+const gl_uColor = gl.getUniformLocation(glassProg, 'uColor');
+const gl_uIOR = gl.getUniformLocation(glassProg, 'uIOR');
+const gl_uFresnel = gl.getUniformLocation(glassProg, 'uFresnelPower');
+const gl_uTime = gl.getUniformLocation(glassProg, 'uTime');
+const gl_uOtherFBO = gl.getUniformLocation(glassProg, 'uOtherFBO');
+const gl_uRes = gl.getUniformLocation(glassProg, 'uResolution');
+
+// BG uniforms
+const bg_uTime = gl.getUniformLocation(bgProg, 'uTime');
+
+// Composite uniforms
+const comp_uFBOA = gl.getUniformLocation(compProg, 'uFBO_A');
+const comp_uFBOB = gl.getUniformLocation(compProg, 'uFBO_B');
+const comp_uBG = gl.getUniformLocation(compProg, 'uBG');
+const comp_uTime = gl.getUniformLocation(compProg, 'uTime');
+
+// Mouse tracking (spring)
+const mouse = { x: 0, y: 0 };
+const sMouse = { x: 0, y: 0 };
+window.addEventListener('mousemove', (e) => {
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+});
+
+// Camera orbit
+let camAngle = 0;
+
+// ============================================================
+// RENDER LOOP
+// ============================================================
+const startTime = performance.now();
+
+function render() {
+  requestAnimationFrame(render);
+  const t = (performance.now() - startTime) * 0.001;
+
+  // Spring mouse
+  sMouse.x += (mouse.x - sMouse.x) * 0.03;
+  sMouse.y += (mouse.y - sMouse.y) * 0.03;
+
+  // Camera orbit
+  camAngle += 0.002;
+  const camR = 5.0;
+  const camX = Math.sin(camAngle + sMouse.x * 0.5) * camR;
+  const camY = 0.5 + sMouse.y * 1.0;
+  const camZ = Math.cos(camAngle + sMouse.x * 0.5) * camR;
+  const camPos = [camX, camY, camZ];
+
+  const proj = mat4Perspective(PI / 5, canvas.width / canvas.height, 0.1, 100);
+  const view = mat4LookAt(camPos, [0, 0, 0], [0, 1, 0]);
+
+  // Sphere positions (orbiting each other)
+  const sAx = Math.sin(t * 0.317) * 1.2;
+  const sAy = Math.sin(t * 0.513) * 0.3;
+  const sAz = Math.cos(t * 0.317) * 1.2;
+
+  const sBx = -sAx;
+  const sBy = -sAy + Math.sin(t * 0.829) * 0.2;
+  const sBz = -sAz;
+
+  // IOR animation (different prime frequencies)
+  const iorA = 1.45 + Math.sin(t * 0.317 * TAU) * 0.15;
+  const iorB = 1.55 + Math.sin(t * 0.513 * TAU) * 0.2;
+
+  // Model matrices
+  const scaleA = 0.6 + Math.sin(t * 0.829) * 0.05;
+  const scaleB = 0.5 + Math.sin(t * 0.317 * PHI) * 0.04;
+  let modelA = mat4Identity();
+  modelA = mat4Translate(modelA, sAx, sAy, sAz);
+  modelA = mat4RotateY(modelA, t * 0.2);
+  modelA = mat4Scale(modelA, scaleA);
+
+  let modelB = mat4Identity();
+  modelB = mat4Translate(modelB, sBx, sBy, sBz);
+  modelB = mat4RotateY(modelB, -t * 0.15);
+  modelB = mat4Scale(modelB, scaleB);
+
+  gl.viewport(0, 0, canvas.width, canvas.height);
+
+  // === Pass 0: Render BG into fboBG ===
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fboBG.fbo);
+  gl.clearColor(0.015, 0.02, 0.035, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.disable(gl.DEPTH_TEST);
+  gl.useProgram(bgProg);
+  gl.uniform1f(bg_uTime, t);
+  gl.bindVertexArray(quad);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  // === Pass 1: Render sphere A into FBO-A, sampling FBO-B (sphere B from last frame) ===
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fboA.fbo);
+  gl.clearColor(0, 0, 0, 0);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST);
+  gl.useProgram(glassProg);
+
+  gl.uniformMatrix4fv(gl_uProj, false, proj);
+  gl.uniformMatrix4fv(gl_uView, false, view);
+  gl.uniformMatrix4fv(gl_uModel, false, modelA);
+  gl.uniform3fv(gl_uCamPos, camPos);
+  gl.uniform3fv(gl_uColor, BLUE);
+  gl.uniform1f(gl_uIOR, iorA);
+  gl.uniform1f(gl_uFresnel, 4.0);
+  gl.uniform1f(gl_uTime, t);
+  gl.uniform2f(gl_uRes, canvas.width, canvas.height);
+
+  // Bind sphere B's FBO texture as the refraction source
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, fboB.colorTex);
+  gl.uniform1i(gl_uOtherFBO, 0);
+
+  gl.bindVertexArray(sphere.vao);
+  gl.drawElements(gl.TRIANGLES, sphere.count, gl.UNSIGNED_SHORT, 0);
+
+  // === Pass 2: Render sphere B into FBO-B, sampling FBO-A (sphere A from this frame) ===
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fboB.fbo);
+  gl.clearColor(0, 0, 0, 0);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  gl.uniformMatrix4fv(gl_uModel, false, modelB);
+  gl.uniform3fv(gl_uColor, ORANGE);
+  gl.uniform1f(gl_uIOR, iorB);
+  gl.uniform1f(gl_uFresnel, 3.5);
+
+  // Bind sphere A's FBO texture
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, fboA.colorTex);
+  gl.uniform1i(gl_uOtherFBO, 0);
+
+  gl.drawElements(gl.TRIANGLES, sphere.count, gl.UNSIGNED_SHORT, 0);
+
+  // === Pass 3: Composite everything to screen ===
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clearColor(0, 0, 0, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.disable(gl.DEPTH_TEST);
+
+  gl.useProgram(compProg);
+
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, fboA.colorTex);
+  gl.uniform1i(comp_uFBOA, 0);
+
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, fboB.colorTex);
+  gl.uniform1i(comp_uFBOB, 1);
+
+  gl.activeTexture(gl.TEXTURE2);
+  gl.bindTexture(gl.TEXTURE_2D, fboBG.colorTex);
+  gl.uniform1i(comp_uBG, 2);
+
+  gl.uniform1f(comp_uTime, t);
+
+  gl.bindVertexArray(quad);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+render();
+
+// Resize handler
+window.addEventListener('resize', () => {
+  resize();
+  fboA = createFBO(canvas.width, canvas.height);
+  fboB = createFBO(canvas.width, canvas.height);
+  fboBG = createFBO(canvas.width, canvas.height);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PureBrain AI Team — Interactive Demo</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --blue:   #2a93c1;
+    --orange: #f1420b;
+    --dark:   #0a0a0f;
+    --text:   #e8eaf0;
+    --muted:  rgba(232,234,240,0.55);
+    --glass-border: rgba(42,147,193,0.18);
+  }
+
+  body {
+    background: var(--dark);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  /* ── Layout ────────────────────────────────────────── */
+  .demo-wrapper {
+    display: grid;
+    grid-template-columns: 1fr 420px;
+    min-height: 100vh;
+    align-items: stretch;
+  }
+
+  /* Three.js panel */
+  .canvas-panel {
+    position: relative;
+    background: var(--dark);
+  }
+  #demo-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* Info panel */
+  .info-panel {
+    padding: 60px 40px;
+    background: rgba(10,10,20,0.96);
+    border-left: 1px solid var(--glass-border);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0;
+    overflow-y: auto;
+  }
+
+  .panel-eyebrow {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 16px;
+  }
+
+  .panel-title {
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    line-height: 1.12;
+    margin-bottom: 20px;
+  }
+  .panel-title .accent { color: var(--orange); }
+
+  .panel-desc {
+    color: var(--muted);
+    font-size: 0.95rem;
+    line-height: 1.7;
+    margin-bottom: 36px;
+  }
+
+  /* Agent list */
+  .agent-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 40px;
+  }
+
+  .agent-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 18px;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    background: rgba(42,147,193,0.04);
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, transform 0.15s;
+    position: relative;
+    overflow: hidden;
+  }
+  .agent-item::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(42,147,193,0.08), transparent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .agent-item:hover, .agent-item.active {
+    border-color: rgba(42,147,193,0.35);
+    background: rgba(42,147,193,0.08);
+    transform: translateX(4px);
+  }
+  .agent-item:hover::before, .agent-item.active::before { opacity: 1; }
+
+  .agent-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    animation: blink-dot 3s ease-in-out infinite;
+  }
+  @keyframes blink-dot {
+    0%, 90%, 100% { opacity: 1; }
+    95%            { opacity: 0.3; }
+  }
+
+  .agent-name {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text);
+    flex: 1;
+  }
+  .agent-role {
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .agent-status {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--blue);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .agent-item:hover .agent-status, .agent-item.active .agent-status { opacity: 1; }
+
+  .cta-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 15px 32px;
+    background: var(--orange);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    text-decoration: none;
+    transition: transform 0.18s, box-shadow 0.18s, opacity 0.18s;
+    box-shadow: 0 4px 24px rgba(241,66,11,0.35);
+    width: 100%;
+  }
+  .cta-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(241,66,11,0.5);
+  }
+
+  /* Tooltip */
+  #tooltip {
+    position: fixed;
+    padding: 10px 16px;
+    background: rgba(10,10,20,0.92);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    font-size: 0.82rem;
+    color: var(--text);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 50;
+    max-width: 200px;
+    line-height: 1.4;
+  }
+  #tooltip.visible { opacity: 1; }
+  #tooltip .tip-name { font-weight: 700; color: var(--blue); margin-bottom: 3px; }
+
+  /* Mobile stack */
+  @media (max-width: 900px) {
+    .demo-wrapper {
+      grid-template-columns: 1fr;
+      grid-template-rows: 55vh auto;
+    }
+    .canvas-panel { min-height: 55vh; }
+    .info-panel { padding: 32px 20px; }
+    .panel-title { font-size: 1.6rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="demo-wrapper">
+  <!-- Three.js canvas -->
+  <div class="canvas-panel">
+    <canvas id="demo-canvas"></canvas>
+  </div>
+
+  <!-- Info panel -->
+  <div class="info-panel">
+    <p class="panel-eyebrow">AI Team Visualization</p>
+    <h2 class="panel-title">Meet Your <span class="accent">AI Team</span></h2>
+    <p class="panel-desc">
+      Each orbiting node is a specialized AI agent — working simultaneously,
+      sharing context, and collaborating toward your business goals. Hover or click
+      any agent to learn more.
+    </p>
+
+    <div class="agent-list" id="agent-list">
+      <!-- Populated by JS -->
+    </div>
+
+    <a href="https://purebrain.ai/#awakening" class="cta-btn">
+      Build Your AI Team
+    </a>
+  </div>
+</div>
+
+<div id="tooltip">
+  <div class="tip-name" id="tip-name"></div>
+  <div id="tip-desc"></div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }     from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass }     from 'three/addons/postprocessing/ShaderPass.js';
+
+// ─── Agent data ────────────────────────────────────────────────────────────
+const AGENTS = [
+  { name: 'Strategist',     role: 'Business Intelligence',   color: 0x2a93c1, dotColor: '#2a93c1', orbit: 2.2, orbitSpeed: 0.18, phase: 0,    desc: 'Analyzes market data, competitive landscape, and business metrics to surface strategic insights.' },
+  { name: 'Content Writer', role: 'Brand Voice & Copy',      color: 0x5ad4ff, dotColor: '#5ad4ff', orbit: 2.8, orbitSpeed: 0.14, phase: 1.2,  desc: 'Creates on-brand content across all channels — blogs, social, email, and ad copy at scale.' },
+  { name: 'Developer',      role: 'Full-Stack Engineering',   color: 0x8eff9e, dotColor: '#8eff9e', orbit: 3.4, orbitSpeed: 0.11, phase: 2.5,  desc: 'Builds and maintains web features, integrations, and automation workflows on demand.' },
+  { name: 'Data Analyst',   role: 'Metrics & Reporting',     color: 0xf1420b, dotColor: '#f1420b', orbit: 2.2, orbitSpeed: 0.22, phase: 3.8,  desc: 'Processes analytics data, builds dashboards, and delivers weekly intelligence briefings.' },
+  { name: 'Marketing',      role: 'Campaign Execution',      color: 0xff9a4d, dotColor: '#ff9a4d', orbit: 2.8, orbitSpeed: 0.16, phase: 5.1,  desc: 'Manages paid media, SEO, and organic growth campaigns with daily optimization.' },
+  { name: 'Researcher',     role: 'Deep Intelligence',       color: 0xc084fc, dotColor: '#c084fc', orbit: 3.4, orbitSpeed: 0.09, phase: 0.8,  desc: 'Synthesizes industry research, competitor analysis, and trend reports into actionable briefs.' },
+];
+
+// Build agent list in panel
+const listEl = document.getElementById('agent-list');
+AGENTS.forEach((ag, i) => {
+  const item = document.createElement('div');
+  item.className = 'agent-item';
+  item.dataset.idx = i;
+  item.innerHTML = `
+    <div class="agent-dot" style="background:${ag.dotColor}"></div>
+    <div>
+      <div class="agent-name">${ag.name}</div>
+      <div class="agent-role">${ag.role}</div>
+    </div>
+    <div class="agent-status">Active</div>
+  `;
+  listEl.appendChild(item);
+});
+
+// ─── Scene setup ──────────────────────────────────────────────────────────
+const canvas = document.getElementById('demo-canvas');
+const W = () => canvas.clientWidth;
+const H = () => canvas.clientHeight;
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(W(), H());
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42, W() / H(), 0.1, 60);
+camera.position.set(0, 2.5, 8);
+scene.fog = new THREE.FogExp2(0x040408, 0.05);
+
+// ─── Lighting ──────────────────────────────────────────────────────────────
+const lights = [
+  { pos: [4, 5, 3],   col: 0x2a93c1, int: 8  },
+  { pos: [-5, 3, -2], col: 0xffffff, int: 3  },
+  { pos: [0, -4, 3],  col: 0xf1420b, int: 3  },
+  { pos: [2, 2, 5],   col: 0x5ad4ff, int: 4  },
+];
+lights.forEach(l => {
+  const light = new THREE.PointLight(new THREE.Color(l.col), l.int, 40);
+  light.position.set(...l.pos);
+  scene.add(light);
+});
+scene.add(new THREE.AmbientLight(0x0d1a25, 1.0));
+
+// PMREM environment
+const pmrem  = new THREE.PMREMGenerator(renderer);
+pmrem.compileEquirectangularShader();
+const envSc  = new THREE.Scene();
+envSc.add(new THREE.AmbientLight(0x2a93c1, 0.8));
+const envPt  = new THREE.PointLight(0xffffff, 3, 40);
+envPt.position.set(5, 5, 5);
+envSc.add(envPt);
+const envPt2 = new THREE.PointLight(0xf1420b, 2, 40);
+envPt2.position.set(-4, -3, 2);
+envSc.add(envPt2);
+scene.environment = pmrem.fromScene(envSc, 0.06).texture;
+
+// ─── Background gradient sphere ────────────────────────────────────────────
+const bgSph  = new THREE.SphereGeometry(25, 32, 32);
+const bgMat  = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  depthWrite: false,
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: `
+    varying vec3 vPos;
+    void main() { vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
+  `,
+  fragmentShader: `
+    varying vec3 vPos;
+    uniform float uTime;
+    void main() {
+      float t = uTime * 0.06;
+      float y = vPos.y / 25.0;  // -1 to 1
+      // Rich dark gradient: blue at top, near-black center, hint of orange warmth below
+      vec3 top = vec3(0.04, 0.10, 0.18);
+      vec3 mid = vec3(0.016, 0.016, 0.026);
+      vec3 bot = vec3(0.05, 0.025, 0.015);
+      float ty = y * 0.5 + 0.5;
+      vec3 col = mix(bot, mid, smoothstep(0.0, 0.45, ty));
+      col = mix(col, top, smoothstep(0.45, 1.0, ty));
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `,
+});
+scene.add(new THREE.Mesh(bgSph, bgMat));
+
+// ─── Central BRAIN sphere ──────────────────────────────────────────────────
+const brainGeo = new THREE.SphereGeometry(1.1, 128, 128);
+const brainMat = new THREE.MeshPhysicalMaterial({
+  transmission:   1.0,
+  thickness:      1.6,
+  roughness:      0.03,
+  ior:            1.52,
+  color:          new THREE.Color(0x2a93c1),
+  iridescence:    0.55,
+  iridescenceIOR: 1.40,
+  iridescenceThicknessRange: [100, 420],
+  clearcoat:      0.95,
+  clearcoatRoughness: 0.02,
+  envMapIntensity: 4.5,
+  depthWrite:     false,
+  specularIntensity: 1.0,
+  specularColor:  new THREE.Color(0x8edcff),
+});
+const brain = new THREE.Mesh(brainGeo, brainMat);
+scene.add(brain);
+
+// Brain inner glow
+const brainGlowMat = new THREE.MeshStandardMaterial({
+  color: new THREE.Color(0x2a93c1),
+  emissive: new THREE.Color(0x2a93c1),
+  emissiveIntensity: 0.8,
+  transparent: true,
+  opacity: 0.12,
+  depthWrite: false,
+});
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(1.0, 64, 64), brainGlowMat));
+
+// Center label (using HTML element positioned over canvas)
+const centerLabel = document.createElement('div');
+centerLabel.style.cssText = `
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, calc(-50% - 80px));
+  text-align: center;
+  pointer-events: none;
+  z-index: 10;
+`;
+centerLabel.innerHTML = `
+  <div style="font-size:0.75rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#2a93c1;margin-bottom:4px;">Central Intelligence</div>
+  <div style="font-size:1.1rem;font-weight:800;color:#e8eaf0;letter-spacing:-0.01em;">PureBrain Core</div>
+`;
+document.querySelector('.canvas-panel').style.position = 'relative';
+document.querySelector('.canvas-panel').appendChild(centerLabel);
+
+// ─── Orbit paths (visible rings) ───────────────────────────────────────────
+[2.2, 2.8, 3.4].forEach((r, ri) => {
+  const pathGeo = new THREE.RingGeometry(r, r + 0.008, 128);
+  const pathMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0x2a93c1),
+    transparent: true,
+    opacity: 0.08,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const path = new THREE.Mesh(pathGeo, pathMat);
+  path.rotation.x = Math.PI / 2;  // lay flat (like Saturn rings)
+  scene.add(path);
+});
+
+// ─── Agent nodes ──────────────────────────────────────────────────────────
+const agentMeshes = [];
+const raycaster  = new THREE.Raycaster();
+const mouseVec   = new THREE.Vector2();
+let   hoveredIdx = -1;
+
+AGENTS.forEach((ag, i) => {
+  const radius = 0.22 + Math.random() * 0.06;
+  const geo = new THREE.SphereGeometry(radius, 64, 64);
+  const mat = new THREE.MeshPhysicalMaterial({
+    transmission:   1.0,
+    thickness:      radius * 1.5,
+    roughness:      0.04,
+    ior:            1.48,
+    color:          new THREE.Color(ag.color),
+    iridescence:    0.48,
+    iridescenceIOR: 1.38,
+    iridescenceThicknessRange: [80, 320],
+    clearcoat:      0.88,
+    clearcoatRoughness: 0.02,
+    envMapIntensity: 3.8,
+    depthWrite:     false,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.userData = { agentIdx: i, radius, phase: ag.phase,
+                    orbit: ag.orbit, speed: ag.orbitSpeed,
+                    scale: 1, scaleVel: 0, baseScale: 1 };
+  scene.add(mesh);
+
+  // Emissive glow for agent node
+  const glowMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(radius * 1.1, 32, 32),
+    new THREE.MeshStandardMaterial({
+      color:             new THREE.Color(ag.color),
+      emissive:          new THREE.Color(ag.color),
+      emissiveIntensity: 1.5,
+      transparent:       true,
+      opacity:           0.0,
+      depthWrite:        false,
+      blending:          THREE.AdditiveBlending,
+    })
+  );
+  mesh.add(glowMesh);
+  mesh.userData.glowMesh = glowMesh;
+
+  // Connection line: agent -> center
+  const lineGeo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(0, 0, 0),
+  ]);
+  const lineMat = new THREE.LineBasicMaterial({
+    color: new THREE.Color(ag.color),
+    transparent: true,
+    opacity: 0.12,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const line = new THREE.Line(lineGeo, lineMat);
+  scene.add(line);
+  mesh.userData.line = line;
+  mesh.userData.lineMat = lineMat;
+
+  agentMeshes.push(mesh);
+});
+
+// ─── Floating data particles around center ─────────────────────────────────
+const DP_COUNT = window.innerWidth > 900 ? 900 : 400;
+const dpPos = new Float32Array(DP_COUNT * 3);
+const dpPh  = new Float32Array(DP_COUNT);
+for (let i = 0; i < DP_COUNT; i++) {
+  // Distribute in shells matching orbit radii
+  const shell  = [2.2, 2.8, 3.4][Math.floor(Math.random() * 3)];
+  const theta  = Math.random() * Math.PI * 2;
+  const phi    = Math.random() * Math.PI;
+  dpPos[i*3]   = shell * Math.sin(phi) * Math.cos(theta) * (0.9 + Math.random() * 0.2);
+  dpPos[i*3+1] = shell * Math.cos(phi) * 0.4;   // flatten vertically
+  dpPos[i*3+2] = shell * Math.sin(phi) * Math.sin(theta) * (0.9 + Math.random() * 0.2);
+  dpPh[i] = Math.random() * Math.PI * 2;
+}
+const dpGeo = new THREE.BufferGeometry();
+dpGeo.setAttribute('position', new THREE.BufferAttribute(dpPos, 3));
+dpGeo.setAttribute('aPhase',   new THREE.BufferAttribute(dpPh, 1));
+const dpMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 } },
+  transparent: true, depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  vertexShader: `
+    attribute float aPhase;
+    uniform float uTime;
+    varying float vAlpha;
+    void main() {
+      vAlpha = 0.08 + 0.06 * sin(uTime * 0.3 + aPhase);
+      gl_PointSize = 1.5 + sin(uTime * 0.5 + aPhase) * 0.5;
+      gl_Position  = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    varying float vAlpha;
+    void main() {
+      float d = length(gl_PointCoord - 0.5) * 2.0;
+      if (d > 1.0) discard;
+      gl_FragColor = vec4(0.165, 0.576, 0.757, (1.0-d)*vAlpha);
+    }
+  `,
+});
+scene.add(new THREE.Points(dpGeo, dpMat));
+
+// ─── Post-processing ──────────────────────────────────────────────────────
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(W(), H()), 0.55, 0.45, 0.82);
+composer.addPass(bloom);
+const finalPass = new ShaderPass({
+  uniforms: {
+    tDiffuse: { value: null },
+    uCA: { value: 0.0016 },
+    uVig: { value: 0.60 },
+  },
+  vertexShader: `varying vec2 vUv; void main() { vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uCA, uVig;
+    varying vec2 vUv;
+    void main() {
+      vec2 d = vUv - 0.5;
+      vec3 c;
+      c.r = texture2D(tDiffuse, vUv + d * uCA).r;
+      c.g = texture2D(tDiffuse, vUv).g;
+      c.b = texture2D(tDiffuse, vUv - d * uCA).b;
+      float v = 1.0 - dot(d,d) * uVig * 1.8;
+      gl_FragColor = vec4(c * v, 1.0);
+    }
+  `,
+});
+composer.addPass(finalPass);
+
+// ─── Interaction ──────────────────────────────────────────────────────────
+const tooltip  = document.getElementById('tooltip');
+const tipName  = document.getElementById('tip-name');
+const tipDesc  = document.getElementById('tip-desc');
+const camMouse = new THREE.Vector2();
+
+window.addEventListener('mousemove', e => {
+  // Panel takes right portion — only send to raycaster if in canvas area
+  const rect = canvas.getBoundingClientRect();
+  mouseVec.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouseVec.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+  camMouse.x = (e.clientX / window.innerWidth - 0.5) * 2;
+  camMouse.y = (e.clientY / window.innerHeight - 0.5) * 2;
+
+  // Update tooltip position
+  tooltip.style.left = (e.clientX + 18) + 'px';
+  tooltip.style.top  = (e.clientY - 45) + 'px';
+});
+
+window.addEventListener('click', e => {
+  if (hoveredIdx >= 0) {
+    // Highlight panel item
+    document.querySelectorAll('.agent-item').forEach((el, i) => {
+      el.classList.toggle('active', i === hoveredIdx);
+    });
+    // Impulse on agent mesh
+    agentMeshes[hoveredIdx].userData.scaleVel += 0.25;
+  }
+});
+
+// Panel item click syncs to 3D
+document.getElementById('agent-list').addEventListener('click', e => {
+  const item = e.target.closest('.agent-item');
+  if (!item) return;
+  const idx = parseInt(item.dataset.idx);
+  document.querySelectorAll('.agent-item').forEach((el, i) =>
+    el.classList.toggle('active', i === idx));
+  agentMeshes[idx].userData.scaleVel += 0.30;
+});
+
+// ─── Resize ────────────────────────────────────────────────────────────────
+const onResize = () => {
+  const w = W(), h = H();
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  composer.setSize(w, h);
+  bloom.setSize(w, h);
+};
+window.addEventListener('resize', onResize);
+
+// ─── Animation loop ────────────────────────────────────────────────────────
+let prevT = performance.now();
+const tmp  = new THREE.Vector3();
+
+const animate = () => {
+  requestAnimationFrame(animate);
+  const now   = performance.now();
+  const delta = Math.min((now - prevT) / 1000, 0.05);
+  prevT = now;
+  const elapsed = now * 0.001;
+
+  bgMat.uniforms.uTime.value = elapsed;
+  dpMat.uniforms.uTime.value = elapsed;
+
+  // Brain gentle rotation
+  brain.rotation.y += delta * 0.10;
+  brain.rotation.x  = Math.sin(elapsed * 0.25) * 0.04;
+
+  // Raycaster — find hovered agent
+  raycaster.setFromCamera(mouseVec, camera);
+  const hits = raycaster.intersectObjects(agentMeshes);
+  const newHov = hits.length > 0 ? hits[0].object.userData.agentIdx : -1;
+
+  if (newHov !== hoveredIdx) {
+    hoveredIdx = newHov;
+    if (hoveredIdx >= 0) {
+      const ag = AGENTS[hoveredIdx];
+      tipName.textContent  = ag.name;
+      tipDesc.textContent  = ag.desc;
+      tooltip.classList.add('visible');
+      canvas.style.cursor = 'pointer';
+    } else {
+      tooltip.classList.remove('visible');
+      canvas.style.cursor = 'default';
+    }
+  }
+
+  // Update agent positions and spring physics
+  agentMeshes.forEach((mesh, i) => {
+    const d = mesh.userData;
+    const ag = AGENTS[i];
+
+    // Orbit — flat plane with slight Y tilt per orbit layer
+    const angle  = elapsed * d.speed + d.phase;
+    const tiltY  = Math.sin(elapsed * 0.12 + d.phase * 0.5) * 0.18;
+    mesh.position.x = d.orbit * Math.cos(angle);
+    mesh.position.z = d.orbit * Math.sin(angle);
+    mesh.position.y = tiltY + Math.sin(elapsed * 0.45 + d.phase) * 0.08;
+
+    // Spring scale on hover/click
+    const targetScale = hoveredIdx === i ? 1.35 : 1.0;
+    const springForce = (targetScale - d.scale) * 220;
+    const dampForce   = d.scaleVel * 18;
+    d.scaleVel += (springForce - dampForce) * delta;
+    d.scale    += d.scaleVel * delta;
+    mesh.scale.setScalar(d.scale);
+
+    // Glow on hover
+    const glowTarget = hoveredIdx === i ? 0.5 : 0.0;
+    d.glowMesh.material.opacity += (glowTarget - d.glowMesh.material.opacity) * 0.12;
+
+    // Connection line: agent pos -> center (0,0,0)
+    const pts = d.line.geometry.attributes.position;
+    pts.setXYZ(0, mesh.position.x, mesh.position.y, mesh.position.z);
+    pts.setXYZ(1, 0, 0, 0);
+    pts.needsUpdate = true;
+
+    // Line opacity pulses with orbit position
+    const pulseOpacity = 0.08 + 0.06 * Math.sin(elapsed * 0.8 + d.phase);
+    d.lineMat.opacity = hoveredIdx === i ? 0.35 : pulseOpacity;
+  });
+
+  // Camera parallax
+  camera.position.x += (camMouse.x * 0.8 - camera.position.x) * 0.03;
+  camera.position.y += (-camMouse.y * 0.5 + 2.5 - camera.position.y) * 0.03;
+  camera.lookAt(0, 0.3, 0);
+
+  composer.render();
+};
+animate();
+</script>
+</body>
+</html>

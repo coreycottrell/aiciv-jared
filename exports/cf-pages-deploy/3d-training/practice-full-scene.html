@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Practice 3: Full Scene — Gleb Training</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    background: #030508;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+    color: #fff;
+  }
+  canvas { display: block; position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
+
+  /* UI Overlay - lives above canvas */
+  #ui-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 10;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 0 8%;
+  }
+
+  .ui-tag {
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: rgba(42,147,193,0.6);
+    margin-bottom: 10px;
+  }
+
+  .ui-headline {
+    font-size: clamp(28px, 4vw, 52px);
+    font-weight: 600;
+    line-height: 1.1;
+    color: rgba(255,255,255,0.9);
+    letter-spacing: -0.02em;
+    margin-bottom: 14px;
+  }
+
+  .ui-headline span {
+    color: #2a93c1;
+  }
+
+  .ui-sub {
+    font-size: clamp(13px, 1.5vw, 16px);
+    color: rgba(255,255,255,0.38);
+    max-width: 400px;
+    line-height: 1.6;
+    margin-bottom: 32px;
+  }
+
+  .ui-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid rgba(42,147,193,0.3);
+    border-radius: 30px;
+    padding: 9px 20px;
+    font-size: 13px;
+    color: rgba(255,255,255,0.65);
+    backdrop-filter: blur(12px);
+    background: rgba(42,147,193,0.06);
+  }
+
+  .ui-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #2a93c1;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  #label {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.25);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    z-index: 11;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="ui-overlay">
+  <div class="ui-tag">Aether Intelligence</div>
+  <div class="ui-headline">Your AI <span>Partner</span><br>That Never Forgets</div>
+  <div class="ui-sub">Built for the way you actually work. Memory that grows with every conversation.</div>
+  <div class="ui-pill">
+    <span class="ui-dot"></span>
+    <span>Live — Always Learning</span>
+  </div>
+</div>
+
+<div id="label">Practice 3 — Full Composition — PureBrain 3D Training</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+// ─── Renderer ─────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = false;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x030508);
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(0, 0, 7);
+
+// ─── Lighting ─────────────────────────────────────────────────────────────────
+const ambient = new THREE.AmbientLight(0x06091a, 5.0);
+scene.add(ambient);
+
+// Primary key - signature PureBrain blue, upper left
+const keyLight = new THREE.DirectionalLight(0x2a93c1, 8.0);
+keyLight.position.set(-5, 6, 4);
+scene.add(keyLight);
+
+// Rim light - orange from far back right
+const rimLight = new THREE.DirectionalLight(0xf1420b, 4.0);
+rimLight.position.set(6, -2, -6);
+scene.add(rimLight);
+
+// Fill from below - bounced blue
+const fillLight = new THREE.DirectionalLight(0x1a4a7a, 2.0);
+fillLight.position.set(2, -4, 3);
+scene.add(fillLight);
+
+// Point light - pulsing orb light source in scene center-right
+const orbPointLight = new THREE.PointLight(0x4ab8ff, 3.5, 6);
+orbPointLight.position.set(2.5, 0.5, 1.5);
+scene.add(orbPointLight);
+
+// ─── SIMPLEX NOISE GLSL ───────────────────────────────────────────────────────
+const simplexGLSL = `
+vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
+float snoise(vec3 v){
+  const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+  const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+  vec3 i  = floor(v + dot(v, C.yyy));
+  vec3 x0 = v - i + dot(i, C.xxx);
+  vec3 g = step(x0.yzx, x0.xyz);
+  vec3 l = 1.0 - g;
+  vec3 i1 = min(g.xyz, l.zxy);
+  vec3 i2 = max(g.xyz, l.zxy);
+  vec3 x1 = x0 - i1 + 1.0 * C.xxx;
+  vec3 x2 = x0 - i2 + 2.0 * C.xxx;
+  vec3 x3 = x0 - 1.0 + 3.0 * C.xxx;
+  i = mod(i, 289.0);
+  vec4 p = permute( permute( permute(
+    i.z + vec4(0.0, i1.z, i2.z, 1.0))
+    + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+    + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+  float n_ = 1.0/7.0;
+  vec3 ns = n_ * D.wyz - D.xzx;
+  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+  vec4 x_ = floor(j * ns.z);
+  vec4 y_ = floor(j - 7.0 * x_);
+  vec4 x = x_ * ns.x + ns.yyyy;
+  vec4 y = y_ * ns.x + ns.yyyy;
+  vec4 h = 1.0 - abs(x) - abs(y);
+  vec4 b0 = vec4(x.xy, y.xy);
+  vec4 b1 = vec4(x.zw, y.zw);
+  vec4 s0 = floor(b0)*2.0 + 1.0;
+  vec4 s1 = floor(b1)*2.0 + 1.0;
+  vec4 sh = -step(h, vec4(0.0));
+  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+  vec3 p0 = vec3(a0.xy, h.x);
+  vec3 p1 = vec3(a0.zw, h.y);
+  vec3 p2 = vec3(a1.xy, h.z);
+  vec3 p3 = vec3(a1.zw, h.w);
+  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+  p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+  m = m * m;
+  return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+}
+`;
+
+// ─── 1. HERO GLASS ORBS (3 floating orbs, different sizes) ───────────────────
+function createGlassOrb(radius, x, y, z, color, roughness = 0.04) {
+  const geo = new THREE.SphereGeometry(radius, 96, 96);
+  const mat = new THREE.MeshPhysicalMaterial({
+    color: color,
+    transmission: 0.95,
+    thickness: radius * 1.5,
+    roughness: roughness,
+    ior: 1.5,
+    metalness: 0,
+    specularIntensity: 1.2,
+    transparent: true,
+    opacity: 0.9,
+    envMapIntensity: 1.4,
+    attenuationColor: new THREE.Color(color),
+    attenuationDistance: radius * 2,
+    side: THREE.DoubleSide
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, z);
+  return mesh;
+}
+
+// Primary large orb - left of center, slightly back
+const orbLarge = createGlassOrb(1.1, -1.8, 0.3, 0.0, 0x2a93c1, 0.04);
+scene.add(orbLarge);
+
+// Medium orb - right, closer
+const orbMed = createGlassOrb(0.65, 2.2, -0.5, 0.8, 0x5bcce0, 0.06);
+scene.add(orbMed);
+
+// Small orb - upper area
+const orbSmall = createGlassOrb(0.38, 0.5, 2.0, 0.5, 0x88ddff, 0.03);
+scene.add(orbSmall);
+
+// Orange accent orb - small, lower right
+const orbOrange = createGlassOrb(0.28, 3.0, -1.2, 1.2, 0xf1420b, 0.05);
+scene.add(orbOrange);
+
+// ─── 2. MORPHING BACKGROUND ORB (shader-based, large, behind everything) ─────
+const bgBlobGeo = new THREE.IcosahedronGeometry(2.8, 50);
+const bgBlobMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 }
+  },
+  vertexShader: `
+    ${simplexGLSL}
+    uniform float uTime;
+    varying vec3 vNormal;
+    varying vec3 vWorldPos;
+    varying float vNoise;
+
+    void main() {
+      vNormal = normalize(normalMatrix * normal);
+      float n = snoise(position * 0.5 + uTime * 0.08) * 0.5
+              + snoise(position * 1.1 + uTime * 0.05) * 0.25;
+      vNoise = n;
+      vec3 displaced = position + normal * n * 0.25;
+      vec4 world = modelMatrix * vec4(displaced, 1.0);
+      vWorldPos = world.xyz;
+      gl_Position = projectionMatrix * viewMatrix * world;
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vNormal;
+    varying vec3 vWorldPos;
+    varying float vNoise;
+
+    void main() {
+      vec3 viewDir = normalize(cameraPosition - vWorldPos);
+      float fresnel = pow(1.0 - max(dot(vNormal, viewDir), 0.0), 4.0);
+
+      float t = vNoise * 0.5 + 0.5;
+      vec3 dark = vec3(0.02, 0.05, 0.14);
+      vec3 mid = vec3(0.06, 0.22, 0.4);
+      vec3 bright = vec3(0.16, 0.58, 0.76);
+
+      vec3 color = mix(dark, mid, t);
+      color = mix(color, bright, fresnel * 0.6);
+
+      gl_FragColor = vec4(color, 0.12 + fresnel * 0.18);
+    }
+  `,
+  transparent: true,
+  side: THREE.BackSide,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending
+});
+const bgBlob = new THREE.Mesh(bgBlobGeo, bgBlobMat);
+bgBlob.position.set(0, 0, -2);
+scene.add(bgBlob);
+
+// ─── 3. GLASS PANELS (floating in space) ─────────────────────────────────────
+function createGlassPanel(w, h, d, x, y, z, rx, ry, roughness, color) {
+  const geo = new THREE.BoxGeometry(w, h, d);
+  const mat = new THREE.MeshPhysicalMaterial({
+    color: color,
+    transmission: 0.88,
+    thickness: d,
+    roughness: roughness,
+    ior: 1.45,
+    metalness: 0,
+    transparent: true,
+    opacity: 0.72,
+    side: THREE.DoubleSide,
+    attenuationColor: new THREE.Color(color),
+    attenuationDistance: 1.5
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, z);
+  mesh.rotation.x = rx;
+  mesh.rotation.y = ry;
+  return mesh;
+}
+
+// Large panel - slightly left, tilted
+const panel1 = createGlassPanel(2.8, 4.5, 0.05, -3.5, 0.2, -1.5, 0.05, 0.35, 0.08, 0xaaccee);
+scene.add(panel1);
+
+// Medium panel - right side
+const panel2 = createGlassPanel(1.8, 2.8, 0.04, 3.8, -0.5, -2.0, -0.08, -0.4, 0.18, 0x88bbcc);
+scene.add(panel2);
+
+// Small accent panel - near camera
+const panel3 = createGlassPanel(1.2, 1.8, 0.03, 1.5, 1.5, 0.5, 0.12, -0.2, 0.25, 0xccddff);
+scene.add(panel3);
+
+// ─── 4. VOLUMETRIC LIGHT CONE (god ray approximation) ─────────────────────────
+// Simulated via a transparent cone mesh with additive blending
+const volumeGeo = new THREE.ConeGeometry(2.5, 8, 32, 1, true);
+const volumeMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 },
+    uColor: { value: new THREE.Color(0x2a93c1) }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    varying vec3 vPos;
+    void main() {
+      vUv = uv;
+      vPos = position;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 uColor;
+    uniform float uTime;
+    varying vec2 vUv;
+    varying vec3 vPos;
+
+    void main() {
+      // Fade from tip to base
+      float fade = 1.0 - vUv.y;
+      // Circular fade at edges
+      float edge = 1.0 - abs(vUv.x - 0.5) * 2.0;
+      // Subtle animated shimmer
+      float shimmer = 0.85 + 0.15 * sin(vUv.y * 18.0 + uTime * 1.5);
+
+      float alpha = fade * edge * shimmer * 0.045;
+      gl_FragColor = vec4(uColor, alpha);
+    }
+  `,
+  transparent: true,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending
+});
+const volumeCone = new THREE.Mesh(volumeGeo, volumeMat);
+volumeCone.position.set(-4.5, 8.5, -3);
+volumeCone.rotation.z = 0.25;
+scene.add(volumeCone);
+
+// ─── 5. PARTICLE SYSTEM (multi-layer) ────────────────────────────────────────
+function createParticleLayer(count, spread, yBias, color, size, opacity) {
+  const pos = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    pos[i * 3] = (Math.random() - 0.5) * spread;
+    pos[i * 3 + 1] = (Math.random() - 0.5) * spread * 0.6 + yBias;
+    pos[i * 3 + 2] = (Math.random() - 0.5) * spread * 0.4 - 3;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({
+    color, size, transparent: true, opacity,
+    sizeAttenuation: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  return new THREE.Points(geo, mat);
+}
+
+// Three particle layers - different depths and colors
+const particlesFar = createParticleLayer(500, 22, 0, 0x1a4466, 0.03, 0.4);
+const particlesMid = createParticleLayer(300, 14, 1, 0x2a93c1, 0.022, 0.55);
+const particlesNear = createParticleLayer(150, 8, -0.5, 0x88ccff, 0.016, 0.7);
+scene.add(particlesFar);
+scene.add(particlesMid);
+scene.add(particlesNear);
+
+// ─── 6. ENERGY CONNECTIONS (lines between orbs) ───────────────────────────────
+// Subtle thread connecting orbs - adds premium tech feel
+function createEnergyLine(from, to, color) {
+  const points = [];
+  const steps = 24;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const x = THREE.MathUtils.lerp(from.x, to.x, t);
+    const y = THREE.MathUtils.lerp(from.y, to.y, t) + Math.sin(t * Math.PI) * 0.2;
+    const z = THREE.MathUtils.lerp(from.z, to.z, t);
+    points.push(new THREE.Vector3(x, y, z));
+  }
+  const geo = new THREE.BufferGeometry().setFromPoints(points);
+  const mat = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.18,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  return new THREE.Line(geo, mat);
+}
+
+const line1 = createEnergyLine(orbLarge.position, orbMed.position, 0x2a93c1);
+const line2 = createEnergyLine(orbMed.position, orbSmall.position, 0x3db8e8);
+const line3 = createEnergyLine(orbSmall.position, orbOrange.position, 0x88aacc);
+scene.add(line1);
+scene.add(line2);
+scene.add(line3);
+
+// ─── 7. GRID FLOOR (depth plane) ──────────────────────────────────────────────
+const gridHelper = new THREE.GridHelper(30, 30, 0x0e2035, 0x0a1828);
+gridHelper.position.y = -3.5;
+gridHelper.material.opacity = 0.3;
+gridHelper.material.transparent = true;
+scene.add(gridHelper);
+
+// ─── POSTPROCESSING ───────────────────────────────────────────────────────────
+// Two-pass bloom strategy for better control:
+// 1. Bloom pass on full scene
+// 2. ChromaticAberration via custom shader pass
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+// Bloom - tuned for Gleb aesthetic: present but not nuclear
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.55,   // strength
+  0.5,    // radius
+  0.80    // threshold
+);
+composer.addPass(bloomPass);
+
+// Chromatic aberration - subtle, adds physicality to glass edges
+const chromaticShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uOffset: { value: new THREE.Vector2(0.0014, 0.0010) },
+    uTime: { value: 0 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform vec2 uOffset;
+    uniform float uTime;
+    varying vec2 vUv;
+
+    void main() {
+      // Distance from center affects CA strength
+      vec2 dir = vUv - 0.5;
+      float dist = length(dir) * 1.5;
+
+      // Subtle animation on the aberration
+      float wobble = 1.0 + sin(uTime * 0.3) * 0.15;
+
+      vec2 off = uOffset * dist * dist * wobble;
+
+      float r = texture2D(tDiffuse, vUv + off).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vUv - off).b;
+
+      gl_FragColor = vec4(r, g, b, 1.0);
+    }
+  `
+};
+
+const caPass = new ShaderPass(chromaticShader);
+composer.addPass(caPass);
+
+// Vignette pass - darkens edges for cinematic depth
+const vignetteShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uStrength: { value: 0.45 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uStrength;
+    varying vec2 vUv;
+    void main() {
+      vec4 color = texture2D(tDiffuse, vUv);
+      float dist = distance(vUv, vec2(0.5));
+      float vignette = 1.0 - smoothstep(0.4, 0.85, dist * uStrength * 1.8);
+      color.rgb *= vignette;
+      gl_FragColor = color;
+    }
+  `
+};
+const vigPass = new ShaderPass(vignetteShader);
+composer.addPass(vigPass);
+
+// OutputPass MUST be last
+composer.addPass(new OutputPass());
+
+// ─── MOUSE INTERACTION ────────────────────────────────────────────────────────
+let mx = 0, my = 0;
+let camTX = 0, camTY = 0;
+document.addEventListener('mousemove', (e) => {
+  mx = (e.clientX / window.innerWidth - 0.5) * 2;
+  my = -(e.clientY / window.innerHeight - 0.5) * 2;
+});
+
+// ─── RESIZE ───────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+  bloomPass.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ─── ANIMATION LOOP ───────────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // Update shader uniforms
+  bgBlobMat.uniforms.uTime.value = t;
+  volumeMat.uniforms.uTime.value = t;
+  caPass.uniforms.uTime.value = t;
+
+  // Camera gentle parallax with mouse
+  camTX += (mx * 0.25 - camTX) * 0.03;
+  camTY += (my * 0.18 - camTY) * 0.03;
+  camera.position.x = camTX;
+  camera.position.y = camTY;
+  camera.lookAt(0, 0, 0);
+
+  // Primary orbs float
+  orbLarge.position.y = 0.3 + Math.sin(t * 0.45) * 0.12;
+  orbLarge.rotation.y = t * 0.08;
+  orbLarge.rotation.x = Math.sin(t * 0.06) * 0.05;
+
+  orbMed.position.y = -0.5 + Math.sin(t * 0.55 + 1.8) * 0.1;
+  orbMed.position.x = 2.2 + Math.sin(t * 0.22) * 0.08;
+  orbMed.rotation.y = t * 0.12;
+
+  orbSmall.position.y = 2.0 + Math.sin(t * 0.65 + 0.8) * 0.08;
+  orbSmall.position.x = 0.5 + Math.cos(t * 0.3) * 0.06;
+
+  orbOrange.position.y = -1.2 + Math.sin(t * 0.75 + 3.2) * 0.07;
+  orbOrange.position.x = 3.0 + Math.cos(t * 0.28) * 0.05;
+
+  // Energy lines update to follow orbs
+  updateEnergyLine(line1, orbLarge.position, orbMed.position);
+  updateEnergyLine(line2, orbMed.position, orbSmall.position);
+  updateEnergyLine(line3, orbSmall.position, orbOrange.position);
+
+  // Background blob slow morph
+  bgBlob.rotation.y = t * 0.04;
+  bgBlob.rotation.x = Math.sin(t * 0.03) * 0.08;
+
+  // Glass panels subtle sway
+  panel1.rotation.y = 0.35 + Math.sin(t * 0.18) * 0.025;
+  panel1.rotation.x = 0.05 + Math.cos(t * 0.14) * 0.015;
+  panel2.rotation.y = -0.4 + Math.sin(t * 0.22 + 1.2) * 0.02;
+  panel3.rotation.y = -0.2 + Math.cos(t * 0.25 + 2.1) * 0.025;
+
+  // Particle layers drift
+  particlesFar.rotation.y = t * 0.007;
+  particlesMid.rotation.y = t * 0.012;
+  particlesNear.rotation.y = t * 0.018;
+  particlesNear.rotation.x = Math.sin(t * 0.008) * 0.015;
+
+  // Volumetric light cone sway
+  volumeCone.rotation.z = 0.25 + Math.sin(t * 0.2) * 0.04;
+
+  // Pulsing orb point light
+  orbPointLight.intensity = 3.5 + Math.sin(t * 1.2) * 0.8;
+  orbPointLight.position.x = 2.5 + Math.sin(t * 0.35) * 0.3;
+  orbPointLight.position.y = 0.5 + Math.cos(t * 0.4) * 0.2;
+
+  // Key light breathe
+  keyLight.intensity = 8.0 + Math.sin(t * 0.6) * 1.0;
+
+  composer.render();
+}
+
+// Helper to regenerate energy line geometry when endpoints move
+function updateEnergyLine(line, from, to) {
+  const points = [];
+  const steps = 24;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    points.push(new THREE.Vector3(
+      THREE.MathUtils.lerp(from.x, to.x, t),
+      THREE.MathUtils.lerp(from.y, to.y, t) + Math.sin(t * Math.PI) * 0.2,
+      THREE.MathUtils.lerp(from.z, to.z, t)
+    ));
+  }
+  line.geometry.setFromPoints(points);
+}
+
+animate();
+</script>
+</body>
+</html>

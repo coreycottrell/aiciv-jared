@@ -1,0 +1,1487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brainiac Mastermind Training | PureBrain</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js"></script>
+<style>
+  /* =====================================================
+     BRAINIAC MASTERMIND TRAINING — PUREBRAIN.AI
+     Version: 2.0.0
+     Built: 2026-02-28
+     Password gate + HLS video library
+     Sections: Foundations | Client Spotlight Masterclasses | Advanced
+     To add videos: edit the TRAINING_VIDEOS array below
+  ===================================================== */
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --pb-bg:        #080a12;
+    --pb-surface:   #0d1021;
+    --pb-card:      #111628;
+    --pb-blue:      #2a93c1;
+    --pb-orange:    #f1420b;
+    --pb-text:      #e8eaf0;
+    --pb-muted:     #7a8299;
+    --pb-border:    rgba(42, 147, 193, 0.18);
+    --pb-glass:     rgba(13, 16, 33, 0.85);
+    --pb-radius:    12px;
+    --pb-radius-lg: 20px;
+    --pb-shadow:    0 8px 40px rgba(0, 0, 0, 0.6);
+    --pb-glow:      0 0 30px rgba(42, 147, 193, 0.15);
+  }
+
+  html, body {
+    background: var(--pb-bg);
+    color: var(--pb-text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ─── PASSWORD GATE ─── */
+  #pb-gate {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 24px;
+    background: var(--pb-bg);
+    position: relative;
+    overflow: hidden;
+  }
+
+  #pb-gate::before {
+    content: '';
+    position: absolute;
+    top: -20%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(ellipse, rgba(42, 147, 193, 0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .gate-card {
+    background: var(--pb-glass);
+    border: 1px solid var(--pb-border);
+    border-radius: var(--pb-radius-lg);
+    padding: 48px 40px;
+    width: 100%;
+    max-width: 440px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: var(--pb-shadow), var(--pb-glow);
+    text-align: center;
+    position: relative;
+    z-index: 1;
+  }
+
+  .gate-logo {
+    font-size: 1.9rem;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    margin-bottom: 6px;
+  }
+  .gate-logo .blue   { color: var(--pb-blue); }
+  .gate-logo .orange { color: var(--pb-orange); }
+
+  .gate-subtitle {
+    font-size: 0.78rem;
+    color: var(--pb-muted);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 32px;
+  }
+
+  .gate-lock-icon {
+    width: 56px;
+    height: 56px;
+    background: linear-gradient(135deg, rgba(42,147,193,0.15), rgba(241,66,11,0.10));
+    border: 1px solid var(--pb-border);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 28px;
+  }
+
+  .gate-lock-icon svg {
+    width: 26px;
+    height: 26px;
+    color: var(--pb-blue);
+  }
+
+  .gate-heading {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--pb-text);
+    margin-bottom: 8px;
+  }
+
+  .gate-desc {
+    font-size: 0.88rem;
+    color: var(--pb-muted);
+    line-height: 1.6;
+    margin-bottom: 32px;
+  }
+
+  .gate-input-wrap {
+    position: relative;
+    margin-bottom: 16px;
+  }
+
+  .gate-input {
+    width: 100%;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--pb-border);
+    border-radius: var(--pb-radius);
+    padding: 14px 48px 14px 16px;
+    color: var(--pb-text);
+    font-size: 1rem;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .gate-input:focus {
+    border-color: var(--pb-blue);
+    box-shadow: 0 0 0 3px rgba(42, 147, 193, 0.12);
+  }
+
+  .gate-input::placeholder { color: var(--pb-muted); }
+
+  .gate-toggle-pw {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--pb-muted);
+    padding: 4px;
+    display: flex;
+  }
+
+  .gate-toggle-pw:hover { color: var(--pb-blue); }
+
+  .gate-error {
+    font-size: 0.82rem;
+    color: var(--pb-orange);
+    margin-bottom: 14px;
+    min-height: 20px;
+    transition: opacity 0.2s;
+  }
+
+  .gate-error:empty { opacity: 0; }
+
+  .gate-btn {
+    width: 100%;
+    padding: 15px;
+    background: linear-gradient(135deg, var(--pb-blue), #1e6e94);
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    border: none;
+    border-radius: var(--pb-radius);
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+    letter-spacing: 0.02em;
+  }
+
+  .gate-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 24px rgba(42, 147, 193, 0.35);
+  }
+
+  .gate-btn:active { transform: translateY(0); }
+
+  .gate-footer {
+    margin-top: 24px;
+    font-size: 0.78rem;
+    color: var(--pb-muted);
+  }
+
+  /* ─── LIBRARY PAGE ─── */
+  #pb-library {
+    display: none;
+    min-height: 100vh;
+  }
+
+  /* Top nav */
+  .lib-nav {
+    background: rgba(8, 10, 18, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--pb-border);
+    padding: 14px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .nav-logo {
+    font-size: 1.3rem;
+    font-weight: 800;
+    letter-spacing: -0.3px;
+  }
+  .nav-logo .blue   { color: var(--pb-blue); }
+  .nav-logo .orange { color: var(--pb-orange); }
+
+  .nav-badge {
+    background: linear-gradient(135deg, rgba(42,147,193,0.15), rgba(241,66,11,0.10));
+    border: 1px solid var(--pb-border);
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 0.73rem;
+    color: var(--pb-blue);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+
+  .nav-signout {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    color: var(--pb-muted);
+    font-size: 0.8rem;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .nav-signout:hover { border-color: var(--pb-orange); color: var(--pb-orange); }
+
+  /* Hero */
+  .lib-hero {
+    padding: 64px 32px 40px;
+    text-align: center;
+    max-width: 760px;
+    margin: 0 auto;
+    position: relative;
+  }
+
+  .lib-hero::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 500px; height: 400px;
+    background: radial-gradient(ellipse, rgba(42, 147, 193, 0.07) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .hero-eyebrow {
+    font-size: 0.72rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--pb-orange);
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+
+  .hero-title {
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    margin-bottom: 14px;
+    background: linear-gradient(135deg, #fff 60%, var(--pb-blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero-sub {
+    font-size: 1rem;
+    color: var(--pb-muted);
+    line-height: 1.6;
+  }
+
+  /* Stats bar */
+  .lib-stats {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+    padding: 16px 32px 40px;
+    flex-wrap: wrap;
+  }
+
+  .stat-item {
+    text-align: center;
+  }
+
+  .stat-num {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--pb-blue);
+    line-height: 1;
+  }
+
+  .stat-label {
+    font-size: 0.73rem;
+    color: var(--pb-muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  .stat-divider {
+    width: 1px;
+    height: 36px;
+    background: var(--pb-border);
+  }
+
+  /* ─── FILTER BAR ─── */
+  .filter-bar-wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px 32px;
+  }
+
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .filter-btn {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--pb-border);
+    border-radius: 20px;
+    color: var(--pb-muted);
+    font-size: 0.82rem;
+    font-weight: 500;
+    padding: 7px 18px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    letter-spacing: 0.02em;
+  }
+
+  .filter-btn:hover {
+    background: rgba(42, 147, 193, 0.1);
+    border-color: rgba(42, 147, 193, 0.35);
+    color: var(--pb-text);
+  }
+
+  .filter-btn.active {
+    background: rgba(42, 147, 193, 0.15);
+    border-color: var(--pb-blue);
+    color: var(--pb-blue);
+    font-weight: 600;
+  }
+
+  /* ─── GRID CONTAINER ─── */
+  .lib-grid-wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px 80px;
+  }
+
+  /* ─── SECTION BLOCKS ─── */
+  .lib-section {
+    margin-bottom: 56px;
+    scroll-margin-top: 120px;
+  }
+
+  .section-header {
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--pb-border);
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .section-header-left {}
+
+  .section-eyebrow {
+    font-size: 0.65rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--pb-orange);
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .section-title {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: var(--pb-text);
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+
+  .section-subtitle {
+    font-size: 0.83rem;
+    color: var(--pb-muted);
+    margin-top: 4px;
+    line-height: 1.5;
+  }
+
+  .section-count {
+    font-size: 0.73rem;
+    color: var(--pb-muted);
+    white-space: nowrap;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--pb-border);
+    border-radius: 20px;
+    padding: 4px 12px;
+  }
+
+  .lib-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 24px;
+  }
+
+  /* ─── VIDEO CARDS (standard) ─── */
+  .video-card {
+    background: var(--pb-card);
+    border: 1px solid var(--pb-border);
+    border-radius: var(--pb-radius-lg);
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+    position: relative;
+  }
+
+  .video-card:hover:not(.card-coming-soon) {
+    transform: translateY(-4px);
+    border-color: rgba(42, 147, 193, 0.4);
+    box-shadow: var(--pb-shadow), 0 0 40px rgba(42, 147, 193, 0.12);
+  }
+
+  .video-card.card-coming-soon {
+    cursor: default;
+    opacity: 0.6;
+    filter: grayscale(0.3);
+  }
+
+  .card-thumb {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16/9;
+    background: #0a0c18;
+    overflow: hidden;
+  }
+
+  .card-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.3s;
+  }
+
+  .video-card:hover:not(.card-coming-soon) .card-thumb img {
+    transform: scale(1.03);
+  }
+
+  .card-thumb-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #0d1021, #111628);
+  }
+
+  .card-thumb-placeholder svg {
+    width: 48px;
+    height: 48px;
+    color: rgba(42, 147, 193, 0.3);
+  }
+
+  .card-play-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(8, 10, 18, 0.4);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .video-card:hover:not(.card-coming-soon) .card-play-overlay {
+    opacity: 1;
+  }
+
+  .card-play-btn {
+    width: 56px;
+    height: 56px;
+    background: rgba(42, 147, 193, 0.9);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    backdrop-filter: blur(4px);
+  }
+
+  .card-play-btn svg {
+    width: 22px;
+    height: 22px;
+    color: #fff;
+    margin-left: 3px;
+  }
+
+  .card-duration {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background: rgba(0,0,0,0.75);
+    color: #fff;
+    font-size: 0.73rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 6px;
+    backdrop-filter: blur(4px);
+  }
+
+  .card-coming-badge {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    background: rgba(241, 66, 11, 0.85);
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 20px;
+  }
+
+  .card-new-badge {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    background: rgba(42, 147, 193, 0.85);
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 20px;
+  }
+
+  .card-body {
+    padding: 20px;
+  }
+
+  .card-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--pb-text);
+    margin-bottom: 8px;
+    line-height: 1.3;
+  }
+
+  .card-desc {
+    font-size: 0.83rem;
+    color: var(--pb-muted);
+    line-height: 1.55;
+    margin-bottom: 14px;
+  }
+
+  .card-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.75rem;
+    color: var(--pb-muted);
+  }
+
+  .card-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .card-meta-item svg {
+    width: 13px;
+    height: 13px;
+    opacity: 0.6;
+  }
+
+  /* ─── SPOTLIGHT CARDS ─── */
+  .spotlight-card {
+    background: linear-gradient(145deg, #111628, #0f1422);
+    border: 1px solid rgba(241, 66, 11, 0.2);
+    border-radius: var(--pb-radius-lg);
+    overflow: hidden;
+    cursor: default;
+    transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+    position: relative;
+  }
+
+  .spotlight-card.spotlight-live {
+    cursor: pointer;
+  }
+
+  .spotlight-card.spotlight-live:hover {
+    transform: translateY(-4px);
+    border-color: rgba(241, 66, 11, 0.5);
+    box-shadow: var(--pb-shadow), 0 0 40px rgba(241, 66, 11, 0.1);
+  }
+
+  .spotlight-card.spotlight-coming {
+    opacity: 0.65;
+    filter: grayscale(0.2);
+  }
+
+  .spotlight-header {
+    padding: 24px 20px 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    border-bottom: 1px solid rgba(241, 66, 11, 0.12);
+  }
+
+  .spotlight-avatar {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(241,66,11,0.25), rgba(42,147,193,0.2));
+    border: 2px solid rgba(241, 66, 11, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--pb-orange);
+    flex-shrink: 0;
+    letter-spacing: -0.03em;
+  }
+
+  .spotlight-guest-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .spotlight-guest-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--pb-text);
+    line-height: 1.2;
+    margin-bottom: 3px;
+  }
+
+  .spotlight-guest-title {
+    font-size: 0.78rem;
+    color: var(--pb-muted);
+    line-height: 1.3;
+  }
+
+  .spotlight-guest-company {
+    font-size: 0.73rem;
+    color: var(--pb-blue);
+    margin-top: 2px;
+  }
+
+  .spotlight-body {
+    padding: 16px 20px 20px;
+  }
+
+  .spotlight-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--pb-text);
+    margin-bottom: 8px;
+    line-height: 1.3;
+  }
+
+  .spotlight-desc {
+    font-size: 0.83rem;
+    color: var(--pb-muted);
+    line-height: 1.55;
+    margin-bottom: 16px;
+  }
+
+  .spotlight-tags {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .spotlight-tag {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 20px;
+  }
+
+  .tag-niche {
+    background: rgba(241, 66, 11, 0.12);
+    color: var(--pb-orange);
+    border: 1px solid rgba(241, 66, 11, 0.25);
+  }
+
+  .tag-duration {
+    background: rgba(42, 147, 193, 0.1);
+    color: var(--pb-blue);
+    border: 1px solid rgba(42, 147, 193, 0.2);
+  }
+
+  .tag-months {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--pb-muted);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .tag-quarter {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--pb-muted);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+  }
+
+  .spotlight-coming-overlay {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    background: rgba(241, 66, 11, 0.8);
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 20px;
+    backdrop-filter: blur(4px);
+  }
+
+  /* ─── VIDEO PLAYER MODAL ─── */
+  #pb-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.92);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    backdrop-filter: blur(6px);
+  }
+
+  #pb-modal.modal-open {
+    display: flex;
+  }
+
+  .modal-inner {
+    background: var(--pb-card);
+    border: 1px solid var(--pb-border);
+    border-radius: var(--pb-radius-lg);
+    width: 100%;
+    max-width: 920px;
+    overflow: hidden;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.8);
+    position: relative;
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--pb-border);
+  }
+
+  .modal-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--pb-text);
+  }
+
+  .modal-close {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--pb-muted);
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .modal-close:hover {
+    background: rgba(241, 66, 11, 0.15);
+    color: var(--pb-orange);
+    border-color: rgba(241, 66, 11, 0.3);
+  }
+
+  .modal-video-wrap {
+    position: relative;
+    width: 100%;
+    background: #000;
+    aspect-ratio: 16/9;
+  }
+
+  .modal-video-wrap video {
+    width: 100%;
+    height: 100%;
+    display: block;
+    outline: none;
+  }
+
+  .modal-footer {
+    padding: 14px 20px 18px;
+  }
+
+  .modal-video-desc {
+    font-size: 0.83rem;
+    color: var(--pb-muted);
+    line-height: 1.55;
+  }
+
+  /* ─── RESPONSIVE ─── */
+  @media (max-width: 640px) {
+    .gate-card { padding: 36px 24px; }
+    .lib-nav { padding: 12px 16px; }
+    .lib-hero { padding: 40px 16px 28px; }
+    .lib-stats { gap: 20px; padding: 12px 16px 32px; }
+    .filter-bar-wrap { padding: 0 16px 24px; }
+    .lib-grid-wrap { padding: 0 16px 60px; }
+    .lib-grid { grid-template-columns: 1fr; gap: 16px; }
+    .stat-divider { display: none; }
+    .section-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+  }
+
+  @media (max-width: 480px) {
+    .nav-badge { display: none; }
+    .hero-title { font-size: 1.6rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================================================
+     PASSWORD GATE
+================================================ -->
+<div id="pb-gate">
+  <div class="gate-card">
+
+    <div class="gate-logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>
+    </div>
+    <div class="gate-subtitle">Client Portal</div>
+
+    <div class="gate-lock-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+    </div>
+
+    <h1 class="gate-heading">Brainiac Mastermind</h1>
+    <p class="gate-desc">
+      Exclusive training library for PureBrain clients.<br>
+      Enter your access password to continue.
+    </p>
+
+    <form id="gate-form" onsubmit="return handleGateSubmit(event)">
+      <div class="gate-input-wrap">
+        <input
+          type="password"
+          id="gate-pw"
+          class="gate-input"
+          placeholder="Enter access password"
+          autocomplete="current-password"
+          required
+        />
+        <button type="button" class="gate-toggle-pw" onclick="togglePwVisibility()" aria-label="Toggle password visibility">
+          <svg id="eye-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
+      </div>
+      <div class="gate-error" id="gate-error"></div>
+      <button type="submit" class="gate-btn">Access Training Library</button>
+    </form>
+
+    <div class="gate-footer">For PureBrain Clients Only &mdash; <a href="https://purebrain.ai" style="color:#2a93c1;text-decoration:none;">purebrain.ai</a></div>
+  </div>
+</div>
+
+<!-- ================================================
+     VIDEO LIBRARY
+================================================ -->
+<div id="pb-library">
+
+  <nav class="lib-nav">
+    <div class="nav-logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>
+    </div>
+    <div class="nav-badge">Mastermind Member</div>
+    <button class="nav-signout" onclick="signOut()">Sign Out</button>
+  </nav>
+
+  <div class="lib-hero">
+    <div class="hero-eyebrow">Exclusive Client Training</div>
+    <h1 class="hero-title">Brainiac Mastermind Training</h1>
+    <p class="hero-sub">Exclusive training library for PureBrain clients. Master every feature, workflow, and strategy &mdash; plus real-world masterclasses from clients in your industry.</p>
+  </div>
+
+  <div class="lib-stats">
+    <div class="stat-item">
+      <div class="stat-num" id="stat-live">0</div>
+      <div class="stat-label">Videos Live</div>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat-item">
+      <div class="stat-num" id="stat-coming">0</div>
+      <div class="stat-label">Coming Soon</div>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat-item">
+      <div class="stat-num" id="stat-spotlight">0</div>
+      <div class="stat-label">Masterclasses</div>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat-item">
+      <div class="stat-num">HLS</div>
+      <div class="stat-label">Adaptive Stream</div>
+    </div>
+  </div>
+
+  <!-- Section filter bar -->
+  <div class="filter-bar-wrap">
+    <div class="filter-bar" id="filter-bar">
+      <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">All</button>
+      <button class="filter-btn" data-filter="foundations" onclick="setFilter('foundations')">Foundations</button>
+      <button class="filter-btn" data-filter="spotlight" onclick="setFilter('spotlight')">Client Spotlight</button>
+      <button class="filter-btn" data-filter="advanced" onclick="setFilter('advanced')">Advanced</button>
+    </div>
+  </div>
+
+  <div class="lib-grid-wrap" id="lib-grid-wrap">
+    <!-- Sections rendered by JS -->
+  </div>
+
+</div>
+
+<!-- ================================================
+     VIDEO PLAYER MODAL
+================================================ -->
+<div id="pb-modal" role="dialog" aria-modal="true" aria-label="Video Player">
+  <div class="modal-inner">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title-text"></span>
+      <button class="modal-close" onclick="closeModal()" aria-label="Close video player">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-video-wrap">
+      <video id="modal-video" controls playsinline preload="metadata"></video>
+    </div>
+    <div class="modal-footer">
+      <div class="modal-video-desc" id="modal-desc-text"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================================================
+   TRAINING VIDEO LIBRARY DATA
+   ---
+   Fields:
+     id          - unique string
+     title       - display title
+     description - shown on card + in modal
+     duration    - "MM:SS" or "X hr" or null
+     posterUrl   - thumbnail URL or null
+     hlsUrl      - master.m3u8 URL or null (coming_soon)
+     category    - 'foundations' | 'spotlight' | 'advanced'
+     status      - 'live' | 'coming_soon'
+     badge       - optional: 'new' shows blue NEW badge
+     spotlightInfo (spotlight cards only):
+       {
+         guest:    display name (or 'Coming Soon')
+         initials: 1-2 letter avatar
+         title:    job title
+         company:  company name (optional)
+         niche:    tag label e.g. 'Legal'
+         months:   months with PureBrain (optional)
+         quarter:  'Q2 2026' etc. for coming-soon cards
+       }
+================================================ */
+var TRAINING_VIDEOS = [
+
+  /* ── FOUNDATIONS ── */
+  {
+    id: "portal-demo",
+    title: "PureBrain Portal Demo",
+    description: "See PureBrain's AI-powered portal in action - from onboarding to daily operations. A complete walkthrough of the client experience.",
+    duration: null,
+    posterUrl: "https://pub-5e73e235a2394ba3abf975138fdc5c7c.r2.dev/videos/eaf39ae1_Portal_demo/poster.jpg",
+    hlsUrl: "https://pub-5e73e235a2394ba3abf975138fdc5c7c.r2.dev/videos/eaf39ae1_Portal_demo/master.m3u8",
+    category: "foundations",
+    status: "live",
+    badge: "new"
+  },
+  {
+    id: "complete-demo",
+    title: "Module 1: Brainiac Mastermind Training",
+    description: "The inaugural Brainiac Mastermind session — PureBrain foundations, persistent memory, collaborative agents, and member live demonstrations. Recorded March 4, 2026.",
+    duration: "83 min",
+    posterUrl: "https://pub-5e73e235a2394ba3abf975138fdc5c7c.r2.dev/brainiac/recordings/module-1/poster.jpg",
+    hlsUrl: "https://pub-5e73e235a2394ba3abf975138fdc5c7c.r2.dev/brainiac/recordings/module-1/master.m3u8",
+    category: "foundations",
+    status: "live",
+    badge: "new"
+  },
+  {
+    id: "getting-started",
+    title: "Module 2: Brainiac Mastermind Training",
+    description: "AI workflow automation deep-dive — three levels of automation, five-step process mapping framework, voice AI integration, and real estate AI implementation by members. Recorded March 11, 2026.",
+    duration: "65 min",
+    posterUrl: "https://pub-5e73e235a2394ba3abf975138fdc5c7c.r2.dev/brainiac/recordings/module-2/poster.jpg",
+    hlsUrl: "https://pub-5e73e235a2394ba3abf975138fdc5c7c.r2.dev/brainiac/recordings/module-2/master.m3u8",
+    category: "foundations",
+    status: "live",
+    badge: "new"
+  },
+  {
+    id: "module-3-delegation",
+    title: "Module 3: Advanced Agent Delegation",
+    description: "Master the art of AI delegation — the CLEAR framework, 5 levels of delegation, ownership vs instructions, and building your delegation action plan. Recorded April 1, 2026.",
+    duration: null,
+    posterUrl: null,
+    hlsUrl: null,
+    category: "foundations",
+    status: "coming_soon",
+    badge: "new"
+  },
+
+  /* ── CLIENT SPOTLIGHT MASTERCLASSES ── */
+  {
+    id: "spotlight-legal",
+    title: "Business Attorney Masterclass",
+    description: "How a business attorney transformed their practice with PureBrain - from client intake to contract review workflows.",
+    duration: "1 hr",
+    posterUrl: null,
+    hlsUrl: null,
+    category: "spotlight",
+    status: "coming_soon",
+    badge: null,
+    spotlightInfo: {
+      guest: "Coming Soon",
+      initials: "BA",
+      title: "Business Attorney",
+      company: null,
+      niche: "Legal",
+      months: null,
+      quarter: "Q2 2026"
+    }
+  },
+  {
+    id: "spotlight-realestate",
+    title: "Real Estate Agent Masterclass",
+    description: "A top-producing real estate agent shares how PureBrain handles client follow-up, listing research, and offer strategy at scale.",
+    duration: "1 hr",
+    posterUrl: null,
+    hlsUrl: null,
+    category: "spotlight",
+    status: "coming_soon",
+    badge: null,
+    spotlightInfo: {
+      guest: "Coming Soon",
+      initials: "RE",
+      title: "Real Estate Agent",
+      company: null,
+      niche: "Real Estate",
+      months: null,
+      quarter: "Q2 2026"
+    }
+  },
+  {
+    id: "spotlight-healthcare",
+    title: "Healthcare Practice Masterclass",
+    description: "Inside a healthcare practice that uses PureBrain for patient communication, scheduling optimization, and team coordination.",
+    duration: "1 hr",
+    posterUrl: null,
+    hlsUrl: null,
+    category: "spotlight",
+    status: "coming_soon",
+    badge: null,
+    spotlightInfo: {
+      guest: "Coming Soon",
+      initials: "HC",
+      title: "Practice Owner",
+      company: null,
+      niche: "Healthcare",
+      months: null,
+      quarter: "Q3 2026"
+    }
+  },
+  {
+    id: "spotlight-finance",
+    title: "Financial Advisor Masterclass",
+    description: "A financial advisor reveals how PureBrain manages client relationships, prepares meeting briefs, and surfaces insights at scale.",
+    duration: "1 hr",
+    posterUrl: null,
+    hlsUrl: null,
+    category: "spotlight",
+    status: "coming_soon",
+    badge: null,
+    spotlightInfo: {
+      guest: "Coming Soon",
+      initials: "FA",
+      title: "Financial Advisor",
+      company: null,
+      niche: "Finance",
+      months: null,
+      quarter: "Q3 2026"
+    }
+  },
+
+  /* ── ADVANCED TECHNIQUES ── */
+  {
+    id: "advanced-prompting",
+    title: "Advanced Prompting Strategies",
+    description: "Go beyond the basics. Learn the prompt patterns that power users rely on to get dramatically better results from their PureBrain AI.",
+    duration: null,
+    posterUrl: null,
+    hlsUrl: null,
+    category: "advanced",
+    status: "coming_soon",
+    badge: null
+  },
+  {
+    id: "advanced-workflows",
+    title: "Building Custom Workflows",
+    description: "Design and deploy custom AI workflows tailored to your specific business processes. A deep dive into PureBrain's workflow engine.",
+    duration: null,
+    posterUrl: null,
+    hlsUrl: null,
+    category: "advanced",
+    status: "coming_soon",
+    badge: null
+  }
+];
+
+/* ================================================
+   SECTION DEFINITIONS
+================================================ */
+var SECTIONS = [
+  {
+    id: "foundations",
+    category: "foundations",
+    eyebrow: "Start Here",
+    title: "Foundations",
+    subtitle: "Essential training to get the most out of your PureBrain"
+  },
+  {
+    id: "spotlight",
+    category: "spotlight",
+    eyebrow: "Real-World Masterclasses",
+    title: "Client Spotlight Masterclasses",
+    subtitle: "Real PureBrain clients sharing what's possible in their industry"
+  },
+  {
+    id: "advanced",
+    category: "advanced",
+    eyebrow: "Power User Training",
+    title: "Advanced Techniques",
+    subtitle: "Level up your PureBrain workflow"
+  }
+];
+
+/* ================================================
+   AUTH
+================================================ */
+var GATE_PASSWORD = "brainiac2026";
+var SESSION_KEY   = "pb_mastermind_auth";
+
+function checkAuth() {
+  return sessionStorage.getItem(SESSION_KEY) === "1";
+}
+
+function signIn() {
+  sessionStorage.setItem(SESSION_KEY, "1");
+  document.getElementById("pb-gate").style.display    = "none";
+  document.getElementById("pb-library").style.display = "block";
+  renderLibrary();
+}
+
+function signOut() {
+  sessionStorage.removeItem(SESSION_KEY);
+  document.getElementById("pb-library").style.display = "none";
+  document.getElementById("pb-gate").style.display    = "flex";
+  document.getElementById("gate-pw").value = "";
+  document.getElementById("gate-error").textContent = "";
+}
+
+function handleGateSubmit(e) {
+  e.preventDefault();
+  var pw  = document.getElementById("gate-pw").value.trim();
+  var err = document.getElementById("gate-error");
+  if (pw === GATE_PASSWORD) {
+    err.textContent = "";
+    signIn();
+  } else {
+    err.textContent = "Incorrect password. Please try again.";
+    document.getElementById("gate-pw").select();
+  }
+  return false;
+}
+
+function togglePwVisibility() {
+  var input = document.getElementById("gate-pw");
+  var icon  = document.getElementById("eye-icon");
+  if (input.type === "password") {
+    input.type = "text";
+    icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+  } else {
+    input.type = "password";
+    icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+  }
+}
+
+/* ================================================
+   FILTER
+================================================ */
+function setFilter(filter) {
+  var btns = document.querySelectorAll(".filter-btn");
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].classList.toggle("active", btns[i].getAttribute("data-filter") === filter);
+  }
+  var sections = document.querySelectorAll(".lib-section");
+  for (var j = 0; j < sections.length; j++) {
+    var cat = sections[j].getAttribute("data-category");
+    sections[j].style.display = (filter === "all" || filter === cat) ? "" : "none";
+  }
+}
+
+/* ================================================
+   STATS
+================================================ */
+function updateStats() {
+  var live      = 0, coming = 0, spotlight = 0;
+  for (var i = 0; i < TRAINING_VIDEOS.length; i++) {
+    if (TRAINING_VIDEOS[i].status === "live")         live++;
+    if (TRAINING_VIDEOS[i].status === "coming_soon")  coming++;
+    if (TRAINING_VIDEOS[i].category === "spotlight")  spotlight++;
+  }
+  document.getElementById("stat-live").textContent      = live;
+  document.getElementById("stat-coming").textContent    = coming;
+  document.getElementById("stat-spotlight").textContent = spotlight;
+}
+
+/* ================================================
+   LIBRARY RENDERING
+================================================ */
+function renderLibrary() {
+  updateStats();
+  var wrap = document.getElementById("lib-grid-wrap");
+  var html = "";
+
+  for (var s = 0; s < SECTIONS.length; s++) {
+    var sec = SECTIONS[s];
+    var videos = [];
+    for (var k = 0; k < TRAINING_VIDEOS.length; k++) {
+      if (TRAINING_VIDEOS[k].category === sec.category) videos.push(TRAINING_VIDEOS[k]);
+    }
+    if (videos.length === 0) continue;
+
+    var countLabel = videos.length + (videos.length === 1 ? " session" : " sessions");
+    var cardsHtml = "";
+    for (var v = 0; v < videos.length; v++) {
+      cardsHtml += (sec.category === "spotlight") ? buildSpotlightCard(videos[v]) : buildVideoCard(videos[v]);
+    }
+
+    html += '<div class="lib-section" data-category="' + sec.category + '" id="section-' + sec.id + '">';
+    html += '<div class="section-header">';
+    html += '<div class="section-header-left">';
+    html += '<div class="section-eyebrow">' + escHtml(sec.eyebrow) + '</div>';
+    html += '<div class="section-title">' + escHtml(sec.title) + '</div>';
+    html += '<div class="section-subtitle">' + escHtml(sec.subtitle) + '</div>';
+    html += '</div>';
+    html += '<div class="section-count">' + escHtml(countLabel) + '</div>';
+    html += '</div>';
+    html += '<div class="lib-grid">' + cardsHtml + '</div>';
+    html += '</div>';
+  }
+
+  wrap.innerHTML = html;
+}
+
+/* ─── Standard Video Card ─── */
+function buildVideoCard(v) {
+  var isComingSoon = v.status === "coming_soon";
+
+  var thumb = v.posterUrl
+    ? '<img src="' + escHtml(v.posterUrl) + '" alt="' + escHtml(v.title) + '" loading="lazy">'
+    : '<div class="card-thumb-placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 10l4.553-2.369A1 1 0 0 1 21 8.519v6.962a1 1 0 0 1-1.447.89L15 14M5 18h8a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2z"/></svg></div>';
+
+  var playOverlay = !isComingSoon
+    ? '<div class="card-play-overlay"><div class="card-play-btn"><svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></div></div>'
+    : "";
+
+  var durationBadge = (v.duration && !isComingSoon)
+    ? '<div class="card-duration">' + escHtml(v.duration) + '</div>' : "";
+
+  var topBadge = isComingSoon
+    ? '<div class="card-coming-badge">Coming Soon</div>'
+    : (v.badge === "new" ? '<div class="card-new-badge">New</div>' : "");
+
+  var clickAttr = !isComingSoon ? 'onclick="openModal(\'' + v.id + '\')"'  : "";
+  var roleAttr  = !isComingSoon ? 'role="button" tabindex="0"' : 'role="article" tabindex="-1"';
+
+  return '<div class="video-card' + (isComingSoon ? " card-coming-soon" : "") + '" ' + clickAttr + ' ' + roleAttr + '>' +
+    '<div class="card-thumb">' + thumb + playOverlay + durationBadge + topBadge + '</div>' +
+    '<div class="card-body">' +
+    '<div class="card-title">' + escHtml(v.title) + '</div>' +
+    '<div class="card-desc">' + escHtml(v.description) + '</div>' +
+    '<div class="card-meta">' +
+    '<div class="card-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' +
+    (isComingSoon ? "Transcoding" : (v.duration || "Watch Now")) +
+    '</div>' +
+    '<div class="card-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2H3v16h5l3 3 3-3h7V2z"/></svg>HD Adaptive</div>' +
+    '</div></div></div>';
+}
+
+/* ─── Spotlight Card ─── */
+function buildSpotlightCard(v) {
+  var isComingSoon = v.status === "coming_soon";
+  var si = v.spotlightInfo || {};
+
+  var initials  = si.initials || "?";
+  var guestName = si.guest    || "Guest";
+  var guestTitle = si.title   || "";
+  var company   = si.company  || "";
+  var niche     = si.niche    || "";
+  var months    = si.months   || null;
+  var quarter   = si.quarter  || null;
+
+  var guestInfoHtml = '<div class="spotlight-guest-info">' +
+    '<div class="spotlight-guest-name">' + escHtml(guestName) + '</div>';
+  if (guestTitle) guestInfoHtml += '<div class="spotlight-guest-title">' + escHtml(guestTitle) + '</div>';
+  if (company)    guestInfoHtml += '<div class="spotlight-guest-company">' + escHtml(company) + '</div>';
+  guestInfoHtml += '</div>';
+
+  var tags = "";
+  if (niche)    tags += '<span class="spotlight-tag tag-niche">' + escHtml(niche) + '</span>';
+  if (v.duration) tags += '<span class="spotlight-tag tag-duration">' + escHtml(v.duration) + '</span>';
+  if (months)   tags += '<span class="spotlight-tag tag-months">' + escHtml(months + " mo with PureBrain") + '</span>';
+  if (quarter && isComingSoon) tags += '<span class="spotlight-tag tag-quarter">Coming ' + escHtml(quarter) + '</span>';
+
+  var comingOverlay = isComingSoon ? '<div class="spotlight-coming-overlay">Coming Soon</div>' : "";
+  var clickAttr = !isComingSoon ? 'onclick="openModal(\'' + v.id + '\')"'  : "";
+  var cardClass = "spotlight-card " + (isComingSoon ? "spotlight-coming" : "spotlight-live");
+
+  return '<div class="' + cardClass + '" ' + clickAttr + '>' +
+    comingOverlay +
+    '<div class="spotlight-header"><div class="spotlight-avatar">' + escHtml(initials) + '</div>' + guestInfoHtml + '</div>' +
+    '<div class="spotlight-body">' +
+    '<div class="spotlight-title">' + escHtml(v.title) + '</div>' +
+    '<div class="spotlight-desc">' + escHtml(v.description) + '</div>' +
+    '<div class="spotlight-tags">' + tags + '</div>' +
+    '</div></div>';
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+/* ================================================
+   KEYBOARD NAVIGATION
+================================================ */
+document.addEventListener("keydown", function(e) {
+  if (e.target && e.target.classList.contains("video-card") && e.key === "Enter") {
+    e.target.click();
+  }
+  if (e.key === "Escape") closeModal();
+});
+
+/* ================================================
+   HLS VIDEO PLAYER MODAL
+================================================ */
+var hlsInstance = null;
+
+function openModal(videoId) {
+  var video = null;
+  for (var i = 0; i < TRAINING_VIDEOS.length; i++) {
+    if (TRAINING_VIDEOS[i].id === videoId) { video = TRAINING_VIDEOS[i]; break; }
+  }
+  if (!video || video.status !== "live") return;
+
+  var modal   = document.getElementById("pb-modal");
+  document.getElementById("modal-title-text").textContent = video.title;
+  document.getElementById("modal-desc-text").textContent  = video.description;
+
+  var videoEl = document.getElementById("modal-video");
+
+  if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+
+  if (video.hlsUrl && Hls.isSupported()) {
+    hlsInstance = new Hls({ enableWorker: true, autoStartLoad: true, startLevel: -1, capLevelToPlayerSize: true });
+    hlsInstance.loadSource(video.hlsUrl);
+    hlsInstance.attachMedia(videoEl);
+    hlsInstance.on(Hls.Events.MANIFEST_PARSED, function() {
+      videoEl.play().catch(function(){});
+    });
+  } else if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
+    videoEl.src = video.hlsUrl;
+    videoEl.play().catch(function(){});
+  }
+
+  if (video.posterUrl) videoEl.poster = video.posterUrl;
+
+  modal.classList.add("modal-open");
+  document.body.style.overflow = "hidden";
+}
+
+function closeModal() {
+  var modal   = document.getElementById("pb-modal");
+  var videoEl = document.getElementById("modal-video");
+  videoEl.pause();
+  videoEl.src = "";
+  if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+  modal.classList.remove("modal-open");
+  document.body.style.overflow = "";
+}
+
+document.getElementById("pb-modal").addEventListener("click", function(e) {
+  if (e.target === this) closeModal();
+});
+
+/* ================================================
+   BOOT
+================================================ */
+(function init() {
+  if (checkAuth()) {
+    document.getElementById("pb-gate").style.display    = "none";
+    document.getElementById("pb-library").style.display = "block";
+    renderLibrary();
+  }
+})();
+</script>
+
+</body>
+</html>

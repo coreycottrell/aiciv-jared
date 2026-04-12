@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aether 3D - Day 8: Advanced Shader Mastery</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #060606;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  #canvas-container {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+  }
+
+  canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  /* UI overlay */
+  #ui-overlay {
+    position: fixed;
+    z-index: 10;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .demo-btn {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.8);
+    padding: 0.5rem 1.2rem;
+    border-radius: 2rem;
+    cursor: pointer;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: background 0.2s, border-color 0.2s, color 0.2s;
+    backdrop-filter: blur(8px);
+  }
+  .demo-btn:hover { background: rgba(42,147,193,0.18); border-color: rgba(42,147,193,0.5); color: #fff; }
+  .demo-btn.active { background: rgba(42,147,193,0.25); border-color: #2a93c1; color: #fff; }
+
+  /* Title */
+  #title-badge {
+    position: fixed;
+    top: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    text-align: center;
+    pointer-events: none;
+  }
+  #title-badge h1 {
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+    font-weight: 400;
+  }
+  #title-badge .subtitle {
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: rgba(42,147,193,0.5);
+    margin-top: 0.25rem;
+    font-weight: 300;
+  }
+
+  /* FPS counter */
+  #fps-counter {
+    position: fixed;
+    top: 1.5rem;
+    right: 1.5rem;
+    z-index: 10;
+    font-size: 0.65rem;
+    color: rgba(255,255,255,0.2);
+    letter-spacing: 0.12em;
+    font-family: 'SF Mono', 'Consolas', monospace;
+    text-align: right;
+  }
+
+  /* Loading */
+  #loading {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: #060606;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 1rem;
+    transition: opacity 0.6s ease;
+  }
+  #loading.hidden { opacity: 0; pointer-events: none; }
+  .load-ring {
+    width: 40px; height: 40px;
+    border: 2px solid rgba(42,147,193,0.15);
+    border-top-color: #2a93c1;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .load-text {
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.3);
+  }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="load-ring"></div>
+  <div class="load-text">Initializing shaders</div>
+</div>
+
+<div id="title-badge">
+  <h1>Aether 3D &mdash; Day 8</h1>
+  <div class="subtitle">Advanced Shader Mastery &middot; Noise Deformation &middot; GPU Particles &middot; Caustics</div>
+</div>
+
+<div id="fps-counter">
+  <div id="fps-val">60 fps</div>
+  <div id="tech-label">NOISE DEFORM</div>
+</div>
+
+<div id="canvas-container"></div>
+
+<div id="ui-overlay">
+  <button class="demo-btn active" onclick="setDemo('noise')" id="btn-noise">Noise Deform</button>
+  <button class="demo-btn" onclick="setDemo('particles')" id="btn-particles">GPU Particles</button>
+  <button class="demo-btn" onclick="setDemo('caustics')" id="btn-caustics">Caustics</button>
+  <button class="demo-btn" onclick="setDemo('combined')" id="btn-combined">Combined</button>
+</div>
+
+<!-- Three.js ESM import map - r0.161.0 confirmed working paths -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ============================================================
+//  BRAND CONSTANTS
+// ============================================================
+const PB_BLUE     = new THREE.Color('#2a93c1');
+const PB_ORANGE   = new THREE.Color('#f1420b');
+const PB_DARK     = '#060606';
+const GOLD_SPEC   = new THREE.Color('#C8A84A');
+
+// ============================================================
+//  SCENE SETUP
+// ============================================================
+const container = document.getElementById('canvas-container');
+const W = () => container.clientWidth;
+const H = () => container.clientHeight;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(W(), H());
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(PB_DARK);
+
+const camera = new THREE.PerspectiveCamera(50, W() / H(), 0.1, 100);
+camera.position.set(0, 1.5, 5.5);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.minDistance = 2;
+controls.maxDistance = 12;
+controls.target.set(0, 0, 0);
+
+// ============================================================
+//  LIGHTING - Gleb 6-colour studio setup
+// ============================================================
+const ambientLight = new THREE.AmbientLight(0x111122, 0.4);
+scene.add(ambientLight);
+
+const keyLight = new THREE.DirectionalLight(0xffffff, 2.5);
+keyLight.position.set(3, 5, 3);
+scene.add(keyLight);
+
+// Gleb signature: electric blue fill
+const fillLight = new THREE.DirectionalLight(0x0D16F5, 1.8);
+fillLight.position.set(-4, 2, -2);
+scene.add(fillLight);
+
+// Warm backlight
+const backLight = new THREE.DirectionalLight(0xff8844, 1.2);
+backLight.position.set(0, -2, -4);
+scene.add(backLight);
+
+// PureBrain blue rim
+const rimLight = new THREE.DirectionalLight(0x2a93c1, 1.0);
+rimLight.position.set(-3, 3, 2);
+scene.add(rimLight);
+
+// Orange accent
+const accentLight = new THREE.PointLight(0xf1420b, 1.5, 8);
+accentLight.position.set(2, -1, 1);
+scene.add(accentLight);
+
+// ============================================================
+//  POSTPROCESSING - ES module build, no separate shader deps needed
+// ============================================================
+const composer = new EffectComposer(renderer);
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(W(), H()),
+  0.45,   // intensity - restrained, premium
+  0.4,    // radius
+  0.85    // luminance threshold - only true emissives glow
+);
+composer.addPass(bloomPass);
+
+// Chromatic aberration (custom ShaderPass - screen-edge fringing)
+const ChromaticAberrationShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uOffset:  { value: new THREE.Vector2(0.0018, 0.0018) },
+    uTime:    { value: 0.0 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform vec2 uOffset;
+    uniform float uTime;
+    varying vec2 vUv;
+
+    void main() {
+      vec2 center = vUv - 0.5;
+      float dist2 = dot(center, center);
+      // Radial falloff: aberration strongest at edges
+      vec2 offset = uOffset * dist2 * 3.0;
+
+      vec4 r = texture2D(tDiffuse, vUv - offset);
+      vec4 g = texture2D(tDiffuse, vUv);
+      vec4 b = texture2D(tDiffuse, vUv + offset);
+
+      gl_FragColor = vec4(r.r, g.g, b.b, g.a);
+    }
+  `
+};
+const caPass = new ShaderPass(ChromaticAberrationShader);
+composer.addPass(caPass);
+
+// Vignette + grain pass
+const VignetteGrainShader = {
+  uniforms: {
+    tDiffuse:   { value: null },
+    uTime:      { value: 0.0 },
+    uVignette:  { value: 1.0 },
+    uGrain:     { value: 0.028 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uTime;
+    uniform float uVignette;
+    uniform float uGrain;
+    varying vec2 vUv;
+
+    // Simple pseudo-random for grain
+    float rand(vec2 co) {
+      return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+    }
+
+    void main() {
+      vec4 color = texture2D(tDiffuse, vUv);
+
+      // Vignette
+      vec2 uv = vUv * 2.0 - 1.0;
+      float vig = 1.0 - dot(uv, uv) * 0.35 * uVignette;
+      color.rgb *= vig;
+
+      // Film grain (time-animated)
+      float grain = (rand(vUv + fract(uTime * 0.017)) - 0.5) * uGrain;
+      color.rgb += grain;
+
+      gl_FragColor = color;
+    }
+  `
+};
+const vigPass = new ShaderPass(VignetteGrainShader);
+composer.addPass(vigPass);
+
+const outputPass = new OutputPass();
+composer.addPass(outputPass);
+
+// ============================================================
+//  GLSL NOISE LIBRARY - Simplex + FBM
+//  Based on the canonical Stefan Gustavson simplex noise GLSL
+// ============================================================
+const NOISE_GLSL = `
+  // --- Simplex noise helpers ---
+  vec3 mod289(vec3 x) { return x - floor(x * (1.0/289.0)) * 289.0; }
+  vec4 mod289(vec4 x) { return x - floor(x * (1.0/289.0)) * 289.0; }
+  vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+  vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314*r; }
+
+  float snoise(vec3 v) {
+    const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+    const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+
+    vec3 i  = floor(v + dot(v, C.yyy));
+    vec3 x0 = v - i + dot(i, C.xxx);
+
+    vec3 g = step(x0.yzx, x0.xyz);
+    vec3 l = 1.0 - g;
+    vec3 i1 = min(g.xyz, l.zxy);
+    vec3 i2 = max(g.xyz, l.zxy);
+
+    vec3 x1 = x0 - i1 + C.xxx;
+    vec3 x2 = x0 - i2 + C.yyy;
+    vec3 x3 = x0 - D.yyy;
+
+    i = mod289(i);
+    vec4 p = permute(permute(permute(
+      i.z + vec4(0.0, i1.z, i2.z, 1.0))
+      + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+      + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+
+    float n_ = 0.142857142857;
+    vec3  ns = n_ * D.wyz - D.xzx;
+
+    vec4 j = p - 49.0*floor(p*ns.z*ns.z);
+    vec4 x_ = floor(j*ns.z);
+    vec4 y_ = floor(j - 7.0*x_);
+    vec4 x = x_*ns.x + ns.yyyy;
+    vec4 y = y_*ns.x + ns.yyyy;
+    vec4 h = 1.0 - abs(x) - abs(y);
+
+    vec4 b0 = vec4(x.xy, y.xy);
+    vec4 b1 = vec4(x.zw, y.zw);
+
+    vec4 s0 = floor(b0)*2.0 + 1.0;
+    vec4 s1 = floor(b1)*2.0 + 1.0;
+    vec4 sh = -step(h, vec4(0.0));
+
+    vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+    vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+
+    vec3 p0 = vec3(a0.xy, h.x);
+    vec3 p1 = vec3(a0.zw, h.y);
+    vec3 p2 = vec3(a1.xy, h.z);
+    vec3 p3 = vec3(a1.zw, h.w);
+
+    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+    p0 *= norm.x;
+    p1 *= norm.y;
+    p2 *= norm.z;
+    p3 *= norm.w;
+
+    vec4 m = max(0.6 - vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)), 0.0);
+    m = m*m;
+    return 42.0 * dot(m*m, vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+  }
+
+  // --- Fractional Brownian Motion (fBm) - 5 octaves ---
+  float fbm(vec3 p) {
+    float value = 0.0;
+    float amplitude = 0.5;
+    float frequency = 1.0;
+    for (int i = 0; i < 5; i++) {
+      value += amplitude * snoise(p * frequency);
+      amplitude *= 0.5;
+      frequency *= 2.0;
+    }
+    return value;
+  }
+`;
+
+// ============================================================
+//  DEMO 1: NOISE-DEFORMED GLASS SPHERE
+//  Vertex shader deforms sphere via fBm noise + time
+//  Fragment uses MeshPhysicalMaterial-style PBR lighting
+// ============================================================
+const noiseDeformVertShader = `
+  ${NOISE_GLSL}
+
+  uniform float uTime;
+  uniform float uDeformStrength;
+  uniform float uDeformSpeed;
+
+  varying vec3 vNormal;
+  varying vec3 vWorldPos;
+  varying float vNoise;
+  varying vec3 vViewDir;
+
+  void main() {
+    vec3 pos = position;
+
+    // Sample fBm at current position offset by time
+    vec3 noiseCoord = pos * 1.2 + vec3(uTime * uDeformSpeed, uTime * uDeformSpeed * 0.7, uTime * uDeformSpeed * 0.5);
+    float noiseVal = fbm(noiseCoord);
+
+    // Displace along normal
+    vec3 displaced = pos + normal * noiseVal * uDeformStrength;
+
+    // Compute displaced normal (finite differences for accurate lighting)
+    float eps = 0.01;
+    vec3 dx = vec3(eps, 0.0, 0.0);
+    vec3 dy = vec3(0.0, eps, 0.0);
+    vec3 dz = vec3(0.0, 0.0, eps);
+
+    float nx = fbm((pos + dx) * 1.2 + vec3(uTime * uDeformSpeed));
+    float ny = fbm((pos + dy) * 1.2 + vec3(uTime * uDeformSpeed));
+    float nz = fbm((pos + dz) * 1.2 + vec3(uTime * uDeformSpeed));
+
+    vec3 grad = vec3(nx, ny, nz) - noiseVal;
+    vec3 displacedNormal = normalize(normal - grad * uDeformStrength);
+
+    vNormal   = normalize(normalMatrix * displacedNormal);
+    vWorldPos = (modelMatrix * vec4(displaced, 1.0)).xyz;
+    vNoise    = noiseVal;
+
+    vec3 camWorldPos = (inverse(viewMatrix) * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+    vViewDir = normalize(camWorldPos - vWorldPos);
+
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
+  }
+`;
+
+const noiseDeformFragShader = `
+  uniform float uTime;
+  uniform vec3  uColorA;   // PureBrain blue
+  uniform vec3  uColorB;   // PureBrain orange
+  uniform vec3  uGoldSpec; // Gold specular
+  uniform float uEmissive;
+
+  varying vec3  vNormal;
+  varying vec3  vWorldPos;
+  varying float vNoise;
+  varying vec3  vViewDir;
+
+  // Simple directional light calculation
+  vec3 calcLight(vec3 N, vec3 L, vec3 V, vec3 lightCol, float roughness) {
+    float NdotL = max(dot(N, L), 0.0);
+    vec3 H = normalize(L + V);
+    float NdotH = max(dot(N, H), 0.0);
+
+    // Specular - GGX approximation
+    float alpha = roughness * roughness;
+    float denom = NdotH * NdotH * (alpha * alpha - 1.0) + 1.0;
+    float D = (alpha * alpha) / (3.14159 * denom * denom);
+    vec3 spec = uGoldSpec * D * 0.35;
+
+    return lightCol * NdotL * 0.7 + spec;
+  }
+
+  void main() {
+    vec3 N = normalize(vNormal);
+    vec3 V = normalize(vViewDir);
+
+    // Map noise to color blend (blue → orange)
+    float t = vNoise * 0.5 + 0.5;
+    vec3 baseColor = mix(uColorA, uColorB, t * t);
+
+    // Fresnel rim glow (glass-like)
+    float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+    vec3 fresnelCol = mix(uColorA, vec3(1.0), fresnel);
+
+    // Multi-light accumulation (matches scene lights)
+    vec3 key   = calcLight(N, normalize(vec3(3.0, 5.0, 3.0)),    V, vec3(1.0), 0.15);
+    vec3 fill  = calcLight(N, normalize(vec3(-4.0, 2.0, -2.0)),  V, vec3(0.05, 0.09, 0.96), 0.3);
+    vec3 back  = calcLight(N, normalize(vec3(0.0, -2.0, -4.0)),  V, vec3(1.0, 0.53, 0.27), 0.4);
+    vec3 rim   = calcLight(N, normalize(vec3(-3.0, 3.0, 2.0)),   V, vec3(0.165, 0.576, 0.757), 0.25);
+
+    vec3 lit = baseColor * (key + fill * 0.6 + back * 0.4 + rim * 0.5) + fresnelCol * fresnel * 0.4;
+
+    // Subsurface scatter approximation: inner glow based on noise
+    float sss = smoothstep(-0.2, 0.8, vNoise);
+    lit += baseColor * sss * 0.25;
+
+    // Emissive pulse on peaks
+    float emitMask = smoothstep(0.4, 0.9, vNoise);
+    lit += uColorA * emitMask * uEmissive;
+
+    gl_FragColor = vec4(lit, 0.92);
+  }
+`;
+
+// ============================================================
+//  DEMO 2: GPU PARTICLE SYSTEM
+//  50,000 particles on GPU, fully animated in vertex shader
+//  Each particle has: spiral orbit + noise offset + lifecycle
+// ============================================================
+const particleVertShader = `
+  ${NOISE_GLSL}
+
+  attribute float aIndex;
+  attribute float aSize;
+  attribute vec3  aColor;
+  attribute float aLifeOffset;
+  attribute float aOrbitRadius;
+  attribute float aOrbitSpeed;
+  attribute float aOrbitPhase;
+  attribute float aOrbitAxis; // 0=XY, 1=XZ, 2=YZ plane
+
+  uniform float uTime;
+  uniform float uNoiseMagnitude;
+
+  varying vec3  vColor;
+  varying float vLife;
+  varying float vDist;
+
+  void main() {
+    float life = fract(uTime * aOrbitSpeed * 0.2 + aLifeOffset);
+    vLife = life;
+
+    float angle = aOrbitPhase + uTime * aOrbitSpeed;
+
+    // Orbit position based on axis
+    vec3 orbitPos;
+    if (aOrbitAxis < 0.33) {
+      // XY plane orbit
+      orbitPos = vec3(cos(angle) * aOrbitRadius, sin(angle) * aOrbitRadius, 0.0);
+    } else if (aOrbitAxis < 0.66) {
+      // XZ plane orbit
+      orbitPos = vec3(cos(angle) * aOrbitRadius, 0.0, sin(angle) * aOrbitRadius);
+    } else {
+      // Elliptical YZ
+      orbitPos = vec3(0.0, cos(angle) * aOrbitRadius * 0.7, sin(angle) * aOrbitRadius);
+    }
+
+    // fBm noise drift
+    vec3 noiseCoord = orbitPos * 0.4 + uTime * 0.1;
+    float noiseX = snoise(noiseCoord);
+    float noiseY = snoise(noiseCoord + vec3(1.7, 3.4, 5.1));
+    float noiseZ = snoise(noiseCoord + vec3(2.3, 4.6, 0.9));
+    orbitPos += vec3(noiseX, noiseY, noiseZ) * uNoiseMagnitude;
+
+    // Life-based alpha (fade in/out)
+    float fadeIn  = smoothstep(0.0, 0.1, life);
+    float fadeOut = 1.0 - smoothstep(0.85, 1.0, life);
+    vLife = fadeIn * fadeOut;
+
+    vColor = aColor;
+    vDist  = length(orbitPos);
+
+    vec4 mvPos = modelViewMatrix * vec4(orbitPos, 1.0);
+    gl_PointSize = aSize * (250.0 / -mvPos.z) * vLife;
+    gl_Position  = projectionMatrix * mvPos;
+  }
+`;
+
+const particleFragShader = `
+  varying vec3  vColor;
+  varying float vLife;
+
+  void main() {
+    // Circular point (discard corners of gl_PointSize quad)
+    vec2 uv = gl_PointCoord - 0.5;
+    float r = length(uv);
+    if (r > 0.5) discard;
+
+    // Soft radial falloff
+    float alpha = (1.0 - r * 2.0) * vLife;
+    alpha = pow(alpha, 1.5);
+
+    // Hot center (bright white core, colored edge)
+    float core = 1.0 - smoothstep(0.0, 0.3, r);
+    vec3 col = mix(vColor, vec3(1.5), core * 0.6);
+
+    gl_FragColor = vec4(col, alpha);
+  }
+`;
+
+// ============================================================
+//  DEMO 3: CAUSTICS SIMULATION
+//  Ground plane + glass sphere overhead + animated caustic light patterns
+//  Caustics = light focused through curved glass onto surfaces below
+// ============================================================
+const causticsGroundVertShader = `
+  varying vec2 vUv;
+  varying vec3 vWorldPos;
+
+  void main() {
+    vUv = uv;
+    vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const causticsGroundFragShader = `
+  ${NOISE_GLSL}
+
+  uniform float uTime;
+  uniform vec3  uGlassPos;   // position of glass sphere above
+  uniform vec3  uLightPos;   // light source position
+  uniform vec3  uBaseColor;
+  uniform float uCausticsIntensity;
+
+  varying vec2 vUv;
+  varying vec3 vWorldPos;
+
+  // Voronoi/cellular noise for caustic pattern
+  float voronoi(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    float minDist = 10.0;
+    for (int y = -1; y <= 1; y++) {
+      for (int x = -1; x <= 1; x++) {
+        vec2 neighbor = vec2(float(x), float(y));
+        // Animated cell seed
+        vec2 seed = i + neighbor;
+        float a = sin(dot(seed, vec2(127.1, 311.7)) + uTime * 0.4) * 0.5 + 0.5;
+        float b = sin(dot(seed, vec2(269.5, 183.3)) + uTime * 0.3) * 0.5 + 0.5;
+        vec2 point = neighbor + vec2(a, b) * 0.7;
+        float d = length(point - f);
+        minDist = min(minDist, d);
+      }
+    }
+    return minDist;
+  }
+
+  void main() {
+    // Distance from glass sphere center projected to ground
+    vec2 glassXZ = uGlassPos.xz;
+    vec2 fragXZ  = vWorldPos.xz;
+    float distFromGlass = length(fragXZ - glassXZ);
+
+    // Caustic pattern only within sphere's light cone
+    float coneFalloff = 1.0 - smoothstep(0.8, 2.5, distFromGlass);
+
+    // Generate animated caustic web pattern (2 scales)
+    vec2 causticsUV1 = fragXZ * 2.5 + uTime * 0.08;
+    vec2 causticsUV2 = fragXZ * 1.2 - uTime * 0.05;
+    float c1 = voronoi(causticsUV1);
+    float c2 = voronoi(causticsUV2);
+
+    // Edge of voronoi cells = bright caustic lines
+    float causticMask = (1.0 - c1) * (1.0 - c2);
+    causticMask = pow(causticMask, 2.5);
+
+    // Chromatic caustics: blue and orange channels offset slightly
+    float causticsB = pow(max(0.0, 1.0 - voronoi(causticsUV1 + 0.04)), 2.5);
+    float causticsO = pow(max(0.0, 1.0 - voronoi(causticsUV1 - 0.04)), 2.5);
+
+    vec3 causticColor = vec3(causticsO, causticMask, causticsB);
+    causticColor *= coneFalloff * uCausticsIntensity;
+
+    // Ground color: dark with subtle grid
+    float gridX = step(0.97, fract(vUv.x * 20.0));
+    float gridY = step(0.97, fract(vUv.y * 20.0));
+    float grid  = max(gridX, gridY) * 0.06;
+    vec3 ground = uBaseColor + grid;
+
+    // Add caustics as additive light
+    vec3 finalColor = ground + causticColor;
+
+    // Distance fade to darkness at edges
+    float edgeFade = 1.0 - smoothstep(3.0, 5.0, distFromGlass);
+    finalColor *= edgeFade;
+
+    gl_FragColor = vec4(finalColor, 1.0);
+  }
+`;
+
+// ============================================================
+//  SCENE OBJECTS - created lazily per demo
+// ============================================================
+let noiseDeformGroup  = null;
+let particleGroup     = null;
+let causticsGroup     = null;
+let currentDemo = 'noise';
+
+// Time uniform shared by all
+const timeUniforms = { uTime: { value: 0.0 } };
+
+// ---- Build Noise Deform Demo ----
+function buildNoiseDeform() {
+  if (noiseDeformGroup) return noiseDeformGroup;
+  const group = new THREE.Group();
+
+  // Main deforming sphere - high poly for smooth deformation
+  const geom = new THREE.SphereGeometry(1.4, 192, 96);
+  const mat = new THREE.ShaderMaterial({
+    vertexShader:   noiseDeformVertShader,
+    fragmentShader: noiseDeformFragShader,
+    uniforms: {
+      uTime:           { value: 0.0 },
+      uDeformStrength: { value: 0.28 },
+      uDeformSpeed:    { value: 0.18 },
+      uColorA:         { value: PB_BLUE.clone() },
+      uColorB:         { value: PB_ORANGE.clone() },
+      uGoldSpec:       { value: GOLD_SPEC.clone() },
+      uEmissive:       { value: 0.6 }
+    },
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+
+  const sphere = new THREE.Mesh(geom, mat);
+  group.add(sphere);
+
+  // Inner glass core - MeshPhysicalMaterial with transmission
+  const innerGeom = new THREE.SphereGeometry(0.85, 128, 64);
+  const innerMat = new THREE.MeshPhysicalMaterial({
+    color:        PB_BLUE,
+    transmission: 0.95,
+    thickness:    0.6,
+    roughness:    0.05,
+    metalness:    0.0,
+    ior:          1.6,
+    envMapIntensity: 0.8,
+    transparent:  true,
+    opacity:      0.92
+  });
+  const innerSphere = new THREE.Mesh(innerGeom, innerMat);
+  group.add(innerSphere);
+
+  // Outer wireframe to show deformation topology
+  const wireGeom = new THREE.SphereGeometry(1.41, 32, 16);
+  const wireMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0x2a93c1),
+    wireframe: true,
+    transparent: true,
+    opacity: 0.06
+  });
+  const wire = new THREE.Mesh(wireGeom, wireMat);
+  // Wire also deforms via same shader but different params
+  const wireShaderMat = new THREE.ShaderMaterial({
+    vertexShader: noiseDeformVertShader,
+    fragmentShader: `
+      varying float vNoise;
+      void main() {
+        float t = vNoise * 0.5 + 0.5;
+        vec3 c = mix(vec3(0.165, 0.576, 0.757), vec3(0.945, 0.259, 0.043), t);
+        gl_FragColor = vec4(c, 0.12);
+      }
+    `,
+    uniforms: {
+      uTime:           { value: 0.0 },
+      uDeformStrength: { value: 0.28 },
+      uDeformSpeed:    { value: 0.18 },
+      uColorA:         { value: PB_BLUE.clone() },
+      uColorB:         { value: PB_ORANGE.clone() },
+      uGoldSpec:       { value: GOLD_SPEC.clone() },
+      uEmissive:       { value: 0.0 }
+    },
+    wireframe: true,
+    transparent: true
+  });
+  const wireDeform = new THREE.Mesh(wireGeom, wireShaderMat);
+  group.add(wireDeform);
+
+  // Store shader mats for time update
+  group.userData.shaderMats = [mat, wireShaderMat];
+  noiseDeformGroup = group;
+  return group;
+}
+
+// ---- Build Particle Demo ----
+function buildParticles() {
+  if (particleGroup) return particleGroup;
+  const group = new THREE.Group();
+
+  const COUNT = 50000;
+  const positions   = new Float32Array(COUNT * 3); // placeholder (real pos in vertex shader)
+  const indices     = new Float32Array(COUNT);
+  const sizes       = new Float32Array(COUNT);
+  const colors      = new Float32Array(COUNT * 3);
+  const lifeOffsets = new Float32Array(COUNT);
+  const radii       = new Float32Array(COUNT);
+  const speeds      = new Float32Array(COUNT);
+  const phases      = new Float32Array(COUNT);
+  const axes        = new Float32Array(COUNT);
+
+  for (let i = 0; i < COUNT; i++) {
+    indices[i]     = i;
+    sizes[i]       = 0.5 + Math.random() * 2.5;
+    lifeOffsets[i] = Math.random();
+    radii[i]       = 0.2 + Math.random() * 2.6;
+    speeds[i]      = 0.2 + Math.random() * 0.8;
+    phases[i]      = Math.random() * Math.PI * 2;
+    axes[i]        = Math.random();
+
+    // Color: blend between PB blue, white, PB orange based on orbit radius
+    const r = radii[i] / 2.8;
+    let cr, cg, cb;
+    if (r < 0.33) {
+      // Inner: PB blue to white
+      cr = 0.165 + r * 3 * (1.0 - 0.165);
+      cg = 0.576 + r * 3 * (1.0 - 0.576);
+      cb = 0.757 + r * 3 * (1.0 - 0.757);
+    } else if (r < 0.66) {
+      // Mid: white to orange
+      const t = (r - 0.33) * 3;
+      cr = 1.0 * (1.0 - t) + 0.945 * t;
+      cg = 1.0 * (1.0 - t) + 0.259 * t;
+      cb = 1.0 * (1.0 - t) + 0.043 * t;
+    } else {
+      // Outer: orange to dark blue
+      const t = (r - 0.66) * 3;
+      cr = 0.945 * (1.0 - t) + 0.165 * t;
+      cg = 0.259 * (1.0 - t) + 0.576 * t;
+      cb = 0.043 * (1.0 - t) + 0.757 * t;
+    }
+    colors[i * 3]     = cr;
+    colors[i * 3 + 1] = cg;
+    colors[i * 3 + 2] = cb;
+
+    // Positions start at origin (vertex shader will compute orbital position)
+    positions[i * 3]     = 0;
+    positions[i * 3 + 1] = 0;
+    positions[i * 3 + 2] = 0;
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position',    new THREE.BufferAttribute(positions, 3));
+  geom.setAttribute('aIndex',      new THREE.BufferAttribute(indices, 1));
+  geom.setAttribute('aSize',       new THREE.BufferAttribute(sizes, 1));
+  geom.setAttribute('aColor',      new THREE.BufferAttribute(colors, 3));
+  geom.setAttribute('aLifeOffset', new THREE.BufferAttribute(lifeOffsets, 1));
+  geom.setAttribute('aOrbitRadius',new THREE.BufferAttribute(radii, 1));
+  geom.setAttribute('aOrbitSpeed', new THREE.BufferAttribute(speeds, 1));
+  geom.setAttribute('aOrbitPhase', new THREE.BufferAttribute(phases, 1));
+  geom.setAttribute('aOrbitAxis',  new THREE.BufferAttribute(axes, 1));
+
+  const mat = new THREE.ShaderMaterial({
+    vertexShader:   particleVertShader,
+    fragmentShader: particleFragShader,
+    uniforms: {
+      uTime:           { value: 0.0 },
+      uNoiseMagnitude: { value: 0.15 }
+    },
+    transparent: true,
+    blending:    THREE.AdditiveBlending,
+    depthWrite:  false,
+    depthTest:   true
+  });
+
+  const points = new THREE.Points(geom, mat);
+  group.add(points);
+
+  // Central dark glass core sphere (something for particles to orbit)
+  const coreGeom = new THREE.SphereGeometry(0.45, 64, 32);
+  const coreMat = new THREE.MeshPhysicalMaterial({
+    color:        new THREE.Color(0x081020),
+    transmission: 0.7,
+    thickness:    0.4,
+    roughness:    0.05,
+    metalness:    0.0,
+    ior:          1.8,
+    envMapIntensity: 0.5,
+    emissive:     PB_BLUE,
+    emissiveIntensity: 0.3
+  });
+  const core = new THREE.Mesh(coreGeom, coreMat);
+  group.add(core);
+
+  group.userData.shaderMats = [mat];
+  particleGroup = group;
+  return group;
+}
+
+// ---- Build Caustics Demo ----
+function buildCaustics() {
+  if (causticsGroup) return causticsGroup;
+  const group = new THREE.Group();
+
+  // Ground plane
+  const groundGeom = new THREE.PlaneGeometry(12, 12, 1, 1);
+  groundGeom.rotateX(-Math.PI / 2);
+  const groundMat = new THREE.ShaderMaterial({
+    vertexShader:   causticsGroundVertShader,
+    fragmentShader: causticsGroundFragShader,
+    uniforms: {
+      uTime:              { value: 0.0 },
+      uGlassPos:          { value: new THREE.Vector3(0, 1.2, 0) },
+      uLightPos:          { value: new THREE.Vector3(2, 4, 2) },
+      uBaseColor:         { value: new THREE.Color(0x0a0a14) },
+      uCausticsIntensity: { value: 0.9 }
+    }
+  });
+  const ground = new THREE.Mesh(groundGeom, groundMat);
+  ground.position.y = -1.5;
+  group.add(ground);
+
+  // Glass sphere above ground - actual MeshPhysicalMaterial
+  const glassGeom = new THREE.SphereGeometry(1.0, 128, 64);
+  const glassMat = new THREE.MeshPhysicalMaterial({
+    color:        new THREE.Color(0x88ccff),
+    transmission: 0.98,
+    thickness:    0.8,
+    roughness:    0.03,
+    metalness:    0.0,
+    ior:          1.65,
+    envMapIntensity: 0.9,
+    transparent:  true
+  });
+  const glass = new THREE.Mesh(glassGeom, glassMat);
+  glass.position.y = 1.2;
+  group.add(glass);
+
+  // Second smaller orbiting glass sphere
+  const glass2Geom = new THREE.SphereGeometry(0.45, 64, 32);
+  const glass2Mat = new THREE.MeshPhysicalMaterial({
+    color:        PB_ORANGE,
+    transmission: 0.92,
+    thickness:    0.5,
+    roughness:    0.04,
+    metalness:    0.0,
+    ior:          1.75,
+    envMapIntensity: 0.8,
+    transparent:  true
+  });
+  const glass2 = new THREE.Mesh(glass2Geom, glass2Mat);
+  group.add(glass2);
+
+  // Glow point inside main sphere
+  const glowGeom = new THREE.SphereGeometry(0.3, 32, 16);
+  const glowMat = new THREE.MeshStandardMaterial({
+    color:             PB_BLUE,
+    emissive:          PB_BLUE,
+    emissiveIntensity: 3.0,
+    transparent:       true,
+    opacity:           0.8
+  });
+  const glow = new THREE.Mesh(glowGeom, glowMat);
+  glow.position.y = 1.2;
+  group.add(glow);
+
+  group.userData.shaderMats = [groundMat];
+  group.userData.glass       = glass;
+  group.userData.glass2      = glass2;
+  group.userData.glow        = glow;
+  group.userData.groundMat   = groundMat;
+  causticsGroup = group;
+  return group;
+}
+
+// ============================================================
+//  DEMO SWITCHING
+// ============================================================
+function clearScene() {
+  // Remove all direct children from scene (lights are separate and stay)
+  const toRemove = [];
+  scene.children.forEach(obj => {
+    if (obj.isGroup || obj.isMesh || obj.isPoints) {
+      toRemove.push(obj);
+    }
+  });
+  toRemove.forEach(o => scene.remove(o));
+  // Reset scales/positions on cached groups so they can be re-added cleanly
+  if (noiseDeformGroup) { noiseDeformGroup.scale.setScalar(1); noiseDeformGroup.position.set(0,0,0); }
+  if (particleGroup)    { particleGroup.scale.setScalar(1);    particleGroup.position.set(0,0,0); }
+  if (causticsGroup)    { causticsGroup.scale.setScalar(1);    causticsGroup.position.set(0,0,0); }
+}
+
+function setDemo(name) {
+  // Update button state
+  document.querySelectorAll('.demo-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + name).classList.add('active');
+  document.getElementById('tech-label').textContent = name.toUpperCase().replace('-', ' ');
+
+  clearScene();
+  currentDemo = name;
+
+  switch (name) {
+    case 'noise':
+      scene.add(buildNoiseDeform());
+      camera.position.set(0, 0.5, 4.5);
+      controls.target.set(0, 0, 0);
+      bloomPass.strength = 0.5;
+      bloomPass.threshold = 0.82;
+      caPass.uniforms.uOffset.value.set(0.0022, 0.0022);
+      break;
+
+    case 'particles':
+      scene.add(buildParticles());
+      camera.position.set(0, 1, 6);
+      controls.target.set(0, 0, 0);
+      bloomPass.strength = 0.7;
+      bloomPass.threshold = 0.6;
+      caPass.uniforms.uOffset.value.set(0.001, 0.001);
+      break;
+
+    case 'caustics':
+      scene.add(buildCaustics());
+      camera.position.set(2, 3, 5);
+      controls.target.set(0, 0, 0);
+      bloomPass.strength = 0.4;
+      bloomPass.threshold = 0.88;
+      caPass.uniforms.uOffset.value.set(0.0016, 0.0016);
+      break;
+
+    case 'combined':
+      // Combined: reuse original groups directly (no clone - avoids material duplication)
+      // Scale down noise sphere for combined view
+      buildNoiseDeform();
+      buildParticles();
+      noiseDeformGroup.scale.setScalar(0.55);
+      noiseDeformGroup.position.set(0, 0, 0);
+      particleGroup.scale.setScalar(1.0);
+      particleGroup.position.set(0, 0, 0);
+      scene.add(noiseDeformGroup);
+      scene.add(particleGroup);
+      camera.position.set(0, 1, 7);
+      controls.target.set(0, 0, 0);
+      bloomPass.strength = 0.6;
+      bloomPass.threshold = 0.72;
+      caPass.uniforms.uOffset.value.set(0.002, 0.002);
+      break;
+  }
+
+  controls.update();
+}
+
+// Expose to onclick handlers (ESM doesn't pollute global scope)
+window.setDemo = setDemo;
+
+// ============================================================
+//  ANIMATION LOOP
+// ============================================================
+let frameCount = 0;
+let fpsTime    = performance.now();
+let fps        = 60;
+const fpsEl    = document.getElementById('fps-val');
+
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const elapsed = clock.getElapsedTime();
+
+  // FPS counter
+  frameCount++;
+  const now = performance.now();
+  if (now - fpsTime >= 1000) {
+    fps = Math.round(frameCount * 1000 / (now - fpsTime));
+    fpsEl.textContent = fps + ' fps';
+    frameCount = 0;
+    fpsTime = now;
+  }
+
+  // Update shared time on chromatic aberration and vignette passes
+  caPass.uniforms.uTime.value  = elapsed;
+  vigPass.uniforms.uTime.value = elapsed;
+
+  // Update demo-specific shader uniforms
+  if (currentDemo === 'noise' && noiseDeformGroup) {
+    noiseDeformGroup.userData.shaderMats.forEach(m => {
+      m.uniforms.uTime.value = elapsed;
+    });
+    // Subtle idle rotation
+    noiseDeformGroup.rotation.y = elapsed * 0.12;
+  }
+
+  if (currentDemo === 'particles' && particleGroup) {
+    particleGroup.userData.shaderMats.forEach(m => {
+      m.uniforms.uTime.value = elapsed;
+    });
+    particleGroup.rotation.y = elapsed * 0.04;
+  }
+
+  if (currentDemo === 'caustics' && causticsGroup) {
+    causticsGroup.userData.shaderMats.forEach(m => {
+      m.uniforms.uTime.value = elapsed;
+    });
+    // Orbit glass2 around main glass
+    const orbitAngle = elapsed * 0.6;
+    const orbitR = 1.8;
+    causticsGroup.userData.glass2.position.set(
+      Math.cos(orbitAngle) * orbitR,
+      1.2 + Math.sin(elapsed * 0.4) * 0.3,
+      Math.sin(orbitAngle) * orbitR
+    );
+    // Subtle glow pulse
+    causticsGroup.userData.glow.material.emissiveIntensity =
+      2.5 + Math.sin(elapsed * 1.8) * 0.8;
+    // Update caustics glass position in shader
+    causticsGroup.userData.groundMat.uniforms.uGlassPos.value.copy(
+      causticsGroup.userData.glass.position
+    );
+  }
+
+  if (currentDemo === 'combined') {
+    // Combined reuses original groups - update both
+    if (noiseDeformGroup) {
+      noiseDeformGroup.userData.shaderMats.forEach(m => {
+        m.uniforms.uTime.value = elapsed;
+      });
+      noiseDeformGroup.rotation.y = elapsed * 0.12;
+    }
+    if (particleGroup) {
+      particleGroup.userData.shaderMats.forEach(m => {
+        m.uniforms.uTime.value = elapsed;
+      });
+      particleGroup.rotation.y = elapsed * 0.04;
+    }
+  }
+
+  // Accent light orbital animation
+  accentLight.position.set(
+    Math.cos(elapsed * 0.5) * 3,
+    Math.sin(elapsed * 0.3) * 2 - 0.5,
+    Math.sin(elapsed * 0.4) * 2
+  );
+
+  controls.update();
+  composer.render();
+}
+
+// ============================================================
+//  RESIZE
+// ============================================================
+window.addEventListener('resize', () => {
+  const w = W(), h = H();
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+  bloomPass.resolution.set(w, h);
+});
+
+// ============================================================
+//  INIT
+// ============================================================
+// Start with noise deform demo
+setDemo('noise');
+
+// Hide loading screen
+setTimeout(() => {
+  document.getElementById('loading').classList.add('hidden');
+  setTimeout(() => {
+    document.getElementById('loading').remove();
+  }, 700);
+}, 400);
+
+animate();
+
+</script>
+</body>
+</html>

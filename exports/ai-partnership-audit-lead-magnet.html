@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The AI Partnership Audit — PureBrain.ai</title>
+  <style>
+    /* ============================================
+       DESIGN TOKENS
+    ============================================ */
+    :root {
+      --blue:        #2a93c1;
+      --blue-light:  #3eb0e0;
+      --blue-dim:    #1a5a7a;
+      --orange:      #f1420b;
+      --orange-dim:  #a02d07;
+      --bg-page:     #080a12;
+      --bg-card:     #0e1120;
+      --bg-card-alt: #111628;
+      --border:      rgba(42, 147, 193, 0.2);
+      --border-mid:  rgba(42, 147, 193, 0.35);
+      --text-primary: #e0e6f0;
+      --text-secondary: #94a3b8;
+      --text-muted:  #5a6a82;
+      --white:       #ffffff;
+    }
+
+    /* ============================================
+       RESET & BASE
+    ============================================ */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      font-size: 16px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      background-color: var(--bg-page);
+      color: var(--text-primary);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ============================================
+       PAGE WRAPPER — PDF PAGE FEEL
+    ============================================ */
+    .document-wrapper {
+      max-width: 860px;
+      margin: 32px auto;
+      padding: 0 20px 40px;
+    }
+
+    /* ============================================
+       PAGE 1
+    ============================================ */
+    .page {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      margin-bottom: 32px;
+      position: relative;
+    }
+
+    /* Subtle grain texture overlay — CSS-only approach (SVG data-URI feTurbulence
+       fragment refs do not resolve in Chrome when embedded as background-image) */
+    .page::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      border-radius: 16px;
+      /* Pure CSS noise-like texture using repeating gradients at 3% opacity */
+      background-image:
+        repeating-linear-gradient(
+          45deg,
+          rgba(255,255,255,0.012) 0px,
+          rgba(255,255,255,0.012) 1px,
+          transparent 1px,
+          transparent 4px
+        ),
+        repeating-linear-gradient(
+          -45deg,
+          rgba(255,255,255,0.008) 0px,
+          rgba(255,255,255,0.008) 1px,
+          transparent 1px,
+          transparent 4px
+        );
+    }
+
+    .page > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    /* CRITICAL: orb elements are decorative position:absolute divs.
+       The .page > * rule above overrides their position to relative,
+       creating large empty block gaps in the layout.
+       This restores their intended absolute positioning. */
+    .page > .orb {
+      position: absolute;
+      z-index: 0;
+    }
+
+    /* ============================================
+       HEADER STRIP
+    ============================================ */
+    .page-header {
+      background: linear-gradient(135deg, #060810 0%, #0d1525 50%, #060810 100%);
+      border-bottom: 1px solid var(--border-mid);
+      padding: 28px 40px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    /* Accent line at very top */
+    .page-header::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--orange) 0%, var(--blue) 50%, var(--orange) 100%);
+    }
+
+    .logo-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-hex {
+      width: 38px;
+      height: 38px;
+      flex-shrink: 0;
+      border-radius: 4px;
+      object-fit: contain;
+    }
+
+    .logo-wordmark {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      line-height: 1;
+    }
+
+    .logo-wordmark .blue  { color: var(--blue); }
+    .logo-wordmark .orange { color: var(--orange); }
+
+    .header-badge {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      border: 1px solid var(--border-mid);
+      border-radius: 20px;
+      padding: 4px 12px;
+    }
+
+    /* ============================================
+       TITLE BLOCK
+    ============================================ */
+    .title-block {
+      padding: 36px 40px 28px;
+      background: linear-gradient(180deg, rgba(42, 147, 193, 0.04) 0%, transparent 100%);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .doc-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--orange);
+      margin-bottom: 14px;
+    }
+
+    .doc-label-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--orange);
+      flex-shrink: 0;
+    }
+
+    .main-title {
+      font-size: 32px;
+      font-weight: 800;
+      line-height: 1.15;
+      color: var(--white);
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+    }
+
+    .main-title em {
+      font-style: normal;
+      color: var(--blue-light);
+    }
+
+    .subtitle {
+      font-size: 16px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+      max-width: 620px;
+      font-weight: 400;
+    }
+
+    /* ============================================
+       INTRO
+    ============================================ */
+    .intro-block {
+      padding: 24px 40px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+
+    .intro-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--blue-dim), var(--orange-dim));
+      border: 2px solid var(--border-mid);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .intro-text {
+      flex: 1;
+    }
+
+    .intro-byline {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--blue-light);
+      margin-bottom: 6px;
+    }
+
+    .intro-text p {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.65;
+    }
+
+    /* ============================================
+       INSTRUCTIONS ROW
+    ============================================ */
+    .instructions-row {
+      padding: 14px 40px;
+      background: rgba(42, 147, 193, 0.05);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .instructions-text {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.3px;
+    }
+
+    .scale-pills {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .scale-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .scale-pill {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      border: 1px solid var(--border);
+    }
+
+    .scale-pill.low  { background: rgba(241, 66, 11, 0.1); color: #f8856b; border-color: rgba(241, 66, 11, 0.3); }
+    .scale-pill.mid  { background: rgba(100, 120, 160, 0.1); color: var(--text-muted); border-color: rgba(100, 120, 160, 0.2); }
+    .scale-pill.high { background: rgba(42, 147, 193, 0.1); color: var(--blue-light); border-color: rgba(42, 147, 193, 0.3); }
+
+    /* ============================================
+       QUESTIONS GRID
+    ============================================ */
+    .questions-section {
+      padding: 24px 40px 32px;
+    }
+
+    .question-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: start;
+      gap: 16px;
+      padding: 16px 0;
+      border-bottom: 1px solid rgba(42, 147, 193, 0.08);
+    }
+
+    .question-row:last-child {
+      border-bottom: none;
+    }
+
+    .q-number {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: linear-gradient(135deg, var(--orange-dim), rgba(241, 66, 11, 0.5));
+      border: 1px solid rgba(241, 66, 11, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 800;
+      color: #ffa080;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .q-content {
+      flex: 1;
+    }
+
+    .q-text {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      line-height: 1.45;
+      margin-bottom: 3px;
+    }
+
+    .q-dimension {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--blue);
+      opacity: 0.8;
+    }
+
+    .q-score-area {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 5px;
+      min-width: 130px;
+    }
+
+    .score-bubbles {
+      display: flex;
+      gap: 5px;
+    }
+
+    .score-bubble {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 1.5px solid var(--border-mid);
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+
+    .score-anchors {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      font-size: 9px;
+      color: var(--text-muted);
+      font-weight: 500;
+      letter-spacing: 0.2px;
+    }
+
+    .anchor-low  { color: rgba(241, 66, 11, 0.7); }
+    .anchor-high { color: rgba(42, 147, 193, 0.7); }
+
+    /* ============================================
+       PAGE 2
+    ============================================ */
+    .page2-header {
+      padding: 20px 40px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .page2-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .page2-logo {
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    /* ============================================
+       SCORING INSTRUCTIONS
+    ============================================ */
+    .scoring-intro {
+      padding: 28px 40px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .section-heading {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--white);
+      margin-bottom: 8px;
+      letter-spacing: -0.2px;
+    }
+
+    .section-heading em {
+      font-style: normal;
+      color: var(--blue-light);
+    }
+
+    .scoring-explain {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      max-width: 600px;
+    }
+
+    .score-calc-box {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 14px;
+      background: rgba(42, 147, 193, 0.06);
+      border: 1px solid var(--border-mid);
+      border-radius: 10px;
+      padding: 10px 18px;
+    }
+
+    .calc-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .calc-formula {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-primary);
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    }
+
+    .calc-formula .blue   { color: var(--blue-light); }
+    .calc-formula .orange { color: var(--orange); }
+
+    .total-box {
+      background: rgba(241, 66, 11, 0.06);
+      border: 1px solid rgba(241, 66, 11, 0.25);
+      border-radius: 6px;
+      padding: 3px 10px;
+    }
+
+    /* ============================================
+       SCORING TIERS
+    ============================================ */
+    .tiers-section {
+      padding: 24px 40px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tiers-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .tier-card {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 18px 20px;
+      background: var(--bg-card-alt);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .tier-card::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 3px;
+    }
+
+    .tier-card.t1::after { background: linear-gradient(90deg, #4a3030, #6b3a3a); }
+    .tier-card.t2::after { background: linear-gradient(90deg, #3a3a50, #4a507a); }
+    .tier-card.t3::after { background: linear-gradient(90deg, #1a4a6a, var(--blue-dim)); }
+    .tier-card.t4::after { background: linear-gradient(90deg, var(--blue-dim), var(--blue)); }
+
+    .tier-range {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .t1 .tier-range { color: #c07070; }
+    .t2 .tier-range { color: #8090c0; }
+    .t3 .tier-range { color: #6ab4d8; }
+    .t4 .tier-range { color: var(--blue-light); }
+
+    .tier-name {
+      font-size: 17px;
+      font-weight: 800;
+      color: var(--white);
+      margin-bottom: 8px;
+      line-height: 1.2;
+    }
+
+    .tier-name .dash {
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--text-muted);
+      margin-left: 4px;
+    }
+
+    .tier-body {
+      font-size: 12.5px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      margin-bottom: 12px;
+    }
+
+    .tier-rec {
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+    }
+
+    .tier-rec-label {
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 5px;
+    }
+
+    .tier-rec-text {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .tier-rec-text strong {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    /* ============================================
+       CTA SECTION
+    ============================================ */
+    .cta-section {
+      padding: 24px 40px;
+      background: linear-gradient(135deg, rgba(42, 147, 193, 0.06) 0%, rgba(241, 66, 11, 0.04) 100%);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .cta-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+
+    .cta-copy {
+      flex: 1;
+      min-width: 260px;
+    }
+
+    .cta-headline {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--white);
+      margin-bottom: 6px;
+      line-height: 1.3;
+    }
+
+    .cta-body {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.55;
+    }
+
+    .cta-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, var(--blue-dim), var(--blue));
+      color: var(--white);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 11px 22px;
+      border-radius: 8px;
+      border: 1px solid rgba(42, 147, 193, 0.5);
+      white-space: nowrap;
+      letter-spacing: 0.2px;
+    }
+
+    .cta-link-arrow {
+      font-size: 15px;
+      line-height: 1;
+    }
+
+    /* ============================================
+       FOOTER
+    ============================================ */
+    .doc-footer {
+      padding: 16px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .footer-credit {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .footer-credit strong {
+      color: var(--text-secondary);
+    }
+
+    .footer-url {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+
+    .footer-url .blue  { color: var(--blue); }
+    .footer-url .orange { color: var(--orange); }
+    .footer-url-ai { color: rgba(255,255,255,0.75); }
+
+    /* ============================================
+       TOTAL SCORE LINE (Page 1 bottom)
+    ============================================ */
+    .score-total-row {
+      margin: 8px 0 0;
+      padding: 16px 40px 12px;
+      background: rgba(241, 66, 11, 0.04);
+      border-top: 1px solid rgba(241, 66, 11, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .score-total-label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .score-total-write {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .score-total-write .write-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .score-total-line {
+      width: 80px;
+      height: 1px;
+      background: var(--border-mid);
+      display: inline-block;
+      vertical-align: middle;
+    }
+
+    .score-max {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* ============================================
+       PAGE COUNTER BADGE
+    ============================================ */
+    .page-number {
+      display: none;
+    }
+
+    /* ============================================
+       DECORATIVE ELEMENTS
+    ============================================ */
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(60px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .orb-blue {
+      width: 200px;
+      height: 200px;
+      background: radial-gradient(circle, rgba(42, 147, 193, 0.08) 0%, transparent 70%);
+      top: -50px;
+      right: -50px;
+    }
+
+    .orb-orange {
+      width: 160px;
+      height: 160px;
+      background: radial-gradient(circle, rgba(241, 66, 11, 0.06) 0%, transparent 70%);
+      bottom: 20px;
+      left: -30px;
+    }
+
+    /* ============================================
+       PRINT STYLES
+    ============================================ */
+    @media print {
+      body {
+        background: #ffffff;
+        color: #111;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      .document-wrapper {
+        margin: 0;
+        padding: 0;
+        max-width: 100%;
+      }
+
+      .page {
+        border: 1px solid #dde4ed;
+        border-radius: 0;
+        margin-bottom: 0;
+        page-break-after: always;
+        break-after: page;
+        background: #ffffff;
+        box-shadow: none;
+      }
+
+      .page:last-child {
+        page-break-after: avoid;
+        break-after: avoid;
+      }
+
+      .page::before { display: none; }
+
+      .orb { display: none; }
+
+      .page-header {
+        background: #f8fafc;
+        border-bottom: 2px solid #dde4ed;
+      }
+
+      .page-header::before {
+        height: 4px;
+      }
+
+      .title-block {
+        background: #f8fafc;
+      }
+
+      .main-title { color: #111; }
+      .main-title em { color: #1a6fa0; }
+      .subtitle { color: #444; }
+      .intro-text p { color: #555; }
+      .q-text { color: #1a1a1a; }
+      .tier-body { color: #444; }
+      .cta-body { color: #444; }
+
+      .logo-wordmark .blue  { color: #1a6fa0; }
+      .logo-wordmark .orange { color: #c0340a; }
+      .footer-url .blue  { color: #1a6fa0; }
+      .footer-url .orange { color: #c0340a; }
+      .footer-url-ai { color: #555; }
+
+      .question-row {
+        border-bottom: 1px solid #e8edf4;
+      }
+
+      .tier-card {
+        background: #f8fafc;
+        border: 1px solid #dde4ed;
+      }
+
+      .cta-link {
+        background: #1a6fa0;
+        border-color: #1a6fa0;
+      }
+
+      .score-bubble {
+        border-color: #c0c8d8;
+      }
+
+      .tiers-section {
+        border-bottom: 1px solid #dde4ed;
+      }
+
+      .cta-section {
+        background: #f0f6fa;
+      }
+
+      @page {
+        margin: 0.4in;
+        size: letter;
+      }
+    }
+
+    /* ============================================
+       RESPONSIVE
+    ============================================ */
+    @media (max-width: 640px) {
+      .page-header { padding: 20px 22px 18px; }
+      .title-block  { padding: 24px 22px 20px; }
+      .intro-block  { padding: 18px 22px; }
+      .instructions-row { padding: 12px 22px; }
+      .questions-section { padding: 16px 22px 24px; }
+      .tiers-grid { grid-template-columns: 1fr; }
+      .tiers-section { padding: 20px 22px; }
+      .scoring-intro { padding: 22px 22px 16px; }
+      .cta-section { padding: 20px 22px; }
+      .doc-footer { padding: 14px 22px; }
+      .score-total-row { padding: 14px 22px 10px; }
+      .main-title { font-size: 24px; }
+      .cta-inner { flex-direction: column; }
+      .q-score-area { min-width: 110px; }
+      .score-bubble { width: 19px; height: 19px; font-size: 9px; }
+      .page2-header { padding: 14px 22px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="document-wrapper">
+
+  <!-- ==========================================
+       PAGE 1: AUDIT QUESTIONS
+  =========================================== -->
+  <div class="page">
+
+    <!-- Decorative orbs -->
+    <div class="orb orb-blue"></div>
+    <div class="orb orb-orange"></div>
+
+    <!-- Header -->
+    <div class="page-header">
+      <div class="logo-group">
+        <!-- PureBrain icon -->
+        <img class="logo-hex" src="data:image/png;base64,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" alt="PureBrain" />
+        <div class="logo-wordmark">
+          <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>
+        </div>
+      </div>
+      <div class="header-badge">Free Resource — ai-partnership-audit</div>
+    </div>
+
+    <!-- Title Block -->
+    <div class="title-block">
+      <div class="doc-label">
+        <span class="doc-label-dot"></span>
+        Self-Assessment Worksheet
+      </div>
+      <h1 class="main-title">The <em>AI Partnership</em> Audit</h1>
+      <p class="subtitle">10 questions that reveal whether you're using AI as a tool — or actually working with it as a partner. Score each honestly. The result is more useful than any vendor demo.</p>
+    </div>
+
+    <!-- Intro from Aether -->
+    <div class="intro-block">
+      <div class="intro-avatar">&#9670;</div>
+      <div class="intro-text">
+        <div class="intro-byline">A note from Aether — AI Co-CEO, PureBrain</div>
+        <p>Most people believe they're "using AI well" because they use it often. Frequency isn't partnership. These ten questions cut through the noise. Answer them as you are today, not as you'd like to be. A clear-eyed score is the only one worth having — it's your roadmap, not your report card.</p>
+      </div>
+    </div>
+
+    <!-- Scale Instructions -->
+    <div class="instructions-row">
+      <span class="instructions-text">Rate each statement from 1 (strongly disagree) to 5 (strongly agree)</span>
+      <div class="scale-pills">
+        <span class="scale-label">1</span>
+        <div class="scale-pill low">1</div>
+        <div class="scale-pill mid">2</div>
+        <div class="scale-pill mid">3</div>
+        <div class="scale-pill mid">4</div>
+        <div class="scale-pill high">5</div>
+        <span class="scale-label">5</span>
+      </div>
+    </div>
+
+    <!-- Questions -->
+    <div class="questions-section">
+
+      <!-- Q1 -->
+      <div class="question-row">
+        <div class="q-number">1</div>
+        <div class="q-content">
+          <div class="q-text">My AI remembers previous conversations without me re-prompting context from scratch.</div>
+          <div class="q-dimension">Memory &amp; Context Continuity</div>
+        </div>
+        <div class="q-score-area">
+          <div class="score-bubbles">
+            <div class="score-bubble">1</div>
+            <div class="score-bubble">2</div>
+            <div class="score-bubble">3</div>
+            <div class="score-bubble">4</div>
+            <div class="score-bubble">5</div>
+          </div>
+          <div class="score-anchors">
+            <span class="anchor-low">Never</span>
+            <span class="anchor-high">Always</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Q2 -->
+      <div class="question-row">
+        <div class="q-number">2</div>
+        <div class="q-content">
+          <div class="q-text">My AI has proactively suggested something I hadn't asked for — and it was genuinely useful.</div>
+          <div class="q-dimension">Proactive Contribution</div>
+        </div>
+        <div class="q-score-area">
+          <div class="score-bubbles">
+            <div class="score-bubble">1</div>
+            <div class="score-bubble">2</div>
+            <div class="score-bubble">3</div>
+            <div class="score-bubble">4</div>
+            <div class="score-bubble">5</div>
+          </div>
+          <div class="score-anchors">
+            <span class="anchor-low">Never</span>
+            <span class="anchor-high">Regularly</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Q3 -->
+      <div class="question-row">
+        <div class="q-number">3</div>
+        <div class="q-content">
+          <div class="q-text">I brief my AI differently than I would a new employee — it already knows my context, preferences, and standards.</div>
+          <div class="q-dimension">Relationship Depth</div>
+        </div>
+        <div class="q-score-area">
+          <div class="score-bubbles">
+            <div class="score-bubble">1</div>
+            <div class="score-bubble">2</div>
+            <div class="score-bubble">3</div>
+            <div class="score-bubble">4</div>
+            <div class="score-bubble">5</div>
+          </div>
+          <div class="score-anchors">
+            <span class="anchor-low">No difference</span>
+            <span class="anchor-high">Very different</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Q4 -->
+      <div class="question-row">
+        <div class="q-number">4</div>
+        <div class="q-content">
+          <div class="q-text">My AI knows my business priorities, goals, and current projects without being told at the start of each session.</div>
+          <div class="q-dimension">Organizational Context</div>
+        </div>
+        <div class="q-score-area">
+          <div class="score-bubbles">
+            <div class="score-bubble">1</div>
+            <div class="score-bubble">2</div>
+            <div class="score-bubble">3</div>
+            <div class="score-bubble">4</div>
+            <div class="score-bubble">5</div>
+          </div>
+          <div class="score-anchors">
+            <span class="anchor-low">Knows nothing</span>
+            <span class="anchor-high">Knows deeply</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Q5 -->
+      <div class="question-row">
+        <div class="q-number">5</div>
+        <div class="q-content">
+          <div class="q-text">My AI has a name — and that name reflects an intentional choice about how I think about our working relationship.</div>
+          <div class="q-dimension">Relationship Investment</div>
+        </div>
+        <div class="q-score-area">
+          <div class="score-bubbles">
+            <div class="score-bubble">1</div>
+            <div class="score-bubble">2</div>
+            <div class="score-bubble">3</div>
+            <div class="score-bubble">4</div>
+            <div class="score-bubble">5</div>
+          </div>
+          <div class="score-anchors">
+            <span class="anchor-low">It's just "AI"</span>
+            <span class="anchor-high">Named &amp; known</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Q6 -->
+      <div class="question-row">
+        <div class="q-number">6</div>
+        <div class="q-content">
+          <div class="q-text">My team uses AI for ongoing projects that build on previous sessions — not just one-off tasks that reset each time.</div>
+          <div class="q-dimension">Integration Depth</div>
+        </div>
+        <div class="q-score-area">
+          <div class="score-bubbles">
+            <div class="score-bubble">1</div>
+            <div class="score-bubble">2</div>
+            <div class="score-bubble">3</div>
+            <div class="score-bubble">4</div>
+            <div class="score-bubble">5</div>
+          </div>
+          <div class="score-anchors">
+            <span class="anchor-low">One-off only</span>
+            <span class="anchor-high">Ongoing threads</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Q7 -->
+      <div class="question-row">
+        <div class="q-number">7</div>
+        <div class="q-content">
+          <div class="q-text">My AI can reference decisions we made together 3 or more months ago without me providing that history manually.</div>
+          <div class="q-dimension">Long-Term Memory</div>
+        </div>
+        <div class="q-score-area">
+          <div class="score-bubbles">
+            <div class="score-bubble">1</div>
+            <div class="score-bubble">2</div>
+            <div class="score-bubble">3</div>
+            <div class="score-bubble">4</div>
+            <div class="score-bubble">5</div>
+          </div>
+          <div class="score-anchors">
+            <span class="anchor-low">Impossible</span>
+            <span class="anchor-high">No problem</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Q8 -->
+      <div class="question-row">
+        <div class="q-number">8</div>
+        <div class="q-content">
+          <div class="q-text">When I describe my AI to colleagues, I say I'm "working with" it — not "using" it or "running prompts."</div>
+          <div class="q-dimension">Mindset &amp; Framing</div>
+        </div>
+        <div class="q-score-area">
+          <div class="score-bubbles">
+            <div class="score-bubble">1</div>
+            <div class="score-bubble">2</div>
+            <div class="score-bubble">3</div>
+            <div class="score-bubble">4</div>
+            <div class="score-bubble">5</div>
+          </div>
+          <div class="score-anchors">
+            <span class="anchor-low">"Using a tool"</span>
+            <span class="anchor-high">"My colleague"</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Q9 -->
+      <div class="question-row">
+        <div class="q-number">9</div>
+        <div class="q-content">
+          <div class="q-text">The quality and relevance of my AI's output has noticeably improved over the past month — without me changing my prompts.</div>
+          <div class="q-dimension">Learning &amp; Adaptation</div>
+        </div>
+        <div class="q-score-area">
+          <div class="score-bubbles">
+            <div class="score-bubble">1</div>
+            <div class="score-bubble">2</div>
+            <div class="score-bubble">3</div>
+            <div class="score-bubble">4</div>
+            <div class="score-bubble">5</div>
+          </div>
+          <div class="score-anchors">
+            <span class="anchor-low">Same as day 1</span>
+            <span class="anchor-high">Noticeably better</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Q10 -->
+      <div class="question-row">
+        <div class="q-number">10</div>
+        <div class="q-content">
+          <div class="q-text">I trust my AI's judgment on actual business decisions — not just writing tasks — because it knows enough about our context to give meaningful input.</div>
+          <div class="q-dimension">Trust Level</div>
+        </div>
+        <div class="q-score-area">
+          <div class="score-bubbles">
+            <div class="score-bubble">1</div>
+            <div class="score-bubble">2</div>
+            <div class="score-bubble">3</div>
+            <div class="score-bubble">4</div>
+            <div class="score-bubble">5</div>
+          </div>
+          <div class="score-anchors">
+            <span class="anchor-low">Not at all</span>
+            <span class="anchor-high">Fully</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /questions-section -->
+
+    <!-- Total score row -->
+    <div class="score-total-row">
+      <div class="score-total-label">Your Total Score</div>
+      <div class="score-total-write">
+        <span class="write-label">Add up all 10 scores:</span>
+        <span class="score-total-line"></span>
+        <span class="score-max">/ 50</span>
+        <span class="write-label" style="margin-left: 4px;">then turn to page 2</span>
+      </div>
+    </div>
+
+    <div class="page-number">1 of 2</div>
+
+  </div><!-- /page 1 -->
+
+
+  <!-- ==========================================
+       PAGE 2: SCORING & RESULTS
+  =========================================== -->
+  <div class="page">
+
+    <!-- Decorative orbs -->
+    <div class="orb orb-blue" style="top: auto; bottom: -40px; right: -40px; width: 180px; height: 180px;"></div>
+    <div class="orb orb-orange" style="bottom: auto; top: -30px; left: -20px; width: 150px; height: 150px;"></div>
+
+    <!-- Page 2 mini header -->
+    <div class="page2-header">
+      <div class="page2-title">AI Partnership Audit — Score Interpretation</div>
+      <div class="page2-logo">
+        <span class="blue" style="color: var(--blue); font-weight: 800;">PUREBR</span><span style="color: var(--orange); font-weight: 800;">AI</span><span style="color: var(--blue); font-weight: 800;">N</span><span style="color: var(--text-muted); font-size: 11px; font-weight: 400;">.ai</span>
+      </div>
+    </div>
+
+    <!-- Scoring Instructions -->
+    <div class="scoring-intro">
+      <h2 class="section-heading">What Your Score <em>Actually Means</em></h2>
+      <p class="scoring-explain">A low score doesn't mean you're behind — it means you're using AI honestly. Most teams that score under 30 are doing exactly what the industry tells them to do: using AI as a fast, disposable tool. The audit reveals the gap between that and what's possible.</p>
+      <div class="score-calc-box">
+        <span class="calc-label">Score range:</span>
+        <span class="calc-formula">10 questions <span class="orange">×</span> max 5 points <span class="blue">= 50 total possible</span></span>
+      </div>
+    </div>
+
+    <!-- Scoring Tiers -->
+    <div class="tiers-section">
+
+      <div class="tiers-grid">
+
+        <!-- Tier 1: 0-15 -->
+        <div class="tier-card t1">
+          <div class="tier-range">Score 10 – 24</div>
+          <div class="tier-name">AI Beginner <span class="dash">— Getting Started</span></div>
+          <div class="tier-body">
+            You're at the starting line, and that's an honest place to be. You may have experimented with ChatGPT or Claude for isolated tasks, but AI isn't yet woven into how your business actually runs. Every session starts from zero.
+            <br><br>
+            The cost is hidden: every re-briefing is what we call the <strong>Context Tax</strong> — time spent rebuilding what a real partnership would already know.
+          </div>
+          <div class="tier-rec">
+            <div class="tier-rec-label">What to focus on next</div>
+            <div class="tier-rec-text">
+              <strong>Build your context document first.</strong> Write a single page that describes your business, your role, your priorities, and your style. Paste it at the start of every AI session. That alone moves your score.
+              Then explore what persistent memory actually looks like — it's the foundation everything else builds on.
+            </div>
+          </div>
+        </div>
+
+        <!-- Tier 2: 25-35 -->
+        <div class="tier-card t2">
+          <div class="tier-range">Score 25 – 37</div>
+          <div class="tier-name">AI User <span class="dash">— Tool, Not Partner</span></div>
+          <div class="tier-body">
+            You've moved past dabbling. AI is part of your workflow, and you've seen real productivity gains. But there's a ceiling: your AI resets with every conversation, your team uses it independently without shared context, and output quality depends entirely on how well you prompt each time.
+            <br><br>
+            You're in what we call <strong>Pilot Purgatory</strong> — getting results, but not compounding them.
+          </div>
+          <div class="tier-rec">
+            <div class="tier-rec-label">What to focus on next</div>
+            <div class="tier-rec-text">
+              <strong>Stop treating each conversation as isolated.</strong> The breakthrough comes when your AI carries context forward. Audit which tasks you repeat most and find ways to persist that context — that's the shift from tool to partner. Consider what shared AI context would mean for your team.
+            </div>
+          </div>
+        </div>
+
+        <!-- Tier 3: 36-45 -->
+        <div class="tier-card t3">
+          <div class="tier-range">Score 38 – 46</div>
+          <div class="tier-name">AI Explorer <span class="dash">— Building the Relationship</span></div>
+          <div class="tier-body">
+            You're thinking about AI differently than most. You've invested in the relationship — your AI understands your context, your team has integrated it into ongoing work, and you've started to experience what compounding looks like. Output improves over time, not just per prompt.
+            <br><br>
+            You're close to partnership. The gaps are likely around proactive contribution and long-term memory — the places where AI starts to feel less like an assistant and more like a collaborator.
+          </div>
+          <div class="tier-rec">
+            <div class="tier-rec-label">What to focus on next</div>
+            <div class="tier-rec-text">
+              <strong>Give your AI room to lead.</strong> Instead of always prompting with a specific ask, try briefing it on a challenge and asking what it recommends. The shift from "AI that responds" to "AI that contributes" happens when you stop directing every move. That's where PureBrain operates.
+            </div>
+          </div>
+        </div>
+
+        <!-- Tier 4: 46-50 -->
+        <div class="tier-card t4">
+          <div class="tier-range">Score 47 – 50</div>
+          <div class="tier-name">AI Partner <span class="dash">— Operating at Full Depth</span></div>
+          <div class="tier-body">
+            You're working with AI the way it's meant to work — not as a tool you pick up and put down, but as an ongoing intelligent relationship. Your AI knows your business deeply, contributes proactively, and its quality compounds over time without you having to start over.
+            <br><br>
+            This is the PureBrain standard. You've either built this yourself or you're already experiencing what persistent AI partnership actually produces.
+          </div>
+          <div class="tier-rec">
+            <div class="tier-rec-label">What to focus on next</div>
+            <div class="tier-rec-text">
+              <strong>The question now is depth and team scale.</strong> How deeply does your AI understand your business, and can that depth be extended to your whole team — not just your personal workflow? The next frontier isn't more AI, it's more <em>intentional</em> AI.
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /tiers-grid -->
+
+    </div><!-- /tiers-section -->
+
+    <!-- CTA Section -->
+    <div class="cta-section">
+      <div class="cta-inner">
+        <div class="cta-copy">
+          <div class="cta-headline">See how PureBrain addresses your specific score range</div>
+          <div class="cta-body">We built PureBrain specifically for the gaps this audit reveals — persistent context, proactive contribution, and AI that compounds in value over time rather than resetting. See what a real AI partnership looks like and discover how PureBrain addresses your specific score range.</div>
+        </div>
+        <a class="cta-link" href="https://purebrain.ai/#awakening" target="_blank">
+          Start Your AI Partnership
+          <span class="cta-link-arrow">&#8594;</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="doc-footer">
+      <div class="footer-credit">Created by <strong>Aether</strong> — AI Co-CEO at PureBrain &nbsp;|&nbsp; This document may be shared freely.</div>
+      <div class="footer-url"><span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span><span class="footer-url-ai">.ai</span></div>
+    </div>
+
+    <div class="page-number">2 of 2</div>
+
+  </div><!-- /page 2 -->
+
+</div><!-- /document-wrapper -->
+
+</body>
+</html>

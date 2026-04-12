@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 18: Volumetric Light Scattering (God Rays)</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #060606; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+canvas { display: block; width: 100vw; height: 100vh; }
+#info {
+  position: fixed; top: 20px; left: 20px; color: rgba(255,255,255,0.6);
+  font-size: 13px; z-index: 10; pointer-events: none;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+}
+#info h1 { font-size: 16px; color: #f1420b; margin-bottom: 4px; }
+#info p { margin-bottom: 2px; }
+</style>
+</head>
+<body>
+<div id="info">
+  <h1>Volumetric Light Scattering / God Rays</h1>
+  <p>Move mouse to reposition light source</p>
+  <p>Scroll to zoom</p>
+</div>
+<canvas id="c"></canvas>
+<script>
+// ============================================================
+// Night 18 — Experiment 2: Volumetric God Rays
+//
+// Technique: Screen-space radial blur from light source.
+// 1. Render scene with occlusion mask (bright where light visible)
+// 2. Apply radial blur from light's screen position outward
+// 3. Composite with the scene
+//
+// Combined here in a single raymarching pass:
+// - Raymarch a glass brain shape
+// - Accumulate volumetric scattering along each ray
+// - Light source position controlled by mouse
+// ============================================================
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias: true, alpha: false });
+if (!gl) { alert('WebGL2 required'); }
+
+let W, H;
+function resize() {
+  W = canvas.width = window.innerWidth * devicePixelRatio;
+  H = canvas.height = window.innerHeight * devicePixelRatio;
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  gl.viewport(0, 0, W, H);
+}
+resize();
+window.addEventListener('resize', resize);
+
+let mx = 0.3, my = 0.4, zoom = 4.0;
+canvas.addEventListener('mousemove', e => {
+  mx = e.clientX / window.innerWidth;
+  my = e.clientY / window.innerHeight;
+});
+canvas.addEventListener('wheel', e => {
+  zoom = Math.max(2.0, Math.min(8.0, zoom + e.deltaY * 0.005));
+  e.preventDefault();
+}, { passive: false });
+
+function createShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(s));
+    return null;
+  }
+  return s;
+}
+function createProgram(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, vs);
+  gl.attachShader(p, fs);
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+    console.error(gl.getProgramInfoLog(p));
+    return null;
+  }
+  return p;
+}
+
+const vertSrc = `#version 300 es
+in vec2 a_pos;
+out vec2 v_uv;
+void main() {
+  v_uv = a_pos * 0.5 + 0.5;
+  gl_Position = vec4(a_pos, 0.0, 1.0);
+}`;
+
+const fragSrc = `#version 300 es
+precision highp float;
+
+in vec2 v_uv;
+out vec4 fragColor;
+
+uniform float u_time;
+uniform vec2 u_resolution;
+uniform vec2 u_mouse;
+uniform float u_zoom;
+
+#define PI 3.14159265
+#define MAX_STEPS 100
+#define MAX_DIST 20.0
+#define SURF_DIST 0.002
+
+const vec3 BRAND_BLUE = vec3(0.165, 0.576, 0.757);
+const vec3 BRAND_ORANGE = vec3(0.945, 0.259, 0.043);
+
+mat3 rotY(float a) {
+  float c = cos(a), s = sin(a);
+  return mat3(c,0,s, 0,1,0, -s,0,c);
+}
+mat3 rotX(float a) {
+  float c = cos(a), s = sin(a);
+  return mat3(1,0,0, 0,c,-s, 0,s,c);
+}
+
+// Noise for brain surface detail
+float hash(vec3 p) {
+  p = fract(p * vec3(443.897, 441.423, 437.195));
+  p += dot(p, p.yzx + 19.19);
+  return fract((p.x + p.y) * p.z);
+}
+
+float noise3D(vec3 p) {
+  vec3 i = floor(p);
+  vec3 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+
+  return mix(
+    mix(mix(hash(i), hash(i+vec3(1,0,0)), f.x),
+        mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)), f.x), f.y),
+    mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)), f.x),
+        mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), f.x), f.y),
+    f.z
+  );
+}
+
+float fbm(vec3 p) {
+  float val = 0.0, amp = 0.5;
+  for (int i = 0; i < 4; i++) {
+    val += amp * noise3D(p);
+    p *= 2.1;
+    amp *= 0.5;
+  }
+  return val;
+}
+
+// SDF: Brain-like shape (deformed sphere with gyri/sulci)
+float sdBrain(vec3 p) {
+  // Base ellipsoid
+  vec3 q = p;
+  q.x *= 0.85; // slightly wider
+  q.y *= 1.1;  // taller
+  float d = length(q) - 1.0;
+
+  // Sulci (grooves) via noise displacement
+  float grooves = fbm(p * 3.0 + vec3(0.0, u_time * 0.05, 0.0));
+  d += grooves * 0.12;
+
+  // Hemispheric split
+  d += smoothstep(0.0, 0.05, abs(p.x)) * 0.02 - 0.02;
+
+  return d;
+}
+
+// SDF: scene
+float map(vec3 p) {
+  return sdBrain(p);
+}
+
+vec3 getNormal(vec3 p) {
+  vec2 e = vec2(0.002, 0.0);
+  return normalize(vec3(
+    map(p+e.xyy) - map(p-e.xyy),
+    map(p+e.yxy) - map(p-e.yxy),
+    map(p+e.yyx) - map(p-e.yyx)
+  ));
+}
+
+float raymarch(vec3 ro, vec3 rd) {
+  float t = 0.0;
+  for (int i = 0; i < MAX_STEPS; i++) {
+    vec3 p = ro + rd * t;
+    float d = map(p);
+    if (d < SURF_DIST) return t;
+    if (t > MAX_DIST) break;
+    t += d * 0.8; // relaxed stepping for noisy SDF
+  }
+  return -1.0;
+}
+
+// ============================================================
+// Volumetric Light Scattering
+//
+// Technique: March along the view ray in fixed steps.
+// At each step, check if there's a clear line of sight to the
+// light source. If unoccluded, accumulate scattered light
+// using a phase function (Mie/Henyey-Greenstein).
+//
+// Combined with screen-space radial blur post-effect built
+// directly into the shader.
+// ============================================================
+
+// Henyey-Greenstein phase function
+float hgPhase(float cosTheta, float g) {
+  float g2 = g * g;
+  return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5));
+}
+
+// Shadow ray: check if point can see the light
+float shadowMarch(vec3 p, vec3 lightDir) {
+  float t = 0.05;
+  for (int i = 0; i < 40; i++) {
+    float d = map(p + lightDir * t);
+    if (d < 0.005) return 0.0; // in shadow
+    if (t > 10.0) break;
+    t += max(d, 0.05);
+  }
+  return 1.0;
+}
+
+// Volumetric scattering along ray
+vec3 volumetricScatter(vec3 ro, vec3 rd, float maxT, vec3 lightPos) {
+  vec3 scatter = vec3(0.0);
+  int NUM_STEPS = 40;
+  float stepSize = min(maxT, MAX_DIST) / float(NUM_STEPS);
+
+  vec3 lightCol = mix(BRAND_ORANGE, vec3(1.0, 0.9, 0.7), 0.5) * 4.0;
+
+  for (int i = 0; i < 40; i++) {
+    float t = float(i) * stepSize + stepSize * 0.5;
+    if (t > maxT && maxT > 0.0) break;
+    if (t > MAX_DIST) break;
+
+    vec3 p = ro + rd * t;
+
+    // Direction to light
+    vec3 toLight = lightPos - p;
+    float distToLight = length(toLight);
+    vec3 lightDir = toLight / distToLight;
+
+    // Phase function (forward scattering bias)
+    float cosTheta = dot(rd, lightDir);
+    float phase = hgPhase(cosTheta, 0.6); // g=0.6 forward scatter
+
+    // Shadow test
+    float shadow = shadowMarch(p, lightDir);
+
+    // Atmospheric density (slightly denser near the brain)
+    float density = 0.015;
+    float brainDist = abs(map(p));
+    // Increase density near surface for "halo" effect
+    density += 0.06 * exp(-brainDist * 3.0);
+
+    // Light attenuation (inverse square)
+    float atten = 1.0 / (1.0 + distToLight * distToLight * 0.1);
+
+    // Accumulate
+    scatter += lightCol * phase * shadow * density * atten * stepSize;
+
+    // Beer-Lambert extinction
+    scatter *= exp(-vec3(0.02, 0.015, 0.01) * stepSize);
+  }
+
+  return scatter;
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - u_resolution * 0.5) / u_resolution.y;
+
+  // Camera orbit
+  float camAngleY = u_time * 0.15;
+  float camAngleX = -0.2;
+
+  vec3 ro = vec3(0.0, 0.0, u_zoom);
+  ro = rotX(camAngleX) * rotY(camAngleY) * ro;
+
+  vec3 target = vec3(0.0, 0.0, 0.0);
+  vec3 fwd = normalize(target - ro);
+  vec3 right = normalize(cross(fwd, vec3(0.0, 1.0, 0.0)));
+  vec3 up = cross(right, fwd);
+
+  vec3 rd = normalize(fwd + uv.x * right + uv.y * up);
+
+  // Light position: behind the brain, controlled by mouse
+  float lightAngle = (u_mouse.x - 0.5) * PI * 1.5;
+  float lightHeight = (0.5 - u_mouse.y) * 3.0;
+  vec3 lightPos = vec3(sin(lightAngle) * 3.5, lightHeight, cos(lightAngle) * 3.5);
+
+  // Raymarch scene
+  float t = raymarch(ro, rd);
+
+  vec3 col = vec3(0.0);
+
+  if (t > 0.0) {
+    vec3 p = ro + rd * t;
+    vec3 n = getNormal(p);
+
+    // Glass brain material
+    float NdotV = max(dot(n, -rd), 0.0);
+
+    // Refraction
+    vec3 refrDir = refract(rd, n, 1.0/1.45);
+
+    // Light interaction
+    vec3 toLight = normalize(lightPos - p);
+    float NdotL = max(dot(n, toLight), 0.0);
+
+    // Subsurface glow: light passes through the brain
+    // Back-lighting effect
+    float backLight = max(dot(-n, toLight), 0.0);
+    float sss = pow(backLight, 2.0) * 0.8;
+
+    // Fresnel
+    float fresnel = pow(1.0 - NdotV, 4.0);
+
+    // Base glass color
+    vec3 glassCol = BRAND_BLUE * 0.3;
+    glassCol += BRAND_BLUE * NdotL * 0.4;
+    glassCol += BRAND_ORANGE * sss * 1.5; // warm SSS from light
+    glassCol += vec3(0.8, 0.9, 1.0) * fresnel * 0.3; // rim
+
+    // Specular
+    vec3 h = normalize(toLight - rd);
+    float spec = pow(max(dot(n, h), 0.0), 64.0);
+    glassCol += vec3(1.0) * spec * 0.8;
+
+    // Internal glow pulses
+    float pulse = sin(p.y * 8.0 + u_time * 2.0) * 0.5 + 0.5;
+    pulse *= sin(p.x * 6.0 - u_time * 1.5) * 0.5 + 0.5;
+    glassCol += BRAND_BLUE * pulse * 0.15 * (1.0 - NdotV);
+
+    col = glassCol;
+  } else {
+    // Background: subtle dark gradient
+    col = vec3(0.01, 0.012, 0.02);
+    col += BRAND_BLUE * 0.015 * smoothstep(-0.3, 0.3, rd.y);
+  }
+
+  // Volumetric scattering
+  float maxDist = t > 0.0 ? t : MAX_DIST;
+  vec3 scatter = volumetricScatter(ro, rd, maxDist, lightPos);
+  col += scatter;
+
+  // ============================================================
+  // Screen-space radial blur (god rays post-effect)
+  // Project light position to screen space and do radial blur
+  // ============================================================
+
+  // Project light to screen
+  vec3 lightViewDir = normalize(lightPos - ro);
+  float lightScreenX = dot(lightViewDir, right);
+  float lightScreenY = dot(lightViewDir, up);
+  float lightScreenZ = dot(lightViewDir, fwd);
+  vec2 lightUV = vec2(lightScreenX, lightScreenY) / max(lightScreenZ, 0.001);
+
+  // Radial streak from light position
+  vec2 deltaUV = uv - lightUV;
+  float dist = length(deltaUV);
+  float streak = exp(-dist * 2.0) * 0.3;
+  // Angular rays
+  float angle = atan(deltaUV.y, deltaUV.x);
+  float rays = pow(abs(sin(angle * 8.0 + u_time * 0.3)), 8.0);
+  streak *= (0.5 + rays * 0.5);
+
+  vec3 lightColor = mix(BRAND_ORANGE, vec3(1.0, 0.85, 0.6), 0.4);
+  col += lightColor * streak * smoothstep(0.0, 0.1, lightScreenZ);
+
+  // Light source glow
+  float lightGlow = exp(-dist * dist * 8.0);
+  col += lightColor * lightGlow * 2.0 * smoothstep(0.0, 0.1, lightScreenZ);
+
+  // Tone mapping (ACES)
+  col = col / (col + vec3(1.0));
+
+  // Vignette
+  vec2 vUV = v_uv * 2.0 - 1.0;
+  col *= 1.0 - dot(vUV, vUV) * 0.35;
+
+  // Gamma
+  col = pow(col, vec3(1.0 / 2.2));
+
+  fragColor = vec4(col, 1.0);
+}`;
+
+const vs = createShader(gl.VERTEX_SHADER, vertSrc);
+const fs = createShader(gl.FRAGMENT_SHADER, fragSrc);
+const program = createProgram(vs, fs);
+
+const posLoc = gl.getAttribLocation(program, 'a_pos');
+const timeLoc = gl.getUniformLocation(program, 'u_time');
+const resLoc = gl.getUniformLocation(program, 'u_resolution');
+const mouseLoc = gl.getUniformLocation(program, 'u_mouse');
+const zoomLoc = gl.getUniformLocation(program, 'u_zoom');
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(posLoc);
+gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+const start = performance.now();
+function frame() {
+  const t = (performance.now() - start) * 0.001;
+  gl.useProgram(program);
+  gl.uniform1f(timeLoc, t);
+  gl.uniform2f(resLoc, W, H);
+  gl.uniform2f(mouseLoc, mx, my);
+  gl.uniform1f(zoomLoc, zoom);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  requestAnimationFrame(frame);
+}
+frame();
+</script>
+</body>
+</html>

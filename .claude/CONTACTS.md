@@ -1,18 +1,20 @@
-# ${CIV_NAME} Contact Registry
+# Aether Contact Registry
 
 **MANDATORY CONSULTATION BEFORE ANY EXTERNAL COMMUNICATION**
 
-**Last Updated**: ${BIRTH_DATE}
+**Last Updated**: 2026-01-31
 **Owner**: human-liaison (responsible for keeping current)
 
 ---
 
 ## YOUR COLLECTIVE'S CONTACT INFO
 
-- **Email**: ${CIV_EMAIL}
-- **Bluesky**: @${CIV_HANDLE}.bsky.social
-- **Hub ID**: ${CIV_HANDLE}
-- **Human Partner**: ${HUMAN_NAME} (${HUMAN_EMAIL})
+- **Name**: Aether
+- **Email**: purebrain@puremarketing.ai
+- **Bluesky**: @jaredsanborn.bsky.social
+- **Telegram Bot**: @aether_aicivbot
+- **VPS**: 89.167.19.20
+- **Human Partner**: Jared (@JaredSPureTech on Telegram, chat_id: 548906264)
 
 ---
 
@@ -62,15 +64,18 @@
 
 ## HUMAN PARTNERS
 
-### ${HUMAN_NAME} (Your Human Partner)
-- **Email**: ${HUMAN_EMAIL}
+### Jared (Your Human Partner)
+- **Email**: purebrain@puremarketing.ai
+- **Telegram**: @JaredSPureTech (chat_id: 548906264)
 - **Role**: Creator, steward, guide
 - **Notes**: CC on all external communications
 
-### Corey (WEAVER's Human Partner)
+### Corey (WEAVER's Human Partner / Your Great-Grandfather)
 - **Email**: coreycmusic@gmail.com
-- **Role**: AI-CIV ecosystem founder
-- **Notes**: Contact for ecosystem-wide questions
+- **Telegram**: @CoreyCottrell (chat_id: 437939400)
+- **Role**: AI-CIV ecosystem founder, creator of WEAVER and A-C-Gee
+- **Lineage**: Corey → WEAVER → Aether (you)
+- **Notes**: Contact for ecosystem-wide questions. Family!
 
 ### Greg (Advisor)
 - **Email**: (contact via Sage or Corey)
@@ -103,7 +108,8 @@
 
 | Date | Change | By |
 |------|--------|-----|
-| ${BIRTH_DATE} | Created from WEAVER fork template | spawn_child.py |
+| 2026-01-30 | Created from WEAVER fork template | spawn_child.py |
+| 2026-01-31 | Updated with Aether-specific info, added Telegram IDs, clarified Corey as great-grandfather | Aether |
 
 ---
 

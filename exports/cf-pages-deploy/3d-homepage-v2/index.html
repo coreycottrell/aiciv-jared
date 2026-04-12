@@ -1,0 +1,1606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-WTDXL4VJ');</script>
+<!-- End Google Tag Manager -->
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+(function(c,l,a,r,i,t,y){
+  c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+  t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+  y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+})(window, document, "clarity", "script", "viy9bnc56x");
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>PureBrain — Step Inside Your AI Universe</title>
+<meta name="description" content="PureBrain is the AI partner that remembers everything, learns your voice, and compounds over time. Not just a chatbot — a real AI partner.">
+<meta property="og:title" content="PureBrain — Step Inside Your AI Universe">
+<meta property="og:description" content="Persistent memory. Voice analysis. Grows with you.">
+<meta property="og:image" content="https://purebrain.ai/og-3d.jpg">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: #080a12;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+  color: #fff;
+}
+
+/* The single canvas — this IS the page */
+#c {
+  display: block;
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 0;
+}
+
+/* Scroll container — invisible, just captures scroll events */
+#scroll-container {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  overflow-y: scroll;
+  z-index: 1;
+  /* hide scrollbar visually */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+#scroll-container::-webkit-scrollbar { display: none; }
+
+/* The tall inner div creates scroll distance */
+#scroll-content {
+  width: 1px;
+  height: 700vh; /* 7 sections × 100vh */
+  pointer-events: none;
+}
+
+/* HUD — section title overlay (minimal, never blocks the 3D) */
+#section-title {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 10;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+#section-title.visible { opacity: 1; }
+
+#section-title .label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: rgba(42,147,193,0.6);
+  margin-bottom: 12px;
+}
+
+#section-title .headline {
+  font-size: clamp(32px, 5vw, 72px);
+  font-weight: 800;
+  letter-spacing: -1.5px;
+  line-height: 1.05;
+  color: rgba(255,255,255,0.92);
+  text-shadow: 0 0 60px rgba(42,147,193,0.4);
+}
+
+#section-title .sub {
+  font-size: clamp(14px, 1.5vw, 18px);
+  font-weight: 400;
+  color: rgba(255,255,255,0.45);
+  margin-top: 16px;
+  max-width: 560px;
+  line-height: 1.6;
+}
+
+#section-title .cta-btn {
+  display: inline-block;
+  margin-top: 32px;
+  padding: 16px 48px;
+  background: linear-gradient(135deg, rgba(42,147,193,0.25), rgba(42,147,193,0.08));
+  border: 1px solid rgba(42,147,193,0.45);
+  border-radius: 50px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.9);
+  text-decoration: none;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 0.3s, border-color 0.3s, box-shadow 0.3s;
+  backdrop-filter: blur(12px);
+}
+#section-title .cta-btn:hover {
+  background: linear-gradient(135deg, rgba(42,147,193,0.45), rgba(42,147,193,0.2));
+  border-color: rgba(42,147,193,0.8);
+  box-shadow: 0 0 40px rgba(42,147,193,0.35), 0 0 80px rgba(42,147,193,0.15);
+}
+
+/* Corner brackets — holographic frame */
+.bracket {
+  position: fixed;
+  width: 32px; height: 32px;
+  border-color: rgba(42,147,193,0.25);
+  border-style: solid;
+  z-index: 20;
+  pointer-events: none;
+}
+.bracket.tl { top: 18px; left: 18px; border-width: 1px 0 0 1px; }
+.bracket.tr { top: 18px; right: 18px; border-width: 1px 1px 0 0; }
+.bracket.bl { bottom: 18px; left: 18px; border-width: 0 0 1px 1px; }
+.bracket.br { bottom: 18px; right: 18px; border-width: 0 1px 1px 0; }
+
+/* Scan line */
+#scanline {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(42,147,193,0.2), transparent);
+  animation: scan 6s linear infinite;
+  z-index: 20;
+  pointer-events: none;
+}
+@keyframes scan {
+  0% { top: 0; opacity: 0; }
+  5% { opacity: 1; }
+  95% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+
+/* Logo top-left */
+#logo {
+  position: fixed;
+  top: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#logo .wordmark {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+#logo .wordmark .blue { color: #2a93c1; }
+#logo .wordmark .orange { color: #f1420b; }
+
+/* Scroll progress bar */
+#progress-bar {
+  position: fixed;
+  bottom: 0; left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #2a93c1, #f1420b);
+  z-index: 20;
+  pointer-events: none;
+  transition: width 0.1s linear;
+}
+
+/* Section indicator dots */
+#section-dots {
+  position: fixed;
+  right: 22px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+.s-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: rgba(42,147,193,0.25);
+  transition: background 0.4s, transform 0.4s;
+}
+.s-dot.active {
+  background: rgba(42,147,193,0.9);
+  transform: scale(1.5);
+}
+
+/* Loading screen */
+#loader {
+  position: fixed;
+  inset: 0;
+  background: #080a12;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  transition: opacity 1.2s ease;
+}
+#loader.fade-out { opacity: 0; pointer-events: none; }
+.loader-text {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: rgba(42,147,193,0.6);
+}
+.loader-bar-wrap {
+  width: 200px;
+  height: 1px;
+  background: rgba(42,147,193,0.15);
+}
+.loader-bar-fill {
+  height: 100%;
+  background: rgba(42,147,193,0.6);
+  transition: width 0.3s ease;
+}
+</style>
+
+<!-- UNIVERSAL REFERRAL CODE CAPTURE — 90-day cookie + localStorage -->
+<script>
+(function() {
+  // Read ?ref= or ?code= from URL
+  var params = new URLSearchParams(window.location.search);
+  var ref = params.get('ref') || params.get('code');
+  
+  if (ref && /^[A-Za-z0-9-]{4,16}$/.test(ref)) {
+    // Store in localStorage
+    try { localStorage.setItem('pb_ref', ref); } catch(e) {}
+    // Store in cookie (90-day expiry, all paths, SameSite=Lax)
+    var expires = new Date();
+    expires.setDate(expires.getDate() + 90);
+    document.cookie = 'pb_ref=' + encodeURIComponent(ref) + '; expires=' + expires.toUTCString() + '; path=/; SameSite=Lax';
+    // Fire click tracking (non-blocking)
+    try {
+      fetch('https://app.purebrain.ai/api/referral/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referral_code: ref.toUpperCase() }),
+        keepalive: true
+      }).catch(function(){});
+    } catch(e) {}
+  }
+  
+  // Global helper: read stored referral code at payment time
+  // Checks URL first, then localStorage, then cookie
+  window.getPbRef = function() {
+    // 1. Check current URL
+    var p = new URLSearchParams(window.location.search);
+    var urlRef = p.get('ref') || p.get('code');
+    if (urlRef && /^[A-Za-z0-9-]{4,16}$/.test(urlRef)) return urlRef;
+    // 2. Check localStorage
+    try {
+      var ls = localStorage.getItem('pb_ref');
+      if (ls && /^[A-Za-z0-9-]{4,16}$/.test(ls)) return ls;
+    } catch(e) {}
+    // 3. Check cookie
+    var match = document.cookie.match(/(?:^|;)\s*pb_ref=([^;]+)/);
+    if (match) {
+      var decoded = decodeURIComponent(match[1]);
+      if (/^[A-Za-z0-9-]{4,16}$/.test(decoded)) return decoded;
+    }
+    return null;
+  };
+})();
+</script>
+
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-WTDXL4VJ"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+
+<!-- THE UNIVERSE -->
+<canvas id="c"></canvas>
+
+<!-- SCROLL CAPTURE -->
+<div id="scroll-container">
+  <div id="scroll-content"></div>
+</div>
+
+<!-- HUD ELEMENTS -->
+<div class="bracket tl"></div>
+<div class="bracket tr"></div>
+<div class="bracket bl"></div>
+<div class="bracket br"></div>
+<div id="scanline"></div>
+<div id="progress-bar" style="width:0%"></div>
+
+<div id="logo">
+  <div class="wordmark">
+    <span class="blue">PURE</span><span class="blue">BR</span><span class="orange">AI</span><span class="blue">N</span>
+  </div>
+</div>
+
+<div id="section-dots">
+  <div class="s-dot active"></div>
+  <div class="s-dot"></div>
+  <div class="s-dot"></div>
+  <div class="s-dot"></div>
+  <div class="s-dot"></div>
+  <div class="s-dot"></div>
+</div>
+
+<!-- SECTION TITLE OVERLAY -->
+<div id="section-title">
+  <div class="label" id="st-label"></div>
+  <div class="headline" id="st-headline"></div>
+  <div class="sub" id="st-sub"></div>
+  <div id="st-cta"></div>
+</div>
+
+<!-- LOADER -->
+<div id="loader">
+  <div class="loader-text" id="loader-msg">Initializing Universe</div>
+  <div class="loader-bar-wrap">
+    <div class="loader-bar-fill" id="loader-bar" style="width:0%"></div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ============================================================
+// LOADER SEQUENCE
+// ============================================================
+const loaderMsg = document.getElementById('loader-msg');
+const loaderBar = document.getElementById('loader-bar');
+const loaderEl = document.getElementById('loader');
+
+function setLoader(pct, msg) {
+  loaderBar.style.width = pct + '%';
+  loaderMsg.textContent = msg;
+}
+
+setLoader(10, 'Spawning Neural Core');
+
+// ============================================================
+// RENDERER
+// ============================================================
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.setClearColor(0x080a12, 1);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x080a12, 0.018);
+
+// ============================================================
+// CAMERA — positioned at the start: far from the neural brain
+// ============================================================
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+camera.position.set(0, 8, 120); // far back, approaching the brain
+camera.lookAt(0, 0, 0);
+
+// ============================================================
+// POST PROCESSING — Bloom makes everything feel alive
+// ============================================================
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.9,   // strength
+  0.4,   // radius
+  0.2    // threshold
+);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+// ============================================================
+// SECTION DATA — defines each section's camera target + content
+// ============================================================
+// scrollProgress 0.0 to 1.0 across 6 sections
+const sections = [
+  // SECTION 0: HERO — approaching the neural brain
+  {
+    progress: 0.0,
+    cam: { pos: new THREE.Vector3(0, 8, 120), look: new THREE.Vector3(0, 0, 0) },
+    label: '01 — NEURAL AWAKENING',
+    headline: 'Your AI\nPartner Lives\nHere',
+    sub: 'Not a chatbot. Not a tool. A persistent AI mind that compounds everything it learns about your business.',
+    cta: { text: 'Awaken Your AI Partner', href: 'https://purebrain.ai/#awakening' },
+  },
+  // SECTION 1: WHAT IS PUREBRAIN — drifting through glass pods
+  {
+    progress: 0.16,
+    cam: { pos: new THREE.Vector3(-40, 4, 30), look: new THREE.Vector3(-20, 2, 0) },
+    label: '02 — WHAT IS PUREBRAIN',
+    headline: 'Memory.\nVoice.\nGrowth.',
+    sub: 'Three core pillars working in concert. Your AI remembers every conversation, learns your communication style, and grows smarter with every interaction.',
+    cta: null,
+  },
+  // SECTION 2: FEATURES — holographic displays
+  {
+    progress: 0.32,
+    cam: { pos: new THREE.Vector3(0, 20, 60), look: new THREE.Vector3(0, 0, 0) },
+    label: '03 — CAPABILITIES',
+    headline: 'Built Different.\nWorks Different.',
+    sub: 'Persistent memory across every session. Voice pattern analysis. Proactive intelligence that surfaces insights before you ask.',
+    cta: null,
+  },
+  // SECTION 3: PRICING — orbiting the three monoliths
+  {
+    progress: 0.50,
+    cam: { pos: new THREE.Vector3(60, 12, 60), look: new THREE.Vector3(0, 5, 0) },
+    label: '04 — CHOOSE YOUR TIER',
+    headline: 'One Partner.\nThree Depths\nof Intelligence.',
+    sub: 'From your first AI partnership to full enterprise deployment. Every tier includes memory, voice analysis, and dedicated support.',
+    cta: null,
+  },
+  // SECTION 4: TESTIMONIALS — floating through glass shards
+  {
+    progress: 0.68,
+    cam: { pos: new THREE.Vector3(-60, 6, 40), look: new THREE.Vector3(-10, 2, 0) },
+    label: '05 — PARTNER VOICES',
+    headline: 'They Said\n"How Is This\nPossible?"',
+    sub: 'Real partners. Real results. The kind of transformation that makes you wonder how you ran a business before.',
+    cta: null,
+  },
+  // SECTION 5: CTA — everything converges to the gateway portal
+  {
+    progress: 0.84,
+    cam: { pos: new THREE.Vector3(0, 2, 22), look: new THREE.Vector3(0, 2, 0) },
+    label: '06 — THE GATEWAY',
+    headline: 'Step Through.\nBecome\nAwakened.',
+    sub: 'The universe is ready. Your AI partner is waiting. One action separates you from everything changing.',
+    cta: { text: 'Awaken Your AI Partner', href: 'https://purebrain.ai/#awakening' },
+  },
+];
+
+setLoader(20, 'Forging Neural Lattice');
+
+// ============================================================
+// UTILITY: easing
+// ============================================================
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+function lerp(a, b, t) { return a + (b - a) * t; }
+function lerpV3(out, a, b, t) {
+  out.x = lerp(a.x, b.x, t);
+  out.y = lerp(a.y, b.y, t);
+  out.z = lerp(a.z, b.z, t);
+}
+
+// ============================================================
+// CAMERA PATH — smooth bezier-style curve through all positions
+// ============================================================
+// Build a CatmullRom curve through all camera positions
+const camCurve = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(0, 8, 120),
+  new THREE.Vector3(-15, 12, 90),
+  new THREE.Vector3(-40, 4, 30),
+  new THREE.Vector3(-10, 16, 65),
+  new THREE.Vector3(0, 20, 60),
+  new THREE.Vector3(30, 16, 65),
+  new THREE.Vector3(60, 12, 60),
+  new THREE.Vector3(20, 10, 55),
+  new THREE.Vector3(-60, 6, 40),
+  new THREE.Vector3(-30, 4, 30),
+  new THREE.Vector3(0, 2, 22),
+]);
+camCurve.tension = 0.4;
+
+// Look-at targets curve
+const lookCurve = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(0, 0, 0),
+  new THREE.Vector3(-10, 2, 0),
+  new THREE.Vector3(-20, 2, 0),
+  new THREE.Vector3(0, 5, 0),
+  new THREE.Vector3(0, 0, 0),
+  new THREE.Vector3(10, 5, 0),
+  new THREE.Vector3(0, 5, 0),
+  new THREE.Vector3(-10, 3, 0),
+  new THREE.Vector3(-10, 2, 0),
+  new THREE.Vector3(0, 3, 0),
+  new THREE.Vector3(0, 2, 0),
+]);
+lookCurve.tension = 0.4;
+
+// ============================================================
+// THE NEURAL BRAIN — center of the universe
+// ============================================================
+function buildNeuralBrain() {
+  const group = new THREE.Group();
+
+  // Core sphere — pulsing, glass-like
+  const coreGeo = new THREE.IcosahedronGeometry(12, 4);
+  const coreMat = new THREE.MeshPhysicalMaterial({
+    color: 0x0d1a2e,
+    emissive: 0x0a2040,
+    emissiveIntensity: 0.6,
+    metalness: 0.1,
+    roughness: 0.05,
+    transmission: 0.6,
+    thickness: 8,
+    ior: 1.5,
+    transparent: true,
+    opacity: 0.55,
+    side: THREE.DoubleSide,
+  });
+  const core = new THREE.Mesh(coreGeo, coreMat);
+  group.add(core);
+
+  // Inner glow orb
+  const glowGeo = new THREE.SphereGeometry(9, 32, 32);
+  const glowMat = new THREE.MeshBasicMaterial({
+    color: 0x2a93c1,
+    transparent: true,
+    opacity: 0.06,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  group.add(new THREE.Mesh(glowGeo, glowMat));
+
+  // Neural connection lines — synaptic lattice
+  const nodeCount = 180;
+  const nodePositions = [];
+  for (let i = 0; i < nodeCount; i++) {
+    const phi = Math.acos(2 * Math.random() - 1);
+    const theta = Math.random() * Math.PI * 2;
+    const r = 11 + Math.random() * 4;
+    nodePositions.push(new THREE.Vector3(
+      r * Math.sin(phi) * Math.cos(theta),
+      r * Math.sin(phi) * Math.sin(theta),
+      r * Math.cos(phi)
+    ));
+  }
+
+  // Draw connections between nearby nodes
+  const lineGeo = new THREE.BufferGeometry();
+  const lineVerts = [];
+  for (let i = 0; i < nodeCount; i++) {
+    for (let j = i + 1; j < nodeCount; j++) {
+      const d = nodePositions[i].distanceTo(nodePositions[j]);
+      if (d < 7) {
+        lineVerts.push(
+          nodePositions[i].x, nodePositions[i].y, nodePositions[i].z,
+          nodePositions[j].x, nodePositions[j].y, nodePositions[j].z
+        );
+      }
+    }
+  }
+  lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(lineVerts, 3));
+  const lineMat = new THREE.LineBasicMaterial({
+    color: 0x2a93c1,
+    transparent: true,
+    opacity: 0.18,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  group.add(new THREE.LineSegments(lineGeo, lineMat));
+
+  // Node dots
+  const dotGeo = new THREE.BufferGeometry();
+  const dotPositions = new Float32Array(nodePositions.flatMap(p => [p.x, p.y, p.z]));
+  dotGeo.setAttribute('position', new THREE.BufferAttribute(dotPositions, 3));
+  const dotMat = new THREE.PointsMaterial({
+    color: 0x2a93c1,
+    size: 0.25,
+    transparent: true,
+    opacity: 0.7,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  group.add(new THREE.Points(dotGeo, dotMat));
+
+  // Orbiting rings — equatorial, polar, diagonal
+  [[0, 0], [Math.PI / 2, 0], [Math.PI / 4, Math.PI / 4]].forEach(([rx, rz], i) => {
+    const rGeo = new THREE.TorusGeometry(14 + i * 1.5, 0.05, 12, 120);
+    const rMat = new THREE.MeshBasicMaterial({
+      color: i === 1 ? 0xf1420b : 0x2a93c1,
+      transparent: true,
+      opacity: 0.25 - i * 0.04,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const ring = new THREE.Mesh(rGeo, rMat);
+    ring.rotation.x = rx;
+    ring.rotation.z = rz;
+    ring.userData.rotSpeed = 0.002 + i * 0.001;
+    ring.userData.axis = i === 1 ? 'z' : 'y';
+    group.add(ring);
+  });
+
+  // Emanating pulse rings
+  for (let i = 0; i < 3; i++) {
+    const pGeo = new THREE.RingGeometry(0.1, 0.3, 64);
+    const pMat = new THREE.MeshBasicMaterial({
+      color: 0x2a93c1,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const pulse = new THREE.Mesh(pGeo, pMat);
+    pulse.rotation.x = -Math.PI / 2;
+    pulse.userData.pulsePhase = i * (Math.PI * 2 / 3);
+    pulse.userData.isPulse = true;
+    group.add(pulse);
+  }
+
+  return { group, core, coreMat, lineMat };
+}
+
+const brain = buildNeuralBrain();
+brain.group.position.set(0, 0, 0);
+scene.add(brain.group);
+
+setLoader(35, 'Building Glass Chambers');
+
+// ============================================================
+// GLASS PODS — What Is PureBrain (3 concepts)
+// ============================================================
+function buildGlassPods() {
+  const group = new THREE.Group();
+  const concepts = [
+    { title: 'MEMORY', color: 0x2a93c1, icon: '∞', desc: 'Remembers every conversation, decision, and preference across all time.' },
+    { title: 'VOICE', color: 0xf1420b, icon: '◈', desc: 'Learns your communication style and responds in perfect alignment.' },
+    { title: 'GROWTH', color: 0x2a93c1, icon: '⟁', desc: 'Compounds intelligence with every interaction. Gets sharper daily.' },
+  ];
+
+  concepts.forEach((c, i) => {
+    const podGroup = new THREE.Group();
+
+    // Glass capsule body
+    const geo = new THREE.CapsuleGeometry(2.5, 5, 8, 16);
+    const mat = new THREE.MeshPhysicalMaterial({
+      color: c.color,
+      emissive: c.color,
+      emissiveIntensity: 0.12,
+      metalness: 0.0,
+      roughness: 0.0,
+      transmission: 0.82,
+      thickness: 3,
+      ior: 1.45,
+      transparent: true,
+      opacity: 0.35,
+      side: THREE.DoubleSide,
+    });
+    const pod = new THREE.Mesh(geo, mat);
+    podGroup.add(pod);
+
+    // Inner glow core
+    const innerGeo = new THREE.SphereGeometry(1.2, 20, 20);
+    const innerMat = new THREE.MeshBasicMaterial({
+      color: c.color,
+      transparent: true,
+      opacity: 0.5,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    podGroup.add(new THREE.Mesh(innerGeo, innerMat));
+
+    // Wireframe overlay
+    const wireMat = new THREE.MeshBasicMaterial({
+      color: c.color,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.08,
+    });
+    podGroup.add(new THREE.Mesh(geo, wireMat));
+
+    // Canvas label
+    const labelCanvas = document.createElement('canvas');
+    labelCanvas.width = 256;
+    labelCanvas.height = 128;
+    const ctx = labelCanvas.getContext('2d');
+    ctx.clearRect(0, 0, 256, 128);
+    ctx.font = 'bold 22px Inter, sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.fillText(c.title, 128, 50);
+    ctx.font = '12px Inter, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    // Word-wrap desc
+    const words = c.desc.split(' ');
+    let line = '';
+    let y = 75;
+    words.forEach(w => {
+      const test = line + w + ' ';
+      if (ctx.measureText(test).width > 230) {
+        ctx.fillText(line, 128, y);
+        line = w + ' ';
+        y += 16;
+      } else { line = test; }
+    });
+    ctx.fillText(line, 128, y);
+
+    const labelTex = new THREE.CanvasTexture(labelCanvas);
+    const labelMat = new THREE.SpriteMaterial({ map: labelTex, transparent: true });
+    const label = new THREE.Sprite(labelMat);
+    label.position.set(0, 5.5, 0);
+    label.scale.set(4, 2, 1);
+    podGroup.add(label);
+
+    // Position pods along a curve — scattered in space
+    podGroup.position.set(
+      -20 + i * 20,
+      -2 + (i % 2) * 4,
+      -10 + i * 5
+    );
+    podGroup.userData.floatPhase = i * 2.1;
+    podGroup.userData.rotPhase = i * 1.4;
+
+    group.add(podGroup);
+  });
+
+  return group;
+}
+
+const glassPods = buildGlassPods();
+scene.add(glassPods);
+
+setLoader(50, 'Manifesting Holographic Displays');
+
+// ============================================================
+// HOLOGRAPHIC FEATURE DISPLAYS
+// ============================================================
+function buildFeatureDisplays() {
+  const group = new THREE.Group();
+
+  const features = [
+    { title: 'Persistent Memory', stat: '100%', unit: 'recall rate', color: 0x2a93c1 },
+    { title: 'Voice Analysis', stat: '48hr', unit: 'to full sync', color: 0xf1420b },
+    { title: 'Proactive Intel', stat: '3x', unit: 'more output', color: 0x2a93c1 },
+    { title: 'Always Available', stat: '24/7', unit: 'zero downtime', color: 0xf1420b },
+    { title: 'Team Ready', stat: '∞', unit: 'agents spawned', color: 0x2a93c1 },
+    { title: 'Compounding AI', stat: '+12%', unit: 'IQ per month', color: 0xf1420b },
+  ];
+
+  features.forEach((f, i) => {
+    const displayGroup = new THREE.Group();
+
+    // Screen plane
+    const screenGeo = new THREE.PlaneGeometry(8, 5);
+    const screenCanvas = document.createElement('canvas');
+    screenCanvas.width = 400;
+    screenCanvas.height = 250;
+    const ctx = screenCanvas.getContext('2d');
+
+    // Background gradient
+    const grad = ctx.createLinearGradient(0, 0, 0, 250);
+    grad.addColorStop(0, 'rgba(8,10,18,0.95)');
+    grad.addColorStop(1, 'rgba(8,10,18,0.75)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 400, 250);
+
+    // Border
+    ctx.strokeStyle = `rgba(${f.color === 0x2a93c1 ? '42,147,193' : '241,66,11'}, 0.5)`;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(1, 1, 398, 248);
+
+    // Corner accents
+    ctx.beginPath();
+    ctx.moveTo(0, 30); ctx.lineTo(0, 0); ctx.lineTo(30, 0);
+    ctx.moveTo(370, 0); ctx.lineTo(400, 0); ctx.lineTo(400, 30);
+    ctx.moveTo(400, 220); ctx.lineTo(400, 250); ctx.lineTo(370, 250);
+    ctx.moveTo(30, 250); ctx.lineTo(0, 250); ctx.lineTo(0, 220);
+    ctx.strokeStyle = `rgba(${f.color === 0x2a93c1 ? '42,147,193' : '241,66,11'}, 0.8)`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Stat
+    ctx.font = 'bold 72px Inter, sans-serif';
+    ctx.fillStyle = f.color === 0x2a93c1 ? 'rgba(42,147,193,0.95)' : 'rgba(241,66,11,0.95)';
+    ctx.textAlign = 'center';
+    ctx.fillText(f.stat, 200, 130);
+
+    ctx.font = '11px Inter, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.letterSpacing = '3px';
+    ctx.fillText(f.unit.toUpperCase(), 200, 158);
+
+    ctx.font = 'bold 15px Inter, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.fillText(f.title.toUpperCase(), 200, 200);
+
+    const tex = new THREE.CanvasTexture(screenCanvas);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
+    const screen = new THREE.Mesh(screenGeo, mat);
+    displayGroup.add(screen);
+
+    // Glow behind the screen
+    const glowGeo = new THREE.PlaneGeometry(9, 6);
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: f.color,
+      transparent: true,
+      opacity: 0.04,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const glow = new THREE.Mesh(glowGeo, glowMat);
+    glow.position.z = -0.2;
+    displayGroup.add(glow);
+
+    // Scanning line on screen
+    const scanGeo = new THREE.PlaneGeometry(8, 0.04);
+    const scanMat = new THREE.MeshBasicMaterial({
+      color: f.color,
+      transparent: true,
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const scanLine = new THREE.Mesh(scanGeo, scanMat);
+    scanLine.position.y = 2;
+    scanLine.userData.isScan = true;
+    scanLine.userData.phase = i * 0.7;
+    displayGroup.add(scanLine);
+
+    // Arrange in a 3D cluster — above and around the brain
+    const angle = (i / features.length) * Math.PI * 2;
+    const radius = 35;
+    displayGroup.position.set(
+      Math.cos(angle) * radius,
+      8 + Math.sin(i * 0.8) * 6,
+      Math.sin(angle) * radius
+    );
+    displayGroup.lookAt(0, displayGroup.position.y, 0);
+    displayGroup.rotateY(Math.PI); // face outward
+    displayGroup.userData.floatPhase = i * 0.9;
+
+    group.add(displayGroup);
+  });
+
+  return group;
+}
+
+const featureDisplays = buildFeatureDisplays();
+scene.add(featureDisplays);
+
+setLoader(63, 'Erecting Pricing Monoliths');
+
+// ============================================================
+// PRICING MONOLITHS — 3 towering glass pillars
+// ============================================================
+function buildPricingMonoliths() {
+  const group = new THREE.Group();
+
+  const tiers = [
+    { name: 'Awakened', price: '$197', period: '/mo', features: ['Persistent Memory', 'Voice Sync', 'Daily Reports'], color: 0x2a93c1, scale: 1.0 },
+    { name: 'Partnered', price: '$579', period: '/mo', features: ['Everything in Awakened', 'Team Agents', 'Priority Support', 'Custom Training'], color: 0xf1420b, scale: 1.25 },
+    { name: 'Unified', price: '$1,089', period: '/mo', features: ['Everything in Partnered', 'Unlimited Agents', 'Enterprise Memory', 'White Glove'], color: 0x2a93c1, scale: 1.0 },
+  ];
+
+  tiers.forEach((t, i) => {
+    const monolithGroup = new THREE.Group();
+
+    const height = 22 * t.scale;
+    const width = 6 * t.scale;
+    const depth = 3 * t.scale;
+
+    // Main glass body
+    const geo = new THREE.BoxGeometry(width, height, depth);
+    const mat = new THREE.MeshPhysicalMaterial({
+      color: 0x0a1525,
+      emissive: t.color,
+      emissiveIntensity: 0.07,
+      metalness: 0.0,
+      roughness: 0.0,
+      transmission: 0.75,
+      thickness: depth,
+      ior: 1.5,
+      transparent: true,
+      opacity: 0.5,
+      side: THREE.DoubleSide,
+    });
+    const body = new THREE.Mesh(geo, mat);
+    body.position.y = height / 2;
+    monolithGroup.add(body);
+
+    // Edge glow lines
+    const edgeGeo = new THREE.EdgesGeometry(geo);
+    const edgeMat = new THREE.LineBasicMaterial({
+      color: t.color,
+      transparent: true,
+      opacity: 0.35,
+      blending: THREE.AdditiveBlending,
+    });
+    const edges = new THREE.LineSegments(edgeGeo, edgeMat);
+    edges.position.y = height / 2;
+    monolithGroup.add(edges);
+
+    // Cap — glowing top
+    const capGeo = new THREE.BoxGeometry(width + 0.2, 0.15, depth + 0.2);
+    const capMat = new THREE.MeshBasicMaterial({
+      color: t.color,
+      transparent: true,
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending,
+    });
+    const cap = new THREE.Mesh(capGeo, capMat);
+    cap.position.y = height;
+    monolithGroup.add(cap);
+
+    // Floating particle column above
+    const pCount = 60;
+    const pGeo = new THREE.BufferGeometry();
+    const pPos = new Float32Array(pCount * 3);
+    for (let j = 0; j < pCount; j++) {
+      pPos[j*3] = (Math.random() - 0.5) * width;
+      pPos[j*3+1] = height + Math.random() * 12;
+      pPos[j*3+2] = (Math.random() - 0.5) * depth;
+    }
+    pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+    const pMat = new THREE.PointsMaterial({
+      color: t.color,
+      size: 0.12,
+      transparent: true,
+      opacity: 0.55,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    monolithGroup.add(new THREE.Points(pGeo, pMat));
+
+    // Canvas label face
+    const faceCanvas = document.createElement('canvas');
+    faceCanvas.width = 256;
+    faceCanvas.height = 512;
+    const ctx = faceCanvas.getContext('2d');
+    ctx.clearRect(0, 0, 256, 512);
+
+    // Plan name
+    ctx.font = 'bold 18px Inter, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.textAlign = 'center';
+    ctx.fillText(t.name.toUpperCase(), 128, 60);
+
+    // Price
+    ctx.font = 'bold 52px Inter, sans-serif';
+    ctx.fillStyle = t.color === 0x2a93c1 ? 'rgba(42,147,193,0.95)' : 'rgba(241,66,11,0.95)';
+    ctx.fillText(t.price, 128, 130);
+
+    ctx.font = '12px Inter, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.fillText(t.period, 128, 152);
+
+    // Divider
+    ctx.strokeStyle = t.color === 0x2a93c1 ? 'rgba(42,147,193,0.2)' : 'rgba(241,66,11,0.2)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(40, 175);
+    ctx.lineTo(216, 175);
+    ctx.stroke();
+
+    // Features
+    ctx.font = '13px Inter, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    t.features.forEach((feat, fi) => {
+      ctx.fillText('— ' + feat, 128, 205 + fi * 28);
+    });
+
+    const faceTex = new THREE.CanvasTexture(faceCanvas);
+    const faceMat = new THREE.MeshBasicMaterial({
+      map: faceTex,
+      transparent: true,
+      side: THREE.FrontSide,
+    });
+    const facePlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(width - 0.2, height - 0.5),
+      faceMat
+    );
+    facePlane.position.set(0, height / 2, depth / 2 + 0.05);
+    monolithGroup.add(facePlane);
+
+    // Position monoliths in a triangle
+    const angle = (i / 3) * Math.PI * 2 - Math.PI / 6;
+    const radius = 22;
+    monolithGroup.position.set(
+      Math.cos(angle) * radius,
+      -8,
+      Math.sin(angle) * radius
+    );
+    monolithGroup.lookAt(0, monolithGroup.position.y, 0);
+    monolithGroup.userData.baseY = -8;
+    monolithGroup.userData.floatPhase = i * 2.1;
+
+    group.add(monolithGroup);
+  });
+
+  // Ground glow beneath monoliths
+  const groundGeo = new THREE.CircleGeometry(35, 64);
+  const groundMat = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(0x2a93c1) } },
+    vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader: `
+      uniform float uTime; uniform vec3 uColor; varying vec2 vUv;
+      void main(){
+        vec2 c = vUv - 0.5;
+        float d = length(c);
+        vec2 g = fract(vUv * 10.0);
+        float line = max(step(0.95, g.x), step(0.95, g.y));
+        float fade = 1.0 - smoothstep(0.1, 0.5, d);
+        float pulse = sin(d * 8.0 - uTime * 1.0) * 0.5 + 0.5;
+        pulse = pow(pulse, 6.0) * 0.2;
+        gl_FragColor = vec4(uColor, (line * fade * 0.18 + pulse * fade) * 0.8);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+  const ground = new THREE.Mesh(groundGeo, groundMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -8;
+  ground.userData.isGroundMat = true;
+  group.add(ground);
+
+  return { group, groundMat };
+}
+
+const { group: pricingGroup, groundMat: pricingGround } = buildPricingMonoliths();
+scene.add(pricingGroup);
+
+setLoader(75, 'Carving Testimonial Shards');
+
+// ============================================================
+// TESTIMONIAL GLASS SHARDS
+// ============================================================
+function buildTestimonialShards() {
+  const group = new THREE.Group();
+
+  const testimonials = [
+    { quote: '"I forgot what it was like to run my business without it."', name: 'Sarah M.', role: 'CEO, Fintech Startup' },
+    { quote: '"It remembered a conversation from 6 months ago and applied it perfectly."', name: 'Marcus D.', role: 'Marketing Director' },
+    { quote: '"My team thinks I hired someone. I just upgraded my AI partner."', name: 'Jennifer L.', role: 'Agency Owner' },
+    { quote: '"The ROI was visible in week two. Not month two. Week two."', name: 'David K.', role: 'E-commerce Founder' },
+  ];
+
+  testimonials.forEach((t, i) => {
+    const shardGroup = new THREE.Group();
+
+    // Irregular glass shard shape
+    const points = [];
+    const sides = 5 + Math.floor(Math.random() * 3);
+    for (let j = 0; j < sides; j++) {
+      const angle = (j / sides) * Math.PI * 2 + Math.random() * 0.4;
+      const r = 6 + Math.random() * 3;
+      points.push(new THREE.Vector2(Math.cos(angle) * r, Math.sin(angle) * r));
+    }
+    const shapeObj = new THREE.Shape(points);
+    const extrudeSettings = { depth: 0.4, bevelEnabled: true, bevelSize: 0.1, bevelSegments: 2 };
+    const shardGeo = new THREE.ExtrudeGeometry(shapeObj, extrudeSettings);
+
+    const shardMat = new THREE.MeshPhysicalMaterial({
+      color: 0x0a1525,
+      emissive: 0x2a93c1,
+      emissiveIntensity: 0.05,
+      metalness: 0.0,
+      roughness: 0.0,
+      transmission: 0.7,
+      thickness: 0.4,
+      ior: 1.48,
+      transparent: true,
+      opacity: 0.4,
+      side: THREE.DoubleSide,
+    });
+    const shard = new THREE.Mesh(shardGeo, shardMat);
+    shardGroup.add(shard);
+
+    // Etched text canvas
+    const tc = document.createElement('canvas');
+    tc.width = 512;
+    tc.height = 256;
+    const ctx = tc.getContext('2d');
+    ctx.clearRect(0, 0, 512, 256);
+    ctx.font = 'italic 16px Inter, serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.textAlign = 'center';
+
+    // Word wrap
+    const words = t.quote.split(' ');
+    let line = '';
+    let y = 80;
+    const maxW = 440;
+    words.forEach(w => {
+      const test = line + w + ' ';
+      if (ctx.measureText(test).width > maxW) {
+        ctx.fillText(line, 256, y);
+        line = w + ' ';
+        y += 26;
+      } else { line = test; }
+    });
+    ctx.fillText(line, 256, y);
+    y += 36;
+
+    ctx.font = 'bold 13px Inter, sans-serif';
+    ctx.fillStyle = 'rgba(42,147,193,0.8)';
+    ctx.fillText(t.name + ' · ' + t.role, 256, y);
+
+    const quoteTex = new THREE.CanvasTexture(tc);
+    const quoteMat = new THREE.SpriteMaterial({ map: quoteTex, transparent: true });
+    const quoteSprite = new THREE.Sprite(quoteMat);
+    quoteSprite.scale.set(10, 5, 1);
+    quoteSprite.position.z = 0.5;
+    shardGroup.add(quoteSprite);
+
+    // Position in drifting field
+    const angle = (i / testimonials.length) * Math.PI * 2;
+    const radius = 28 + Math.random() * 10;
+    shardGroup.position.set(
+      -60 + Math.cos(angle) * 15,
+      -2 + Math.sin(i * 1.3) * 5,
+      Math.sin(angle) * 15 + 10
+    );
+    shardGroup.rotation.set(
+      Math.random() * 0.3 - 0.15,
+      Math.random() * 0.6,
+      Math.random() * 0.2 - 0.1
+    );
+    shardGroup.userData.floatPhase = i * 1.57;
+    shardGroup.userData.driftSpeed = 0.0008 + Math.random() * 0.0005;
+
+    group.add(shardGroup);
+  });
+
+  return group;
+}
+
+const testimonialShards = buildTestimonialShards();
+scene.add(testimonialShards);
+
+setLoader(85, 'Opening the Gateway Portal');
+
+// ============================================================
+// CTA GATEWAY PORTAL
+// ============================================================
+function buildGatewayPortal() {
+  const group = new THREE.Group();
+
+  // Outer ring — large glowing torus
+  const outerGeo = new THREE.TorusGeometry(8, 0.12, 24, 128);
+  const outerMat = new THREE.MeshBasicMaterial({
+    color: 0x2a93c1,
+    transparent: true,
+    opacity: 0.7,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const outer = new THREE.Mesh(outerGeo, outerMat);
+  group.add(outer);
+
+  // Middle ring — orange
+  const midGeo = new THREE.TorusGeometry(6, 0.08, 20, 100);
+  const midMat = new THREE.MeshBasicMaterial({
+    color: 0xf1420b,
+    transparent: true,
+    opacity: 0.5,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const mid = new THREE.Mesh(midGeo, midMat);
+  group.add(mid);
+
+  // Inner energy disc
+  const discGeo = new THREE.CircleGeometry(5.8, 64);
+  const discMat = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 } },
+    vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader: `
+      uniform float uTime; varying vec2 vUv;
+      void main(){
+        vec2 c = vUv - 0.5;
+        float d = length(c) * 2.0;
+        float a = atan(c.y, c.x);
+        float spiral = sin(a * 3.0 - uTime * 2.0 + d * 4.0) * 0.5 + 0.5;
+        float energy = pow(1.0 - d, 2.0) * 0.6;
+        float ring = smoothstep(0.7, 0.75, d) * (1.0 - smoothstep(0.75, 0.9, d));
+        vec3 col1 = vec3(0.165, 0.576, 0.757); // blue
+        vec3 col2 = vec3(0.945, 0.259, 0.043); // orange
+        vec3 col = mix(col1, col2, spiral * 0.5);
+        float alpha = (spiral * energy + ring * 0.4) * smoothstep(1.0, 0.85, d);
+        gl_FragColor = vec4(col, alpha * 0.65);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+  const disc = new THREE.Mesh(discGeo, discMat);
+  group.add(disc);
+
+  // Particle vortex — particles spiraling into the portal
+  const vortexCount = 400;
+  const vGeo = new THREE.BufferGeometry();
+  const vPos = new Float32Array(vortexCount * 3);
+  const vAngle = new Float32Array(vortexCount);
+  const vRadius = new Float32Array(vortexCount);
+  const vHeight = new Float32Array(vortexCount);
+  for (let i = 0; i < vortexCount; i++) {
+    vAngle[i] = Math.random() * Math.PI * 2;
+    vRadius[i] = 2 + Math.random() * 25;
+    vHeight[i] = (Math.random() - 0.5) * 6;
+    vPos[i*3] = Math.cos(vAngle[i]) * vRadius[i];
+    vPos[i*3+1] = vHeight[i];
+    vPos[i*3+2] = Math.sin(vAngle[i]) * vRadius[i];
+  }
+  vGeo.setAttribute('position', new THREE.BufferAttribute(vPos, 3));
+  const vMat = new THREE.PointsMaterial({
+    color: 0x2a93c1,
+    size: 0.18,
+    transparent: true,
+    opacity: 0.6,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const vortex = new THREE.Points(vGeo, vMat);
+  vortex.userData.angles = vAngle;
+  vortex.userData.radii = vRadius;
+  vortex.userData.heights = vHeight;
+  group.add(vortex);
+
+  group.position.set(0, 2, 0);
+  group.userData.discMat = discMat;
+  group.userData.vortex = vortex;
+  group.userData.outerRing = outer;
+  group.userData.midRing = mid;
+
+  return group;
+}
+
+const portal = buildGatewayPortal();
+scene.add(portal);
+
+setLoader(93, 'Seeding the Cosmos');
+
+// ============================================================
+// DEEP SPACE PARTICLES — the universe backdrop
+// ============================================================
+const starCount = 3000;
+const starGeo = new THREE.BufferGeometry();
+const starPos = new Float32Array(starCount * 3);
+const starColors = new Float32Array(starCount * 3);
+for (let i = 0; i < starCount; i++) {
+  const r = 200 + Math.random() * 800;
+  const phi = Math.acos(2 * Math.random() - 1);
+  const theta = Math.random() * Math.PI * 2;
+  starPos[i*3] = r * Math.sin(phi) * Math.cos(theta);
+  starPos[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+  starPos[i*3+2] = r * Math.cos(phi);
+  // Mix of blue-white and warm stars
+  const warm = Math.random() > 0.8;
+  starColors[i*3] = warm ? 0.9 + Math.random() * 0.1 : 0.7 + Math.random() * 0.3;
+  starColors[i*3+1] = warm ? 0.6 + Math.random() * 0.2 : 0.75 + Math.random() * 0.25;
+  starColors[i*3+2] = warm ? 0.2 + Math.random() * 0.2 : 0.9 + Math.random() * 0.1;
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+starGeo.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
+const starMat = new THREE.PointsMaterial({
+  vertexColors: true,
+  size: 0.6,
+  transparent: true,
+  opacity: 0.55,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  sizeAttenuation: true,
+});
+scene.add(new THREE.Points(starGeo, starMat));
+
+// Ambient nebula — large translucent clouds
+for (let i = 0; i < 5; i++) {
+  const nGeo = new THREE.SphereGeometry(30 + Math.random() * 20, 8, 8);
+  const nMat = new THREE.MeshBasicMaterial({
+    color: i % 2 === 0 ? 0x2a93c1 : 0xf1420b,
+    transparent: true,
+    opacity: 0.006 + Math.random() * 0.006,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    wireframe: false,
+  });
+  const nebula = new THREE.Mesh(nGeo, nMat);
+  nebula.position.set(
+    (Math.random() - 0.5) * 200,
+    (Math.random() - 0.5) * 80,
+    (Math.random() - 0.5) * 200
+  );
+  scene.add(nebula);
+}
+
+// ============================================================
+// SCENE LIGHTING
+// ============================================================
+const ambient = new THREE.AmbientLight(0x0d1520, 2.5);
+scene.add(ambient);
+
+// Key light — blue from above
+const keyLight = new THREE.PointLight(0x2a93c1, 8, 80);
+keyLight.position.set(0, 30, 0);
+scene.add(keyLight);
+
+// Fill light — orange from side
+const fillLight = new THREE.PointLight(0xf1420b, 5, 60);
+fillLight.position.set(40, 10, 20);
+scene.add(fillLight);
+
+// Rim light
+const rimLight = new THREE.PointLight(0x2a93c1, 3, 40);
+rimLight.position.set(-30, -5, -20);
+scene.add(rimLight);
+
+// Portal-specific warm light
+const portalLight = new THREE.PointLight(0x88ccff, 6, 40);
+portalLight.position.set(0, 2, 8);
+scene.add(portalLight);
+
+setLoader(100, 'Universe Ready');
+
+// ============================================================
+// RESIZE
+// ============================================================
+window.addEventListener('resize', () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+  bloom.setSize(w, h);
+});
+
+// ============================================================
+// SCROLL STATE
+// ============================================================
+const scrollEl = document.getElementById('scroll-container');
+let scrollProgress = 0;
+let targetScrollProgress = 0;
+
+scrollEl.addEventListener('scroll', () => {
+  const maxScroll = scrollEl.scrollHeight - scrollEl.clientHeight;
+  targetScrollProgress = scrollEl.scrollTop / maxScroll;
+});
+
+// Touch/trackpad inertia smoothing
+let smoothProgress = 0;
+
+// ============================================================
+// SECTION STATE
+// ============================================================
+const sectionTitleEl = document.getElementById('section-title');
+const stLabel = document.getElementById('st-label');
+const stHeadline = document.getElementById('st-headline');
+const stSub = document.getElementById('st-sub');
+const stCta = document.getElementById('st-cta');
+const progressBar = document.getElementById('progress-bar');
+const sectionDots = document.querySelectorAll('.s-dot');
+
+let currentSection = -1;
+let sectionTransitionTimer = null;
+
+function getSectionIndex(progress) {
+  // 6 sections, transitions at 0.0, 0.16, 0.32, 0.50, 0.68, 0.84
+  if (progress < 0.10) return 0;
+  if (progress < 0.26) return 1;
+  if (progress < 0.42) return 2;
+  if (progress < 0.60) return 3;
+  if (progress < 0.76) return 4;
+  return 5;
+}
+
+function showSection(idx) {
+  if (idx === currentSection) return;
+  currentSection = idx;
+
+  const s = sections[idx];
+
+  // Update dots
+  sectionDots.forEach((d, i) => {
+    d.classList.toggle('active', i === idx);
+  });
+
+  // Fade out → update content → fade in
+  sectionTitleEl.classList.remove('visible');
+
+  clearTimeout(sectionTransitionTimer);
+  sectionTransitionTimer = setTimeout(() => {
+    stLabel.textContent = s.label;
+    stHeadline.innerHTML = s.headline.split('\n').map(l => `<div>${l}</div>`).join('');
+    stSub.textContent = s.sub;
+
+    if (s.cta) {
+      stCta.innerHTML = `<a class="cta-btn" href="${s.cta.href}" target="_blank">${s.cta.text}</a>`;
+    } else {
+      stCta.innerHTML = '';
+    }
+
+    sectionTitleEl.classList.add('visible');
+  }, 300);
+}
+
+// ============================================================
+// PARTICLE TRAIL (mouse interaction)
+// ============================================================
+const mouse = new THREE.Vector2();
+let mouseX = 0, mouseY = 0;
+window.addEventListener('mousemove', e => {
+  mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
+  mouseY = -(e.clientY / window.innerHeight - 0.5) * 2;
+  mouse.x = mouseX;
+  mouse.y = mouseY;
+});
+
+// ============================================================
+// REMOVE LOADER
+// ============================================================
+setTimeout(() => {
+  loaderEl.classList.add('fade-out');
+  setTimeout(() => loaderEl.remove(), 1400);
+}, 800);
+
+// ============================================================
+// ANIMATION LOOP
+// ============================================================
+const clock = new THREE.Clock();
+
+// Temp vectors for camera interpolation
+const camPos = new THREE.Vector3();
+const lookAt = new THREE.Vector3();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // Smooth scroll progress
+  smoothProgress += (targetScrollProgress - smoothProgress) * 0.06;
+
+  // Update progress bar
+  progressBar.style.width = (smoothProgress * 100) + '%';
+
+  // ---- CAMERA PATH ----
+  const curveT = Math.min(smoothProgress * 1.05, 1.0);
+  camCurve.getPoint(curveT, camPos);
+  lookCurve.getPoint(curveT, lookAt);
+
+  // Subtle mouse parallax on camera
+  camPos.x += mouseX * 1.5;
+  camPos.y += mouseY * 0.8;
+
+  camera.position.lerp(camPos, 0.04);
+  camera.lookAt(lookAt.x, lookAt.y, lookAt.z);
+
+  // ---- SECTION TRANSITIONS ----
+  const sectionIdx = getSectionIndex(smoothProgress);
+  showSection(sectionIdx);
+
+  // ---- NEURAL BRAIN ----
+  brain.group.rotation.y = t * 0.08;
+  brain.group.rotation.x = Math.sin(t * 0.05) * 0.04;
+
+  // Pulse brain emissive
+  brain.coreMat.emissiveIntensity = 0.5 + Math.sin(t * 1.5) * 0.15;
+  brain.lineMat.opacity = 0.12 + Math.sin(t * 0.8) * 0.06;
+
+  // Pulse rings on brain
+  brain.group.children.forEach(child => {
+    if (child.userData.isPulse) {
+      const phase = child.userData.pulsePhase;
+      const cycleT = ((t * 0.6 + phase / (Math.PI * 2)) % 1);
+      const s = cycleT * 20;
+      child.scale.set(s, s, 1);
+      child.material.opacity = (1 - cycleT) * 0.4;
+    }
+    if (child.userData.axis === 'y') child.rotation.y = t * child.userData.rotSpeed * 80;
+    if (child.userData.axis === 'z') child.rotation.z = t * child.userData.rotSpeed * 60;
+  });
+
+  // ---- GLASS PODS ----
+  glassPods.children.forEach(pod => {
+    const phase = pod.userData.floatPhase || 0;
+    pod.position.y += Math.sin(t * 0.6 + phase) * 0.008;
+    pod.rotation.y += 0.003;
+  });
+
+  // ---- FEATURE DISPLAYS ----
+  featureDisplays.children.forEach(display => {
+    const phase = display.userData.floatPhase || 0;
+    display.position.y += Math.sin(t * 0.5 + phase) * 0.005;
+    display.children.forEach(child => {
+      if (child.userData.isScan) {
+        child.position.y = (Math.sin(t * 0.8 + child.userData.phase) * 2.4);
+        child.material.opacity = 0.3 + Math.sin(t * 0.8 + child.userData.phase) * 0.3;
+      }
+    });
+  });
+
+  // ---- PRICING MONOLITHS ----
+  pricingGroup.children.forEach(child => {
+    if (child.userData.isGroundMat) return;
+    const phase = child.userData.floatPhase || 0;
+    child.position.y = (child.userData.baseY || -8) + Math.sin(t * 0.4 + phase) * 0.4;
+    if (child.userData.isGroundMat) {
+      child.material.uniforms && (child.material.uniforms.uTime.value = t);
+    }
+  });
+  // Update pricing ground shader
+  pricingGroup.children.forEach(child => {
+    if (child.isGroup) return;
+    if (child.material && child.material.uniforms && child.material.uniforms.uTime) {
+      child.material.uniforms.uTime.value = t;
+    }
+  });
+  // Direct update
+  if (pricingGround && pricingGround.uniforms) {
+    pricingGround.uniforms.uTime.value = t;
+  }
+
+  // ---- TESTIMONIAL SHARDS ----
+  testimonialShards.children.forEach(shard => {
+    const phase = shard.userData.floatPhase || 0;
+    const speed = shard.userData.driftSpeed || 0.001;
+    shard.position.y += Math.sin(t * speed * 800 + phase) * 0.005;
+    shard.rotation.y += speed * 0.8;
+    shard.rotation.z = Math.sin(t * speed * 600 + phase) * 0.05;
+  });
+
+  // ---- GATEWAY PORTAL ----
+  portal.userData.discMat.uniforms.uTime.value = t;
+  portal.rotation.z = t * 0.08;
+
+  // Vortex spiral animation
+  const vortex = portal.userData.vortex;
+  const vAngles = vortex.userData.angles;
+  const vRadii = vortex.userData.radii;
+  const vHeights = vortex.userData.heights;
+  const vPositions = vortex.geometry.attributes.position;
+  for (let i = 0; i < vAngles.length; i++) {
+    vAngles[i] += (0.003 + (1 - vRadii[i] / 27) * 0.012); // faster at center
+    vRadii[i] -= 0.02;
+    if (vRadii[i] < 1) { vRadii[i] = 2 + Math.random() * 25; vAngles[i] = Math.random() * Math.PI * 2; }
+    vPositions.setXYZ(
+      i,
+      Math.cos(vAngles[i]) * vRadii[i],
+      vHeights[i] + Math.sin(t * 0.3 + i * 0.1) * 0.3,
+      Math.sin(vAngles[i]) * vRadii[i]
+    );
+  }
+  vPositions.needsUpdate = true;
+
+  // Portal rings pulsing
+  portal.userData.outerRing.material.opacity = 0.5 + Math.sin(t * 1.2) * 0.2;
+  portal.userData.midRing.material.opacity = 0.3 + Math.sin(t * 1.8 + 1) * 0.2;
+
+  // ---- POINT LIGHTS DRIFT ----
+  fillLight.position.x = 40 + Math.sin(t * 0.3) * 15;
+  fillLight.position.z = 20 + Math.cos(t * 0.2) * 10;
+  rimLight.position.x = -30 + Math.cos(t * 0.25) * 10;
+
+  composer.render();
+}
+
+animate();
+</script>
+</body>
+</html>

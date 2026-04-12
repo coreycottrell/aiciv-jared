@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PureBrain Investor CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1220;--surface:#1a1f35;--surface2:#232845;--border:#2a3055;
+  --text:#e8eaf0;--text-muted:#8890a8;--accent:#2a93c1;--accent2:#f1420b;
+  --tier1:#22c55e;--tier2:#3b82f6;--tier3:#6b7280;
+  --red:#ef4444;--orange:#f59e0b;--green:#22c55e;
+}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+h1,h2,h3,h4{font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:0.02em}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:#3a4070}
+
+/* ===== LOGIN ===== */
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px;background:var(--bg)}
+.login-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:48px 40px;max-width:420px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.login-logo{font-family:'Oswald',sans-serif;font-size:32px;font-weight:700;margin-bottom:4px;color:var(--accent)}
+.login-box p{color:var(--text-muted);margin-bottom:32px;font-size:14px}
+.login-box input{width:100%;padding:14px 18px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:15px;outline:none;transition:border .2s}
+.login-box input:focus{border-color:var(--accent)}
+.login-box button{width:100%;padding:14px;margin-top:16px;background:linear-gradient(135deg,var(--accent2),#ff6a2e);border:none;border-radius:10px;color:#fff;font-size:15px;font-weight:600;cursor:pointer;transition:all .2s}
+.login-box button:hover{opacity:.9;transform:translateY(-1px)}
+.login-error{color:var(--red);font-size:13px;margin-top:12px;display:none}
+
+/* ===== DASHBOARD LAYOUT ===== */
+.dashboard{display:none;padding:20px 24px 40px;max-width:1600px;margin:0 auto}
+
+/* Top bar */
+.top-bar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px}
+.top-bar h1{font-size:26px;color:var(--accent)}
+.top-right{display:flex;align-items:center;gap:16px}
+.live-badge{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--green);font-weight:500}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.last-updated{font-size:12px;color:var(--text-muted)}
+.btn-export{padding:8px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-weight:500;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px}
+.btn-export:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* Tab navigation */
+.tab-nav{display:flex;gap:4px;margin-bottom:20px;border-bottom:2px solid var(--border);padding-bottom:0}
+.tab-btn{padding:12px 24px;background:none;border:none;border-bottom:3px solid transparent;color:var(--text-muted);font-family:'Oswald',sans-serif;font-size:15px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;transition:all .2s;margin-bottom:-2px}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-content{display:none}.tab-content.active{display:block}
+
+/* Controls bar */
+.controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:20px}
+.filter-btns{display:flex;gap:6px}
+.filter-btns button{padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text-muted);font-size:13px;font-weight:500;cursor:pointer;transition:all .2s}
+.filter-btns button.active,.filter-btns button:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.search-box{flex:1;min-width:220px;position:relative}
+.search-box input{width:100%;padding:10px 14px 10px 38px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;transition:border .2s}
+.search-box input:focus{border-color:var(--accent)}
+.search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:14px;pointer-events:none}
+
+/* ===== STATS BAR ===== */
+.stats-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;transition:border-color .2s}
+.stat-card:hover{border-color:var(--accent)}
+.stat-card .label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:6px}
+.stat-card .value{font-family:'Oswald',sans-serif;font-size:28px;font-weight:700}
+.stat-card .value.t1{color:var(--tier1)}
+.stat-card .value.t2{color:var(--tier2)}
+.stat-card .value.t3{color:var(--tier3)}
+.stat-card .value.accent{color:var(--accent)}
+
+/* ===== KANBAN ===== */
+.kanban{display:flex;gap:12px;overflow-x:auto;padding-bottom:16px;-webkit-overflow-scrolling:touch}
+.column{min-width:200px;max-width:240px;flex:1;background:var(--surface);border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;max-height:calc(100vh - 340px)}
+.col-header{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.col-header h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted)}
+.col-count{background:var(--accent);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;min-width:22px;text-align:center}
+.col-cards{padding:8px;overflow-y:auto;flex:1}
+.col-cards.drag-over{background:rgba(42,147,193,.08);border-radius:0 0 12px 12px}
+
+/* Cards */
+.card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;cursor:pointer;transition:all .2s;border-left:3px solid var(--border)}
+.card:hover{border-color:var(--accent);transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.25)}
+.card.tier-1{border-left-color:var(--tier1)}
+.card.tier-2{border-left-color:var(--tier2)}
+.card.tier-3{border-left-color:var(--tier3)}
+.card[draggable="true"]{cursor:grab}
+.card.dragging{opacity:.5;cursor:grabbing}
+.card .name{font-weight:600;font-size:13px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .company{font-size:11px;color:var(--text-muted);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .card-footer{display:flex;align-items:center;justify-content:space-between}
+.card .email-tag{font-size:10px;color:var(--text-muted);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tier-badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:.04em}
+.tier-badge.t1{background:rgba(34,197,94,.15);color:var(--tier1)}
+.tier-badge.t2{background:rgba(59,130,246,.15);color:var(--tier2)}
+.tier-badge.t3{background:rgba(107,114,128,.15);color:var(--tier3)}
+
+/* ===== ACTIVITY LOG ===== */
+.activity-feed{max-height:calc(100vh - 320px);overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:12px}
+.activity-item{display:flex;align-items:flex-start;gap:14px;padding:14px 18px;border-bottom:1px solid var(--border);transition:background .15s}
+.activity-item:last-child{border-bottom:none}
+.activity-item:hover{background:var(--surface2)}
+.activity-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.activity-icon.email-sent{background:rgba(42,147,193,.15);color:var(--accent)}
+.activity-icon.gift-opened{background:rgba(241,66,11,.15);color:var(--accent2)}
+.activity-icon.responded{background:rgba(34,197,94,.15);color:var(--green)}
+.activity-icon.call-scheduled{background:rgba(245,158,11,.15);color:var(--orange)}
+.activity-icon.call-completed{background:rgba(34,197,94,.15);color:var(--green)}
+.activity-icon.invested{background:rgba(34,197,94,.2);color:var(--green)}
+.activity-icon.outreach{background:rgba(107,114,128,.15);color:var(--tier3)}
+.activity-icon.passed{background:rgba(239,68,68,.15);color:var(--red)}
+.activity-body{flex:1;min-width:0}
+.activity-name{font-weight:600;font-size:14px}
+.activity-action{font-size:13px;color:var(--text-muted);margin-top:2px}
+.activity-time{font-size:11px;color:var(--text-muted);white-space:nowrap;flex-shrink:0;margin-top:2px}
+.activity-empty{padding:40px;text-align:center;color:var(--text-muted);font-size:14px}
+
+/* ===== ANALYTICS ===== */
+.analytics-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.analytics-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px}
+.analytics-card h3{font-size:16px;margin-bottom:16px;color:var(--text)}
+.analytics-card.full-width{grid-column:1 / -1}
+
+/* Funnel */
+.funnel-row{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.funnel-label{width:130px;font-size:12px;color:var(--text-muted);text-align:right;flex-shrink:0}
+.funnel-bar-wrap{flex:1;height:32px;background:var(--bg);border-radius:6px;overflow:hidden;position:relative}
+.funnel-bar{height:100%;border-radius:6px;transition:width .6s ease;min-width:2px;display:flex;align-items:center;padding-left:10px}
+.funnel-bar span{font-size:12px;font-weight:600;color:#fff;white-space:nowrap}
+.funnel-count{width:60px;font-size:13px;font-weight:600;text-align:left;flex-shrink:0}
+.funnel-pct{width:50px;font-size:12px;color:var(--text-muted);text-align:right;flex-shrink:0}
+
+/* Engaged list */
+.engaged-item{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)}
+.engaged-item:last-child{border-bottom:none}
+.engaged-name{font-weight:600;font-size:14px}
+.engaged-company{font-size:12px;color:var(--text-muted)}
+.engaged-stage{font-size:11px;padding:4px 10px;border-radius:6px;background:rgba(42,147,193,.15);color:var(--accent);font-weight:600}
+
+/* Rate cards */
+.rate-big{font-family:'Oswald',sans-serif;font-size:48px;font-weight:700;color:var(--accent);margin-bottom:4px}
+.rate-label{font-size:13px;color:var(--text-muted)}
+
+/* ===== MODAL ===== */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:1000;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
+.modal-overlay.show{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;max-width:580px;width:100%;max-height:85vh;overflow-y:auto;padding:32px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.modal h2{font-size:22px;margin-bottom:4px}
+.modal .modal-company{color:var(--text-muted);font-size:14px;margin-bottom:20px}
+.modal .field{margin-bottom:14px}
+.modal .field-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:4px}
+.modal .field-value{font-size:14px;word-break:break-all}
+.modal .field-value a{color:var(--accent2);text-decoration:none}
+.modal .field-value a:hover{text-decoration:underline}
+.stage-select{width:100%;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;margin-top:8px;cursor:pointer;outline:none;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238890a8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+.stage-select:focus{border-color:var(--accent)}
+.stage-select option{background:var(--surface);color:var(--text)}
+.modal-actions{display:flex;gap:10px;margin-top:24px}
+.modal-actions button{flex:1;padding:12px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:all .2s}
+.btn-save{background:var(--accent);color:#fff}
+.btn-save:hover{opacity:.85}
+.btn-close{background:var(--surface2);color:var(--text);border:1px solid var(--border) !important}
+.btn-close:hover{background:var(--border)}
+
+/* Toast */
+.toast{position:fixed;bottom:24px;right:24px;padding:14px 22px;border-radius:10px;font-size:14px;font-weight:500;z-index:2000;transform:translateY(80px);opacity:0;transition:all .3s ease}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.success{background:var(--green);color:#fff}
+.toast.error{background:var(--red);color:#fff}
+
+/* ===== RESPONSIVE ===== */
+@media(max-width:1024px){
+  .analytics-grid{grid-template-columns:1fr}
+  .analytics-card.full-width{grid-column:1}
+}
+@media(max-width:768px){
+  .dashboard{padding:12px 14px 30px}
+  .stats-bar{grid-template-columns:repeat(2,1fr)}
+  .column{min-width:180px}
+  .modal{padding:24px 20px}
+  .tab-btn{padding:10px 16px;font-size:13px}
+  .funnel-label{width:90px;font-size:11px}
+}
+@media(max-width:480px){
+  .stats-bar{grid-template-columns:1fr 1fr}
+  .stat-card .value{font-size:22px}
+  .controls{flex-direction:column}
+  .search-box{min-width:100%;width:100%}
+  .top-right{flex-wrap:wrap}
+  .tab-nav{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tab-btn{white-space:nowrap;padding:10px 14px;font-size:12px}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="login-wrap" id="loginWrap">
+  <div class="login-box">
+    <div class="login-logo">PUREBRAIN</div>
+    <p>Investor Pipeline CRM</p>
+    <input type="password" id="pwInput" placeholder="Enter access code" autocomplete="off">
+    <button onclick="attemptLogin()">Access Dashboard</button>
+    <div class="login-error" id="loginErr">Invalid access code. Please try again.</div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div class="dashboard" id="dashboard">
+  <!-- Top bar -->
+  <div class="top-bar">
+    <h1>Investor Pipeline</h1>
+    <div class="top-right">
+      <div class="live-badge"><span class="live-dot"></span> Live</div>
+      <span class="last-updated">Updated: <span id="lastUpdate">--</span></span>
+      <button class="btn-export" onclick="exportCSV()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export CSV
+      </button>
+    </div>
+  </div>
+
+  <!-- Tab Navigation -->
+  <div class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('pipeline',this)">Pipeline</button>
+    <button class="tab-btn" onclick="switchTab('activity',this)">Activity Log</button>
+    <button class="tab-btn" onclick="switchTab('analytics',this)">Analytics</button>
+  </div>
+
+  <!-- Shared Controls -->
+  <div class="controls">
+    <div class="filter-btns">
+      <button class="active" onclick="setTier('all',this)">All</button>
+      <button onclick="setTier('1',this)">Tier 1</button>
+      <button onclick="setTier('2',this)">Tier 2</button>
+      <button onclick="setTier('3',this)">Tier 3</button>
+    </div>
+    <div class="search-box">
+      <span class="search-icon">&#128269;</span>
+      <input type="text" id="searchInput" placeholder="Search by name, company, or email..." oninput="applyFilters()">
+    </div>
+  </div>
+
+  <!-- TAB 1: Pipeline (Kanban) -->
+  <div class="tab-content active" id="tab-pipeline">
+    <div class="kanban" id="kanban"></div>
+  </div>
+
+  <!-- TAB 2: Activity Log -->
+  <div class="tab-content" id="tab-activity">
+    <div class="activity-feed" id="activityFeed"></div>
+  </div>
+
+  <!-- TAB 3: Analytics -->
+  <div class="tab-content" id="tab-analytics">
+    <!-- Stats summary -->
+    <div class="stats-bar" id="statsBar">
+      <div class="stat-card"><div class="label">Total Investors</div><div class="value accent" id="statTotal">--</div></div>
+      <div class="stat-card"><div class="label">Tier 1</div><div class="value t1" id="statT1">--</div></div>
+      <div class="stat-card"><div class="label">Tier 2</div><div class="value t2" id="statT2">--</div></div>
+      <div class="stat-card"><div class="label">Tier 3</div><div class="value t3" id="statT3">--</div></div>
+      <div class="stat-card"><div class="label">Gift Open Rate</div><div class="value accent" id="statGift">--</div></div>
+      <div class="stat-card"><div class="label">Response Rate</div><div class="value accent" id="statResp">--</div></div>
+    </div>
+
+    <div class="analytics-grid">
+      <!-- Funnel -->
+      <div class="analytics-card full-width">
+        <h3>Conversion Funnel</h3>
+        <div id="funnelChart"></div>
+      </div>
+
+      <!-- Top Engaged -->
+      <div class="analytics-card">
+        <h3>Top 5 Most Engaged</h3>
+        <div id="topEngaged"></div>
+      </div>
+
+      <!-- Rates -->
+      <div class="analytics-card">
+        <h3>Key Metrics</h3>
+        <div id="keyMetrics"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modal"></div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+const API = 'https://chy-jared.app.purebrain.ai/api/crm';
+const PASSWORDS = ['pureinvestor2026','pt2026','puretech','puretechnology'];
+const STAGES = ['Outreach','Email Sent','Gift Opened','Responded','Call Scheduled','Call Completed','Invested','Passed'];
+const STAGE_COLORS = {
+  'Outreach':'var(--tier3)','Email Sent':'var(--accent)','Gift Opened':'var(--accent2)',
+  'Responded':'var(--green)','Call Scheduled':'var(--orange)','Call Completed':'var(--green)',
+  'Invested':'#22c55e','Passed':'var(--red)'
+};
+const STAGE_ICONS = {
+  'Outreach':'&#128227;','Email Sent':'&#9993;','Gift Opened':'&#127873;',
+  'Responded':'&#128172;','Call Scheduled':'&#128197;','Call Completed':'&#9989;',
+  'Invested':'&#128176;','Passed':'&#10060;'
+};
+const STAGE_ORDER = {};
+STAGES.forEach((s,i) => STAGE_ORDER[s] = i);
+
+let authToken = '';
+let allInvestors = [];
+let statsData = {};
+let currentTier = 'all';
+let currentTab = 'pipeline';
+let refreshTimer = null;
+
+// ===== LOGIN =====
+function attemptLogin() {
+  const pw = document.getElementById('pwInput').value.trim().toLowerCase();
+  if (PASSWORDS.includes(pw)) {
+    authToken = 'pureinvestor2026';
+    sessionStorage.setItem('crm_auth', authToken);
+    document.getElementById('loginWrap').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    loadAll();
+    refreshTimer = setInterval(loadAll, 60000);
+  } else {
+    const err = document.getElementById('loginErr');
+    err.style.display = 'block';
+    setTimeout(() => err.style.display = 'none', 3000);
+  }
+}
+
+document.getElementById('pwInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') attemptLogin();
+});
+
+// Check session
+(function checkSession() {
+  const saved = sessionStorage.getItem('crm_auth');
+  if (saved) {
+    authToken = saved;
+    document.getElementById('loginWrap').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    loadAll();
+    refreshTimer = setInterval(loadAll, 60000);
+  }
+})();
+
+// ===== DATA LOADING =====
+async function loadAll() {
+  try {
+    const [invRes, statRes] = await Promise.all([
+      fetch(API + '/investors?auth=' + encodeURIComponent(authToken)),
+      fetch(API + '/stats?auth=' + encodeURIComponent(authToken))
+    ]);
+    if (!invRes.ok || !statRes.ok) throw new Error('API error');
+    const invData = await invRes.json();
+    statsData = await statRes.json();
+    allInvestors = invData.investors || [];
+    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+    applyFilters();
+  } catch (e) {
+    console.error('Load error:', e);
+  }
+}
+
+// ===== TABS =====
+function switchTab(tab, btn) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  applyFilters();
+}
+
+// ===== FILTERS =====
+function setTier(tier, btn) {
+  currentTier = tier;
+  document.querySelectorAll('.filter-btns button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
+}
+
+function getFiltered() {
+  const q = (document.getElementById('searchInput').value || '').toLowerCase();
+  return allInvestors.filter(inv => {
+    if (currentTier !== 'all' && inv.display_tier !== currentTier) return false;
+    if (q) {
+      const hay = ((inv.name||'') + ' ' + (inv.company||'') + ' ' + (inv.email||'')).toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function applyFilters() {
+  const filtered = getFiltered();
+  if (currentTab === 'pipeline') renderKanban(filtered);
+  if (currentTab === 'activity') renderActivity(filtered);
+  if (currentTab === 'analytics') renderAnalytics(filtered);
+}
+
+// ===== KANBAN =====
+function renderKanban(filtered) {
+  const kanban = document.getElementById('kanban');
+  kanban.innerHTML = '';
+
+  STAGES.forEach(stage => {
+    const cards = filtered.filter(i => i.pipeline_stage === stage);
+    const col = document.createElement('div');
+    col.className = 'column';
+    col.setAttribute('data-stage', stage);
+    col.innerHTML = `
+      <div class="col-header">
+        <h3>${stage}</h3>
+        <span class="col-count">${cards.length}</span>
+      </div>
+      <div class="col-cards" data-stage="${stage}"></div>`;
+    kanban.appendChild(col);
+
+    const container = col.querySelector('.col-cards');
+
+    // Drag-and-drop listeners on the column
+    container.addEventListener('dragover', e => { e.preventDefault(); container.classList.add('drag-over'); });
+    container.addEventListener('dragleave', () => container.classList.remove('drag-over'));
+    container.addEventListener('drop', e => {
+      e.preventDefault();
+      container.classList.remove('drag-over');
+      const code = e.dataTransfer.getData('text/plain');
+      const newStage = container.getAttribute('data-stage');
+      if (code && newStage) updateStageAPI(code, newStage);
+    });
+
+    cards.forEach(inv => {
+      const card = document.createElement('div');
+      const tierNum = inv.display_tier || '3';
+      card.className = 'card tier-' + tierNum;
+      card.draggable = true;
+      card.onclick = () => openModal(inv);
+      card.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('text/plain', inv.code);
+        card.classList.add('dragging');
+      });
+      card.addEventListener('dragend', () => card.classList.remove('dragging'));
+
+      const tierClass = tierNum === '1' ? 't1' : tierNum === '2' ? 't2' : 't3';
+      const tierLabel = inv.display_tier ? 'Tier ' + inv.display_tier : 'N/A';
+      card.innerHTML = `
+        <div class="name">${esc(inv.name || 'Unknown')}</div>
+        <div class="company">${esc(inv.company || '--')}</div>
+        <div class="card-footer">
+          <span class="email-tag">${esc(inv.email || '')}</span>
+          <span class="tier-badge ${tierClass}">${tierLabel}</span>
+        </div>`;
+      container.appendChild(card);
+    });
+  });
+}
+
+// ===== ACTIVITY LOG =====
+function renderActivity(filtered) {
+  const feed = document.getElementById('activityFeed');
+  const events = [];
+
+  filtered.forEach(inv => {
+    const name = inv.name || 'Unknown';
+    // Derive events from available data fields
+    if (inv.call_completed && inv.call_completed !== '--' && inv.call_completed !== '') {
+      events.push({ name, company: inv.company, action: 'Call completed', type: 'call-completed', time: inv.call_completed, stage: 'Call Completed', sortOrder: 5 });
+    }
+    if (inv.call_scheduled && inv.call_scheduled !== '--' && inv.call_scheduled !== '') {
+      events.push({ name, company: inv.company, action: 'Call scheduled', type: 'call-scheduled', time: inv.call_scheduled, stage: 'Call Scheduled', sortOrder: 4 });
+    }
+    if (inv.email_response && inv.email_response !== '--' && inv.email_response !== '') {
+      events.push({ name, company: inv.company, action: 'Responded to outreach', type: 'responded', time: inv.email_response, stage: 'Responded', sortOrder: 3 });
+    }
+    if (inv.gift_opened && inv.gift_opened !== '--' && inv.gift_opened !== '') {
+      events.push({ name, company: inv.company, action: 'Opened gift page', type: 'gift-opened', time: inv.gift_opened, stage: 'Gift Opened', sortOrder: 2 });
+    }
+    if (inv.email_sent && inv.email_sent !== '--' && inv.email_sent !== '') {
+      events.push({ name, company: inv.company, action: 'Email sent' + (inv.outreach_subject ? ': ' + inv.outreach_subject : ''), type: 'email-sent', time: inv.email_sent, stage: 'Email Sent', sortOrder: 1 });
+    }
+    // If they are in pipeline but have no specific events, show their current stage
+    if (events.filter(e => e.name === name).length === 0) {
+      events.push({ name, company: inv.company, action: 'Added to pipeline (' + (inv.pipeline_stage || 'Outreach') + ')', type: 'outreach', time: '', stage: inv.pipeline_stage || 'Outreach', sortOrder: 0 });
+    }
+  });
+
+  // Sort: most advanced actions first, then alphabetically
+  events.sort((a, b) => {
+    // Try to parse dates if available
+    const dateA = parseActivityDate(a.time);
+    const dateB = parseActivityDate(b.time);
+    if (dateA && dateB) return dateB - dateA;
+    if (dateA && !dateB) return -1;
+    if (!dateA && dateB) return 1;
+    // Fall back to sort order (most advanced stage first)
+    return b.sortOrder - a.sortOrder;
+  });
+
+  if (events.length === 0) {
+    feed.innerHTML = '<div class="activity-empty">No activity to display</div>';
+    return;
+  }
+
+  feed.innerHTML = events.map(ev => `
+    <div class="activity-item">
+      <div class="activity-icon ${ev.type}">${STAGE_ICONS[ev.stage] || '&#128204;'}</div>
+      <div class="activity-body">
+        <div class="activity-name">${esc(ev.name)}${ev.company ? ' <span style="color:var(--text-muted);font-weight:400;font-size:12px">(' + esc(ev.company) + ')</span>' : ''}</div>
+        <div class="activity-action">${esc(ev.action)}</div>
+      </div>
+      <div class="activity-time">${ev.time ? esc(ev.time) : '--'}</div>
+    </div>
+  `).join('');
+}
+
+function parseActivityDate(str) {
+  if (!str || str === '--') return null;
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// ===== ANALYTICS =====
+function renderAnalytics(filtered) {
+  // Stats cards
+  const tierCounts = { '1': 0, '2': 0, '3': 0 };
+  filtered.forEach(inv => {
+    const t = inv.display_tier || '3';
+    if (tierCounts[t] !== undefined) tierCounts[t]++;
+  });
+  document.getElementById('statTotal').textContent = filtered.length;
+  document.getElementById('statT1').textContent = tierCounts['1'];
+  document.getElementById('statT2').textContent = tierCounts['2'];
+  document.getElementById('statT3').textContent = tierCounts['3'];
+
+  // Rates from stats API or compute from data
+  const rates = statsData.rates || {};
+  document.getElementById('statGift').textContent = (rates.gift_open_rate || computeRate(filtered, 'gift_opened')) + '%';
+  document.getElementById('statResp').textContent = (rates.response_rate || computeRate(filtered, 'email_response')) + '%';
+
+  // Funnel
+  renderFunnel(filtered);
+  // Top engaged
+  renderTopEngaged(filtered);
+  // Key metrics
+  renderKeyMetrics(filtered);
+}
+
+function computeRate(investors, field) {
+  if (!investors.length) return 0;
+  const count = investors.filter(i => i[field] && i[field] !== '--' && i[field] !== '').length;
+  return Math.round((count / investors.length) * 100);
+}
+
+function renderFunnel(filtered) {
+  const container = document.getElementById('funnelChart');
+  const stageCounts = {};
+  STAGES.forEach(s => stageCounts[s] = 0);
+
+  // Count investors AT or PAST each stage
+  filtered.forEach(inv => {
+    const stage = inv.pipeline_stage || 'Outreach';
+    const idx = STAGE_ORDER[stage] !== undefined ? STAGE_ORDER[stage] : 0;
+    for (let i = 0; i <= idx; i++) {
+      stageCounts[STAGES[i]]++;
+    }
+  });
+
+  // For a true funnel, show cumulative from top
+  // Actually show how many reached each stage
+  const total = filtered.length || 1;
+  const funnelStages = STAGES.filter(s => s !== 'Passed'); // Exclude "Passed" from funnel
+
+  container.innerHTML = funnelStages.map(stage => {
+    const count = stageCounts[stage] || 0;
+    const pct = Math.round((count / total) * 100);
+    const barColor = STAGE_COLORS[stage] || 'var(--accent)';
+    return `
+      <div class="funnel-row">
+        <div class="funnel-label">${stage}</div>
+        <div class="funnel-bar-wrap">
+          <div class="funnel-bar" style="width:${Math.max(pct, 3)}%;background:${barColor}">
+            <span>${count}</span>
+          </div>
+        </div>
+        <div class="funnel-pct">${pct}%</div>
+      </div>`;
+  }).join('');
+}
+
+function renderTopEngaged(filtered) {
+  const container = document.getElementById('topEngaged');
+  // Sort by pipeline stage (furthest = most engaged)
+  const sorted = [...filtered].sort((a, b) => {
+    const ai = STAGE_ORDER[a.pipeline_stage] || 0;
+    const bi = STAGE_ORDER[b.pipeline_stage] || 0;
+    return bi - ai;
+  });
+
+  const top5 = sorted.slice(0, 5);
+  if (top5.length === 0) {
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:13px">No investor data</div>';
+    return;
+  }
+
+  container.innerHTML = top5.map(inv => `
+    <div class="engaged-item">
+      <div>
+        <div class="engaged-name">${esc(inv.name || 'Unknown')}</div>
+        <div class="engaged-company">${esc(inv.company || '--')}</div>
+      </div>
+      <div class="engaged-stage">${esc(inv.pipeline_stage || 'Outreach')}</div>
+    </div>
+  `).join('');
+}
+
+function renderKeyMetrics(filtered) {
+  const container = document.getElementById('keyMetrics');
+  const total = filtered.length || 1;
+  const giftCount = filtered.filter(i => i.gift_opened && i.gift_opened !== '--' && i.gift_opened !== '').length;
+  const respCount = filtered.filter(i => i.email_response && i.email_response !== '--' && i.email_response !== '').length;
+  const callCount = filtered.filter(i => i.call_completed && i.call_completed !== '--' && i.call_completed !== '').length;
+  const emailCount = filtered.filter(i => i.email_sent && i.email_sent !== '--' && i.email_sent !== '').length;
+
+  const giftRate = Math.round((giftCount / total) * 100);
+  const respRate = emailCount ? Math.round((respCount / emailCount) * 100) : 0;
+  const callRate = respCount ? Math.round((callCount / respCount) * 100) : 0;
+
+  container.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;text-align:center">
+      <div>
+        <div class="rate-big">${giftRate}%</div>
+        <div class="rate-label">Gift Open Rate</div>
+      </div>
+      <div>
+        <div class="rate-big">${respRate}%</div>
+        <div class="rate-label">Response Rate</div>
+      </div>
+      <div>
+        <div class="rate-big">${callRate}%</div>
+        <div class="rate-label">Call Conversion</div>
+      </div>
+      <div>
+        <div class="rate-big">${emailCount}</div>
+        <div class="rate-label">Emails Sent</div>
+      </div>
+    </div>
+  `;
+}
+
+// ===== MODAL =====
+function openModal(inv) {
+  const m = document.getElementById('modal');
+  const tierNum = inv.display_tier || '3';
+  const tierClass = tierNum === '1' ? 't1' : tierNum === '2' ? 't2' : 't3';
+  const tierLabel = inv.display_tier ? 'Tier ' + inv.display_tier : 'N/A';
+
+  const fields = [
+    ['Email', inv.email ? '<a href="mailto:' + esc(inv.email) + '">' + esc(inv.email) + '</a>' : '--'],
+    ['Code', esc(inv.code || '--')],
+    ['Tier', '<span class="tier-badge ' + tierClass + '">' + tierLabel + '</span>'],
+    ['Gift Title', esc(inv.gift_title || '--')],
+    ['Gift URL', inv.gift_url ? '<a href="' + esc(inv.gift_url) + '" target="_blank">View Gift Page</a>' : '--'],
+    ['Status', esc(inv.status || '--')],
+    ['Email Sent', esc(inv.email_sent || '--')],
+    ['Outreach Subject', esc(inv.outreach_subject || '--')],
+    ['Gift Opened', esc(inv.gift_opened || '--')],
+    ['Email Response', esc(inv.email_response || '--')],
+    ['Portal Visit', esc(inv.portal_visit || '--')],
+    ['Call Scheduled', esc(inv.call_scheduled || '--')],
+    ['Call Completed', esc(inv.call_completed || '--')],
+    ['Notes', esc(inv.notes || '--')],
+  ];
+
+  const stageOpts = STAGES.map(s => '<option value="' + s + '"' + (s===inv.pipeline_stage?' selected':'') + '>' + s + '</option>').join('');
+
+  m.innerHTML = `
+    <h2>${esc(inv.name || 'Unknown')}</h2>
+    <div class="modal-company">${esc(inv.company || '--')}</div>
+    ${fields.map(([l,v]) => '<div class="field"><div class="field-label">' + l + '</div><div class="field-value">' + v + '</div></div>').join('')}
+    <div class="field">
+      <div class="field-label">Pipeline Stage</div>
+      <select class="stage-select" id="stageSelect">${stageOpts}</select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-save" onclick="updateStage('${esc(inv.code)}')">Save Changes</button>
+      <button class="btn-close" onclick="closeModal()">Close</button>
+    </div>`;
+
+  document.getElementById('modalOverlay').classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('show');
+}
+
+async function updateStage(code) {
+  const stage = document.getElementById('stageSelect').value;
+  await updateStageAPI(code, stage);
+  closeModal();
+}
+
+async function updateStageAPI(code, stage) {
+  try {
+    const res = await fetch(API + '/update?auth=' + encodeURIComponent(authToken), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, stage })
+    });
+    if (!res.ok) throw new Error('Update failed');
+    showToast('Stage updated: ' + stage, 'success');
+    await loadAll();
+  } catch (e) {
+    showToast('Failed to update stage', 'error');
+  }
+}
+
+// ===== EXPORT CSV =====
+function exportCSV() {
+  const investors = getFiltered();
+  if (!investors.length) { showToast('No data to export', 'error'); return; }
+
+  const headers = ['Name','Company','Email','Tier','Pipeline Stage','Gift Title','Gift URL','Status','Email Sent','Gift Opened','Email Response','Call Scheduled','Call Completed','Portal Visit','Notes','Outreach Subject'];
+  const rows = investors.map(inv => [
+    inv.name, inv.company, inv.email, inv.display_tier ? 'Tier ' + inv.display_tier : '',
+    inv.pipeline_stage, inv.gift_title, inv.gift_url, inv.status,
+    inv.email_sent, inv.gift_opened, inv.email_response, inv.call_scheduled,
+    inv.call_completed, inv.portal_visit, inv.notes, inv.outreach_subject
+  ]);
+
+  let csv = headers.map(h => '"' + h + '"').join(',') + '\n';
+  rows.forEach(row => {
+    csv += row.map(val => '"' + (val || '').replace(/"/g, '""') + '"').join(',') + '\n';
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'purebrain-investors-' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('CSV exported successfully', 'success');
+}
+
+// ===== TOAST =====
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + type + ' show';
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ===== UTIL =====
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  const d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
+}
+
+// Escape key closes modal
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+</script>
+</body>
+</html>

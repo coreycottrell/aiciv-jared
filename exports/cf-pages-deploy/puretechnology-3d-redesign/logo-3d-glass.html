@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology — Glass Assembly</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000000;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+  }
+
+  #canvas-container {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  #three-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  #phase-label {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.18);
+    pointer-events: none;
+    transition: opacity 1.5s ease;
+    white-space: nowrap;
+  }
+
+  #brand-tag {
+    position: fixed;
+    top: 28px;
+    right: 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 2s ease;
+  }
+  #brand-tag .name {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.75);
+  }
+  #brand-tag .sub {
+    font-size: 9px;
+    font-weight: 400;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: rgba(45,134,193,0.65);
+    margin-top: 3px;
+  }
+
+  #loading {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    color: rgba(45,134,193,0.6);
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    pointer-events: none;
+    transition: opacity 0.8s ease;
+  }
+</style>
+</head>
+<body>
+
+<div id="loading">Loading</div>
+
+<div id="canvas-container">
+  <canvas id="three-canvas"></canvas>
+</div>
+
+<div id="phase-label">Assembling</div>
+<div id="brand-tag">
+  <div class="name">Pure Technology</div>
+  <div class="sub">AI Partnership</div>
+</div>
+
+<!-- Three.js r160 via CDN importmap — same as assembly.html -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+// imports MUST be at module top level — never inside try/catch
+import * as THREE from 'three';
+import { EffectComposer }  from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }      from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass }      from 'three/addons/postprocessing/OutputPass.js';
+
+try {
+
+// ─────────────────────────────────────────────────────────────────────────
+// LOGO CONSTANTS — copied exactly from assembly.html
+// ─────────────────────────────────────────────────────────────────────────
+
+const LOGO = {
+  hexUnits:        3,
+  strokesPerUnit:  33,
+  rotationOffset:  9  * (Math.PI / 180),
+  twistPerLevel:   7  * (Math.PI / 180),
+  shrinkRate:      0.07,
+  colorOuter:      new THREE.Color('#2d86c1'),
+  colorInner:      new THREE.Color('#f1420b'),
+  innerBoost:      1.33,
+  desaturation:    0.52,
+  voidRadius:      0.04,
+  pointyTop:       Math.PI / 6,
+};
+
+const BASE_RADIUS = 1.6;
+const Z_NEAR      = 0.18;
+const Z_FAR       = 0.0;
+
+function strokeColor(t) {
+  const blue   = LOGO.colorOuter.clone();
+  const orange = LOGO.colorInner.clone();
+  if (t < 0.25) {
+    return blue.clone().multiplyScalar(0.9 + t * 0.4);
+  } else if (t < 0.55) {
+    const alpha = (t - 0.25) / 0.30;
+    const mid   = blue.clone().lerp(orange, alpha);
+    const lum   = mid.r * 0.299 + mid.g * 0.587 + mid.b * 0.114;
+    const grey  = new THREE.Color(lum, lum, lum);
+    return mid.lerp(grey, LOGO.desaturation * (1 - Math.abs(alpha - 0.5) * 2));
+  } else {
+    const alpha = (t - 0.55) / 0.45;
+    const c = orange.clone().lerp(new THREE.Color('#ff6a2e'), alpha);
+    return c.multiplyScalar(1.0 + alpha * (LOGO.innerBoost - 1));
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SCENE & RENDERER — same pattern as assembly.html
+// ─────────────────────────────────────────────────────────────────────────
+
+const canvas   = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene  = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 100);
+camera.position.set(0.3, 0.2, 4.5);
+camera.lookAt(0, 0, 0);
+
+// ─────────────────────────────────────────────────────────────────────────
+// POST-PROCESSING — same as assembly.html
+// ─────────────────────────────────────────────────────────────────────────
+
+const composer   = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass  = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.8, 0.5, 0.78
+);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
+
+// ─────────────────────────────────────────────────────────────────────────
+// BUILD ALL LOGO TARGET POSITIONS
+// For each unit × stroke × 6 hex vertices
+// ─────────────────────────────────────────────────────────────────────────
+
+const logoTargets = []; // { x, y, z, col, unitIdx, strokeIdx }
+
+for (let u = 0; u < LOGO.hexUnits; u++) {
+  const unitAngle = u * LOGO.rotationOffset;
+  for (let s = 0; s < LOGO.strokesPerUnit; s++) {
+    const radius = BASE_RADIUS * Math.pow(1 - LOGO.shrinkRate, s);
+    if (radius < LOGO.voidRadius * BASE_RADIUS) break;
+    const rotOffset = LOGO.pointyTop + unitAngle + s * LOGO.twistPerLevel;
+    const zDepth    = THREE.MathUtils.lerp(Z_FAR, Z_NEAR, s / (LOGO.strokesPerUnit - 1));
+    const t         = s / (LOGO.strokesPerUnit - 1);
+    const col       = strokeColor(t);
+    for (let v = 0; v < 6; v++) {
+      const angle = rotOffset + v * (Math.PI / 3);
+      logoTargets.push({
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius,
+        z: zDepth,
+        col,
+        unitIdx: u, strokeIdx: s
+      });
+    }
+  }
+}
+
+const N_SHARDS = logoTargets.length;
+
+// ─────────────────────────────────────────────────────────────────────────
+// GLASS SHARDS
+// Small flat triangles with MeshBasicMaterial + AdditiveBlending
+// ─────────────────────────────────────────────────────────────────────────
+
+// Pool of small irregular triangle geometries
+const GEO_POOL = [];
+for (let g = 0; g < 16; g++) {
+  const sz  = 0.012 + Math.random() * 0.018;
+  const a0  = Math.random() * Math.PI * 2;
+  const a1  = a0 + Math.PI * 0.55 + (Math.random() - 0.5) * 0.5;
+  const a2  = a1 + Math.PI * 0.85 + (Math.random() - 0.5) * 0.5;
+  const verts = new Float32Array([
+    0, 0, 0,
+    Math.cos(a0) * sz, Math.sin(a0) * sz, 0,
+    Math.cos(a1) * sz, Math.sin(a1) * sz, 0,
+  ]);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+  GEO_POOL.push(geo);
+}
+
+const shardGroup = new THREE.Group();
+scene.add(shardGroup);
+
+// Phase timing
+const SCATTER_END  = 1.0;
+const ASSEMBLE_END = 4.0;
+const FLASH_START  = 4.0;
+const FLASH_END    = 5.5;
+const IDLE_START   = 5.5;
+
+// Per-shard state
+const shards = [];
+
+for (let si = 0; si < N_SHARDS; si++) {
+  const td = logoTargets[si];
+
+  // Random scatter position — sphere around center
+  const theta = Math.random() * Math.PI * 2;
+  const phi   = Math.acos(2 * Math.random() - 1);
+  const r     = 1.8 + Math.random() * 1.4;
+  const startX = r * Math.sin(phi) * Math.cos(theta);
+  const startY = r * Math.sin(phi) * Math.sin(theta);
+  const startZ = (Math.random() - 0.5) * 2.0;
+
+  // Random initial rotation
+  const rX = Math.random() * Math.PI * 2;
+  const rY = Math.random() * Math.PI * 2;
+  const rZ = Math.random() * Math.PI * 2;
+
+  // Tumble velocity
+  const tX = (Math.random() - 0.5) * 2.0;
+  const tY = (Math.random() - 0.5) * 2.0;
+  const tZ = (Math.random() - 0.5) * 2.5;
+
+  // Outer strokes (high strokeIdx) assemble first
+  const normDelay     = 1 - td.strokeIdx / (LOGO.strokesPerUnit - 1);
+  const assembleDelay = normDelay * (ASSEMBLE_END - SCATTER_END) * 0.7;
+
+  const mat = new THREE.MeshBasicMaterial({
+    color:       td.col,
+    transparent: true,
+    opacity:     0.75,
+    blending:    THREE.AdditiveBlending,
+    depthWrite:  false,
+    side:        THREE.DoubleSide,
+  });
+
+  const geo  = GEO_POOL[si % GEO_POOL.length];
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(startX, startY, startZ);
+  mesh.rotation.set(rX, rY, rZ);
+  mesh.scale.setScalar(0.8 + td.strokeIdx * 0.03);
+  shardGroup.add(mesh);
+
+  shards.push({
+    mesh, mat,
+    startX, startY, startZ,
+    rX, rY, rZ,
+    tX, tY, tZ,
+    targetX: td.x, targetY: td.y, targetZ: td.z,
+    assembleDelay,
+    shimmer: Math.random() * Math.PI * 2,
+    assembled: false,
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LOGO LINE GEOMETRY — final static logo, same spec as assembly.html
+// ─────────────────────────────────────────────────────────────────────────
+
+function buildHexLine(radius, rotOffset, zDepth, color) {
+  const pts = [];
+  for (let i = 0; i <= 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + rotOffset;
+    pts.push(radius * Math.cos(a), radius * Math.sin(a), zDepth);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pts), 3));
+  const mat = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0,
+    linewidth: 1,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  return new THREE.Line(geo, mat);
+}
+
+const logoGroup = new THREE.Group();
+scene.add(logoGroup);
+const logoLines = [];
+
+for (let u = 0; u < LOGO.hexUnits; u++) {
+  const unitAngle = u * LOGO.rotationOffset;
+  for (let s = 0; s < LOGO.strokesPerUnit; s++) {
+    const radius    = BASE_RADIUS * Math.pow(1 - LOGO.shrinkRate, s);
+    if (radius < LOGO.voidRadius * BASE_RADIUS) break;
+    const rotOffset = LOGO.pointyTop + unitAngle + s * LOGO.twistPerLevel;
+    const zDepth    = THREE.MathUtils.lerp(Z_FAR, Z_NEAR, s / (LOGO.strokesPerUnit - 1));
+    const t         = s / (LOGO.strokesPerUnit - 1);
+    const color     = strokeColor(t);
+    const line      = buildHexLine(radius, rotOffset, zDepth, color);
+    logoGroup.add(line);
+    logoLines.push({ line, strokeIdx: s, unitIdx: u });
+  }
+}
+
+// Center glow
+const centerMat  = new THREE.MeshBasicMaterial({
+  color: new THREE.Color('#f1420b'),
+  transparent: true,
+  opacity: 0,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+const centerGlow = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 16), centerMat);
+centerGlow.position.set(0, 0, Z_NEAR + 0.02);
+logoGroup.add(centerGlow);
+
+// ─────────────────────────────────────────────────────────────────────────
+// EASING HELPERS
+// ─────────────────────────────────────────────────────────────────────────
+
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function easeInOutCubic(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2; }
+
+// ─────────────────────────────────────────────────────────────────────────
+// ANIMATION STATE
+// ─────────────────────────────────────────────────────────────────────────
+
+const clock      = new THREE.Clock();
+let elapsed      = 0;
+let phase        = 'scatter';
+
+const phaseLabel = document.getElementById('phase-label');
+const brandTag   = document.getElementById('brand-tag');
+const loading    = document.getElementById('loading');
+
+// All logo lines start invisible
+for (const { line } of logoLines) {
+  line.material.opacity = 0;
+  line.geometry.setDrawRange(0, 0);
+}
+
+// Hide loading indicator — scene is ready
+loading.style.opacity = '0';
+setTimeout(() => { loading.style.display = 'none'; }, 800);
+
+// ─────────────────────────────────────────────────────────────────────────
+// RENDER LOOP
+// ─────────────────────────────────────────────────────────────────────────
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const dt  = Math.min(clock.getDelta(), 0.05);
+  elapsed  += dt;
+
+  // ── PHASE 0 — SCATTER (0-1s): shards tumble freely ──────────────────────
+  if (elapsed < SCATTER_END) {
+    phase = 'scatter';
+    phaseLabel.style.opacity = '1';
+    bloomPass.strength  = 1.0 + Math.sin(elapsed * 2.2) * 0.2;
+    bloomPass.threshold = 0.78;
+
+    for (const s of shards) {
+      s.mesh.position.set(
+        s.startX + Math.sin(elapsed * 0.5 + s.shimmer) * 0.06,
+        s.startY + Math.cos(elapsed * 0.4 + s.shimmer) * 0.06,
+        s.startZ + Math.sin(elapsed * 0.35 + s.shimmer) * 0.04
+      );
+      s.mesh.rotation.set(
+        s.rX + elapsed * s.tX,
+        s.rY + elapsed * s.tY,
+        s.rZ + elapsed * s.tZ
+      );
+      s.mat.opacity = 0.55 + Math.sin(elapsed * 2.8 + s.shimmer) * 0.2;
+    }
+
+    camera.position.set(
+      0.3 + Math.sin(elapsed * 0.3) * 0.05,
+      0.2 + Math.cos(elapsed * 0.25) * 0.05,
+      4.5
+    );
+    camera.lookAt(0, 0, 0);
+
+  // ── PHASE 1 — FLY TO TARGET (1s-4s): shards converge ───────────────────
+  } else if (elapsed < ASSEMBLE_END) {
+    phase = 'assemble';
+    phaseLabel.textContent = 'Assembling';
+
+    const globalT = (elapsed - SCATTER_END) / (ASSEMBLE_END - SCATTER_END);
+    bloomPass.strength  = 1.0 - globalT * 0.3;
+    bloomPass.threshold = 0.78;
+
+    camera.position.lerpVectors(
+      new THREE.Vector3(0.3, 0.2, 4.5),
+      new THREE.Vector3(0, 0, 4.0),
+      easeInOutCubic(globalT)
+    );
+    camera.lookAt(0, 0, 0);
+
+    for (let si = 0; si < shards.length; si++) {
+      const s = shards[si];
+      const localStart = SCATTER_END + s.assembleDelay;
+      const FLY_DUR    = 1.4;
+      const localT     = (elapsed - localStart) / FLY_DUR;
+
+      if (localT <= 0) {
+        const preT     = Math.max(0, (elapsed - SCATTER_END) / Math.max(s.assembleDelay, 0.001));
+        const converge = easeOutCubic(Math.min(1, preT)) * 0.2;
+        s.mesh.position.set(
+          s.startX * (1 - converge),
+          s.startY * (1 - converge),
+          s.startZ * (1 - converge)
+        );
+        const slowdown = Math.max(0, 1 - preT * 0.6);
+        s.mesh.rotation.set(
+          s.rX + elapsed * s.tX * slowdown,
+          s.rY + elapsed * s.tY * slowdown,
+          s.rZ + elapsed * s.tZ * slowdown
+        );
+        s.mat.opacity = 0.6;
+      } else if (localT < 1.0) {
+        const flyT = Math.min(1, localT);
+        const ease = easeOutCubic(flyT);
+        s.mesh.position.set(
+          s.startX + (s.targetX - s.startX) * ease,
+          s.startY + (s.targetY - s.startY) * ease,
+          s.startZ + (s.targetZ - s.startZ) * ease
+        );
+        const rotDecay = easeOutCubic(flyT);
+        s.mesh.rotation.set(
+          s.rX * (1 - rotDecay),
+          s.rY * (1 - rotDecay),
+          s.rZ * (1 - rotDecay)
+        );
+        s.mat.opacity = 0.6 + flyT * 0.35;
+        s.mat.color.copy(logoTargets[si].col);
+      } else {
+        s.mesh.position.set(s.targetX, s.targetY, s.targetZ);
+        s.mesh.rotation.set(0, 0, 0);
+        s.mat.opacity = 0.9;
+        s.assembled   = true;
+      }
+    }
+
+  // ── PHASE 2 — LOGO LINES FADE IN + SHARDS FADE OUT (4s-5.5s) ───────────
+  } else if (elapsed < FLASH_END) {
+    if (phase !== 'flash') {
+      phase = 'flash';
+      phaseLabel.textContent = 'Online';
+      for (const s of shards) {
+        s.mesh.position.set(s.targetX, s.targetY, s.targetZ);
+        s.mesh.rotation.set(0, 0, 0);
+        s.assembled = true;
+      }
+    }
+
+    const t = (elapsed - FLASH_START) / (FLASH_END - FLASH_START);
+
+    bloomPass.strength  = 0.7 + Math.sin(t * Math.PI) * 1.5;
+    bloomPass.threshold = 0.78;
+
+    // Shards fade out
+    const shardFade = Math.max(0, 1 - t * 1.6);
+    for (const s of shards) {
+      s.mat.opacity = shardFade * 0.9;
+    }
+
+    // Logo lines fade in
+    for (const { line, strokeIdx } of logoLines) {
+      const normRing = strokeIdx / (LOGO.strokesPerUnit - 1);
+      const lineStart = normRing * 0.5;
+      const lineEnd   = lineStart + 0.5;
+      const lineT     = Math.max(0, Math.min(1, (t - lineStart) / (lineEnd - lineStart)));
+      line.material.opacity = easeOutCubic(lineT);
+      line.geometry.setDrawRange(0, Infinity);
+    }
+
+    // Center glow ignites
+    centerMat.opacity = t * 0.7;
+    centerGlow.scale.setScalar(1.0 + Math.sin(t * Math.PI) * 0.8);
+
+    // Brand tag appears
+    brandTag.style.opacity = Math.min(1, t * 2).toString();
+
+    camera.position.lerp(new THREE.Vector3(0, 0, 4.0), 0.05);
+    camera.lookAt(0, 0, 0);
+
+  // ── PHASE 3 — IDLE (5.5s+): static logo with gentle pulse ──────────────
+  } else {
+    if (phase !== 'idle') {
+      phase = 'idle';
+      phaseLabel.style.opacity = '0';
+
+      for (const s of shards) s.mat.opacity = 0;
+
+      for (const { line } of logoLines) {
+        line.material.opacity = 1.0;
+        line.geometry.setDrawRange(0, Infinity);
+      }
+
+      bloomPass.strength  = 0.4;
+      bloomPass.threshold = 0.82;
+    }
+
+    const idleT = elapsed - IDLE_START;
+
+    const breathe = 1.0 + Math.sin(idleT * 0.9) * 0.015;
+    logoGroup.scale.setScalar(breathe);
+
+    logoGroup.rotation.y = idleT * 0.15;
+    logoGroup.rotation.x = Math.sin(idleT * 0.35) * 0.05;
+
+    bloomPass.strength = 0.38 + Math.sin(idleT * 0.7) * 0.06;
+
+    centerMat.opacity = 0.45 + Math.sin(idleT * 1.1 + 1.0) * 0.12;
+    centerGlow.scale.setScalar(1.0 + Math.sin(idleT * 0.9) * 0.1);
+
+    camera.position.set(0, 0, 4.0);
+    camera.lookAt(0, 0, 0);
+  }
+
+  composer.render();
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// RESIZE
+// ─────────────────────────────────────────────────────────────────────────
+
+window.addEventListener('resize', () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+  bloomPass.resolution.set(w, h);
+});
+
+animate();
+
+} catch (err) {
+  console.error('[logo-3d-glass] init error:', err);
+  const loading = document.getElementById('loading');
+  loading.textContent = 'Error: ' + err.message;
+  loading.style.opacity = '1';
+  loading.style.color = '#f1420b';
+}
+</script>
+</body>
+</html>

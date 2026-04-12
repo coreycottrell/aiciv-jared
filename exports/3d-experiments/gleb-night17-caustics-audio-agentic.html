@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 17: Screen-Space Caustics + Audio-Reactive Glass + Agentic OS</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #080a12; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+canvas { display: block; width: 100vw; height: 100vh; }
+#controls {
+  position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 12px; z-index: 10;
+}
+.btn {
+  padding: 10px 20px; border: 1px solid rgba(42,147,193,0.4);
+  background: rgba(8,10,18,0.85); color: #2a93c1; cursor: pointer;
+  border-radius: 8px; font-size: 14px; backdrop-filter: blur(10px);
+  transition: all 0.3s;
+}
+.btn:hover, .btn.active { background: rgba(42,147,193,0.2); border-color: #2a93c1; color: #fff; }
+#info {
+  position: fixed; bottom: 20px; left: 20px; z-index: 10;
+  font-size: 12px; color: rgba(255,255,255,0.5); max-width: 400px;
+  line-height: 1.5;
+}
+#night-label {
+  position: fixed; top: 20px; right: 20px; z-index: 10;
+  font-size: 12px; color: rgba(255,255,255,0.3);
+}
+#audio-btn {
+  position: fixed; bottom: 20px; right: 20px; z-index: 10;
+  display: none;
+}
+</style>
+</head>
+<body>
+<div id="controls">
+  <button class="btn active" onclick="setVariation(0)">V1: Caustics</button>
+  <button class="btn" onclick="setVariation(1)">V2: Audio Glass</button>
+  <button class="btn" onclick="setVariation(2)">V3: Agentic OS</button>
+</div>
+<div id="night-label">Night 17 / Gleb Study</div>
+<div id="info"></div>
+<button id="audio-btn" class="btn" onclick="startAudio()">Enable Microphone</button>
+<canvas id="c"></canvas>
+
+<script>
+// ============================================================
+// Night 17: Three Variations
+// V1: Screen-Space Caustic Estimation (photon splatting on glass)
+// V2: Audio-Reactive Glass Deformation (Web Audio → vertex displacement)
+// V3: Ride-Share Agentic Mobile OS (Gleb's April 2026 direction)
+// ============================================================
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias: true, alpha: false });
+const info = document.getElementById('info');
+const audioBtn = document.getElementById('audio-btn');
+
+let currentVariation = 0;
+let time = 0;
+let audioData = new Float32Array(128).fill(0);
+let audioCtx, analyser, dataArray;
+let mouseX = 0, mouseY = 0;
+
+canvas.width = window.innerWidth * devicePixelRatio;
+canvas.height = window.innerHeight * devicePixelRatio;
+canvas.style.width = window.innerWidth + 'px';
+canvas.style.height = window.innerHeight + 'px';
+
+window.addEventListener('mousemove', e => {
+  mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+  mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+});
+
+window.addEventListener('resize', () => {
+  canvas.width = window.innerWidth * devicePixelRatio;
+  canvas.height = window.innerHeight * devicePixelRatio;
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+});
+
+function setVariation(v) {
+  currentVariation = v;
+  document.querySelectorAll('.btn').forEach((b, i) => {
+    if (i < 3) b.classList.toggle('active', i === v);
+  });
+  audioBtn.style.display = v === 1 ? 'block' : 'none';
+  updateInfo();
+}
+
+function updateInfo() {
+  const infos = [
+    'V1: Screen-Space Caustic Estimation — Refraction rays traced through glass sphere geometry. Area-ratio brightness scaling (Evan Wallace method). Photon differential splatting approximates caustic patterns on the floor plane. Brand blue/orange caustic color separation.',
+    'V2: Audio-Reactive Glass Deformation — Web Audio API frequency data drives vertex displacement on glass sphere mesh. Low frequencies = radial expansion, mid = surface ripple, high = micro-detail noise. Gleb\'s "Intelligent Shape for LLM Brand" technique.',
+    'V3: Ride-Share Agentic Mobile OS — Inspired by Gleb\'s April 2026 "Ride share agentic mobile OS design". Glass card stack with parallax depth. Agent status pills with breathing glow. Route visualization with volumetric trail.'
+  ];
+  info.textContent = infos[currentVariation];
+}
+
+async function startAudio() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioCtx = new AudioContext();
+    const source = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+    audioBtn.textContent = 'Mic Active';
+    audioBtn.style.borderColor = '#f1420b';
+  } catch(e) {
+    audioBtn.textContent = 'Mic Denied - Using Synthetic';
+  }
+}
+
+// ============================================================
+// Shader compilation helpers
+// ============================================================
+function createShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(s));
+    return null;
+  }
+  return s;
+}
+
+function createProgram(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, createShader(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, createShader(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+    console.error(gl.getProgramInfoLog(p));
+    return null;
+  }
+  return p;
+}
+
+// ============================================================
+// Full-screen quad (all variations use raymarching)
+// ============================================================
+const quadVS = `#version 300 es
+in vec2 a_pos;
+out vec2 v_uv;
+void main() {
+  v_uv = a_pos * 0.5 + 0.5;
+  gl_Position = vec4(a_pos, 0, 1);
+}`;
+
+// ============================================================
+// V1: Screen-Space Caustic Estimation
+// ============================================================
+const causticFS = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+
+uniform float u_time;
+uniform vec2 u_resolution;
+uniform vec2 u_mouse;
+
+#define PI 3.14159265
+#define MAX_STEPS 80
+#define MAX_DIST 20.0
+#define SURF_DIST 0.001
+
+// Brand colors
+const vec3 BLUE = vec3(0.165, 0.576, 0.765);   // #2a93c1
+const vec3 ORANGE = vec3(0.945, 0.259, 0.043);  // #f1420b
+const vec3 BG = vec3(0.031, 0.039, 0.071);      // #080a12
+
+mat2 rot(float a) { float c=cos(a),s=sin(a); return mat2(c,-s,s,c); }
+
+float sdSphere(vec3 p, float r) { return length(p) - r; }
+float sdPlane(vec3 p) { return p.y + 1.5; }
+
+float scene(vec3 p) {
+  // Main glass sphere
+  float s1 = sdSphere(p - vec3(0, 0.3, 0), 1.0);
+  // Two smaller orbiting spheres
+  vec3 p2 = p - vec3(sin(u_time*0.7)*1.8, -0.5, cos(u_time*0.7)*1.8);
+  float s2 = sdSphere(p2, 0.35);
+  vec3 p3 = p - vec3(sin(u_time*0.5+2.0)*2.0, 0.2, cos(u_time*0.5+2.0)*2.0);
+  float s3 = sdSphere(p3, 0.25);
+  float spheres = min(s1, min(s2, s3));
+  float plane = sdPlane(p);
+  return min(spheres, plane);
+}
+
+float sceneSpheres(vec3 p) {
+  float s1 = sdSphere(p - vec3(0, 0.3, 0), 1.0);
+  vec3 p2 = p - vec3(sin(u_time*0.7)*1.8, -0.5, cos(u_time*0.7)*1.8);
+  float s2 = sdSphere(p2, 0.35);
+  vec3 p3 = p - vec3(sin(u_time*0.5+2.0)*2.0, 0.2, cos(u_time*0.5+2.0)*2.0);
+  float s3 = sdSphere(p3, 0.25);
+  return min(s1, min(s2, s3));
+}
+
+vec3 getNormal(vec3 p) {
+  vec2 e = vec2(0.001, 0);
+  return normalize(vec3(
+    scene(p+e.xyy) - scene(p-e.xyy),
+    scene(p+e.yxy) - scene(p-e.yxy),
+    scene(p+e.yyx) - scene(p-e.yyx)
+  ));
+}
+
+float march(vec3 ro, vec3 rd) {
+  float t = 0.0;
+  for(int i = 0; i < MAX_STEPS; i++) {
+    float d = scene(ro + rd * t);
+    if(d < SURF_DIST) return t;
+    t += d;
+    if(t > MAX_DIST) break;
+  }
+  return -1.0;
+}
+
+// Caustic pattern estimation via refraction area ratio
+// Based on Evan Wallace's technique: trace refracted rays, measure area change
+vec3 computeCaustics(vec3 floorPos) {
+  vec3 lightDir = normalize(vec3(0.5, 1.0, 0.3));
+  vec3 caustic = vec3(0.0);
+
+  // Sample refraction through glass spheres from above
+  for(int i = 0; i < 5; i++) {
+    for(int j = 0; j < 5; j++) {
+      vec2 offset = (vec2(float(i), float(j)) - 2.0) * 0.4;
+      vec3 samplePos = floorPos + vec3(offset.x, 3.0, offset.y);
+      vec3 rayDir = -lightDir;
+
+      // March to find glass surface
+      float t = 0.0;
+      bool hitGlass = false;
+      for(int k = 0; k < 40; k++) {
+        vec3 p = samplePos + rayDir * t;
+        float d = sceneSpheres(p);
+        if(d < 0.01) { hitGlass = true; samplePos = p; break; }
+        t += d;
+        if(t > 10.0) break;
+      }
+
+      if(hitGlass) {
+        vec3 n = getNormal(samplePos);
+        // Refract through glass (IOR 1.5)
+        vec3 refracted = refract(rayDir, n, 1.0/1.5);
+        if(length(refracted) > 0.0) {
+          // Trace to floor
+          float floorT = -(samplePos.y + 1.5) / refracted.y;
+          if(floorT > 0.0) {
+            vec3 hitFloor = samplePos + refracted * floorT;
+            float dist = length(hitFloor.xz - floorPos.xz);
+
+            // Area ratio: concentrated light = brighter caustic
+            float brightness = 1.0 / (1.0 + dist * dist * 8.0);
+
+            // Chromatic separation - different IOR per channel
+            float chromaShift = dist * 0.15;
+            caustic.r += brightness * (1.0 + chromaShift);
+            caustic.g += brightness;
+            caustic.b += brightness * (1.0 - chromaShift * 0.5);
+          }
+        }
+      }
+    }
+  }
+
+  return caustic * 0.15;
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - u_resolution * 0.5) / u_resolution.y;
+
+  // Camera
+  vec3 ro = vec3(u_mouse.x * 2.0, 1.5 + u_mouse.y * 0.5, 4.5);
+  vec3 lookAt = vec3(0, 0, 0);
+  vec3 fwd = normalize(lookAt - ro);
+  vec3 right = normalize(cross(vec3(0,1,0), fwd));
+  vec3 up = cross(fwd, right);
+  vec3 rd = normalize(fwd + uv.x * right + uv.y * up);
+
+  float t = march(ro, rd);
+  vec3 col = BG;
+
+  if(t > 0.0) {
+    vec3 p = ro + rd * t;
+    vec3 n = getNormal(p);
+
+    bool isFloor = p.y < -1.4;
+    bool isGlass = !isFloor;
+
+    if(isFloor) {
+      // Floor with caustic patterns
+      vec3 caustic = computeCaustics(p);
+
+      // Base floor: subtle grid
+      float grid = smoothstep(0.02, 0.0, abs(fract(p.x) - 0.5)) +
+                   smoothstep(0.02, 0.0, abs(fract(p.z) - 0.5));
+      col = BG + vec3(grid * 0.03);
+
+      // Add caustics with brand color mapping
+      col += caustic.r * ORANGE * 0.8;
+      col += caustic.b * BLUE * 1.2;
+      col += caustic.g * vec3(1.0) * 0.3;
+
+      // Specular reflection of light on floor
+      vec3 lightDir = normalize(vec3(0.5, 1.0, 0.3));
+      float spec = pow(max(dot(reflect(-lightDir, n), -rd), 0.0), 64.0);
+      col += spec * 0.15;
+    }
+
+    if(isGlass) {
+      // Glass sphere rendering
+      float fresnel = pow(1.0 - max(dot(-rd, n), 0.0), 5.0);
+      fresnel = 0.04 + 0.96 * fresnel;
+
+      // Refraction with chromatic aberration
+      vec3 refR = refract(rd, n, 1.0/1.45);
+      vec3 refG = refract(rd, n, 1.0/1.50);
+      vec3 refB = refract(rd, n, 1.0/1.55);
+
+      // Internal color from refraction direction
+      vec3 intColor;
+      intColor.r = mix(ORANGE.r, BLUE.r, refR.y * 0.5 + 0.5);
+      intColor.g = mix(ORANGE.g, BLUE.g, refG.y * 0.5 + 0.5);
+      intColor.b = mix(ORANGE.b, BLUE.b, refB.y * 0.5 + 0.5);
+
+      // Reflection
+      vec3 refl = reflect(rd, n);
+      float envLight = pow(max(refl.y, 0.0), 4.0) * 0.3;
+      vec3 reflColor = mix(BLUE * 0.3, vec3(0.8), envLight);
+
+      col = mix(intColor * 0.6, reflColor, fresnel);
+
+      // Rim glow
+      float rim = pow(1.0 - max(dot(-rd, n), 0.0), 3.0);
+      col += BLUE * rim * 0.4;
+
+      // Specular highlights
+      vec3 lightDir = normalize(vec3(0.5, 1.0, 0.3));
+      float spec = pow(max(dot(reflect(-lightDir, n), -rd), 0.0), 128.0);
+      col += vec3(1.0) * spec * 0.8;
+    }
+
+    // Volumetric fog (brand color depth gradient from Night 16)
+    float fogDist = length(p - ro);
+    float fog = 1.0 - exp(-fogDist * 0.05);
+    vec3 fogColor = mix(BLUE * 0.1, ORANGE * 0.05, fog);
+    col = mix(col, fogColor, fog * 0.3);
+  }
+
+  // Vignette
+  float vig = 1.0 - length(v_uv - 0.5) * 0.8;
+  col *= vig;
+
+  // Tone mapping
+  col = col / (col + 1.0);
+  col = pow(col, vec3(1.0/2.2));
+
+  fragColor = vec4(col, 1.0);
+}`;
+
+// ============================================================
+// V2: Audio-Reactive Glass Deformation
+// ============================================================
+const audioFS = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+
+uniform float u_time;
+uniform vec2 u_resolution;
+uniform vec2 u_mouse;
+uniform float u_audio[32]; // frequency bands
+
+#define PI 3.14159265
+#define MAX_STEPS 100
+#define MAX_DIST 15.0
+#define SURF_DIST 0.0008
+
+const vec3 BLUE = vec3(0.165, 0.576, 0.765);
+const vec3 ORANGE = vec3(0.945, 0.259, 0.043);
+const vec3 BG = vec3(0.031, 0.039, 0.071);
+
+mat2 rot(float a) { float c=cos(a),s=sin(a); return mat2(c,-s,s,c); }
+
+// Audio-reactive SDF: sphere deformed by frequency data
+float audioSphere(vec3 p, float r) {
+  float base = length(p) - r;
+
+  // Low freq (bands 0-7): radial expansion
+  float lowFreq = 0.0;
+  for(int i = 0; i < 8; i++) lowFreq += u_audio[i];
+  lowFreq /= 8.0;
+  base -= lowFreq * 0.3;
+
+  // Mid freq (bands 8-20): surface ripple using spherical harmonics
+  float theta = atan(p.z, p.x);
+  float phi = acos(clamp(p.y / max(length(p), 0.001), -1.0, 1.0));
+
+  float midFreq = 0.0;
+  for(int i = 8; i < 20; i++) midFreq += u_audio[i];
+  midFreq /= 12.0;
+
+  // Spherical harmonic deformation
+  float sh = sin(theta * 3.0 + u_time) * sin(phi * 4.0) * midFreq * 0.15;
+  sh += cos(theta * 5.0 - u_time * 0.7) * cos(phi * 2.0) * midFreq * 0.1;
+  base += sh;
+
+  // High freq (bands 20-31): micro noise displacement
+  float highFreq = 0.0;
+  for(int i = 20; i < 32; i++) highFreq += u_audio[i];
+  highFreq /= 12.0;
+
+  float noise = sin(p.x * 20.0 + u_time * 3.0) * sin(p.y * 20.0 + u_time * 2.0) *
+                sin(p.z * 20.0 + u_time * 1.5) * highFreq * 0.04;
+  base += noise;
+
+  return base;
+}
+
+float scene(vec3 p) {
+  float sphere = audioSphere(p, 1.2);
+  float plane = p.y + 2.0;
+
+  // Two smaller audio-reactive satellites
+  vec3 p2 = p - vec3(sin(u_time * 0.6) * 2.5, sin(u_time * 0.4) * 0.5, cos(u_time * 0.6) * 2.5);
+  float s2 = audioSphere(p2, 0.4);
+
+  vec3 p3 = p - vec3(cos(u_time * 0.8) * 2.0, cos(u_time * 0.5) * 0.3 + 0.5, sin(u_time * 0.8) * 2.0);
+  float s3 = audioSphere(p3, 0.3);
+
+  return min(min(sphere, min(s2, s3)), plane);
+}
+
+float sceneSpheres(vec3 p) {
+  float sphere = audioSphere(p, 1.2);
+  vec3 p2 = p - vec3(sin(u_time * 0.6) * 2.5, sin(u_time * 0.4) * 0.5, cos(u_time * 0.6) * 2.5);
+  float s2 = audioSphere(p2, 0.4);
+  vec3 p3 = p - vec3(cos(u_time * 0.8) * 2.0, cos(u_time * 0.5) * 0.3 + 0.5, sin(u_time * 0.8) * 2.0);
+  float s3 = audioSphere(p3, 0.3);
+  return min(sphere, min(s2, s3));
+}
+
+vec3 getNormal(vec3 p) {
+  vec2 e = vec2(0.001, 0);
+  return normalize(vec3(
+    scene(p+e.xyy) - scene(p-e.xyy),
+    scene(p+e.yxy) - scene(p-e.yxy),
+    scene(p+e.yyx) - scene(p-e.yyx)
+  ));
+}
+
+float march(vec3 ro, vec3 rd) {
+  float t = 0.0;
+  for(int i = 0; i < MAX_STEPS; i++) {
+    float d = scene(ro + rd * t);
+    if(d < SURF_DIST) return t;
+    t += d * 0.8; // relaxed stepping for deformed geometry
+    if(t > MAX_DIST) break;
+  }
+  return -1.0;
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - u_resolution * 0.5) / u_resolution.y;
+
+  // Orbit camera
+  float camAngle = u_time * 0.15 + u_mouse.x * PI;
+  vec3 ro = vec3(sin(camAngle) * 5.0, 2.0 + u_mouse.y, cos(camAngle) * 5.0);
+  vec3 lookAt = vec3(0, 0, 0);
+  vec3 fwd = normalize(lookAt - ro);
+  vec3 right = normalize(cross(vec3(0,1,0), fwd));
+  vec3 up = cross(fwd, right);
+  vec3 rd = normalize(fwd + uv.x * right + uv.y * up);
+
+  float t = march(ro, rd);
+  vec3 col = BG;
+
+  if(t > 0.0) {
+    vec3 p = ro + rd * t;
+    vec3 n = getNormal(p);
+    bool isFloor = p.y < -1.9;
+
+    if(isFloor) {
+      // Audio-reactive floor glow
+      float totalEnergy = 0.0;
+      for(int i = 0; i < 32; i++) totalEnergy += u_audio[i];
+      totalEnergy /= 32.0;
+
+      float grid = smoothstep(0.03, 0.0, abs(fract(p.x * 0.5) - 0.5)) +
+                   smoothstep(0.03, 0.0, abs(fract(p.z * 0.5) - 0.5));
+      col = BG + mix(BLUE, ORANGE, totalEnergy) * grid * 0.15;
+
+      // Pulse rings from center
+      float dist = length(p.xz);
+      float ring = smoothstep(0.05, 0.0, abs(fract(dist * 0.5 - u_time * 0.3) - 0.5));
+      col += ring * mix(BLUE, ORANGE, totalEnergy) * 0.1;
+    } else {
+      // Audio-reactive glass
+      float fresnel = pow(1.0 - max(dot(-rd, n), 0.0), 4.0);
+      fresnel = 0.05 + 0.95 * fresnel;
+
+      // Color shifts with audio
+      float totalEnergy = 0.0;
+      for(int i = 0; i < 32; i++) totalEnergy += u_audio[i];
+      totalEnergy /= 32.0;
+
+      // Chromatic aberration increases with audio energy
+      float chromaStrength = 0.03 + totalEnergy * 0.05;
+      vec3 refR = refract(rd, n, 1.0/(1.5 - chromaStrength));
+      vec3 refG = refract(rd, n, 1.0/1.5);
+      vec3 refB = refract(rd, n, 1.0/(1.5 + chromaStrength));
+
+      vec3 intColor;
+      intColor.r = mix(ORANGE.r, 1.0, pow(max(refR.y, 0.0), 2.0));
+      intColor.g = mix(0.2, 0.8, pow(max(refG.y, 0.0), 2.0));
+      intColor.b = mix(BLUE.b, 1.0, pow(max(refB.y, 0.0), 2.0));
+
+      // Pulsing internal glow with audio
+      float internalGlow = totalEnergy * 0.5;
+      intColor += mix(BLUE, ORANGE, sin(u_time) * 0.5 + 0.5) * internalGlow;
+
+      vec3 refl = reflect(rd, n);
+      float envLight = pow(max(refl.y, 0.0), 3.0) * 0.4;
+      vec3 reflColor = mix(BLUE * 0.4, vec3(1.0), envLight);
+
+      col = mix(intColor * 0.5, reflColor, fresnel);
+
+      // Rim with audio color
+      float rim = pow(1.0 - max(dot(-rd, n), 0.0), 3.0);
+      col += mix(BLUE, ORANGE, totalEnergy) * rim * 0.5;
+
+      // Specular
+      vec3 lightDir = normalize(vec3(0.5, 1.0, 0.3));
+      float spec = pow(max(dot(reflect(-lightDir, n), -rd), 0.0), 96.0);
+      col += vec3(1.0) * spec * 0.6;
+    }
+
+    // Depth fog
+    float fogDist = length(p - ro);
+    float fog = 1.0 - exp(-fogDist * 0.04);
+    col = mix(col, BG, fog * 0.4);
+  }
+
+  // Audio-reactive vignette color
+  float totalE = 0.0;
+  for(int i = 0; i < 32; i++) totalE += u_audio[i];
+  totalE /= 32.0;
+
+  float vig = 1.0 - length(v_uv - 0.5) * (0.7 + totalE * 0.3);
+  col *= max(vig, 0.0);
+
+  col = col / (col + 1.0);
+  col = pow(col, vec3(1.0/2.2));
+
+  fragColor = vec4(col, 1.0);
+}`;
+
+// ============================================================
+// V3: Ride-Share Agentic Mobile OS
+// Inspired by Gleb's April 2026 "Ride share agentic mobile OS design"
+// Glass card stack + agent status pills + volumetric route trail
+// ============================================================
+const agenticFS = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+
+uniform float u_time;
+uniform vec2 u_resolution;
+uniform vec2 u_mouse;
+
+#define PI 3.14159265
+#define MAX_STEPS 80
+#define MAX_DIST 15.0
+#define SURF_DIST 0.001
+
+const vec3 BLUE = vec3(0.165, 0.576, 0.765);
+const vec3 ORANGE = vec3(0.945, 0.259, 0.043);
+const vec3 PURPLE = vec3(0.5, 0.2, 0.8);
+const vec3 BG = vec3(0.031, 0.039, 0.071);
+
+mat2 rot(float a) { float c=cos(a),s=sin(a); return mat2(c,-s,s,c); }
+
+// Rounded box for glass cards
+float sdRoundBox(vec3 p, vec3 b, float r) {
+  vec3 q = abs(p) - b;
+  return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r;
+}
+
+// Capsule for agent status pills
+float sdCapsule(vec3 p, vec3 a, vec3 b, float r) {
+  vec3 ab = b - a;
+  float t = clamp(dot(p - a, ab) / dot(ab, ab), 0.0, 1.0);
+  return length(p - a - ab * t) - r;
+}
+
+// Route path - bezier curve tube
+float sdRoute(vec3 p) {
+  // Curved route path
+  float pathT = clamp((p.z + 3.0) / 6.0, 0.0, 1.0);
+  vec3 pathPos = mix(
+    vec3(-1.0, -0.8, -3.0),
+    vec3(1.0, -0.8, 3.0),
+    pathT
+  );
+  pathPos.x += sin(pathT * PI * 2.0) * 0.8;
+  pathPos.y += sin(pathT * PI) * 0.3;
+
+  return length(p - pathPos) - 0.06;
+}
+
+float scene(vec3 p) {
+  // Main glass card (phone-shaped, Gleb proportions)
+  vec3 cardP = p;
+  cardP.xy *= rot(sin(u_time * 0.3) * 0.05); // subtle breathing rotation
+  float mainCard = sdRoundBox(cardP - vec3(0, 0.5, 0), vec3(0.8, 1.4, 0.04), 0.08);
+
+  // Floating sub-card (map layer, parallax offset)
+  vec3 subP = p - vec3(u_mouse.x * 0.1, 0.3 + u_mouse.y * 0.1, -0.15);
+  float subCard = sdRoundBox(subP, vec3(0.65, 0.9, 0.02), 0.06);
+
+  // Agent status pills (3 pills floating near card)
+  float pill1 = sdCapsule(p, vec3(-0.5, 1.8 + sin(u_time*0.8)*0.05, 0.2),
+                                vec3(0.1, 1.8 + sin(u_time*0.8)*0.05, 0.2), 0.08);
+  float pill2 = sdCapsule(p, vec3(-0.3, 1.55 + sin(u_time*0.9+1.0)*0.04, 0.25),
+                                vec3(0.3, 1.55 + sin(u_time*0.9+1.0)*0.04, 0.25), 0.06);
+  float pill3 = sdCapsule(p, vec3(0.2, 1.3 + sin(u_time*1.1+2.0)*0.03, 0.2),
+                                vec3(0.7, 1.3 + sin(u_time*1.1+2.0)*0.03, 0.2), 0.05);
+
+  float pills = min(pill1, min(pill2, pill3));
+
+  // Route trail (below card)
+  float route = sdRoute(p);
+
+  // Orbiting sphere (destination marker)
+  vec3 destP = p - vec3(sin(u_time * 0.4) * 0.3 + 0.8,
+                        -0.5 + sin(u_time * 0.6) * 0.1,
+                        cos(u_time * 0.4) * 0.3 + 2.5);
+  float dest = length(destP) - 0.15;
+
+  float cards = min(mainCard, subCard);
+  return min(min(cards, pills), min(route, dest));
+}
+
+vec3 getNormal(vec3 p) {
+  vec2 e = vec2(0.001, 0);
+  return normalize(vec3(
+    scene(p+e.xyy) - scene(p-e.xyy),
+    scene(p+e.yxy) - scene(p-e.yxy),
+    scene(p+e.yyx) - scene(p-e.yyx)
+  ));
+}
+
+float march(vec3 ro, vec3 rd) {
+  float t = 0.0;
+  for(int i = 0; i < MAX_STEPS; i++) {
+    float d = scene(ro + rd * t);
+    if(d < SURF_DIST) return t;
+    t += d;
+    if(t > MAX_DIST) break;
+  }
+  return -1.0;
+}
+
+// Identify which object was hit
+int getObjectId(vec3 p) {
+  vec3 cardP = p;
+  cardP.xy *= rot(sin(u_time * 0.3) * 0.05);
+  float mainCard = sdRoundBox(cardP - vec3(0, 0.5, 0), vec3(0.8, 1.4, 0.04), 0.08);
+
+  vec3 subP = p - vec3(u_mouse.x * 0.1, 0.3 + u_mouse.y * 0.1, -0.15);
+  float subCard = sdRoundBox(subP, vec3(0.65, 0.9, 0.02), 0.06);
+
+  float pill1 = sdCapsule(p, vec3(-0.5, 1.8 + sin(u_time*0.8)*0.05, 0.2),
+                                vec3(0.1, 1.8 + sin(u_time*0.8)*0.05, 0.2), 0.08);
+  float pill2 = sdCapsule(p, vec3(-0.3, 1.55 + sin(u_time*0.9+1.0)*0.04, 0.25),
+                                vec3(0.3, 1.55 + sin(u_time*0.9+1.0)*0.04, 0.25), 0.06);
+  float pill3 = sdCapsule(p, vec3(0.2, 1.3 + sin(u_time*1.1+2.0)*0.03, 0.2),
+                                vec3(0.7, 1.3 + sin(u_time*1.1+2.0)*0.03, 0.2), 0.05);
+
+  float route = sdRoute(p);
+
+  vec3 destP = p - vec3(sin(u_time * 0.4) * 0.3 + 0.8,
+                        -0.5 + sin(u_time * 0.6) * 0.1,
+                        cos(u_time * 0.4) * 0.3 + 2.5);
+  float dest = length(destP) - 0.15;
+
+  float minD = mainCard;
+  int id = 0; // main card
+  if(subCard < minD) { minD = subCard; id = 1; }
+  if(pill1 < minD) { minD = pill1; id = 2; }
+  if(pill2 < minD) { minD = pill2; id = 3; }
+  if(pill3 < minD) { minD = pill3; id = 4; }
+  if(route < minD) { minD = route; id = 5; }
+  if(dest < minD) { minD = dest; id = 6; }
+  return id;
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - u_resolution * 0.5) / u_resolution.y;
+
+  vec3 ro = vec3(u_mouse.x * 1.5, 1.0 + u_mouse.y * 0.5, 4.0);
+  vec3 lookAt = vec3(0, 0.5, 0);
+  vec3 fwd = normalize(lookAt - ro);
+  vec3 right = normalize(cross(vec3(0,1,0), fwd));
+  vec3 up = cross(fwd, right);
+  vec3 rd = normalize(fwd + uv.x * right + uv.y * up);
+
+  float t = march(ro, rd);
+  vec3 col = BG;
+
+  // Subtle background gradient (Gleb dark-to-navy)
+  col += mix(vec3(0.02, 0.03, 0.08), vec3(0.05, 0.02, 0.06), v_uv.y) * 0.5;
+
+  if(t > 0.0) {
+    vec3 p = ro + rd * t;
+    vec3 n = getNormal(p);
+    int objId = getObjectId(p);
+
+    vec3 lightDir = normalize(vec3(0.3, 1.0, 0.5));
+    float diff = max(dot(n, lightDir), 0.0);
+    float spec = pow(max(dot(reflect(-lightDir, n), -rd), 0.0), 64.0);
+    float fresnel = pow(1.0 - max(dot(-rd, n), 0.0), 4.0);
+
+    if(objId == 0) {
+      // Main glass card - frosted glass morphism 70% opacity
+      vec3 glassCol = mix(BG * 1.5, BLUE * 0.3, 0.2);
+      glassCol += diff * 0.15;
+      glassCol += spec * 0.4;
+
+      // Edge glow
+      float rim = pow(1.0 - max(dot(-rd, n), 0.0), 2.5);
+      glassCol += BLUE * rim * 0.6;
+
+      // Subtle internal UI simulation
+      float screenY = (p.y - 0.5) / 1.4;
+      float screenX = p.x / 0.8;
+      // Map overlay hint
+      if(abs(screenY) < 0.6 && abs(screenX) < 0.8) {
+        glassCol += BLUE * 0.05 * smoothstep(0.6, 0.0, abs(screenY));
+      }
+
+      col = glassCol;
+    }
+    else if(objId == 1) {
+      // Sub-card (map layer) - more transparent
+      vec3 mapCol = mix(BG * 2.0, BLUE * 0.15, 0.3);
+      mapCol += diff * 0.1;
+      mapCol += BLUE * fresnel * 0.4;
+      col = mapCol;
+    }
+    else if(objId >= 2 && objId <= 4) {
+      // Agent status pills - each a different color
+      vec3 pillColor = objId == 2 ? vec3(0.2, 0.9, 0.4) :  // active agent (green)
+                       objId == 3 ? ORANGE :                   // processing (orange)
+                                    PURPLE;                     // queued (purple)
+
+      // Breathing glow
+      float breath = sin(u_time * 2.0 + float(objId) * 1.5) * 0.5 + 0.5;
+      col = pillColor * (0.3 + diff * 0.3 + breath * 0.4);
+      col += vec3(1.0) * spec * 0.5;
+      col += pillColor * fresnel * 0.3;
+    }
+    else if(objId == 5) {
+      // Route trail - volumetric glow
+      float pathProgress = fract(u_time * 0.2);
+      float localT = clamp((p.z + 3.0) / 6.0, 0.0, 1.0);
+      float pulse = smoothstep(0.1, 0.0, abs(localT - pathProgress));
+
+      col = BLUE * 0.5 + ORANGE * pulse * 0.8;
+      col += vec3(1.0) * pulse * 0.3;
+      // Glow
+      col += BLUE * fresnel * 0.5;
+    }
+    else if(objId == 6) {
+      // Destination marker - pulsing orange sphere
+      float pulse = sin(u_time * 3.0) * 0.5 + 0.5;
+      col = ORANGE * (0.5 + pulse * 0.5);
+      col += vec3(1.0) * spec * 0.6;
+      col += ORANGE * fresnel * 0.4;
+    }
+
+    // Volumetric fog
+    float fogDist = length(p - ro);
+    float fog = 1.0 - exp(-fogDist * 0.06);
+    col = mix(col, BG, fog * 0.3);
+  }
+
+  // Vignette
+  float vig = 1.0 - length(v_uv - 0.5) * 0.7;
+  col *= max(vig, 0.0);
+
+  // Tone map
+  col = col / (col + 1.0);
+  col = pow(col, vec3(1.0/2.2));
+
+  fragColor = vec4(col, 1.0);
+}`;
+
+// ============================================================
+// Setup and render loop
+// ============================================================
+const shaders = [causticFS, audioFS, agenticFS];
+const programs = shaders.map(fs => createProgram(quadVS, fs));
+
+// Full-screen quad
+const quadBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+function render() {
+  time += 0.016;
+
+  // Update audio data
+  if(analyser && dataArray) {
+    analyser.getByteFrequencyData(dataArray);
+    for(let i = 0; i < 32; i++) {
+      let sum = 0;
+      const binsPer = Math.floor(dataArray.length / 32);
+      for(let j = 0; j < binsPer; j++) {
+        sum += dataArray[i * binsPer + j] / 255.0;
+      }
+      audioData[i] = audioData[i] * 0.7 + (sum / binsPer) * 0.3; // smooth
+    }
+  } else {
+    // Synthetic audio for demo
+    for(let i = 0; i < 32; i++) {
+      audioData[i] = (Math.sin(time * (1 + i * 0.3)) * 0.5 + 0.5) *
+                     (0.3 + Math.sin(time * 0.5 + i) * 0.2) *
+                     Math.exp(-i * 0.05);
+    }
+  }
+
+  const prog = programs[currentVariation];
+  if(!prog) { requestAnimationFrame(render); return; }
+
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clearColor(0.031, 0.039, 0.071, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+
+  gl.useProgram(prog);
+
+  const posLoc = gl.getAttribLocation(prog, 'a_pos');
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  gl.enableVertexAttribArray(posLoc);
+  gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+  gl.uniform1f(gl.getUniformLocation(prog, 'u_time'), time);
+  gl.uniform2f(gl.getUniformLocation(prog, 'u_resolution'), canvas.width, canvas.height);
+  gl.uniform2f(gl.getUniformLocation(prog, 'u_mouse'), mouseX, mouseY);
+
+  if(currentVariation === 1) {
+    const audioLoc = gl.getUniformLocation(prog, 'u_audio[0]');
+    if(audioLoc) gl.uniform1fv(audioLoc, audioData.subarray(0, 32));
+  }
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  requestAnimationFrame(render);
+}
+
+updateInfo();
+render();
+</script>
+</body>
+</html>

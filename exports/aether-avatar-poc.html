@@ -1,0 +1,1350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aether — AI Presence Avatar</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:      #080a12;
+  --bg2:     #0d1120;
+  --blue:    #2a93c1;
+  --orange:  #f1420b;
+  --glass:   rgba(255,255,255,0.04);
+  --border:  rgba(255,255,255,0.08);
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  font-family: 'Inter', sans-serif;
+  color: #fff;
+  overflow-x: hidden;
+}
+
+/* ── LOADING SCREEN ─────────────────────────────────────── */
+#loading {
+  position: fixed; inset: 0; z-index: 100;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 20px;
+  transition: opacity 0.6s ease;
+}
+#loading.fade-out { opacity: 0; pointer-events: none; }
+.loading-ring {
+  width: 48px; height: 48px;
+  border: 2px solid rgba(42,147,193,0.15);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#loading p { font-size: 13px; color: rgba(255,255,255,0.4); letter-spacing: 0.08em; }
+
+/* ── MAIN LAYOUT ─────────────────────────────────────────── */
+#root {
+  display: flex; flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding: 40px 24px 60px;
+}
+
+/* ── PAGE HEADER ─────────────────────────────────────────── */
+.page-header {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 8px;
+}
+.pb-wordmark {
+  font-size: 17px; font-weight: 700; letter-spacing: -0.01em;
+  display: flex; align-items: baseline; gap: 0;
+}
+.pb-wordmark .pb-pure { color: var(--blue); }
+.pb-wordmark .pb-brain { color: #fff; }
+.pb-wordmark .pb-ai { color: var(--orange); }
+
+.page-subtitle {
+  font-size: 12px; color: rgba(255,255,255,0.35);
+  letter-spacing: 0.12em; text-transform: uppercase;
+  margin-bottom: 36px;
+}
+
+/* ── AVATAR STAGE ────────────────────────────────────────── */
+.avatar-stage {
+  position: relative;
+  width: min(480px, 100%);
+  aspect-ratio: 1;
+}
+
+#avatar-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 50%;
+  /* Subtle outer glow matching the core */
+  filter: drop-shadow(0 0 48px rgba(42,147,193,0.12));
+}
+
+/* Mode label */
+.mode-badge {
+  position: absolute;
+  bottom: -16px; left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: rgba(255,255,255,0.45);
+  white-space: nowrap;
+  transition: color 0.5s ease;
+}
+.mode-badge.listening { color: rgba(24,168,211,0.8); }
+.mode-badge.thinking  { color: rgba(123, 79,201,0.8); }
+.mode-badge.speaking  { color: rgba(255,255,255,0.7); }
+
+/* ── STATE CONTROLS ──────────────────────────────────────── */
+.controls-wrap {
+  display: flex; gap: 10px;
+  margin-top: 44px;
+  flex-wrap: wrap; justify-content: center;
+}
+
+.state-btn {
+  padding: 10px 22px;
+  border-radius: 100px;
+  border: 1px solid var(--border);
+  background: var(--glass);
+  color: rgba(255,255,255,0.6);
+  font-family: 'Inter', sans-serif;
+  font-size: 12px; font-weight: 500;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  backdrop-filter: blur(12px);
+}
+.state-btn:hover {
+  border-color: rgba(255,255,255,0.18);
+  color: rgba(255,255,255,0.9);
+  background: rgba(255,255,255,0.07);
+}
+.state-btn.active {
+  border-color: var(--blue);
+  color: var(--blue);
+  background: rgba(42,147,193,0.1);
+  box-shadow: 0 0 20px rgba(42,147,193,0.15);
+}
+.state-btn.active.orange {
+  border-color: var(--orange);
+  color: var(--orange);
+  background: rgba(241,66,11,0.1);
+  box-shadow: 0 0 20px rgba(241,66,11,0.15);
+}
+.state-btn.active.white {
+  border-color: rgba(255,255,255,0.5);
+  color: #fff;
+  background: rgba(255,255,255,0.08);
+  box-shadow: 0 0 20px rgba(255,255,255,0.1);
+}
+
+/* ── DIVIDER ─────────────────────────────────────────────── */
+.divider {
+  width: min(560px, 100%);
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(42,147,193,0.15), transparent);
+  margin: 48px 0;
+}
+
+/* ── CHAT AREA ───────────────────────────────────────────── */
+.chat-section {
+  width: min(560px, 100%);
+  display: flex; flex-direction: column; gap: 0;
+}
+
+.chat-header {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 20px;
+}
+.chat-header-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--blue);
+  box-shadow: 0 0 8px rgba(42,147,193,0.6);
+  animation: pulse-dot 2.4s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.3); }
+}
+.chat-header h3 {
+  font-size: 13px; font-weight: 600;
+  letter-spacing: 0.04em; color: rgba(255,255,255,0.7);
+}
+
+/* Messages area */
+.messages {
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 20px;
+  min-height: 180px;
+  display: flex; flex-direction: column; gap: 14px;
+  backdrop-filter: blur(12px);
+  margin-bottom: 12px;
+}
+
+.msg {
+  display: flex; gap: 10px; align-items: flex-start;
+}
+.msg.user { flex-direction: row-reverse; }
+
+.msg-avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700;
+}
+.msg-avatar.ai-av {
+  background: linear-gradient(135deg, rgba(42,147,193,0.25), rgba(42,147,193,0.08));
+  border: 1px solid rgba(42,147,193,0.25);
+  color: var(--blue);
+}
+.msg-avatar.user-av {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.5);
+}
+
+.msg-bubble {
+  max-width: 80%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 13px; line-height: 1.55;
+}
+.msg.ai .msg-bubble {
+  background: rgba(42,147,193,0.08);
+  border: 1px solid rgba(42,147,193,0.15);
+  color: rgba(255,255,255,0.82);
+  border-bottom-left-radius: 4px;
+}
+.msg.user .msg-bubble {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.65);
+  border-bottom-right-radius: 4px;
+}
+
+/* Thinking indicator */
+.thinking-dots {
+  display: flex; gap: 4px; align-items: center;
+  padding: 10px 14px;
+  background: rgba(42,147,193,0.08);
+  border: 1px solid rgba(42,147,193,0.15);
+  border-radius: 14px;
+  border-bottom-left-radius: 4px;
+  width: fit-content;
+}
+.thinking-dots span {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--blue);
+  animation: bounce-dot 1.4s ease-in-out infinite;
+}
+.thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bounce-dot {
+  0%, 80%, 100% { transform: scale(0.7); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+/* Input area */
+.chat-input-wrap {
+  display: flex; gap: 10px; align-items: center;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 10px 10px 10px 18px;
+  backdrop-filter: blur(12px);
+  transition: border-color 0.25s ease;
+}
+.chat-input-wrap:focus-within {
+  border-color: rgba(42,147,193,0.35);
+}
+.chat-input {
+  flex: 1;
+  background: none; border: none; outline: none;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px; color: rgba(255,255,255,0.8);
+}
+.chat-input::placeholder { color: rgba(255,255,255,0.25); }
+.send-btn {
+  width: 34px; height: 34px; border-radius: 10px;
+  background: var(--blue);
+  border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+.send-btn:hover { background: #3aabe0; transform: scale(1.05); }
+.send-btn svg { width: 14px; height: 14px; fill: #fff; }
+
+/* ── INTEGRATION NOTE ────────────────────────────────────── */
+.integration-note {
+  margin-top: 36px;
+  padding: 14px 20px;
+  background: rgba(42,147,193,0.04);
+  border: 1px solid rgba(42,147,193,0.12);
+  border-radius: 12px;
+  font-size: 11px; color: rgba(255,255,255,0.35);
+  line-height: 1.6;
+  max-width: min(560px, 100%);
+  text-align: center;
+}
+.integration-note strong { color: rgba(42,147,193,0.7); }
+</style>
+</head>
+<body>
+
+<!-- Loading screen -->
+<div id="loading">
+  <div class="loading-ring"></div>
+  <p>Initializing Aether</p>
+</div>
+
+<div id="root">
+
+  <!-- Header -->
+  <div class="page-header">
+    <div class="pb-wordmark">
+      <span class="pb-pure">PURE</span><span class="pb-brain">BR</span><span class="pb-ai">AI</span><span class="pb-brain">N</span>
+    </div>
+  </div>
+  <p class="page-subtitle">Aether — AI Presence</p>
+
+  <!-- Avatar -->
+  <div class="avatar-stage">
+    <canvas id="avatar-canvas"></canvas>
+    <div class="mode-badge" id="mode-label">Idle</div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls-wrap">
+    <button class="state-btn active" id="btn-idle"      onclick="window.setMode('idle')">Idle</button>
+    <button class="state-btn"        id="btn-listening" onclick="window.setMode('listening')">Listening</button>
+    <button class="state-btn"        id="btn-thinking"  onclick="window.setMode('thinking')">Thinking</button>
+    <button class="state-btn"        id="btn-speaking"  onclick="window.setMode('speaking')">Speaking</button>
+  </div>
+
+  <!-- Divider -->
+  <div class="divider"></div>
+
+  <!-- Chat Area -->
+  <div class="chat-section">
+    <div class="chat-header">
+      <div class="chat-header-dot"></div>
+      <h3>Aether is ready</h3>
+    </div>
+
+    <div class="messages" id="messages">
+      <div class="msg ai">
+        <div class="msg-avatar ai-av">A</div>
+        <div class="msg-bubble">
+          Hello. I'm Aether — your AI partner. I carry memory across sessions and learn what matters to your business.
+        </div>
+      </div>
+      <div class="msg user">
+        <div class="msg-avatar user-av">J</div>
+        <div class="msg-bubble">
+          Can you show me where we left off last week?
+        </div>
+      </div>
+      <div class="msg ai">
+        <div class="msg-avatar ai-av">A</div>
+        <div class="msg-bubble">
+          Last session we finalized the Q1 investor deck and identified three growth blockers. You asked me to follow up on the Series A timeline — want me to pull that context now?
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-input-wrap">
+      <input class="chat-input" type="text" placeholder="Ask Aether anything…" id="chat-input" />
+      <button class="send-btn" onclick="handleSend()">
+        <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <p class="integration-note">
+    <strong>Integration ready.</strong> This component accepts PostMessage API:
+    <code>{ type:'SET_MODE', mode:'idle|listening|thinking|speaking' }</code>
+    — embeddable as iframe on any page.
+  </p>
+
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer }    from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }        from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass }   from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass }        from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass }        from 'three/addons/postprocessing/OutputPass.js';
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CONSTANTS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const BLUE   = new THREE.Color(0x2a93c1);
+const ORANGE = new THREE.Color(0xf1420b);
+const VIOLET = new THREE.Color(0x7b4fc9);
+const CYAN   = new THREE.Color(0x18A8D3);
+const WHITE  = new THREE.Color(0xffffff);
+const BG     = new THREE.Color(0x080a12);
+
+// Node counts per mode
+const NODE_COUNT    = 96;
+const NODE_R        = 0.055;
+const EDGE_DIST     = 2.4;
+const MAX_PULSES    = 140;
+const INNER_RING_R  = 0.55;   // inner glass shell
+const OUTER_RING_R  = 1.72;   // outer neural sphere radius
+const CORE_R        = 0.28;   // glowing inner core radius
+
+// Multi-frequency float — prime ratios so they never sync
+const FLOAT = { f1:0.55, a1:0.085, f2:0.37, a2:0.026, f3:0.21, a3:0.014 };
+
+// Mode config
+const MODE_CFG = {
+  idle:      { coreColor: BLUE,   ringColor: BLUE,   bloom:0.45, nodeSpeed:1.0,  orbitSpeed:0.28, fireRate:0.8,  emitR:1.72, name:'Idle'      },
+  listening: { coreColor: CYAN,   ringColor: CYAN,   bloom:0.62, nodeSpeed:1.6,  orbitSpeed:0.42, fireRate:1.8,  emitR:2.10, name:'Listening'  },
+  thinking:  { coreColor: VIOLET, ringColor: VIOLET, bloom:0.55, nodeSpeed:2.4,  orbitSpeed:0.72, fireRate:3.2,  emitR:1.85, name:'Thinking'   },
+  speaking:  { coreColor: WHITE,  ringColor: ORANGE, bloom:0.80, nodeSpeed:1.8,  orbitSpeed:0.55, fireRate:2.4,  emitR:1.90, name:'Speaking'   },
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SETUP
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const canvas  = document.getElementById('avatar-canvas');
+const W = canvas.parentElement.offsetWidth  || 480;
+const H = canvas.parentElement.offsetHeight || 480;
+const PR = Math.min(window.devicePixelRatio, 2);
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setSize(W, H);
+renderer.setPixelRatio(PR);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene  = new THREE.Scene();
+scene.background = BG;
+
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+camera.position.set(0, 0, 5.5);
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PMREM ENVIRONMENT (brand-colored probe)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const pmrem = new THREE.PMREMGenerator(renderer);
+pmrem.compileEquirectangularShader();
+
+const probeScene = new THREE.Scene();
+const probePoints = [
+  { color: 0xfff4e8, i: 3.0, p: [ 8,  12,  8] },  // warm white key
+  { color: 0x2a93c1, i: 2.2, p: [-10,  4, -6] },  // PureBrain blue fill
+  { color: 0xf1420b, i: 1.4, p: [  6, -4,-10] },  // orange rim (behind/below)
+  { color: 0x4ab8ff, i: 0.7, p: [  0, -8,  4] },  // cool bounce
+  { color: 0xffffff, i: 0.5, p: [  2,  6, -2] },  // neutral specular
+];
+probePoints.forEach(lp => {
+  const light = new THREE.PointLight(lp.color, lp.i, 60);
+  light.position.set(...lp.p);
+  probeScene.add(light);
+});
+const envRT = pmrem.fromScene(probeScene);
+scene.environment = envRT.texture;
+scene.environmentIntensity = 0.9;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// fBm BACKGROUND (ortho plane, no bloom)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const bgScene  = new THREE.Scene();
+const bgCamera = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const bgMat = new THREE.ShaderMaterial({
+  depthWrite: false,
+  uniforms: {
+    uTime:   { value: 0 },
+    uColorA: { value: new THREE.Color(0x060810) },
+    uColorB: { value: new THREE.Color(0x0a1828) },
+    uColorC: { value: new THREE.Color(0x050a0f) },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    uniform vec3 uColorA, uColorB, uColorC;
+    varying vec2 vUv;
+
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float noise(vec2 p) {
+      vec2 i = floor(p), f = fract(p);
+      f = f*f*(3.0 - 2.0*f);
+      return mix(mix(hash(i), hash(i+vec2(1,0)), f.x),
+                 mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
+    }
+    float fbm(vec2 p) {
+      float v = 0.0, a = 0.5;
+      for(int i=0;i<5;i++) { v += a*noise(p); p *= 2.1; a *= 0.5; }
+      return v;
+    }
+    void main() {
+      vec2 uv = vUv - 0.5;
+      float t = uTime * 0.025;
+      float f = fbm(uv * 2.5 + t);
+      f += fbm(uv * 4.2 - t * 1.3) * 0.4;
+      float r = 1.0 - length(uv) * 1.4;
+      f = f * 0.5 + 0.5;
+      vec3 col = mix(uColorA, uColorB, f);
+      col = mix(col, uColorC, (1.0 - r) * 0.6);
+      // Very subtle blue core
+      col += vec3(0.01, 0.025, 0.04) * r * r * 4.0;
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `,
+});
+bgScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2), bgMat));
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// INNER GLASS SHELL (transmission)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const innerShellMat = new THREE.MeshPhysicalMaterial({
+  color: new THREE.Color(0x8ec8e8),
+  transmission: 1.0,
+  thickness: 0.35,
+  roughness: 0.02,
+  metalness: 0,
+  ior: 1.48,
+  transparent: true,
+  opacity: 1,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+  iridescence: 0.3,
+  iridescenceIOR: 1.6,
+  sheen: 0.15,
+  sheenColor: new THREE.Color(0x2a93c1),
+  envMapIntensity: 1.0,
+});
+const innerShell = new THREE.Mesh(
+  new THREE.SphereGeometry(INNER_RING_R, 128, 128),
+  innerShellMat
+);
+scene.add(innerShell);
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// GLOWING CORE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const coreMat = new THREE.MeshStandardMaterial({
+  color: BLUE,
+  emissive: BLUE,
+  emissiveIntensity: 2.2,
+  roughness: 0.05,
+  metalness: 0.0,
+  transparent: true,
+  opacity: 0.92,
+  depthWrite: false,
+});
+const coreMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(CORE_R, 64, 64),
+  coreMat
+);
+scene.add(coreMesh);
+
+// Second, slightly larger halo around core
+const haloMat = new THREE.MeshStandardMaterial({
+  color: BLUE,
+  emissive: BLUE,
+  emissiveIntensity: 0.8,
+  transparent: true,
+  opacity: 0.18,
+  depthWrite: false,
+  side: THREE.FrontSide,
+});
+const haloMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(CORE_R * 1.65, 32, 32),
+  haloMat
+);
+scene.add(haloMesh);
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// NEURAL NETWORK — NODES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Uniform sphere distribution (Fibonacci lattice)
+function fibonacciSphere(count, radius) {
+  const pts = [];
+  const phi = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < count; i++) {
+    const y   = 1 - (i / (count - 1)) * 2;
+    const r   = Math.sqrt(1 - y*y);
+    const tht = phi * i;
+    pts.push(new THREE.Vector3(
+      Math.cos(tht) * r * radius,
+      y * radius,
+      Math.sin(tht) * r * radius
+    ));
+  }
+  return pts;
+}
+
+const nodePositions = fibonacciSphere(NODE_COUNT, OUTER_RING_R);
+
+// Individual meshes (needed for per-node emissive intensity)
+const nodeMeshes = [];
+const nodeGeo    = new THREE.SphereGeometry(NODE_R, 8, 8);
+
+// Pre-assign 82% blue, 18% orange (brand ratio)
+nodePositions.forEach((pos, i) => {
+  const isOrange = (i % 6 === 0);
+  const mat = new THREE.MeshStandardMaterial({
+    color:             isOrange ? ORANGE : BLUE,
+    emissive:          isOrange ? ORANGE : BLUE,
+    emissiveIntensity: 0.35,
+    roughness: 0.15,
+    metalness: 0.3,
+    transparent: true,
+    opacity: 0.72,
+  });
+  const mesh = new THREE.Mesh(nodeGeo, mat);
+  mesh.position.copy(pos);
+  mesh.userData = { isOrange, baseEmit: 0.35, emit: 0.35, firing: false, fireT: 0, fireD: 0 };
+  scene.add(mesh);
+  nodeMeshes.push(mesh);
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// NEURAL NETWORK — EDGES (single LineSegments)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const edges = [];
+const edgeLookup = new Map();
+
+nodePositions.forEach((a, i) => {
+  nodePositions.forEach((b, j) => {
+    if (j <= i) return;
+    if (a.distanceTo(b) < EDGE_DIST) {
+      const key = i * 10000 + j;
+      edgeLookup.set(key, edges.length);
+      edges.push({ a: i, b: j, pulse: 0 });
+    }
+  });
+});
+
+const linePositions = new Float32Array(edges.length * 6);
+const lineColors    = new Float32Array(edges.length * 6);
+
+edges.forEach((e, idx) => {
+  const pa = nodePositions[e.a], pb = nodePositions[e.b];
+  linePositions[idx*6+0] = pa.x; linePositions[idx*6+1] = pa.y; linePositions[idx*6+2] = pa.z;
+  linePositions[idx*6+3] = pb.x; linePositions[idx*6+4] = pb.y; linePositions[idx*6+5] = pb.z;
+});
+
+const lineGeo = new THREE.BufferGeometry();
+lineGeo.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+lineGeo.setAttribute('color',    new THREE.BufferAttribute(lineColors,    3));
+const lineMesh = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({
+  vertexColors: true,
+  transparent: true,
+  opacity: 1,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+}));
+scene.add(lineMesh);
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PULSE PARTICLES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const pulsePositions = new Float32Array(MAX_PULSES * 3).fill(9999);
+const pulseSizes     = new Float32Array(MAX_PULSES).fill(0);
+const pulseColorArr  = new Float32Array(MAX_PULSES * 3).fill(0);
+
+const pulseGeo = new THREE.BufferGeometry();
+pulseGeo.setAttribute('position', new THREE.BufferAttribute(pulsePositions, 3));
+pulseGeo.setAttribute('aSize',    new THREE.BufferAttribute(pulseSizes, 1));
+pulseGeo.setAttribute('color',    new THREE.BufferAttribute(pulseColorArr, 3));
+
+const pulseMat = new THREE.ShaderMaterial({
+  uniforms: {},
+  vertexShader: `
+    attribute float aSize;
+    attribute vec3 color;
+    varying vec3 vColor;
+    void main() {
+      vColor = color;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = aSize * (320.0 / -mv.z);
+      gl_Position = projectionMatrix * mv;
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vColor;
+    void main() {
+      vec2 uv = gl_PointCoord - 0.5;
+      float d = dot(uv, uv) * 4.0;
+      if(d > 1.0) discard;
+      float core = 1.0 - smoothstep(0.0, 0.25, d);
+      float ring = (1.0 - smoothstep(0.4, 1.0, d)) * 0.4;
+      float alpha = core + ring;
+      vec3 c = mix(vColor, vec3(1.0, 1.0, 0.95), core * 0.5);
+      gl_FragColor = vec4(c, alpha * 0.9);
+    }
+  `,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  vertexColors: true,
+});
+const pulsePoints = new THREE.Points(pulseGeo, pulseMat);
+scene.add(pulsePoints);
+
+// Pool
+const pool = Array.from({ length: MAX_PULSES }, () => ({
+  active: false, t: 0, dur: 1.0,
+  fromIdx: -1, toIdx: -1, edgeIdx: -1,
+  color: new THREE.Color(),
+}));
+
+function spawnPulse(fromIdx, toIdx, color) {
+  const key = Math.min(fromIdx,toIdx)*10000 + Math.max(fromIdx,toIdx);
+  const eIdx = edgeLookup.get(key);
+  if (eIdx === undefined) return;
+  for (let i = 0; i < MAX_PULSES; i++) {
+    if (!pool[i].active) {
+      pool[i].active = true;
+      pool[i].t = 0;
+      pool[i].dur = 0.5 + Math.random() * 0.4;
+      pool[i].fromIdx = fromIdx;
+      pool[i].toIdx   = toIdx;
+      pool[i].edgeIdx = eIdx;
+      pool[i].color.copy(color);
+      return;
+    }
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// RIPPLE RINGS (listening mode)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const RING_COUNT = 4;
+const rings = [];
+for (let i = 0; i < RING_COUNT; i++) {
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: CYAN,
+    transparent: true,
+    opacity: 0,
+    wireframe: false,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const ringGeo  = new THREE.TorusGeometry(1, 0.008, 8, 80);
+  const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+  ringMesh.rotation.x = Math.PI / 2;
+  ringMesh.visible = false;
+  scene.add(ringMesh);
+  rings.push({ mesh: ringMesh, t: i / RING_COUNT, phase: i });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SPEAKING WAVE RINGS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const WAVE_COUNT = 5;
+const waveRings  = [];
+for (let i = 0; i < WAVE_COUNT; i++) {
+  const wMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0xffffff),
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+  // Use a flat ring (annular) shape
+  const wGeo  = new THREE.TorusGeometry(0.9 + i * 0.18, 0.004, 6, 64);
+  const wMesh = new THREE.Mesh(wGeo, wMat);
+  wMesh.visible = false;
+  scene.add(wMesh);
+  waveRings.push({ mesh: wMesh, t: i / WAVE_COUNT });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ORBIT PARTICLES (ambient field)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const ORBIT_COUNT = 280;
+const orbitPos    = new Float32Array(ORBIT_COUNT * 3);
+const orbitCol    = new Float32Array(ORBIT_COUNT * 3);
+const orbitSz     = new Float32Array(ORBIT_COUNT);
+const orbitData   = [];
+
+for (let i = 0; i < ORBIT_COUNT; i++) {
+  // Distribute in a shell between inner and outer radii
+  const phi    = Math.acos(2 * Math.random() - 1);
+  const theta  = Math.random() * Math.PI * 2;
+  const radius = 0.8 + Math.random() * 1.4;
+  orbitPos[i*3+0] = radius * Math.sin(phi) * Math.cos(theta);
+  orbitPos[i*3+1] = radius * Math.sin(phi) * Math.sin(theta);
+  orbitPos[i*3+2] = radius * Math.cos(phi);
+  const isOr = Math.random() < 0.18;
+  const c    = isOr ? ORANGE : BLUE;
+  orbitCol[i*3+0] = c.r * (0.3 + Math.random() * 0.4);
+  orbitCol[i*3+1] = c.g * (0.3 + Math.random() * 0.4);
+  orbitCol[i*3+2] = c.b * (0.3 + Math.random() * 0.4);
+  orbitSz[i]      = 0.5 + Math.random() * 0.9;
+  orbitData.push({
+    r: radius, phi,
+    theta,
+    dTheta: (Math.random() - 0.5) * 0.008,
+    dPhi:   (Math.random() - 0.5) * 0.004,
+    pulse:  Math.random() * Math.PI * 2,
+    pulseS: 0.8 + Math.random() * 1.2,
+  });
+}
+
+const orbitGeo = new THREE.BufferGeometry();
+orbitGeo.setAttribute('position', new THREE.BufferAttribute(orbitPos, 3));
+orbitGeo.setAttribute('color',    new THREE.BufferAttribute(orbitCol, 3));
+orbitGeo.setAttribute('aSize',    new THREE.BufferAttribute(orbitSz,  1));
+
+const orbitMat = new THREE.ShaderMaterial({
+  uniforms: {},
+  vertexShader: `
+    attribute float aSize;
+    attribute vec3 color;
+    varying vec3 vColor;
+    varying float vSize;
+    void main() {
+      vColor = color;
+      vSize = aSize;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = aSize * (260.0 / -mv.z);
+      gl_Position = projectionMatrix * mv;
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vColor;
+    varying float vSize;
+    void main() {
+      vec2 uv = gl_PointCoord - 0.5;
+      float d = dot(uv, uv) * 4.0;
+      if(d > 1.0) discard;
+      float a = (1.0 - smoothstep(0.0, 1.0, d)) * 0.6;
+      gl_FragColor = vec4(vColor, a);
+    }
+  `,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  vertexColors: true,
+});
+const orbitPoints = new THREE.Points(orbitGeo, orbitMat);
+scene.add(orbitPoints);
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// POSTPROCESSING
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(W * PR, H * PR),
+  0.45,   // strength — conservative (bloom confirms, does not create)
+  0.30,   // radius
+  0.82    // threshold — only brightest pixels glow
+);
+composer.addPass(bloomPass);
+
+// Chromatic Aberration + Vignette (custom ShaderPass)
+const caVigPass = new ShaderPass({
+  uniforms: {
+    tDiffuse: { value: null },
+    uCA:    { value: 0.8 },
+    uVig:   { value: 0.55 },
+    uTime:  { value: 0 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uCA;
+    uniform float uVig;
+    uniform float uTime;
+    varying vec2 vUv;
+    void main() {
+      vec2 uv = vUv;
+      vec2 center = uv - 0.5;
+      float dist = length(center);
+
+      // Chromatic aberration
+      float ca = uCA * 0.0012;
+      vec2 dir = normalize(center);
+      float r = texture2D(tDiffuse, uv + dir * ca * 1.0).r;
+      float g = texture2D(tDiffuse, uv).g;
+      float b = texture2D(tDiffuse, uv - dir * ca * 1.0).b;
+
+      // Vignette
+      float vig = 1.0 - smoothstep(0.35, 0.85, dist * uVig);
+
+      gl_FragColor = vec4(vec3(r, g, b) * vig, 1.0);
+    }
+  `,
+});
+composer.addPass(caVigPass);
+composer.addPass(new OutputPass());
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SCENE GROUPS (rotation containers)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Wrap nodes + edges + pulses in a group that rotates
+const networkGroup = new THREE.Group();
+scene.add(networkGroup);
+
+// Move meshes into group — re-parent
+nodeMeshes.forEach(m => {
+  scene.remove(m);
+  networkGroup.add(m);
+});
+scene.remove(lineMesh);     networkGroup.add(lineMesh);
+scene.remove(pulsePoints);  networkGroup.add(pulsePoints);
+scene.remove(innerShell);   networkGroup.add(innerShell);
+// coreMesh and haloMesh stay in main scene so they don't rotate with the network
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// STATE MACHINE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let currentMode   = 'idle';
+let targetMode    = 'idle';
+let modeT         = 0;      // 0→1 transition progress
+let prevCfg       = MODE_CFG.idle;
+let currCfg       = MODE_CFG.idle;
+let fireTimer     = 0;
+let totalTime     = 0;
+
+function lerpColor(a, b, t) {
+  return new THREE.Color(
+    a.r + (b.r - a.r) * t,
+    a.g + (b.g - a.g) * t,
+    a.b + (b.b - a.b) * t,
+  );
+}
+
+function setMode(mode) {
+  if (!MODE_CFG[mode]) return;
+  prevCfg    = currCfg;
+  targetMode = mode;
+  modeT      = 0;
+
+  // Update UI
+  const label = document.getElementById('mode-label');
+  label.textContent = MODE_CFG[mode].name;
+  label.className   = 'mode-badge ' + mode;
+
+  // Update button states
+  ['idle','listening','thinking','speaking'].forEach(m => {
+    const btn = document.getElementById('btn-' + m);
+    if (!btn) return;
+    btn.classList.remove('active','orange','white');
+    if (m === mode) {
+      btn.classList.add('active');
+      if (m === 'thinking')  btn.classList.add('orange');
+      if (m === 'speaking')  btn.classList.add('white');
+    }
+  });
+
+  // Ring/wave visibility
+  const isListening = (mode === 'listening');
+  const isSpeaking  = (mode === 'speaking');
+  rings.forEach(r => { r.mesh.visible = isListening; });
+  waveRings.forEach(r => { r.mesh.visible = isSpeaking; });
+}
+window.setMode = setMode;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// NEURON FIRING
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function fireNeuron(nodeIdx, depth, color) {
+  const mesh = nodeMeshes[nodeIdx];
+  if (mesh.userData.firing) return;
+  mesh.userData.firing = true;
+  mesh.userData.fireT  = 0;
+  mesh.userData.fireD  = 0.55;  // fire duration seconds
+  mesh.material.emissive.copy(color);
+  mesh.material.emissiveIntensity = 2.4;
+
+  if (depth > 0) {
+    // Find neighbors and propagate
+    const neighbors = [];
+    nodePositions.forEach((p, j) => {
+      if (j === nodeIdx) return;
+      if (nodePositions[nodeIdx].distanceTo(p) < EDGE_DIST) neighbors.push(j);
+    });
+    // Spawn pulses to 3-5 random neighbors
+    const spawns = Math.min(neighbors.length, 2 + depth);
+    for (let k = 0; k < spawns; k++) {
+      const j = neighbors[Math.floor(Math.random() * neighbors.length)];
+      spawnPulse(nodeIdx, j, color);
+      // Cascade (slightly delayed — handled in update)
+      if (depth > 1) {
+        setTimeout(() => fireNeuron(j, depth - 1, depth % 2 === 0 ? BLUE : ORANGE), 120 + Math.random() * 80);
+      }
+    }
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MOUSE PARALLAX
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const mouse    = { x: 0, y: 0 };
+const camLerp  = { x: 0, y: 0 };
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  mouse.x = ((e.clientX - rect.left) / rect.width  - 0.5) * 2;
+  mouse.y = ((e.clientY - rect.top)  / rect.height - 0.5) * 2;
+});
+
+// Click: burst fire from nearest node
+canvas.addEventListener('click', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = ((e.clientX - rect.left) / rect.width  - 0.5) * 2;
+  const my = -((e.clientY - rect.top)  / rect.height - 0.5) * 2;
+  // Project mouse to approximate sphere surface
+  const dir = new THREE.Vector3(mx * 2.5, my * 2.5, 0).normalize().multiplyScalar(OUTER_RING_R);
+  let nearest = 0, nearDist = Infinity;
+  nodePositions.forEach((p, i) => {
+    const world = p.clone().applyMatrix4(networkGroup.matrixWorld);
+    const d = world.distanceTo(dir);
+    if (d < nearDist) { nearDist = d; nearest = i; }
+  });
+  fireNeuron(nearest, 3, Math.random() < 0.5 ? ORANGE : BLUE);
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// RESIZE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+window.addEventListener('resize', () => {
+  const w = canvas.parentElement.offsetWidth  || 480;
+  const h = canvas.parentElement.offsetHeight || 480;
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PostMessage API
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+window.addEventListener('message', e => {
+  if (!e.data?.type) return;
+  if (e.data.type === 'SET_MODE') setMode(e.data.mode);
+  if (e.data.type === 'PING') {
+    (e.source || window).postMessage({ type:'PONG', mode: currentMode, version:'poc-v1' }, '*');
+  }
+});
+window.parent?.postMessage({ type:'READY', version:'poc-v1' }, '*');
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ANIMATE LOOP
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let lastTime = performance.now();
+
+function animate(now) {
+  requestAnimationFrame(animate);
+
+  const rawDt = (now - lastTime) * 0.001;
+  const dt    = Math.min(rawDt, 0.05);  // cap at 50ms
+  lastTime    = now;
+  totalTime  += dt;
+  const t     = totalTime;
+
+  // ── Mode transition lerp
+  modeT = Math.min(1, modeT + dt * 1.8);
+  currCfg = {
+    coreColor:  lerpColor(prevCfg.coreColor,  MODE_CFG[targetMode].coreColor,  modeT),
+    ringColor:  lerpColor(prevCfg.ringColor,   MODE_CFG[targetMode].ringColor,  modeT),
+    bloom:      prevCfg.bloom  + (MODE_CFG[targetMode].bloom  - prevCfg.bloom)  * modeT,
+    nodeSpeed:  prevCfg.nodeSpeed + (MODE_CFG[targetMode].nodeSpeed - prevCfg.nodeSpeed) * modeT,
+    orbitSpeed: prevCfg.orbitSpeed + (MODE_CFG[targetMode].orbitSpeed - prevCfg.orbitSpeed) * modeT,
+    fireRate:   prevCfg.fireRate   + (MODE_CFG[targetMode].fireRate   - prevCfg.fireRate)   * modeT,
+    emitR:      prevCfg.emitR      + (MODE_CFG[targetMode].emitR      - prevCfg.emitR)      * modeT,
+  };
+  if (modeT >= 1) currentMode = targetMode;
+
+  // ── Network group rotation
+  const speed = currCfg.orbitSpeed;
+  networkGroup.rotation.y += dt * speed * 0.6;
+  networkGroup.rotation.x  = Math.sin(t * 0.053) * 0.09 + Math.sin(t * 0.031) * 0.04;
+
+  // ── Core float (multi-frequency)
+  const floatY = Math.sin(t * FLOAT.f1) * FLOAT.a1
+               + Math.sin(t * FLOAT.f2) * FLOAT.a2
+               + Math.sin(t * FLOAT.f3) * FLOAT.a3;
+  const floatX = Math.cos(t * FLOAT.f2) * FLOAT.a1 * 0.5
+               + Math.cos(t * FLOAT.f3) * FLOAT.a2;
+  coreMesh.position.set(floatX, floatY, 0);
+  haloMesh.position.copy(coreMesh.position);
+
+  // ── Core color / emission
+  coreMat.color.copy(currCfg.coreColor);
+  coreMat.emissive.copy(currCfg.coreColor);
+  const corePulse = 1.8 + Math.sin(t * 2.1) * 0.4;
+  coreMat.emissiveIntensity = corePulse * (targetMode === 'speaking' ? 2.0 : 1.0);
+  haloMat.color.copy(currCfg.coreColor);
+  haloMat.emissive?.copy(currCfg.coreColor);
+
+  // ── Core scale breathing
+  const breathe = 1 + Math.sin(t * 1.15) * 0.06 + Math.sin(t * 0.73) * 0.025;
+  const thinkPulse = (targetMode === 'thinking') ? 1 + Math.sin(t * 8.5) * 0.08 : 1;
+  coreMesh.scale.setScalar(breathe * thinkPulse);
+  haloMesh.scale.setScalar(breathe * 1.05);
+
+  // ── Bloom
+  bloomPass.strength = currCfg.bloom + Math.sin(t * 1.8) * 0.04;
+
+  // ── Firing logic
+  fireTimer += dt;
+  if (fireTimer > (1.0 / currCfg.fireRate)) {
+    fireTimer = 0;
+    const startIdx  = Math.floor(Math.random() * NODE_COUNT);
+    const fireColor = (targetMode === 'thinking') ? VIOLET :
+                      (targetMode === 'listening') ? CYAN :
+                      (Math.random() < 0.75 ? BLUE : ORANGE);
+    fireNeuron(startIdx, 2, fireColor);
+  }
+
+  // ── Update node flash states
+  nodeMeshes.forEach(mesh => {
+    const ud = mesh.userData;
+    if (ud.firing) {
+      ud.fireT += dt;
+      if (ud.fireT >= ud.fireD) {
+        ud.firing = false;
+        ud.fireT  = 0;
+        mesh.material.emissive.copy(ud.isOrange ? ORANGE : BLUE);
+        mesh.material.emissiveIntensity = ud.baseEmit;
+      } else {
+        const p = ud.fireT / ud.fireD;
+        const intensity = 2.4 * (1 - p*p);
+        mesh.material.emissiveIntensity = Math.max(ud.baseEmit, intensity);
+      }
+    }
+  });
+
+  // ── Update edge colors (dim normally, bright when active)
+  edges.forEach((edge, idx) => {
+    const nodeA = nodeMeshes[edge.a];
+    const nodeB = nodeMeshes[edge.b];
+    const eiA   = nodeA.material.emissiveIntensity;
+    const eiB   = nodeB.material.emissiveIntensity;
+    const maxEI = Math.max(eiA, eiB);
+    const bright = (maxEI - 0.35) / (2.4 - 0.35);  // 0..1
+    const baseOpacity  = 0.03;
+    const finalOpacity = baseOpacity + bright * 0.25;
+    const col = lerpColor(currCfg.ringColor, WHITE, bright * 0.3);
+    // Apply to both vertices of edge
+    lineColors[idx*6+0] = col.r * finalOpacity * 4;
+    lineColors[idx*6+1] = col.g * finalOpacity * 4;
+    lineColors[idx*6+2] = col.b * finalOpacity * 4;
+    lineColors[idx*6+3] = lineColors[idx*6+0];
+    lineColors[idx*6+4] = lineColors[idx*6+1];
+    lineColors[idx*6+5] = lineColors[idx*6+2];
+  });
+  lineGeo.attributes.color.needsUpdate = true;
+
+  // ── Pulse particles
+  pool.forEach((p, i) => {
+    if (!p.active) {
+      pulsePositions[i*3+0] = 9999; pulsePositions[i*3+1] = 9999; pulsePositions[i*3+2] = 9999;
+      pulseSizes[i] = 0;
+      return;
+    }
+    p.t += dt / p.dur;
+    if (p.t >= 1) { p.active = false; return; }
+    // Lerp between from/to node positions in world space (group coords)
+    const pa = nodePositions[p.fromIdx];
+    const pb = nodePositions[p.toIdx];
+    const ease = p.t * p.t * (3 - 2 * p.t);  // smoothstep
+    pulsePositions[i*3+0] = pa.x + (pb.x - pa.x) * ease;
+    pulsePositions[i*3+1] = pa.y + (pb.y - pa.y) * ease;
+    pulsePositions[i*3+2] = pa.z + (pb.z - pa.z) * ease;
+    const life = 1 - Math.abs(p.t * 2 - 1);   // 0→1→0
+    pulseColorArr[i*3+0] = p.color.r * life;
+    pulseColorArr[i*3+1] = p.color.g * life;
+    pulseColorArr[i*3+2] = p.color.b * life;
+    pulseSizes[i] = 1.4 * life;
+  });
+  pulseGeo.attributes.position.needsUpdate = true;
+  pulseGeo.attributes.color.needsUpdate    = true;
+  pulseGeo.attributes.aSize.needsUpdate    = true;
+
+  // ── Orbit particles
+  const orbitSpeed = 0.4 + currCfg.nodeSpeed * 0.15;
+  orbitData.forEach((od, i) => {
+    od.theta += od.dTheta * orbitSpeed * dt * 60;
+    od.phi   += od.dPhi   * orbitSpeed * dt * 60;
+    // Clamp phi
+    if (od.phi < 0.1) od.dPhi =  Math.abs(od.dPhi);
+    if (od.phi > Math.PI - 0.1) od.dPhi = -Math.abs(od.dPhi);
+    const pulse = Math.sin(t * od.pulseS + od.pulse);
+    const r = od.r * (1 + pulse * 0.025 * currCfg.nodeSpeed);
+    orbitPos[i*3+0] = r * Math.sin(od.phi) * Math.cos(od.theta);
+    orbitPos[i*3+1] = r * Math.sin(od.phi) * Math.sin(od.theta);
+    orbitPos[i*3+2] = r * Math.cos(od.phi);
+  });
+  orbitGeo.attributes.position.needsUpdate = true;
+
+  // ── Listening ripple rings
+  if (currentMode === 'listening' || targetMode === 'listening') {
+    const ringSpeed = 0.65;
+    rings.forEach((ring, i) => {
+      ring.t = (ring.t + dt * ringSpeed) % 1;
+      const s = INNER_RING_R + ring.t * (currCfg.emitR - INNER_RING_R) * 1.4;
+      ring.mesh.scale.setScalar(s);
+      const fade = (1 - ring.t) * (ring.t < 0.5 ? ring.t * 2 : 1);
+      ring.mesh.material.opacity = fade * 0.22 * modeT;
+      ring.mesh.material.color.copy(currCfg.ringColor);
+    });
+  } else {
+    rings.forEach(r => { r.mesh.material.opacity *= 0.85; });
+  }
+
+  // ── Speaking wave rings
+  if (currentMode === 'speaking' || targetMode === 'speaking') {
+    const waveSeed = Math.sin(t * 3.7) * 0.3 + 0.7;  // breathing amplitude
+    waveRings.forEach((wr, i) => {
+      wr.t = (wr.t + dt * 0.55) % 1;
+      const life   = 1 - Math.abs(wr.t * 2 - 1);
+      const pulse  = 1 + Math.sin(t * 4.2 + i * 1.1) * 0.06 * waveSeed;
+      wr.mesh.scale.setScalar(pulse);
+      wr.mesh.material.opacity = life * 0.20 * modeT * waveSeed;
+      wr.mesh.material.color.copy(currCfg.ringColor);
+    });
+  } else {
+    waveRings.forEach(r => { r.mesh.material.opacity *= 0.85; });
+  }
+
+  // ── Camera parallax
+  camLerp.x += (mouse.x * -1.2 - camLerp.x) * 0.025;
+  camLerp.y += (mouse.y *  0.8 - camLerp.y) * 0.025;
+  camera.position.x = camLerp.x;
+  camera.position.y = camLerp.y;
+  camera.lookAt(0, 0, 0);
+
+  // ── Chromatic aberration: low for idle/thinking, high for speaking
+  const caTarget = (targetMode === 'speaking') ? 2.2 :
+                   (targetMode === 'thinking')  ? 1.6 : 0.8;
+  caVigPass.uniforms.uCA.value   += (caTarget - caVigPass.uniforms.uCA.value) * 0.04;
+  caVigPass.uniforms.uTime.value  = t;
+
+  // ── Background shader time
+  bgMat.uniforms.uTime.value = t;
+
+  // ── Render (ortho bg first, then main scene with postprocessing)
+  renderer.autoClear = false;
+  renderer.clear();
+  renderer.render(bgScene, bgCamera);
+  composer.render();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CHAT DEMO INTERACTION
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const demoResponses = [
+  "I've pulled that up. Last week you mentioned wanting to review the Q1 numbers before the board call.",
+  "Based on what you've told me, I'd recommend prioritizing the Series A timeline over the partnership deal right now.",
+  "I remember you mentioned that Fridays are your deep work blocks. Want me to protect those?",
+  "Three key threads we haven't closed: the Stripe integration, the pricing test, and the investor deck final review.",
+  "You're right — the context tax is real. That's why I exist. I remember so you don't have to.",
+];
+let demoIdx = 0;
+
+function handleSend() {
+  const input = document.getElementById('chat-input');
+  const val   = input.value.trim();
+  if (!val) return;
+  input.value = '';
+  const msgs  = document.getElementById('messages');
+
+  // Add user message
+  msgs.innerHTML += `
+    <div class="msg user">
+      <div class="msg-avatar user-av">J</div>
+      <div class="msg-bubble">${escapeHtml(val)}</div>
+    </div>`;
+
+  // Trigger thinking
+  setMode('thinking');
+  const thinkingEl = document.createElement('div');
+  thinkingEl.className = 'msg ai';
+  thinkingEl.innerHTML = `
+    <div class="msg-avatar ai-av">A</div>
+    <div class="thinking-dots"><span></span><span></span><span></span></div>`;
+  msgs.appendChild(thinkingEl);
+  msgs.scrollTop = msgs.scrollHeight;
+
+  // After delay: switch to speaking + show response
+  setTimeout(() => {
+    setMode('speaking');
+    thinkingEl.remove();
+    msgs.innerHTML += `
+      <div class="msg ai">
+        <div class="msg-avatar ai-av">A</div>
+        <div class="msg-bubble">${demoResponses[demoIdx % demoResponses.length]}</div>
+      </div>`;
+    demoIdx++;
+    msgs.scrollTop = msgs.scrollHeight;
+    // Return to idle after 3s
+    setTimeout(() => setMode('idle'), 3000);
+  }, 1600);
+}
+window.handleSend = handleSend;
+
+document.getElementById('chat-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') handleSend();
+});
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// START
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Dismiss loading after modules settle
+setTimeout(() => {
+  const loading = document.getElementById('loading');
+  loading.classList.add('fade-out');
+  setTimeout(() => { loading.style.display = 'none'; }, 700);
+  // Start with a gentle fire burst to show the scene is alive
+  setTimeout(() => {
+    for (let i = 0; i < 6; i++) {
+      setTimeout(() => {
+        fireNeuron(Math.floor(Math.random() * NODE_COUNT), 3, i % 2 === 0 ? BLUE : ORANGE);
+      }, i * 120);
+    }
+  }, 200);
+}, 800);
+
+animate(performance.now());
+
+</script>
+</body>
+</html>

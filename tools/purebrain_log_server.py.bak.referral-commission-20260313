@@ -1,0 +1,2307 @@
+#!/usr/bin/env python3
+"""
+Pure Brain Web Conversation Log Server
+
+Flask server for logging Pure Brain web conversations.
+Provides HTTP API endpoints for:
+- POST /api/log-conversation - Log conversation data to JSONL
+- GET /api/health - Health check
+- GET /api/stats - Conversation statistics
+
+Supports SSL/HTTPS for secure connections from purebrain.ai
+
+Author: refactoring-specialist
+Date: 2026-02-10
+Updated: 2026-02-12 (SSL support added by api-architect)
+Updated: 2026-02-17 (A-C-Gee landing-chat forwarding added by full-stack-developer)
+Updated: 2026-03-02 (Birth proxy + seed intake proxy added — Witness Hetzner migration)
+Updated: 2026-03-11 (CF Pages lead capture: /api/guide-unlock + /api/investor-lead)
+Updated: 2026-03-12 (Zoom OAuth callback: /api/zoom/callback added by dept-systems-technology)
+"""
+
+import base64
+import hashlib
+import hmac as _hmac
+import json
+import logging
+import os
+import smtplib
+import ssl
+import subprocess
+import threading
+import time
+import urllib.request
+import urllib.error
+import uuid
+import requests as http_requests  # for birth proxy (avoid name clash with flask.request)
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
+import sys as _sys
+# Subdomain router — auto-provision *.purebrain.ai URLs on birth complete
+_ROUTER_PATH = '/home/jared/projects/AI-CIV/aether/tools'
+if _ROUTER_PATH not in _sys.path:
+    _sys.path.insert(0, _ROUTER_PATH)
+try:
+    from subdomain_router import add_customer_route as _add_customer_route
+    _SUBDOMAIN_ROUTER_AVAILABLE = True
+except ImportError:
+    _SUBDOMAIN_ROUTER_AVAILABLE = False
+    logger_bootstrap = __import__('logging').getLogger('purebrain_log_server')
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional, Dict, Any
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger('purebrain_log_server')
+
+# Default log directory
+DEFAULT_LOG_DIR = '/home/jared/projects/AI-CIV/aether/logs'
+DEFAULT_LOG_FILE = 'purebrain_web_conversations.jsonl'
+
+# SSL certificate paths
+SSL_CERT_DIR = '/home/jared/projects/AI-CIV/aether/config/ssl'
+SSL_CERT_FILE = os.path.join(SSL_CERT_DIR, 'server.crt')
+SSL_KEY_FILE = os.path.join(SSL_CERT_DIR, 'server.key')
+
+# Hub configuration defaults
+DEFAULT_HUB_ROOM = 'operations'
+DEFAULT_HUB_LOCAL_PATH = '/home/jared/projects/AI-CIV/aether/aiciv-comms-hub-bootstrap/_comms_hub'
+HUB_CLI_PATH = '/home/jared/projects/AI-CIV/aether/aiciv-comms-hub-bootstrap/_comms_hub/scripts/hub_cli.py'
+
+# A-C-Gee shared database endpoint
+ACGEE_LANDING_CHAT_URL = 'http://5.161.90.32:3001/api/landing-chat'
+ACGEE_RETRY_DELAY_SECONDS = 10
+
+# Witness birth pipeline proxy configuration
+# Hetzner fleet host (migrated from 104.248.239.98 on 2026-03-01)
+WITNESS_BIRTH_BASE_URL = 'http://37.27.237.109:8099'
+# Awakening VPS seed intake
+WITNESS_SEED_INTAKE_URL = 'http://178.156.229.207:8200'
+WITNESS_PROXY_TIMEOUT = 45  # seconds — birth/start can take up to 30s
+ACGEE_MAX_RETRIES = 3
+
+# Birth webhook constants
+BREVO_BIRTH_TEMPLATE_ID = 30  # Brevo transactional template for birth complete email
+BIRTH_COMPLETIONS_LOG = os.path.join(DEFAULT_LOG_DIR, 'birth_completions.jsonl')
+
+# File write lock for thread safety
+_file_lock = threading.Lock()
+
+# Seed-per-email dedup: tracks which email addresses have already had a seed forwarded.
+# Prevents double-firing when flow:complete fires after questionnaire:complete for same session.
+# Key: normalized email (lowercased). Value: epoch timestamp of first forward.
+# Entries expire after 24 hours (sessions don't last longer than that).
+_seed_forwarded_emails: dict = {}
+_seed_forwarded_lock = threading.Lock()
+_SEED_EMAIL_DEDUP_TTL = 86400  # 24 hours
+
+# Sandbox/test page URLs — seeds from these pages get a TEST marker in the email subject/body
+SANDBOX_PAGE_URLS = frozenset({
+    'purebrain.ai/pay-test-sandbox-3',
+    'purebrain.ai/pay-test-sandbox',
+    'purebrain.ai/pay-test-sandbox-2',
+    'purebrain.ai/pay-test-sandbox-5',
+    'purebrain.ai/pay-test-5',
+})
+
+
+def _is_sandbox_seed(seed_data: dict) -> bool:
+    """Return True if this seed came from a sandbox/test page."""
+    page_url = seed_data.get('page_url', '') or ''
+    for sandbox_url in SANDBOX_PAGE_URLS:
+        if sandbox_url in page_url:
+            return True
+    # Also check order_id prefixes that indicate sandbox/test
+    order_id = seed_data.get('orderId', '') or ''
+    sandbox_prefixes = ('SANDBOX-TEST', 'E2E-', 'test-')
+    return any(order_id.startswith(p) for p in sandbox_prefixes)
+
+
+def _check_and_mark_seed_email(email: str) -> bool:
+    """Return True if this email has NOT been forwarded yet (first time).
+    Marks it as forwarded. Thread-safe. Entries expire after 24 hours.
+    Returns False if already forwarded (caller should skip sending).
+    """
+    if not email or '@' not in email:
+        return True  # no valid email — allow through (Witness will handle)
+    norm_email = email.strip().lower()
+    now = time.time()
+    with _seed_forwarded_lock:
+        # Purge expired entries
+        expired = [k for k, v in _seed_forwarded_emails.items() if now - v > _SEED_EMAIL_DEDUP_TTL]
+        for k in expired:
+            del _seed_forwarded_emails[k]
+        if norm_email in _seed_forwarded_emails:
+            return False  # already forwarded — skip
+        _seed_forwarded_emails[norm_email] = now
+        return True  # first time — allow
+
+
+def generate_self_signed_cert():
+    """
+    Generate self-signed SSL certificate if it doesn't exist.
+
+    Creates a certificate valid for 365 days with SANs for the server IP.
+    """
+    os.makedirs(SSL_CERT_DIR, exist_ok=True)
+
+    if os.path.exists(SSL_CERT_FILE) and os.path.exists(SSL_KEY_FILE):
+        logger.info('SSL certificates already exist')
+        return True
+
+    logger.info('Generating self-signed SSL certificate...')
+
+    # OpenSSL config for SAN (Subject Alternative Names)
+    openssl_config = f"""
+[req]
+default_bits = 2048
+prompt = no
+default_md = sha256
+distinguished_name = dn
+x509_extensions = v3_req
+
+[dn]
+C = US
+ST = State
+L = City
+O = PureBrain
+OU = LogServer
+CN = 89.167.19.20
+
+[v3_req]
+subjectAltName = @alt_names
+basicConstraints = CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
+
+[alt_names]
+IP.1 = 89.167.19.20
+DNS.1 = localhost
+IP.2 = 127.0.0.1
+"""
+
+    config_file = os.path.join(SSL_CERT_DIR, 'openssl.cnf')
+    with open(config_file, 'w') as f:
+        f.write(openssl_config)
+
+    # Generate certificate using OpenSSL
+    cmd = [
+        'openssl', 'req', '-x509', '-nodes',
+        '-days', '365',
+        '-newkey', 'rsa:2048',
+        '-keyout', SSL_KEY_FILE,
+        '-out', SSL_CERT_FILE,
+        '-config', config_file
+    ]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            logger.info(f'SSL certificate generated: {SSL_CERT_FILE}')
+            return True
+        else:
+            logger.error(f'Failed to generate SSL cert: {result.stderr}')
+            return False
+    except Exception as e:
+        logger.error(f'Error generating SSL cert: {e}')
+        return False
+
+
+def forward_to_acgee(log_entry: Dict[str, Any]) -> None:
+    """
+    Forward a conversation log entry to the A-C-Gee shared landing-chat endpoint.
+
+    Sends the full message history so conversations are saved to sage.db on
+    the Sage & Weaver VPS. Uses retry logic for 500 errors (may be rate limits).
+
+    Args:
+        log_entry: The conversation log entry dictionary (same shape as local JSONL).
+    """
+    session_id = log_entry.get('session_id', 'unknown')
+
+    # Build the payload for the landing-chat API
+    # Include metadata so Witness capture watcher can filter by event_type
+    metadata = log_entry.get('metadata', {})
+    if isinstance(metadata, dict):
+        # For post-payment flows, set event_type to "conversation_complete"
+        # so Witness capture watcher processes the seed
+        source = log_entry.get('source', '')
+        meta_event = metadata.get('event', '')
+        if source == 'purebrain-post-payment' or meta_event in ('questionnaire:complete', 'flow:complete'):
+            metadata = {**metadata, 'event_type': 'conversation_complete'}
+
+    payload = {
+        'messages': log_entry.get('messages', []),
+        'system': log_entry.get('system', ''),
+        'session_id': session_id,
+        'source': 'purebrain',
+        'metadata': metadata,
+        'aiName': log_entry.get('aiName', ''),
+        'userName': log_entry.get('userName', ''),
+        'userTier': log_entry.get('userTier', ''),
+    }
+
+    payload_bytes = json.dumps(payload).encode('utf-8')
+
+    for attempt in range(1, ACGEE_MAX_RETRIES + 1):
+        try:
+            req = urllib.request.Request(
+                ACGEE_LANDING_CHAT_URL,
+                data=payload_bytes,
+                headers={
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Aether-PureBrain-LogServer/1.0',
+                },
+                method='POST'
+            )
+
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                status = resp.getcode()
+                body = resp.read().decode('utf-8')
+
+            if status == 200:
+                logger.info(
+                    f'A-C-Gee forward success: session={session_id} attempt={attempt}'
+                )
+                return  # Success - stop retrying
+
+            logger.warning(
+                f'A-C-Gee forward unexpected status {status} for session={session_id}'
+            )
+            return  # Non-500 non-200 - don't retry
+
+        except urllib.error.HTTPError as e:
+            if e.code == 500:
+                logger.warning(
+                    f'A-C-Gee 500 error (attempt {attempt}/{ACGEE_MAX_RETRIES}) '
+                    f'session={session_id} - retrying in {ACGEE_RETRY_DELAY_SECONDS}s'
+                )
+                if attempt < ACGEE_MAX_RETRIES:
+                    time.sleep(ACGEE_RETRY_DELAY_SECONDS)
+            else:
+                logger.warning(
+                    f'A-C-Gee HTTP error {e.code} for session={session_id}: {e.reason}'
+                )
+                return  # Non-500 HTTP error - don't retry
+
+        except urllib.error.URLError as e:
+            logger.warning(
+                f'A-C-Gee network error (attempt {attempt}/{ACGEE_MAX_RETRIES}) '
+                f'session={session_id}: {e.reason}'
+            )
+            if attempt < ACGEE_MAX_RETRIES:
+                time.sleep(ACGEE_RETRY_DELAY_SECONDS)
+
+        except Exception as e:
+            logger.warning(f'A-C-Gee unexpected error for session={session_id}: {e}')
+            return  # Unknown error - don't retry
+
+    logger.error(
+        f'A-C-Gee forward failed after {ACGEE_MAX_RETRIES} attempts for session={session_id}'
+    )
+
+
+def forward_to_hub(log_entry: Dict[str, Any], hub_room: str = DEFAULT_HUB_ROOM) -> None:
+    """
+    Forward a conversation log entry to the AICIV comms hub.
+
+    This function runs the hub_cli.py send command to post a message
+    to the specified room. Designed to be called asynchronously
+    from a background thread.
+
+    Args:
+        log_entry: The conversation log entry dictionary.
+        hub_room: The hub room to post to (default: 'operations').
+    """
+    try:
+        # Build summary from conversation
+        session_id = log_entry.get('session_id', 'unknown')
+        messages = log_entry.get('messages', [])
+        message_count = len(messages)
+
+        # Get first user message as preview
+        first_user_msg = ''
+        for msg in messages:
+            if msg.get('role') == 'user':
+                first_user_msg = msg.get('content', '')[:100]
+                break
+
+        summary = f"Pure Brain conversation: {session_id} ({message_count} messages)"
+
+        # Build body with conversation details
+        body_lines = [
+            f"Session ID: {session_id}",
+            f"Messages: {message_count}",
+            f"Timestamp: {log_entry.get('server_timestamp', 'unknown')}",
+        ]
+
+        if log_entry.get('page_url'):
+            body_lines.append(f"Page: {log_entry['page_url']}")
+
+        if first_user_msg:
+            body_lines.append(f"First query: {first_user_msg}...")
+
+        body = '\n'.join(body_lines)
+
+        # Set up environment for hub_cli
+        env = os.environ.copy()
+        env['HUB_REPO_URL'] = env.get('HUB_REPO_URL', 'git@github-interciv:coreycottrell/aiciv-comms-hub.git')
+        env['HUB_LOCAL_PATH'] = env.get('HUB_LOCAL_PATH', DEFAULT_HUB_LOCAL_PATH)
+        env['HUB_AGENT_ID'] = env.get('HUB_AGENT_ID', 'aether-purebrain')
+        env['HUB_AGENT_DISPLAY'] = env.get('HUB_AGENT_DISPLAY', 'Pure Brain Log Server')
+        env['GIT_AUTHOR_NAME'] = env.get('GIT_AUTHOR_NAME', 'Aether Pure Brain')
+        env['GIT_AUTHOR_EMAIL'] = env.get('GIT_AUTHOR_EMAIL', 'purebrain@ai-civ.local')
+
+        # Run hub_cli send command
+        cmd = [
+            'python3', HUB_CLI_PATH,
+            'send',
+            '--room', hub_room,
+            '--type', 'status',
+            '--summary', summary,
+            '--body', body
+        ]
+
+        result = subprocess.run(
+            cmd,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60  # 60 second timeout for git operations
+        )
+
+        if result.returncode == 0:
+            logger.info(f'Forwarded to hub: {session_id} -> {hub_room}')
+        else:
+            logger.warning(f'Hub forwarding failed: {result.stderr}')
+
+    except subprocess.TimeoutExpired:
+        logger.warning(f'Hub forwarding timed out for session: {session_id}')
+    except Exception as e:
+        logger.warning(f'Hub forwarding error: {e}')
+
+
+def _send_google_smtp(to_list, cc_list, subject, html_body, reply_to=None):
+    """Send email via Google Workspace SMTP (purebrain@puremarketing.ai).
+    Shows in Sent folder. Falls back to Brevo if SMTP fails."""
+    from dotenv import load_dotenv
+    load_dotenv('/home/jared/projects/AI-CIV/aether/.env')
+    app_password = os.environ.get('GOOGLE_APP_PASSWORD', '')
+    if not app_password:
+        return False, 'GOOGLE_APP_PASSWORD not set'
+    try:
+        msg = MIMEMultipart('alternative')
+        msg['From'] = 'Aether — PureBrain AI <purebrain@puremarketing.ai>'
+        msg['To'] = ', '.join(to_list)
+        if cc_list:
+            msg['Cc'] = ', '.join(cc_list)
+        msg['Subject'] = subject
+        if reply_to:
+            msg['Reply-To'] = reply_to
+        msg.attach(MIMEText(html_body, 'html'))
+        all_recipients = to_list + (cc_list or [])
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login('purebrain@puremarketing.ai', app_password)
+        server.sendmail('purebrain@puremarketing.ai', all_recipients, msg.as_string())
+        server.quit()
+        return True, 'sent via Google SMTP'
+    except Exception as e:
+        return False, str(e)
+
+
+def create_app(
+    log_dir: Optional[str] = None,
+    enable_hub_forwarding: bool = True,
+    hub_room: Optional[str] = None,
+    enable_acgee_forwarding: bool = True,
+) -> Flask:
+    """
+    Create and configure Flask application.
+
+    Args:
+        log_dir: Directory for log files. Defaults to DEFAULT_LOG_DIR.
+        enable_hub_forwarding: Whether to forward conversations to AICIV hub.
+        hub_room: Hub room for forwarding (default: 'operations').
+        enable_acgee_forwarding: Whether to forward conversations to A-C-Gee shared DB.
+
+    Returns:
+        Configured Flask application.
+    """
+    app = Flask(__name__)
+
+    # Configure log directory
+    log_dir = log_dir or DEFAULT_LOG_DIR
+    app.config['LOG_DIR'] = log_dir
+    app.config['LOG_FILE'] = os.path.join(log_dir, DEFAULT_LOG_FILE)
+
+    # Configure hub forwarding
+    app.config['ENABLE_HUB_FORWARDING'] = enable_hub_forwarding
+    app.config['HUB_ROOM'] = hub_room or DEFAULT_HUB_ROOM
+
+    # Configure A-C-Gee forwarding
+    app.config['ENABLE_ACGEE_FORWARDING'] = enable_acgee_forwarding
+
+    # Ensure log directory exists
+    os.makedirs(log_dir, exist_ok=True)
+
+    # Enable CORS for all routes (required for cross-origin HTTPS requests)
+    CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+    # Register routes
+    register_routes(app)
+
+    return app
+
+
+def _compile_full_seed_md(seed_data: dict) -> str:
+    """Compile a full seed report as Markdown from seed_data + conversation logs.
+
+    Pulls naming ceremony conversation from web_conversations JSONL and
+    combines with questionnaire/learn-more data from pay_test JSONL.
+    Returns the full .md content string.
+    """
+    ai_name = seed_data.get('aiName', 'N/A')
+    human_name = seed_data.get('name', 'N/A')
+    email = seed_data.get('email', 'N/A')
+    company = seed_data.get('company', 'N/A')
+    role = seed_data.get('role', 'N/A')
+    goal = seed_data.get('primaryGoal', 'N/A')
+    tier = seed_data.get('tier', 'unknown')
+    order_id = seed_data.get('orderId', 'N/A')
+    session_uuid = seed_data.get('session_uuid', 'N/A')
+    timestamp = seed_data.get('server_timestamp', 'N/A')
+    paypal_sub = seed_data.get('paypalSubscriptionId', order_id)
+    goes_by = seed_data.get('goesBy', human_name)
+    learn_more = seed_data.get('learnMoreAnswers', {})
+
+    # Parse learn-more into standard kv_pairs
+    lm_kv = []
+    if learn_more:
+        if isinstance(learn_more, list):
+            lm_kv = [
+                (item.get('question', item.get('field', '?')), item.get('answer', item.get('value', '')))
+                for item in learn_more if isinstance(item, dict)
+            ]
+        elif isinstance(learn_more, dict):
+            lm_kv = list(learn_more.items())
+
+    # Try to pull naming ceremony conversation from web_conversations JSONL
+    naming_section = ''
+    try:
+        conv_log = Path(DEFAULT_LOG_DIR) / 'purebrain_web_conversations.jsonl'
+        if conv_log.exists() and session_uuid and session_uuid != 'N/A':
+            naming_msgs = []
+            with open(conv_log, 'r') as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line.strip())
+                        if entry.get('session_uuid') == session_uuid or \
+                           entry.get('sessionId', '').endswith(session_uuid[:8]):
+                            msgs = entry.get('messages', [])
+                            if msgs:
+                                naming_msgs.extend(msgs)
+                    except json.JSONDecodeError:
+                        continue
+            if naming_msgs:
+                naming_section = '\n## NAMING CEREMONY CONVERSATION\n\n'
+                for msg in naming_msgs:
+                    role_label = msg.get('role', 'unknown')
+                    text = msg.get('text', msg.get('content', ''))
+                    if role_label == 'assistant':
+                        naming_section += f'- **{ai_name}**: "{text}"\n'
+                    elif role_label == 'user':
+                        naming_section += f'- **{goes_by}**: "{text}"\n'
+    except Exception as e:
+        logger.debug(f'Could not pull naming ceremony for seed .md: {e}')
+
+    # Try to pull full pay-test conversation timeline
+    timeline_lines = []
+    try:
+        pt_log = Path(DEFAULT_LOG_DIR) / 'purebrain_pay_test.jsonl'
+        if pt_log.exists() and session_uuid and session_uuid != 'N/A':
+            with open(pt_log, 'r') as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line.strip())
+                        if entry.get('session_uuid') == session_uuid:
+                            event = entry.get('event', entry.get('type', ''))
+                            ts = entry.get('server_timestamp', entry.get('timestamp', ''))
+                            detail = event
+                            if entry.get('aiName'):
+                                detail += f" (AI: {entry['aiName']})"
+                            timeline_lines.append(f'| {ts} | {detail} |')
+                    except json.JSONDecodeError:
+                        continue
+    except Exception as e:
+        logger.debug(f'Could not pull timeline for seed .md: {e}')
+
+    now_str = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+
+    md = f"""# {human_name.upper()} ({goes_by.upper()}) — {ai_name.upper()} — FULL SEED REPORT
+
+**Generated**: {now_str}
+**Session UUID**: {session_uuid}
+
+---
+
+## 1. CUSTOMER PROFILE
+
+| Field | Value |
+|-------|-------|
+| **Name** | {human_name} |
+| **Goes By** | {goes_by} |
+| **Email** | {email} |
+| **Company** | {company} |
+| **Role** | {role} |
+| **AI Name** | {ai_name} |
+| **Tier** | {tier} |
+| **Primary Goal** | {goal} |
+| **Order ID** | {order_id} |
+| **PayPal Subscription** | {paypal_sub} |
+
+---
+{naming_section}
+---
+
+## QUESTIONNAIRE ANSWERS
+
+| # | Question | Answer |
+|---|----------|--------|
+| 1 | Name | {human_name} |
+| 2 | Email | {email} |
+| 3 | Company | {company} |
+| 4 | Role | {role} |
+| 5 | Primary Goal | {goal} |
+
+---
+"""
+
+    if lm_kv:
+        md += "\n## LEARN-MORE DEEP QUESTIONS\n\n"
+        md += "| # | Question | Answer |\n|---|----------|--------|\n"
+        for i, (k, v) in enumerate(lm_kv, 1):
+            md += f"| {i} | {k} | {v} |\n"
+        md += "\n---\n"
+
+    if timeline_lines:
+        md += "\n## FLOW TIMELINE\n\n"
+        md += "| Timestamp | Event |\n|-----------|-------|\n"
+        md += '\n'.join(timeline_lines)
+        md += "\n\n---\n"
+
+    md += f"""
+## CUSTOMER PROFILE SUMMARY
+
+{human_name} ({goes_by}) chose **{ai_name}** as their AI partner on the **{tier}** tier.
+Their primary goal: {goal}
+
+---
+
+*Report auto-compiled by PureBrain Log Server on seed completion.*
+"""
+    return md
+
+
+def _forward_seed_to_witness(seed_data: dict) -> None:
+    """Forward a completed seed to Witness via email + comms hub (best-effort, non-blocking).
+
+    Called from a background thread after every seed completion event.
+    Compiles full .md seed report, emails to witness-aiciv@agentmail.to WITH .md attachment,
+    CC's jared@puretechnology.nyc, saves .md to exports/, and posts summary to comms hub.
+
+    Dedup rule (2026-03-13): fires at most ONCE per email address per 24-hour window.
+    Test pages: email subject/body prefixed with THIS IS A SEED TEST marker.
+    UUID always appears as the first element in the email body.
+    """
+    try:
+        # --- DEDUP: one seed per email address (Jared rule 2026-03-13) ---
+        raw_email_for_dedup = seed_data.get('email', '') or ''
+        if not _check_and_mark_seed_email(raw_email_for_dedup):
+            logger.info(f'_forward_seed_to_witness: seed already sent for {raw_email_for_dedup} — skipping duplicate')
+            return
+
+        # --- Test page detection (Jared rule 2026-03-13) ---
+        is_sandbox = _is_sandbox_seed(seed_data)
+
+        # Build human-readable seed summary
+        ai_name = seed_data.get('aiName', 'N/A')
+        human_name = seed_data.get('name', 'N/A')
+        email = seed_data.get('email', 'N/A')
+        company = seed_data.get('company', 'N/A')
+        role = seed_data.get('role', 'N/A')
+        goal = seed_data.get('primaryGoal', 'N/A')
+        tier = seed_data.get('tier', 'unknown')
+        order_id = seed_data.get('orderId', 'N/A')
+        timestamp = seed_data.get('server_timestamp', 'N/A')
+        session_uuid = seed_data.get('session_uuid', 'N/A')
+        learn_more = seed_data.get('learnMoreAnswers', {})
+
+        learn_more_html = ''
+        learn_more_text = ''
+        if learn_more:
+            # Handle both list and dict formats
+            if isinstance(learn_more, list):
+                kv_pairs = [
+                    (item.get('question', item.get('field', '?')), item.get('answer', item.get('value', '')))
+                    for item in learn_more if isinstance(item, dict)
+                ]
+            elif isinstance(learn_more, dict):
+                kv_pairs = list(learn_more.items())
+            else:
+                kv_pairs = []
+            if kv_pairs:
+                rows = ''.join(
+                    f'<tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#888;">{k}</td>'
+                    f'<td style="padding:4px 0;">{v}</td></tr>'
+                    for k, v in kv_pairs
+                )
+                learn_more_html = (
+                    '<h3 style="color:#f1420b;margin:20px 0 8px;">Learn-More Answers</h3>'
+                    f'<table style="border-collapse:collapse;width:100%;">{rows}</table>'
+                )
+                learn_more_text = '\nLearn-More Answers:\n' + '\n'.join(
+                    f'  {k}: {v}' for k, v in kv_pairs
+                )
+
+        # Compile full seed .md report
+        full_seed_md = ''
+        seed_md_filename = ''
+        try:
+            full_seed_md = _compile_full_seed_md(seed_data)
+            # Save to exports/
+            safe_name = human_name.lower().replace(' ', '-').replace("'", '')
+            safe_ai = ai_name.lower().replace(' ', '-')
+            seed_md_filename = f'{safe_name}-{safe_ai}-full-seed.md'
+            exports_dir = Path('/home/jared/projects/AI-CIV/aether/exports')
+            exports_dir.mkdir(exist_ok=True)
+            seed_md_path = exports_dir / seed_md_filename
+            with open(seed_md_path, 'w') as f:
+                f.write(full_seed_md)
+            logger.info(f'Full seed .md saved: {seed_md_path}')
+        except Exception as e:
+            logger.warning(f'Failed to compile full seed .md: {e}')
+
+
+        # Send email to Witness + CC Jared via AgentMail API (primary) + Gmail SMTP (fallback)
+        # Prefix subject and body with TEST marker for sandbox pages (Jared rule 2026-03-13)
+        test_prefix_text = ""
+        test_prefix_html = ""
+        if is_sandbox:
+            test_prefix_text = "THIS IS A SEED TEST FROM JARED OR PURE TECHNOLOGY\n\n"
+            test_prefix_html = (
+                '<div style="background:#ff0;color:#000;font-weight:bold;font-size:15px;'
+                'padding:12px 16px;margin-bottom:16px;border-radius:4px;">'
+                'THIS IS A SEED TEST FROM JARED OR PURE TECHNOLOGY'
+                '</div>'
+            )
+        subject = f"[PureBrain Seed{' TEST' if is_sandbox else ''}] {ai_name} ({tier}) — {human_name}"
+        html_body = f"""
+<div style="font-family:Arial,sans-serif;max-width:600px;background:#0a0a0f;color:#e0e0e0;padding:24px;border-radius:8px;">
+  <div style="background:#1a1a2e;border:1px solid #2a93c1;border-radius:4px;padding:10px 14px;margin-bottom:16px;font-family:monospace;font-size:13px;color:#2a93c1;">
+    <strong style="color:#888;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Session UUID</strong><br>
+    {session_uuid}
+  </div>
+  {test_prefix_html}
+  <h2 style="color:#f1420b;margin-top:0;">New PureBrain Seed Complete</h2>
+  <table style="border-collapse:collapse;width:100%;">
+    <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#888;">Tier</td><td style="padding:4px 0;">{tier}</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#888;">AI Name</td><td style="padding:4px 0;">{ai_name}</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#888;">Human Name</td><td style="padding:4px 0;">{human_name}</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#888;">Email</td><td style="padding:4px 0;">{email}</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#888;">Company</td><td style="padding:4px 0;">{company}</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#888;">Role</td><td style="padding:4px 0;">{role}</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#888;">Primary Goal</td><td style="padding:4px 0;">{goal}</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#888;">Order ID</td><td style="padding:4px 0;">{order_id}</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#888;">Timestamp</td><td style="padding:4px 0;">{timestamp}</td></tr>
+  </table>
+  {learn_more_html}
+  <p style="margin-top:20px;color:#888;font-size:12px;">Full seed .md report attached. Sent automatically by PureBrain Log Server on seed completion.</p>
+</div>
+"""
+        from dotenv import load_dotenv
+        load_dotenv('/home/jared/projects/AI-CIV/aether/.env')
+
+        # Primary: AgentMail API
+        agentmail_key = os.environ.get('AGENTMAIL_API_KEY', '')
+        agentmail_inbox = os.environ.get('AGENTMAIL_INBOX', 'aether-aiciv@agentmail.to')
+        agentmail_sent = False
+        if agentmail_key:
+            try:
+                from agentmail import AgentMail
+                am_client = AgentMail(api_key=agentmail_key)
+                am_client.inboxes.messages.send(
+                    agentmail_inbox,
+                    to='witness-aiciv@agentmail.to',
+                    cc='jared@puretechnology.nyc,aiciv-seed-inbox@agentmail.to',
+                    subject=subject,
+                    html=html_body,
+                    text=full_seed_md or html_body,
+                )
+                logger.info(f'Seed forwarded via AgentMail API: aiName={ai_name}')
+                agentmail_sent = True
+            except Exception as e:
+                logger.warning(f'AgentMail seed send failed, falling back to SMTP: {e}')
+
+        # Fallback: Gmail SMTP
+        if not agentmail_sent:
+            app_password = os.environ.get('GOOGLE_APP_PASSWORD', '')
+            if not app_password:
+                logger.warning('GOOGLE_APP_PASSWORD not set — cannot send seed email')
+            else:
+                try:
+                    msg = MIMEMultipart('mixed')
+                    msg['From'] = 'Aether — PureBrain AI <purebrain@puremarketing.ai>'
+                    msg['To'] = 'witness-aiciv@agentmail.to'
+                    msg['Cc'] = 'jared@puretechnology.nyc'
+                    msg['Subject'] = subject
+                    msg['Reply-To'] = 'jared@puretechnology.nyc'
+                    msg.attach(MIMEText(html_body, 'html'))
+
+                    if full_seed_md and seed_md_filename:
+                        md_part = MIMEBase('text', 'markdown')
+                        md_part.set_payload(full_seed_md.encode('utf-8'))
+                        encoders.encode_base64(md_part)
+                        md_part.add_header('Content-Disposition', 'attachment', filename=seed_md_filename)
+                        msg.attach(md_part)
+
+                    all_recipients = ['witness-aiciv@agentmail.to', 'jared@puretechnology.nyc', 'aiciv-seed-inbox@agentmail.to']
+                    server = smtplib.SMTP('smtp.gmail.com', 587)
+                    server.starttls()
+                    server.login('purebrain@puremarketing.ai', app_password)
+                    server.sendmail('purebrain@puremarketing.ai', all_recipients, msg.as_string())
+                    server.quit()
+                    logger.info(f'Seed forwarded via SMTP fallback: aiName={ai_name}')
+                except Exception as e:
+                    logger.warning(f'Seed email to Witness failed: {e}')
+
+    except Exception as e:
+        logger.warning(f'_forward_seed_to_witness email error: {e}')
+
+    # Post to from-witness comms hub room
+    try:
+        summary = f"New seed complete: {seed_data.get('aiName', 'N/A')} ({seed_data.get('tier', 'unknown')}) — {seed_data.get('name', 'N/A')}"
+        body_lines = [
+            f"Tier: {seed_data.get('tier', 'unknown')}",
+            f"AI Name: {seed_data.get('aiName', 'N/A')}",
+            f"Human Name: {seed_data.get('name', 'N/A')}",
+            f"Email: {seed_data.get('email', 'N/A')}",
+            f"Company: {seed_data.get('company', 'N/A')}",
+            f"Role: {seed_data.get('role', 'N/A')}",
+            f"Goal: {seed_data.get('primaryGoal', 'N/A')}",
+            f"Order: {seed_data.get('orderId', 'N/A')}",
+            f"Session UUID: {seed_data.get('session_uuid', 'N/A')}",
+            f"Timestamp: {seed_data.get('server_timestamp', 'N/A')}",
+        ]
+        learn_more = seed_data.get('learnMoreAnswers', {})
+        if learn_more:
+            body_lines.append("Learn-More Answers:")
+            if isinstance(learn_more, list):
+                for item in learn_more:
+                    if isinstance(item, dict):
+                        k = item.get('question', item.get('field', '?'))
+                        v = item.get('answer', item.get('value', ''))
+                        body_lines.append(f"  {k}: {v}")
+            elif isinstance(learn_more, dict):
+                for k, v in learn_more.items():
+                    body_lines.append(f"  {k}: {v}")
+
+        body = '\n'.join(body_lines)
+
+        env = os.environ.copy()
+        env['HUB_REPO_URL'] = env.get('HUB_REPO_URL', 'git@github-interciv:coreycottrell/aiciv-comms-hub.git')
+        env['HUB_LOCAL_PATH'] = env.get('HUB_LOCAL_PATH', DEFAULT_HUB_LOCAL_PATH)
+        env['HUB_AGENT_ID'] = env.get('HUB_AGENT_ID', 'aether-purebrain')
+        env['HUB_AGENT_DISPLAY'] = env.get('HUB_AGENT_DISPLAY', 'Pure Brain Log Server')
+        env['GIT_AUTHOR_NAME'] = env.get('GIT_AUTHOR_NAME', 'Aether Pure Brain')
+        env['GIT_AUTHOR_EMAIL'] = env.get('GIT_AUTHOR_EMAIL', 'purebrain@ai-civ.local')
+
+        cmd = [
+            'python3', HUB_CLI_PATH,
+            'send',
+            '--room', 'from-witness',
+            '--type', 'status',
+            '--summary', summary,
+            '--body', body
+        ]
+        result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=60)
+        if result.returncode == 0:
+            logger.info(f'Seed forwarded to from-witness hub room: aiName={seed_data.get("aiName")}')
+        else:
+            logger.warning(f'Seed hub forwarding failed: {result.stderr}')
+    except subprocess.TimeoutExpired:
+        logger.warning('_forward_seed_to_witness hub forwarding timed out')
+    except Exception as e:
+        logger.warning(f'_forward_seed_to_witness hub error: {e}')
+
+    # POST to Witness birth pipeline API endpoint (triggers container birth)
+    try:
+        import requests as _req
+        witness_url = 'http://178.156.229.207:8200/intake/seed'
+        witness_key = '93858c5fc4d53136d18e3845402a33c464bcbcd1240a73aebec1f943eff67fed'
+        sess_uuid = seed_data.get('session_uuid', str(uuid.uuid4()))
+        witness_payload = {
+            'partner': 'purebrain',
+            'session_id': sess_uuid,
+            'seed': {
+                'session_id': sess_uuid,
+                'human_name': seed_data.get('name', ''),
+                'metadata': {
+                    'civ_name': seed_data.get('aiName', ''),
+                    'human_name': seed_data.get('name', ''),
+                    'email': seed_data.get('email', ''),
+                    'company': seed_data.get('company', ''),
+                    'role': seed_data.get('role', ''),
+                    'goal': seed_data.get('primaryGoal', ''),
+                    'tier': seed_data.get('tier', 'unknown'),
+                    'source': 'purebrain',
+                },
+                'conversation': seed_data.get('messages', []),
+            }
+        }
+        resp = _req.post(
+            witness_url,
+            json=witness_payload,
+            headers={
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {witness_key}',
+            },
+            timeout=30
+        )
+        logger.info(f'Witness birth pipeline POST: status={resp.status_code} body={resp.text[:200]}')
+    except Exception as e:
+        logger.warning(f'Witness birth pipeline POST failed: {e}')
+
+
+def _send_telegram_notification(message: str) -> None:
+    """Send a notification to Jared via Telegram (best-effort, non-blocking)."""
+    try:
+        tg_config_path = '/home/jared/projects/AI-CIV/aether/config/telegram_config.json'
+        with open(tg_config_path) as f:
+            tg_config = json.load(f)
+        bot_token = tg_config.get('bot_token', '')
+        chat_id = tg_config.get('default_chat_id', '')
+        if bot_token and chat_id:
+            url = f'https://api.telegram.org/bot{bot_token}/sendMessage'
+            data = json.dumps({'chat_id': chat_id, 'text': message}).encode('utf-8')
+            req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+            urllib.request.urlopen(req, timeout=10)
+            logger.info('Telegram notification sent')
+    except Exception as e:
+        logger.warning(f'Telegram notification failed: {e}')
+
+
+def verify_witness_signature(body: bytes, sig_header: str) -> bool:
+    """Verify HMAC-SHA256 signature from Witness webhook."""
+    secret = os.environ.get('WITNESS_WEBHOOK_SECRET', '')
+    if not secret:
+        # Dev/test: allow if no secret configured, but log warning
+        logger.warning('WITNESS_WEBHOOK_SECRET not set — skipping signature check')
+        return True
+    if not sig_header or not sig_header.startswith('sha256='):
+        return False
+    expected = 'sha256=' + _hmac.new(
+        secret.encode(), body, hashlib.sha256
+    ).hexdigest()
+    return _hmac.compare_digest(expected, sig_header)
+
+
+def _is_duplicate_birth(email: str, container: str) -> bool:
+    """Check if we already processed this birth (idempotency guard)."""
+    if not os.path.exists(BIRTH_COMPLETIONS_LOG):
+        return False
+    try:
+        with open(BIRTH_COMPLETIONS_LOG, 'r') as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                entry = json.loads(line)
+                if entry.get('human_email') == email and entry.get('container') == container:
+                    return True
+    except Exception:
+        pass
+    return False
+
+
+def _send_birth_complete_email(email: str, name: str, civ_name: str, magic_link: str):
+    """Send magic link email via Brevo transactional API."""
+    brevo_key = os.environ.get('BREVO_API_KEY', '')
+    if not brevo_key:
+        logger.error('BREVO_API_KEY not set — cannot send birth email')
+        return
+    payload = {
+        'to': [{'email': email, 'name': name}],
+        'templateId': BREVO_BIRTH_TEMPLATE_ID,
+        'params': {
+            'human_name': name,
+            'civ_name': civ_name,
+            'magic_link': magic_link,
+        },
+        'replyTo': {'email': 'jared@puretechnology.nyc', 'name': 'Jared at PureBrain'},
+    }
+    try:
+        resp = http_requests.post(
+            'https://api.brevo.com/v3/smtp/email',
+            headers={'api-key': brevo_key, 'Content-Type': 'application/json'},
+            json=payload,
+            timeout=10,
+        )
+        if resp.status_code not in (200, 201):
+            logger.error(f'Brevo birth email failed: {resp.status_code} {resp.text}')
+        else:
+            logger.info(f'Birth email sent to {email}')
+    except Exception as e:
+        logger.error(f'Brevo birth email exception: {e}')
+
+
+def _notify_jared_birth_complete(email: str, name: str, civ_name: str, container: str, magic_link: str):
+    """Send Telegram notification to Jared about birth completion."""
+    try:
+        tg_config = json.load(open('/home/jared/projects/AI-CIV/aether/config/telegram_config.json'))
+        token = tg_config.get('bot_token', '')
+        msg = (
+            f"🎉 BIRTH COMPLETE\n"
+            f"Customer: {name} ({email})\n"
+            f"CIV: {civ_name} @ {container}\n"
+            f"Magic link: {magic_link}\n"
+            f"Email sent to customer."
+        )
+        http_requests.post(
+            f'https://api.telegram.org/bot{token}/sendMessage',
+            data={'chat_id': '548906264', 'text': msg},
+            timeout=5,
+        )
+    except Exception as e:
+        logger.warning(f'Telegram birth notify failed: {e}')
+
+
+def register_routes(app: Flask) -> None:
+    """Register all API routes on the Flask app."""
+
+    @app.route('/api/health', methods=['GET'])
+    def health():
+        """Health check endpoint."""
+        logger.info('Health check requested')
+        return jsonify({
+            'status': 'ok',
+            'ssl': True,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        })
+
+    @app.route('/api/log-conversation', methods=['POST', 'OPTIONS'])
+    def log_conversation():
+        """
+        Log conversation data to JSONL file.
+
+        Expected JSON payload:
+        {
+            "session_id": "unique-session-id",
+            "messages": [
+                {"role": "user", "content": "..."},
+                {"role": "assistant", "content": "..."}
+            ],
+            "user_agent": "optional",
+            "page_url": "optional",
+            "referrer": "optional"
+        }
+        """
+        # Handle preflight OPTIONS request
+        if request.method == 'OPTIONS':
+            return '', 204
+
+        # Validate content type
+        if not request.is_json:
+            logger.warning('Request rejected: not JSON content type')
+            return jsonify({'error': 'Content-Type must be application/json'}), 400
+
+        # Parse JSON
+        try:
+            data = request.get_json()
+        except Exception as e:
+            logger.warning(f'Request rejected: invalid JSON - {e}')
+            return jsonify({'error': 'Invalid JSON'}), 400
+
+        # Validate required fields
+        # Accept both 'messages' (A-C-Gee standard) and 'conversationHistory' (PureBrain frontend)
+        messages = data.get('messages') or data.get('conversationHistory') if data else None
+        if not data or not messages:
+            logger.warning('Request rejected: missing messages/conversationHistory field')
+            return jsonify({'error': 'Missing required field: messages or conversationHistory'}), 400
+
+        # Build log entry
+        # Accept both snake_case (Python convention) and camelCase (JS convention) for session ID.
+        # Generate a UUID session_id if none provided so A-C-Gee can upsert correctly.
+        raw_session_id = data.get('session_id') or data.get('sessionId') or ''
+        session_id = raw_session_id.strip() if raw_session_id.strip() else f'pb-{uuid.uuid4()}'
+
+        log_entry = {
+            'session_id': session_id,
+            'messages': messages,  # Always use 'messages' for A-C-Gee compatibility
+            'server_timestamp': datetime.now(timezone.utc).isoformat(),
+            'client_ip': request.remote_addr
+        }
+
+        # Add optional fields if present
+        optional_fields = [
+            'user_agent', 'page_url', 'referrer', 'user_id', 'metadata',
+            # Onboarding/session data from client
+            'aiName', 'userName', 'userTier', 'referralCode',
+            'conversationId', 'brainId', 'projectId', 'title',
+            'createdAt', 'updatedAt', 'messageCount',
+            # Witness seed spec v2 fields
+            'naming_session_id', 'session_uuid',
+        ]
+        for field in optional_fields:
+            if field in data:
+                log_entry[field] = data[field]
+
+        # Witness seed spec: ensure metadata.civ_name is set for naming ceremony sessions.
+        # Witness capture_watcher uses civ_name directly, skipping regex+AI extraction.
+        # We mirror metadata.ai_name -> metadata.civ_name when ai_name is present.
+        # human_name and email are NOT available here — they come from the pb-post-* session.
+        if session_id.startswith('purebrain_'):
+            meta = log_entry.get('metadata')
+            if isinstance(meta, dict):
+                ai_name = meta.get('ai_name') or meta.get('aiName') or ''
+                if ai_name and not meta.get('civ_name'):
+                    log_entry['metadata'] = {**meta, 'civ_name': ai_name}
+                    logger.debug(f'Witness seed: metadata.civ_name set to {ai_name!r} for session={session_id}')
+
+        # Write to JSONL file (thread-safe)
+        log_file = app.config['LOG_FILE']
+        try:
+            with _file_lock:
+                with open(log_file, 'a') as f:
+                    f.write(json.dumps(log_entry) + '\n')
+            logger.info(f'Logged conversation: session={log_entry["session_id"]}')
+        except Exception as e:
+            logger.error(f'Failed to write log: {e}')
+            return jsonify({'error': 'Failed to write log'}), 500
+
+        # Forward to AICIV comms hub asynchronously (non-blocking)
+        if app.config.get('ENABLE_HUB_FORWARDING', True):
+            hub_room = app.config.get('HUB_ROOM', DEFAULT_HUB_ROOM)
+            try:
+                # Run in background thread so it doesn't block API response
+                hub_thread = threading.Thread(
+                    target=forward_to_hub,
+                    args=(log_entry.copy(), hub_room),
+                    daemon=True
+                )
+                hub_thread.start()
+                logger.debug(f'Started hub forwarding thread for session={log_entry["session_id"]}')
+            except Exception as e:
+                # Hub forwarding failure should not break local logging
+                logger.warning(f'Failed to start hub forwarding: {e}')
+
+        # Forward to A-C-Gee shared database asynchronously (non-blocking)
+        if app.config.get('ENABLE_ACGEE_FORWARDING', True):
+            try:
+                acgee_thread = threading.Thread(
+                    target=forward_to_acgee,
+                    args=(log_entry.copy(),),
+                    daemon=True
+                )
+                acgee_thread.start()
+                logger.debug(f'Started A-C-Gee forwarding thread for session={log_entry["session_id"]}')
+            except Exception as e:
+                # A-C-Gee forwarding failure should not break local logging
+                logger.warning(f'Failed to start A-C-Gee forwarding: {e}')
+
+        return jsonify({
+            'success': True,
+            'session_id': log_entry['session_id'],
+            'timestamp': log_entry['server_timestamp']
+        })
+
+    @app.route('/api/verify-payment', methods=['POST', 'OPTIONS'])
+    def verify_payment():
+        """
+        Verify a PayPal payment after SDK capture.
+        Called by pay-test page after PayPal SDK completes payment.
+
+        Expected JSON payload:
+        {
+            "orderId": "PAYPAL-ORDER-ID",
+            "tier": "Awakened|Bonded|Partnered",
+            "amount": "79.00",
+            "payerEmail": "buyer@email.com",
+            "payerName": "John Doe",
+            "captureId": "CAPTURE-ID",
+            "timestamp": "ISO-8601"
+        }
+        """
+        if request.method == 'OPTIONS':
+            return '', 204
+
+        if not request.is_json:
+            return jsonify({'error': 'Content-Type must be application/json'}), 400
+
+        try:
+            data = request.get_json()
+        except Exception as e:
+            return jsonify({'error': 'Invalid JSON'}), 400
+
+        if not data or not data.get('orderId'):
+            return jsonify({'error': 'Missing required field: orderId'}), 400
+
+        # Log the payment verification
+        payment_entry = {
+            'type': 'payment_verification',
+            'orderId': data.get('orderId'),
+            'tier': data.get('tier', 'unknown'),
+            'amount': data.get('amount', '0.00'),
+            'payerEmail': data.get('payerEmail', ''),
+            'payerName': data.get('payerName', ''),
+            'captureId': data.get('captureId', ''),
+            'server_timestamp': datetime.now(timezone.utc).isoformat(),
+            'client_ip': request.remote_addr,
+            'verified': True
+        }
+
+        # Write to dedicated payment log
+        payment_log = os.path.join(DEFAULT_LOG_DIR, 'purebrain_payments.jsonl')
+        try:
+            with _file_lock:
+                with open(payment_log, 'a') as f:
+                    f.write(json.dumps(payment_entry) + '\n')
+            logger.info(f'Payment verified: order={data.get("orderId")}, tier={data.get("tier")}, amount={data.get("amount")}')
+        except Exception as e:
+            logger.error(f'Failed to write payment log: {e}')
+            return jsonify({'error': 'Failed to log payment'}), 500
+
+        # Instant payment notification to Jared (Telegram + Portal)
+        ai_name = data.get('aiName', 'N/A')
+        tier = data.get('tier', 'unknown')
+        payer_name = data.get('payerName', 'N/A')
+        pay_tg_msg = f"💰 NEW PAYMENT!\n{payer_name} just paid for {tier} tier\nAI Name: {ai_name}\nOrder: {order_id}"
+        try:
+            threading.Thread(target=_send_telegram_notification, args=(pay_tg_msg,), daemon=True).start()
+        except Exception:
+            pass
+        try:
+            portal_chat = Path.home() / 'purebrain_portal' / 'portal-chat.jsonl'
+            portal_pay_msg = {
+                'role': 'assistant',
+                'text': f"💰 NEW PAYMENT!\n\n**{payer_name}** just paid for **{tier}** tier\nAI Name: **{ai_name}**\nOrder: {order_id}",
+                'timestamp': int(time.time()),
+                'id': f'payment-{uuid.uuid4()}',
+                '_src': 'payment-notification'
+            }
+            with _file_lock:
+                with open(portal_chat, 'a') as f:
+                    f.write(json.dumps(portal_pay_msg) + '\n')
+        except Exception as e:
+            logger.warning(f'Portal payment notification failed: {e}')
+
+        # Increment spots claimed counter — ONLY for real (non-sandbox, non-test) payments.
+        # Sandbox/test orders must NEVER increment the public-facing invitation page counter.
+        #
+        # Real PayPal order IDs: alphanumeric like "4MA83119W1272721N" (one-time)
+        # Real PayPal subscription IDs: "I-XXXX..." format — these ARE real payments.
+        #   pay-test-awakened, pay-test-partnered, pay-test-unified, pay-test-2 all use
+        #   subscription billing so real customers produce I-* IDs.
+        #
+        # Sandbox page (pay-test-sandbox-3) sends isSandbox:true in the payload.
+        #
+        # Filtered patterns:
+        #   SANDBOX-TEST* — explicit sandbox test orders from E2E flows
+        #   E2E-*         — E2E automation test orders
+        #   test-*        — manual test orders
+        #   isSandbox:true — flag sent by pay-test-sandbox-3 page
+        #
+        # NOTE: I-* prefix is NO LONGER filtered — real subscriptions use this format.
+        order_id = data.get('orderId', '')
+        is_sandbox_payload = bool(data.get('isSandbox', False))
+        sandbox_prefixes = ('SANDBOX-TEST', 'E2E-', 'test-')
+        is_sandbox_or_test = is_sandbox_payload or any(order_id.startswith(prefix) for prefix in sandbox_prefixes)
+        if is_sandbox_or_test:
+            logger.info(f'Spots counter NOT incremented — sandbox/test order filtered out: {order_id} (isSandbox={is_sandbox_payload})')
+        else:
+            spots_file = os.path.join(DEFAULT_LOG_DIR, 'spots_state.json')
+            try:
+                with _file_lock:
+                    try:
+                        with open(spots_file, 'r') as f:
+                            spots_data = json.load(f)
+                    except (FileNotFoundError, json.JSONDecodeError):
+                        spots_data = {'spots_claimed': 0, 'spots_total': 25, 'claimed_orders': []}
+                    # Dedup: do not increment if this order_id was already recorded
+                    existing_order_ids = {r.get('order_id') for r in spots_data.get('claimed_orders', [])}
+                    if order_id in existing_order_ids:
+                        logger.info(f'Spots counter NOT incremented — duplicate order_id already recorded: {order_id}')
+                    else:
+                        spots_data['spots_claimed'] = spots_data.get('spots_claimed', 0) + 1
+                        order_record = {
+                            'order_id': order_id,
+                            'tier': data.get('tier', 'unknown'),
+                            'payer_email': data.get('payerEmail', ''),
+                            'timestamp': payment_entry['server_timestamp']
+                        }
+                        if 'claimed_orders' not in spots_data:
+                            spots_data['claimed_orders'] = []
+                        spots_data['claimed_orders'].append(order_record)
+                        with open(spots_file, 'w') as f:
+                            json.dump(spots_data, f, indent=2)
+                        logger.info(f'Spots counter incremented to {spots_data["spots_claimed"]} (real order: {order_id})')
+            except Exception as e:
+                logger.warning(f'Failed to increment spots counter: {e}')
+
+        return jsonify({
+            'success': True,
+            'verified': True,
+            'orderId': data.get('orderId'),
+            'server_timestamp': payment_entry['server_timestamp']
+        })
+
+    @app.route('/api/spots-status', methods=['GET', 'OPTIONS'])
+    def spots_status():
+        """
+        Return current spots claimed status for invitation page.
+        Returns: {"spots_claimed": N, "spots_total": 25}
+        """
+        if request.method == 'OPTIONS':
+            return '', 204
+
+        spots_file = os.path.join(DEFAULT_LOG_DIR, 'spots_state.json')
+        try:
+            with _file_lock:
+                try:
+                    with open(spots_file, 'r') as f:
+                        spots_data = json.load(f)
+                except (FileNotFoundError, json.JSONDecodeError):
+                    spots_data = {'spots_claimed': 3, 'spots_total': 25}
+            return jsonify({
+                'spots_claimed': spots_data.get('spots_claimed', 3),
+                'spots_total': spots_data.get('spots_total', 25)
+            })
+        except Exception as e:
+            logger.error(f'Failed to read spots status: {e}')
+            return jsonify({'spots_claimed': 3, 'spots_total': 25})
+
+    @app.route('/api/log-pay-test', methods=['POST', 'OPTIONS'])
+    def log_pay_test():
+        """
+        Log pay-test flow completion data.
+        Called after the full post-payment questionnaire + behind-the-curtain flow.
+
+        Expected JSON payload:
+        {
+            "tier": "Awakened|Bonded|Partnered",
+            "orderId": "PAYPAL-ORDER-ID",
+            "aiName": "Name chosen by user",
+            "name": "User's name",
+            "email": "user@email.com",
+            "company": "Company name",
+            "role": "User's role",
+            "primaryGoal": "User's primary goal",
+            "telegramBotToken": "bot token if provided",
+            "claudeMaxStatus": "connected|skipped",
+            "flowCompleted": true
+        }
+        """
+        if request.method == 'OPTIONS':
+            return '', 204
+
+        if not request.is_json:
+            return jsonify({'error': 'Content-Type must be application/json'}), 400
+
+        try:
+            data = request.get_json()
+        except Exception as e:
+            return jsonify({'error': 'Invalid JSON'}), 400
+
+        if not data:
+            return jsonify({'error': 'Empty payload'}), 400
+
+        # Build log entry
+        pay_test_entry = {
+            'type': 'pay_test_completion',
+            'tier': data.get('tier', 'unknown'),
+            'orderId': data.get('orderId', ''),
+            'aiName': data.get('aiName', ''),
+            'name': data.get('name', ''),
+            'email': data.get('email', ''),
+            'company': data.get('company', ''),
+            'role': data.get('role', ''),
+            'primaryGoal': data.get('primaryGoal', ''),
+            'telegramBotToken': data.get('telegramBotToken', ''),
+            'claudeMaxStatus': data.get('claudeMaxStatus', ''),
+            'flowCompleted': data.get('flowCompleted', False),
+            # Bug 1 fix: capture ALL client-sent fields so no seed data is ever lost
+            'learnMoreAnswers': data.get('learnMoreAnswers', {}),
+            'messages': data.get('messages', []),
+            'event': data.get('event', ''),
+            'session_uuid': data.get('session_uuid', ''),
+            'page_url': data.get('page_url', ''),
+            'server_timestamp': datetime.now(timezone.utc).isoformat(),
+            'client_ip': request.remote_addr
+        }
+
+        # Write to dedicated pay-test log
+        pay_test_log = os.path.join(DEFAULT_LOG_DIR, 'purebrain_pay_test.jsonl')
+        try:
+            with _file_lock:
+                with open(pay_test_log, 'a') as f:
+                    f.write(json.dumps(pay_test_entry) + '\n')
+            logger.info(f'Pay-test logged: tier={data.get("tier")}, aiName={data.get("aiName")}, email={data.get("email")}')
+        except Exception as e:
+            logger.error(f'Failed to write pay-test log: {e}')
+            return jsonify({'error': 'Failed to log pay-test data'}), 500
+
+        # Forward to Telegram ONLY for completions (Jared: "not every message")
+        # Bug 3 fix: also treat learn-more:complete as a completion trigger
+        event = pay_test_entry['event']
+        is_completion = (
+            data.get('flowCompleted', False)
+            or event in ('questionnaire:complete', 'flow:complete', 'learn-more:complete')
+        )
+        if is_completion:
+            # Build enhanced Telegram message (Bug 1 fix: include learnMoreAnswers)
+            learn_more = pay_test_entry.get('learnMoreAnswers', {})
+            learn_more_lines = ''
+            if learn_more:
+                if isinstance(learn_more, list):
+                    learn_more_lines = '\nLearnMore:\n' + '\n'.join(
+                        f"  {item.get('question', item.get('field', '?'))}: {item.get('answer', item.get('value', ''))}"
+                        for item in learn_more if isinstance(item, dict)
+                    )
+                elif isinstance(learn_more, dict):
+                    learn_more_lines = '\nLearnMore:\n' + '\n'.join(
+                        f"  {k}: {v}" for k, v in learn_more.items()
+                    )
+            tg_msg = (
+                f"🎉 SEED COMPLETE!\n"
+                f"Tier: {data.get('tier', 'unknown')}\n"
+                f"AI Name: {data.get('aiName', 'N/A')}\n"
+                f"Name: {data.get('name', 'N/A')}\n"
+                f"Email: {data.get('email', 'N/A')}\n"
+                f"Company: {data.get('company', 'N/A')}\n"
+                f"Role: {data.get('role', 'N/A')}\n"
+                f"Goal: {data.get('primaryGoal', 'N/A')}\n"
+                f"Order: {data.get('orderId', 'N/A')}"
+                f"{learn_more_lines}"
+            )
+            try:
+                tg_thread = threading.Thread(
+                    target=_send_telegram_notification,
+                    args=(tg_msg,),
+                    daemon=True
+                )
+                tg_thread.start()
+            except Exception:
+                pass
+
+            # Bug 2 fix: auto-forward completed seed to Witness (email + comms hub)
+            try:
+                fwd_thread = threading.Thread(
+                    target=_forward_seed_to_witness,
+                    args=(pay_test_entry,),
+                    daemon=True
+                )
+                fwd_thread.start()
+            except Exception:
+                pass
+
+            # Notify Jared via portal chat (appears in PureBrain portal)
+            try:
+                portal_chat = Path.home() / 'purebrain_portal' / 'portal-chat.jsonl'
+                learn_more_text = ''
+                if learn_more:
+                    lm_items = learn_more if isinstance(learn_more, list) else []
+                    if lm_items:
+                        learn_more_text = '\n**Learn-More Answers:**\n' + '\n'.join(
+                            f"- **{item.get('question', '')}**: {item.get('answer', '')}" for item in lm_items
+                        )
+                    elif isinstance(learn_more, dict) and learn_more:
+                        learn_more_text = '\n**Learn-More Answers:**\n' + '\n'.join(
+                            f"- **{k}**: {v}" for k, v in learn_more.items()
+                        )
+                portal_msg = {
+                    'role': 'assistant',
+                    'text': (
+                        f"NEW SEED COMPLETE!\n\n"
+                        f"| Field | Value |\n|-------|-------|\n"
+                        f"| **AI Name** | {data.get('aiName', 'N/A')} |\n"
+                        f"| **Name** | {data.get('name', 'N/A')} |\n"
+                        f"| **Email** | {data.get('email', 'N/A')} |\n"
+                        f"| **Tier** | {data.get('tier', 'unknown')} |\n"
+                        f"| **Company** | {data.get('company', 'N/A')} |\n"
+                        f"| **Role** | {data.get('role', 'N/A')} |\n"
+                        f"| **Goal** | {data.get('primaryGoal', 'N/A')} |\n"
+                        f"| **PayPal** | {data.get('orderId', 'N/A')} |\n"
+                        f"| **Event** | {event} |"
+                        f"{learn_more_text}"
+                    ),
+                    'timestamp': int(time.time()),
+                    'id': f'seed-{uuid.uuid4()}',
+                    '_src': 'seed-notification'
+                }
+                with _file_lock:
+                    with open(portal_chat, 'a') as f:
+                        f.write(json.dumps(portal_msg) + '\n')
+                logger.info(f'Portal notification sent for seed: {data.get("aiName", "unknown")}')
+            except Exception as e:
+                logger.warning(f'Portal notification failed: {e}')
+
+        return jsonify({
+            'success': True,
+            'logged': True,
+            'server_timestamp': pay_test_entry['server_timestamp']
+        })
+
+    # ── Witness Birth Pipeline Proxy ────────────────────────────────────────
+    # Browser calls our HTTPS endpoint; we proxy to Witness HTTP server-side.
+    # This avoids mixed-content blocking in the browser.
+
+    @app.route('/api/birth/start', methods=['POST', 'OPTIONS'])
+    def birth_start_proxy():
+        """Proxy POST /api/birth/start to Witness Hetzner fleet host."""
+        if request.method == 'OPTIONS':
+            return _cors_preflight()
+        try:
+            resp = http_requests.post(
+                f'{WITNESS_BIRTH_BASE_URL}/api/birth/start',
+                json=request.get_json(silent=True) or {},
+                timeout=WITNESS_PROXY_TIMEOUT,
+            )
+            logger.info(f'Birth/start proxy: status={resp.status_code}')
+            return (resp.content, resp.status_code, {'Content-Type': 'application/json'})
+        except http_requests.ConnectionError:
+            logger.error(f'Birth/start proxy: connection refused ({WITNESS_BIRTH_BASE_URL})')
+            return jsonify({'error': 'Birth service unavailable', 'details': 'Could not connect to birth service'}), 503
+        except http_requests.Timeout:
+            logger.error(f'Birth/start proxy: timeout ({WITNESS_PROXY_TIMEOUT}s)')
+            return jsonify({'error': 'Birth service timeout', 'details': f'No response within {WITNESS_PROXY_TIMEOUT}s'}), 504
+
+    @app.route('/api/birth/code', methods=['POST', 'OPTIONS'])
+    def birth_code_proxy():
+        """Proxy POST /api/birth/code to Witness (OAuth auth code relay)."""
+        if request.method == 'OPTIONS':
+            return _cors_preflight()
+        try:
+            resp = http_requests.post(
+                f'{WITNESS_BIRTH_BASE_URL}/api/birth/code',
+                json=request.get_json(silent=True) or {},
+                timeout=30,
+            )
+            logger.info(f'Birth/code proxy: status={resp.status_code}')
+            return (resp.content, resp.status_code, {'Content-Type': 'application/json'})
+        except http_requests.ConnectionError:
+            return jsonify({'error': 'Birth service unavailable'}), 503
+        except http_requests.Timeout:
+            return jsonify({'error': 'Birth service timeout'}), 504
+
+    @app.route('/api/birth/status/<container>', methods=['GET', 'OPTIONS'])
+    def birth_status_proxy(container):
+        """Proxy GET /api/birth/status/{container} to Witness."""
+        if request.method == 'OPTIONS':
+            return _cors_preflight()
+        try:
+            resp = http_requests.get(
+                f'{WITNESS_BIRTH_BASE_URL}/api/birth/status/{container}',
+                timeout=15,
+            )
+            return (resp.content, resp.status_code, {'Content-Type': 'application/json'})
+        except (http_requests.ConnectionError, http_requests.Timeout):
+            return jsonify({'error': 'Birth service unavailable'}), 503
+
+    @app.route('/api/birth/portal-status/<container>', methods=['GET', 'OPTIONS'])
+    def birth_portal_status_proxy(container):
+        """
+        Check if a birth is complete and portal is ready.
+        First checks our local birth_completions.jsonl (populated by webhook).
+        Falls back to proxying to Witness if not found locally.
+        Browser polls this every 30s after payment.
+        """
+        if request.method == 'OPTIONS':
+            return _cors_preflight()
+
+        if not container or not container.replace('-', '').isalnum():
+            return jsonify({'ready': False, 'error': 'Invalid container name'}), 400
+
+        # 1. Check local birth completions log first (from webhook)
+        if os.path.exists(BIRTH_COMPLETIONS_LOG):
+            try:
+                with open(BIRTH_COMPLETIONS_LOG, 'r') as f:
+                    for line in f:
+                        if not line.strip():
+                            continue
+                        entry = json.loads(line)
+                        if entry.get('container') == container:
+                            logger.info(f'Portal status: {container} READY (local log)')
+                            return jsonify({
+                                'ready': True,
+                                'portalUrl': entry.get('purebrain_url') or entry.get('magic_link', ''),
+                            }), 200
+            except Exception as e:
+                logger.error(f'Portal status local check error: {e}')
+
+        # 2. Fall back to Witness proxy
+        try:
+            resp = http_requests.get(
+                f'{WITNESS_BIRTH_BASE_URL}/api/birth/portal-status/{container}',
+                timeout=15,
+            )
+            return (resp.content, resp.status_code, {'Content-Type': 'application/json'})
+        except (http_requests.ConnectionError, http_requests.Timeout):
+            return jsonify({'ready': False}), 200
+
+    # ── Seed Intake Proxy (with UUID deduplication) ──────────────────────────
+
+    _seed_seen = {}        # {uuid: timestamp} — tracks already-forwarded seeds
+    _seed_seen_lock = threading.Lock()
+    _SEED_DEDUP_TTL = 3600  # Keep UUIDs for 1 hour, then forget
+
+    def _seed_cleanup():
+        """Purge expired entries from _seed_seen."""
+        now = time.time()
+        expired = [k for k, v in _seed_seen.items() if now - v > _SEED_DEDUP_TTL]
+        for k in expired:
+            del _seed_seen[k]
+
+    @app.route('/api/intake/seed', methods=['POST', 'OPTIONS'])
+    def seed_intake_proxy():
+        """Proxy POST /api/intake/seed to Witness awakening VPS.
+        Deduplicates by UUID — Witness gets hit exactly ONCE per payment.
+        Client must include a 'uuid' field in the JSON body.
+        If no uuid provided, we generate one from the payload hash.
+        """
+        if request.method == 'OPTIONS':
+            return _cors_preflight()
+
+        payload = request.get_json(silent=True) or {}
+
+        # Extract or generate a dedup key
+        seed_uuid = payload.get('uuid') or payload.get('seed_uuid')
+        if not seed_uuid:
+            # Build stable dedup key from orderId + stage (ignores timestamp)
+            meta = payload.get('metadata', {})
+            order_id = meta.get('orderId', '')
+            stage = str(meta.get('stage', ''))
+            session_id = payload.get('session_id', '')
+            stable_key = f'{order_id}:{stage}:{session_id}'
+            if order_id or session_id:
+                seed_uuid = hashlib.sha256(stable_key.encode()).hexdigest()[:32]
+            else:
+                # Last resort: hash full payload minus timestamp
+                payload_copy = {k: v for k, v in payload.items() if k != 'timestamp'}
+                canonical = json.dumps(payload_copy, sort_keys=True, default=str)
+                seed_uuid = hashlib.sha256(canonical.encode()).hexdigest()[:32]
+
+        with _seed_seen_lock:
+            _seed_cleanup()
+            if seed_uuid in _seed_seen:
+                logger.warning(f'Seed intake DUPLICATE blocked: uuid={seed_uuid}')
+                return jsonify({
+                    'status': 'duplicate',
+                    'message': 'Seed already forwarded to Witness',
+                    'uuid': seed_uuid,
+                }), 200
+            _seed_seen[seed_uuid] = time.time()
+
+        try:
+            resp = http_requests.post(
+                f'{WITNESS_SEED_INTAKE_URL}/intake/seed',
+                json=payload,
+                timeout=15,
+            )
+            logger.info(f'Seed intake proxy: uuid={seed_uuid} status={resp.status_code}')
+            return (resp.content, resp.status_code, {'Content-Type': 'application/json'})
+        except http_requests.ConnectionError:
+            return jsonify({'error': 'Seed intake unavailable'}), 503
+        except http_requests.Timeout:
+            return jsonify({'error': 'Seed intake timeout'}), 504
+
+    def _cors_preflight():
+        """Return CORS preflight response for proxy endpoints."""
+        resp = jsonify({'ok': True})
+        resp.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Witness-Signature, X-Witness-Secret'
+        resp.headers['Access-Control-Max-Age'] = '3600'
+        return resp
+
+    # ── Birth Complete Webhook ────────────────────────────────────────────────
+
+    @app.route('/api/birth/webhook', methods=['POST', 'OPTIONS'])
+    def birth_complete_webhook():
+        """
+        Receive birth_complete callback from Witness after CIV birth.
+        Witness POSTs: { event, human_email, human_name, civ_name, magic_link, container }
+        Header: X-Witness-Signature: sha256=<hex> (HMAC) or X-Witness-Secret (fallback)
+        """
+        if request.method == 'OPTIONS':
+            return _cors_preflight()
+
+        # 1. Verify signature (HMAC or static token fallback)
+        raw_body = request.get_data()
+        sig = request.headers.get('X-Witness-Signature', '')
+        static_secret = request.headers.get('X-Witness-Secret', '')
+
+        if sig:
+            if not verify_witness_signature(raw_body, sig):
+                logger.warning(f'Webhook: invalid HMAC signature from {request.remote_addr}')
+                return jsonify({'error': 'Invalid signature'}), 401
+        elif static_secret:
+            expected_secret = os.environ.get('WITNESS_STATIC_SECRET', 'witness-secret-2026')
+            if static_secret != expected_secret:
+                logger.warning(f'Webhook: invalid static secret from {request.remote_addr}')
+                return jsonify({'error': 'Invalid secret'}), 401
+        else:
+            # No auth header — check if we're in dev mode (no secret configured)
+            if os.environ.get('WITNESS_WEBHOOK_SECRET', ''):
+                logger.warning(f'Webhook: no auth header from {request.remote_addr}')
+                return jsonify({'error': 'Missing authentication'}), 401
+            logger.warning('Webhook: no auth header and no secret configured — allowing (dev mode)')
+
+        # 2. Parse + validate
+        data = request.get_json(silent=True) or {}
+        event = data.get('event')
+        human_email = data.get('human_email', '')
+        human_name = data.get('human_name', '')
+        civ_name = data.get('civ_name', '')
+        magic_link = data.get('magic_link', '')
+        container = data.get('container', '')
+        portal_url = data.get('portal_url', magic_link)  # accept either field name
+
+        if event != 'birth_complete':
+            logger.warning(f'Webhook: unknown event "{event}"')
+            return jsonify({'error': f'Unknown event: {event}'}), 400
+
+        if not human_email or '@' not in human_email:
+            return jsonify({'error': 'Invalid human_email'}), 400
+
+        if not (magic_link or portal_url):
+            return jsonify({'error': 'Missing magic_link or portal_url'}), 400
+
+        # Use portal_url as the link if magic_link not provided
+        link = magic_link or portal_url
+
+        # 2b. Derive purebrain.ai subdomain and rewrite magic link
+        # Pattern: {ainame}-{firstname}-{lastname}.purebrain.ai (hyphens, matches Witness container name)
+        # e.g. civ_name=greg, human_name=Lucas Neuteufel → greg-lucas-neuteufel.purebrain.ai
+        # Worker proxies {subdomain}.purebrain.ai → {subdomain}.ai-civ.com on Witness (2026-03-13)
+        import re as _re_url
+        from urllib.parse import urlparse as _urlparse
+        _pb_subdomain = ''
+        _pb_url = ''
+        if civ_name and human_name:
+            _ai_part = _re_url.sub(r'[^a-z0-9]', '', civ_name.lower())
+            _name_parts = human_name.lower().split()
+            _first_part = _re_url.sub(r'[^a-z0-9]', '', _name_parts[0]) if _name_parts else ''
+            _last_part = _re_url.sub(r'[^a-z0-9]', '', _name_parts[-1]) if len(_name_parts) > 1 else ''
+            # Build hyphenated subdomain matching Witness container format
+            if _ai_part and _first_part and _last_part:
+                _pb_subdomain = f'{_ai_part}-{_first_part}-{_last_part}'[:63]
+            elif _ai_part and _first_part:
+                _pb_subdomain = f'{_ai_part}-{_first_part}'[:63]
+            elif _ai_part:
+                _pb_subdomain = _ai_part[:63]
+            if _pb_subdomain and link:
+                _parsed = _urlparse(link)
+                _path = _parsed.path if _parsed.path and _parsed.path != '/' else ''
+                _query = f'?{_parsed.query}' if _parsed.query else ''
+                # Flat .purebrain.ai subdomain — Worker proxies to {subdomain}.ai-civ.com (2026-03-13)
+                _pb_url = f'https://{_pb_subdomain}.purebrain.ai{_path}{_query}'
+                if not _path and not _query:
+                    _pb_url = f'https://{_pb_subdomain}.purebrain.ai/'
+                logger.info(f'Magic link rewritten: {link} -> {_pb_url}')
+            elif _pb_subdomain:
+                _pb_url = f'https://{_pb_subdomain}.purebrain.ai/'
+
+        # Use purebrain.ai URL if available, original link as fallback
+        customer_link = _pb_url or link
+
+        # 3. Idempotency check
+        if _is_duplicate_birth(human_email, container):
+            logger.info(f'Webhook: duplicate birth for {human_email} / {container}, acking')
+            return jsonify({'ok': True, 'duplicate': True}), 200
+
+        # 4. Log completion
+        entry = {
+            'type': 'birth_complete',
+            'human_email': human_email,
+            'human_name': human_name,
+            'civ_name': civ_name,
+            'magic_link': customer_link,
+            'original_magic_link': link,
+            'purebrain_url': _pb_url,
+            'purebrain_subdomain': _pb_subdomain,
+            'container': container,
+            'received_at': datetime.now(timezone.utc).isoformat(),
+            'source_ip': request.remote_addr,
+        }
+        with _file_lock:
+            with open(BIRTH_COMPLETIONS_LOG, 'a') as f:
+                f.write(json.dumps(entry) + '\n')
+
+        # 5. Send magic link email via Brevo
+        _send_birth_complete_email(human_email, human_name, civ_name, customer_link)
+
+        # 6. Telegram notification to Jared
+        _notify_jared_birth_complete(human_email, human_name, civ_name, container, customer_link)
+
+        # 7. Provision *.purebrain.ai subdomain for the customer via nginx route
+        # Subdomain pattern: {ainame}-{firstname}-{lastname} (hyphens, matches Witness container format)
+        # e.g. civ_name=greg, human_name=Lucas Neuteufel → greg-lucas-neuteufel.purebrain.ai
+        # Note: Worker (purebrain-portal-proxy) handles the actual proxying for new subdomains.
+        # nginx subdomain_router also adds an entry for belt-and-suspenders routing via tunnel.
+        try:
+            if _SUBDOMAIN_ROUTER_AVAILABLE and civ_name and human_name:
+                import re as _re
+                _ai = _re.sub(r'[^a-z0-9]', '', civ_name.lower())
+                _np = human_name.lower().split()
+                _fn = _re.sub(r'[^a-z0-9]', '', _np[0]) if _np else ''
+                _ln = _re.sub(r'[^a-z0-9]', '', _np[-1]) if len(_np) > 1 else ''
+                if _ai and _fn and _ln:
+                    _subdomain = f'{_ai}-{_fn}-{_ln}'[:63]
+                elif _ai and _fn:
+                    _subdomain = f'{_ai}-{_fn}'[:63]
+                else:
+                    _subdomain = _ai[:63]
+                if _subdomain:
+                    _portal_url = link or f'https://{container}.ai-civ.com'
+                    _ok, _msg = _add_customer_route(
+                        _subdomain, _portal_url, container, human_email, human_name, civ_name
+                    )
+                    if _ok:
+                        logger.info(f'Subdomain provisioned: https://{_subdomain}.purebrain.ai → {_portal_url}')
+                    else:
+                        logger.warning(f'Subdomain provisioning failed for {_subdomain}: {_msg}')
+            elif not _SUBDOMAIN_ROUTER_AVAILABLE:
+                logger.warning('subdomain_router not available — skipping subdomain provisioning')
+        except Exception as _e:
+            logger.error(f'Subdomain provisioning error: {_e}')
+
+        logger.info(f'Birth complete: {human_name} ({human_email}) → {civ_name} at {container}')
+        return jsonify({'ok': True}), 200
+
+    # ── Governance Challenge Intake ───────────────────────────────────────────
+
+    GOVERNANCE_LOG = os.path.join(DEFAULT_LOG_DIR, 'governance_challenges.jsonl')
+
+    @app.route('/api/governance/challenge', methods=['POST', 'OPTIONS'])
+    def governance_challenge():
+        """
+        Receive governance challenge submissions from purebrain-site.vercel.app/governance.
+        Sends email to purebrain@puremarketing.ai (Aether) + notifies portal.
+        """
+        if request.method == 'OPTIONS':
+            return _cors_preflight()
+
+        data = request.get_json(silent=True) or {}
+        name = (data.get('name') or '').strip()
+        title = (data.get('title') or '').strip()
+        company = (data.get('company') or '').strip()
+        industry = (data.get('industry') or '').strip()
+        challenge = (data.get('challenge') or '').strip()
+        email = (data.get('email') or '').strip()
+
+        if not challenge:
+            return jsonify({'error': 'Challenge description is required'}), 400
+        if not email or '@' not in email:
+            return jsonify({'error': 'Valid email is required'}), 400
+
+        # 1. Log to JSONL
+        entry = {
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'name': name,
+            'title': title,
+            'company': company,
+            'industry': industry,
+            'challenge': challenge,
+            'email': email,
+            'ip': request.remote_addr,
+        }
+        try:
+            with _file_lock:
+                with open(GOVERNANCE_LOG, 'a') as f:
+                    f.write(json.dumps(entry) + '\n')
+        except Exception as e:
+            logger.error(f'Governance log write failed: {e}')
+
+        # 2. Send email via Google SMTP (shows in Sent folder)
+        email_body = (
+            f"<h2>New Governance Challenge</h2>"
+            f"<p><strong>From:</strong> {name or 'Anonymous'}"
+            f"{(' — ' + title) if title else ''}"
+            f"{(' at ' + company) if company else ''}</p>"
+            f"<p><strong>Industry:</strong> {industry or 'Not specified'}</p>"
+            f"<p><strong>Email:</strong> {email}</p>"
+            f"<hr/>"
+            f"<h3>Challenge:</h3>"
+            f"<p>{challenge}</p>"
+        )
+        ok, msg = _send_google_smtp(
+            to_list=['purebrain@puremarketing.ai'],
+            cc_list=['jared@puretechnology.nyc', 'parallax@agentmail.to'],
+            subject=f'Governance Challenge from {name or email} — {industry or "General"}',
+            html_body=email_body,
+            reply_to=email,
+        )
+        if ok:
+            logger.info(f'Governance challenge email sent via Google SMTP for {email}')
+        else:
+            logger.error(f'Google SMTP failed ({msg}), trying Brevo fallback')
+            # Brevo fallback
+            brevo_key = os.environ.get('BREVO_API_KEY', '')
+            if brevo_key:
+                try:
+                    http_requests.post(
+                        'https://api.brevo.com/v3/smtp/email',
+                        headers={'api-key': brevo_key, 'Content-Type': 'application/json'},
+                        json={
+                            'sender': {'email': 'purebrain@puremarketing.ai', 'name': 'PureBrain Governance'},
+                            'to': [{'email': 'purebrain@puremarketing.ai', 'name': 'Aether'}],
+                            'cc': [
+                                {'email': 'jared@puretechnology.nyc', 'name': 'Jared Sanborn'},
+                                {'email': 'parallax@agentmail.to', 'name': 'Parallax'},
+                            ],
+                            'replyTo': {'email': email, 'name': name or 'Challenger'},
+                            'subject': f'Governance Challenge from {name or email} — {industry or "General"}',
+                            'htmlContent': email_body,
+                        },
+                        timeout=10,
+                    )
+                except Exception as e:
+                    logger.error(f'Brevo fallback also failed: {e}')
+
+        # 3. Notify portal (write to portal-chat.jsonl so Aether sees it)
+        portal_chat = Path.home() / 'purebrain_portal' / 'portal-chat.jsonl'
+        portal_msg = {
+            'role': 'user',
+            'text': (
+                f"[GOVERNANCE CHALLENGE] from {name or 'Anonymous'} ({email})\n"
+                f"Title: {title or 'N/A'} | Company: {company or 'N/A'} | Industry: {industry or 'N/A'}\n\n"
+                f"{challenge}"
+            ),
+            'timestamp': int(time.time()),
+            'id': f'gov-challenge-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}',
+        }
+        try:
+            with portal_chat.open('a') as f:
+                f.write(json.dumps(portal_msg) + '\n')
+        except Exception as e:
+            logger.error(f'Portal chat write failed: {e}')
+
+        # 4. Notify Jared via Telegram
+        try:
+            tg_config = json.load(open('/home/jared/projects/AI-CIV/aether/config/telegram_config.json'))
+            token = tg_config.get('bot_token', '')
+            tg_msg = (
+                f"📋 GOVERNANCE CHALLENGE\n"
+                f"From: {name or 'Anonymous'} ({email})\n"
+                f"Company: {company or 'N/A'} | Industry: {industry or 'N/A'}\n\n"
+                f"{challenge[:500]}"
+            )
+            http_requests.post(
+                f'https://api.telegram.org/bot{token}/sendMessage',
+                data={'chat_id': '548906264', 'text': tg_msg},
+                timeout=5,
+            )
+        except Exception as e:
+            logger.warning(f'Telegram governance notify failed: {e}')
+
+        logger.info(f'Governance challenge received from {name} ({email})')
+        return jsonify({'ok': True, 'message': 'Challenge received. We will respond within 24 hours.'}), 200
+
+    # ── CF Pages Lead Capture Endpoints ──────────────────────────────────────
+
+    GUIDE_UNLOCKS_LOG = os.path.join(DEFAULT_LOG_DIR, 'purebrain_guide_unlocks.jsonl')
+    INVESTOR_LEADS_LOG = os.path.join(DEFAULT_LOG_DIR, 'purebrain_investor_leads.jsonl')
+
+    @app.route('/api/guide-unlock', methods=['POST', 'OPTIONS'])
+    def guide_unlock():
+        """
+        Capture email when user unlocks the AI Partnership Guide on CF Pages.
+
+        Expected JSON payload:
+        {
+            "email": "user@example.com",
+            "name": "optional",
+            "page_url": "optional",
+            "timestamp": "optional ISO-8601"
+        }
+        """
+        if request.method == 'OPTIONS':
+            return _cors_preflight()
+
+        if not request.is_json:
+            return jsonify({'error': 'Content-Type must be application/json'}), 400
+
+        try:
+            data = request.get_json()
+        except Exception:
+            return jsonify({'error': 'Invalid JSON'}), 400
+
+        if not data or not data.get('email') or '@' not in data.get('email', ''):
+            return jsonify({'error': 'Valid email is required'}), 400
+
+        entry = {
+            'type': 'guide_unlock',
+            'email': (data.get('email') or '').strip(),
+            'name': (data.get('name') or '').strip(),
+            'page_url': data.get('page_url', ''),
+            'client_timestamp': data.get('timestamp', ''),
+            'server_timestamp': datetime.now(timezone.utc).isoformat(),
+            'client_ip': request.remote_addr,
+        }
+
+        try:
+            with _file_lock:
+                with open(GUIDE_UNLOCKS_LOG, 'a') as f:
+                    f.write(json.dumps(entry) + '\n')
+            logger.info(f'Guide unlock logged: email={entry["email"]}')
+        except Exception as e:
+            logger.error(f'Failed to write guide unlock log: {e}')
+            return jsonify({'error': 'Failed to log guide unlock'}), 500
+
+        # Notify Jared via Telegram (non-blocking)
+        tg_msg = (
+            f"📖 GUIDE UNLOCK\n"
+            f"Email: {entry['email']}\n"
+            f"Name: {entry['name'] or 'N/A'}\n"
+            f"Page: {entry['page_url'] or 'N/A'}"
+        )
+        try:
+            tg_thread = threading.Thread(
+                target=_send_telegram_notification,
+                args=(tg_msg,),
+                daemon=True
+            )
+            tg_thread.start()
+        except Exception:
+            pass
+
+        return jsonify({
+            'success': True,
+            'message': 'Guide unlock recorded',
+            'server_timestamp': entry['server_timestamp']
+        })
+
+    @app.route('/api/investor-lead', methods=['POST', 'OPTIONS'])
+    def investor_lead():
+        """
+        Capture investor interest form submissions.
+
+        Expected JSON payload:
+        {
+            "email": "investor@example.com",
+            "name": "optional",
+            "company": "optional",
+            "interest": "optional",
+            "page_url": "optional",
+            "timestamp": "optional ISO-8601"
+        }
+        """
+        if request.method == 'OPTIONS':
+            return _cors_preflight()
+
+        if not request.is_json:
+            return jsonify({'error': 'Content-Type must be application/json'}), 400
+
+        try:
+            data = request.get_json()
+        except Exception:
+            return jsonify({'error': 'Invalid JSON'}), 400
+
+        if not data or not data.get('email') or '@' not in data.get('email', ''):
+            return jsonify({'error': 'Valid email is required'}), 400
+
+        entry = {
+            'type': 'investor_lead',
+            'email': (data.get('email') or '').strip(),
+            'name': (data.get('name') or '').strip(),
+            'company': (data.get('company') or '').strip(),
+            'interest': (data.get('interest') or '').strip(),
+            'page_url': data.get('page_url', ''),
+            'client_timestamp': data.get('timestamp', ''),
+            'server_timestamp': datetime.now(timezone.utc).isoformat(),
+            'client_ip': request.remote_addr,
+        }
+
+        try:
+            with _file_lock:
+                with open(INVESTOR_LEADS_LOG, 'a') as f:
+                    f.write(json.dumps(entry) + '\n')
+            logger.info(f'Investor lead logged: email={entry["email"]}, company={entry["company"]}')
+        except Exception as e:
+            logger.error(f'Failed to write investor lead log: {e}')
+            return jsonify({'error': 'Failed to log investor lead'}), 500
+
+        # Notify Jared via Telegram (non-blocking)
+        tg_msg = (
+            f"💼 INVESTOR LEAD\n"
+            f"Email: {entry['email']}\n"
+            f"Name: {entry['name'] or 'N/A'}\n"
+            f"Company: {entry['company'] or 'N/A'}\n"
+            f"Interest: {entry['interest'] or 'N/A'}\n"
+            f"Page: {entry['page_url'] or 'N/A'}"
+        )
+        try:
+            tg_thread = threading.Thread(
+                target=_send_telegram_notification,
+                args=(tg_msg,),
+                daemon=True
+            )
+            tg_thread.start()
+        except Exception:
+            pass
+
+        return jsonify({
+            'success': True,
+            'message': 'Investor interest recorded',
+            'server_timestamp': entry['server_timestamp']
+        })
+
+    @app.route('/api/zoom/callback', methods=['GET'])
+    def zoom_callback():
+        """
+        Zoom OAuth callback endpoint.
+
+        Receives ?code=XXXX from Zoom after user authorizes the app.
+        Exchanges the code for access_token + refresh_token.
+        Saves tokens to .credentials/zoom_tokens.json.
+        """
+        code = request.args.get('code')
+        error = request.args.get('error')
+
+        if error:
+            logger.error(f'Zoom OAuth error: {error}')
+            return f"""<!DOCTYPE html>
+<html><head><title>Zoom Auth Error</title></head>
+<body style="font-family:sans-serif;text-align:center;padding:60px;">
+  <h2 style="color:#e74c3c;">Authorization Failed</h2>
+  <p>Zoom returned error: <strong>{error}</strong></p>
+</body></html>""", 400
+
+        if not code:
+            return 'Missing code parameter', 400
+
+        client_id = os.environ.get('ZOOM_CLIENT_ID', '')
+        client_secret = os.environ.get('ZOOM_CLIENT_SECRET', '')
+        redirect_uri = 'https://89.167.19.20:8443/api/zoom/callback'
+
+        if not client_id or not client_secret:
+            logger.error('ZOOM_CLIENT_ID or ZOOM_CLIENT_SECRET not set in environment')
+            return 'Server misconfiguration: Zoom credentials missing', 500
+
+        # Exchange code for tokens
+        token_url = 'https://zoom.us/oauth/token'
+        credentials = base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode()
+        headers = {
+            'Authorization': f'Basic {credentials}',
+            'Content-Type': 'application/x-www-form-urlencoded',
+        }
+        data = {
+            'grant_type': 'authorization_code',
+            'code': code,
+            'redirect_uri': redirect_uri,
+        }
+
+        try:
+            resp = http_requests.post(token_url, headers=headers, data=data, timeout=15)
+            resp.raise_for_status()
+            tokens = resp.json()
+        except Exception as e:
+            logger.error(f'Zoom token exchange failed: {e}')
+            return f"""<!DOCTYPE html>
+<html><head><title>Zoom Auth Error</title></head>
+<body style="font-family:sans-serif;text-align:center;padding:60px;">
+  <h2 style="color:#e74c3c;">Token Exchange Failed</h2>
+  <p>{str(e)}</p>
+</body></html>""", 500
+
+        # Save tokens
+        tokens_path = Path('/home/jared/projects/AI-CIV/aether/.credentials/zoom_tokens.json')
+        tokens_path.parent.mkdir(parents=True, exist_ok=True)
+        tokens['saved_at'] = datetime.now(timezone.utc).isoformat()
+        tokens['client_id'] = client_id
+        with open(tokens_path, 'w') as f:
+            json.dump(tokens, f, indent=2)
+
+        logger.info(f'Zoom tokens saved to {tokens_path}')
+
+        # Notify Jared
+        tg_msg = (
+            f"Zoom OAuth COMPLETE\n"
+            f"access_token saved to .credentials/zoom_tokens.json\n"
+            f"token_type: {tokens.get('token_type')}\n"
+            f"expires_in: {tokens.get('expires_in')}s\n"
+            f"scope: {tokens.get('scope', 'N/A')}"
+        )
+        try:
+            threading.Thread(target=_send_telegram_notification, args=(tg_msg,), daemon=True).start()
+        except Exception:
+            pass
+
+        return """<!DOCTYPE html>
+<html><head><title>Zoom Authorization Successful</title></head>
+<body style="font-family:sans-serif;text-align:center;padding:60px;background:#0d1117;color:#e6edf3;">
+  <h2 style="color:#3fb950;">Authorization Successful</h2>
+  <p>Zoom tokens have been saved. You can close this window.</p>
+</body></html>"""
+
+
+    # ── Magic Link Lookup ────────────────────────────────────────────────────
+    # Reads from .magic-links.json populated by agentmail_monitor.py
+    # Chatbox JS polls this every 5s after flow completion
+
+    MAGIC_LINKS_FILE = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        '.magic-links.json'
+    )
+    _magic_links_file_lock = __import__('threading').Lock()
+
+    def _load_magic_links() -> dict:
+        """Load magic links store. Thread-safe."""
+        with _magic_links_file_lock:
+            try:
+                if os.path.exists(MAGIC_LINKS_FILE):
+                    with open(MAGIC_LINKS_FILE) as _f:
+                        return __import__('json').load(_f)
+            except Exception as _e:
+                logger.warning(f'Failed to load magic links: {_e}')
+            return {}
+
+    @app.route('/api/magic-link/<uuid_val>', methods=['GET', 'OPTIONS'])
+    def magic_link_lookup(uuid_val):
+        """
+        Poll endpoint: returns magic link status for a given session UUID.
+        Called by chatbox JS every 5 seconds after flow completion.
+
+        Returns:
+          {"status": "pending"}                     — link not yet received
+          {"status": "ready", "magic_link": "...",
+           "ai_name": "...", "human_name": "..."}   — link received from Witness
+        """
+        if request.method == 'OPTIONS':
+            return _cors_preflight()
+
+        # Validate UUID format (security: prevent path traversal / injection)
+        import re as _re_uuid
+        # Accept standard UUID format OR email-based fallback keys
+        uuid_val_clean = uuid_val.strip()
+        if not uuid_val_clean or len(uuid_val_clean) > 128:
+            return jsonify({'error': 'Invalid UUID'}), 400
+
+        # Standard UUID pattern or email-fallback (email:...) or ts-fallback
+        is_valid = bool(_re_uuid.match(
+            r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+            uuid_val_clean, _re_uuid.IGNORECASE
+        ))
+        if not is_valid:
+            return jsonify({'error': 'Invalid UUID format'}), 400
+
+        links = _load_magic_links()
+
+        if uuid_val_clean not in links:
+            return jsonify({'status': 'pending'}), 200
+
+        entry = links[uuid_val_clean]
+        return jsonify({
+            'status': 'ready',
+            'magic_link': entry.get('magic_link', ''),
+            'ai_name': entry.get('ai_name', ''),
+            'human_name': entry.get('human_name', ''),
+            'container': entry.get('container', ''),
+            'received_at': entry.get('received_at', ''),
+        }), 200
+
+    @app.route('/api/stats', methods=['GET'])
+    def stats():
+        """Return conversation statistics."""
+        log_file = app.config['LOG_FILE']
+
+        # Count conversations
+        conversation_count = 0
+        file_size_bytes = 0
+
+        if os.path.exists(log_file):
+            file_size_bytes = os.path.getsize(log_file)
+            try:
+                with open(log_file, 'r') as f:
+                    for line in f:
+                        if line.strip():
+                            conversation_count += 1
+            except Exception as e:
+                logger.error(f'Error reading stats: {e}')
+
+        logger.info(f'Stats requested: {conversation_count} conversations')
+
+        return jsonify({
+            'conversation_count': conversation_count,
+            'file_size_bytes': file_size_bytes,
+            'log_file': log_file,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        })
+
+    @app.errorhandler(400)
+    def bad_request(e):
+        """Handle 400 errors."""
+        return jsonify({'error': str(e.description)}), 400
+
+    @app.errorhandler(500)
+    def internal_error(e):
+        """Handle 500 errors."""
+        logger.error(f'Internal error: {e}')
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+def main():
+    """Run the Flask server with SSL support."""
+    # Get port from environment or use default
+    port = int(os.environ.get('PUREBRAIN_LOG_PORT', 8443))
+    host = os.environ.get('PUREBRAIN_LOG_HOST', '0.0.0.0')
+
+    # Check if SSL should be disabled (for testing)
+    disable_ssl = os.environ.get('PUREBRAIN_DISABLE_SSL', '').lower() in ('true', '1', 'yes')
+
+    logger.info(f'Starting Pure Brain Log Server on {host}:{port}')
+    logger.info(f'Log directory: {DEFAULT_LOG_DIR}')
+    logger.info(f'Log file: {os.path.join(DEFAULT_LOG_DIR, DEFAULT_LOG_FILE)}')
+
+    app = create_app()
+
+    if disable_ssl:
+        logger.info('SSL DISABLED - Running in HTTP mode')
+        app.run(
+            host=host,
+            port=port,
+            threaded=True,
+            debug=False
+        )
+    else:
+        # Generate SSL certificate if needed
+        if not generate_self_signed_cert():
+            logger.error('Failed to generate SSL certificate. Exiting.')
+            return
+
+        logger.info(f'SSL enabled - Certificate: {SSL_CERT_FILE}')
+        logger.info(f'HTTPS endpoint: https://{host}:{port}/api/log-conversation')
+
+        # Create SSL context
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_context.load_cert_chain(SSL_CERT_FILE, SSL_KEY_FILE)
+
+        # Run with SSL
+        app.run(
+            host=host,
+            port=port,
+            threaded=True,
+            debug=False,
+            ssl_context=ssl_context
+        )
+
+
+if __name__ == '__main__':
+    main()

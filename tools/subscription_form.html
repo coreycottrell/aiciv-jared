@@ -1,0 +1,592 @@
+<!--
+  The Neural Feed - Newsletter Subscription Form
+  PureBrain.ai | Brand: Blue #2a93c1, Orange #f1420b
+  Dark theme. Designed for injection into:
+    - Blog page (purebrain.ai/blog, page ID 319)
+    - Blog post CTA sections
+
+  BACKEND OPTIONS (configure before deploying):
+  Option A: Brevo WordPress plugin -> replace <form> action with plugin shortcode
+  Option B: Brevo hosted form embed -> replace entire card with sibforms iframe
+  Option C: WordPress AJAX proxy (default below) -> add Brevo API key server-side
+
+  Anchor: id="neural-feed-subscribe" (used by blog post CTA links)
+-->
+
+<!-- ====== NEURAL FEED SUBSCRIBE SECTION ====== -->
+<section id="neural-feed-subscribe" class="nf-section" aria-label="Subscribe to The Neural Feed">
+
+<style>
+/* ============================================================
+   THE NEURAL FEED - SUBSCRIPTION FORM STYLES
+   PureBrain.ai | Full dark theme
+   ============================================================ */
+
+.nf-section {
+    width: 100%;
+    padding: 64px 20px;
+    box-sizing: border-box;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    position: relative;
+    z-index: 1;
+}
+
+/* ---- Card container ---- */
+.nf-card {
+    max-width: 680px;
+    margin: 0 auto;
+    background: linear-gradient(135deg, rgba(10, 10, 20, 0.95) 0%, rgba(15, 25, 45, 0.95) 100%);
+    border-radius: 20px;
+    padding: 48px 40px;
+    box-sizing: border-box;
+    position: relative;
+    overflow: hidden;
+
+    /* Gradient border via box-shadow + pseudo border trick */
+    border: 1px solid transparent;
+    background-clip: padding-box;
+    box-shadow:
+        0 0 0 1px rgba(42, 147, 193, 0.3),
+        0 25px 60px rgba(0, 0, 0, 0.6),
+        0 0 80px rgba(42, 147, 193, 0.06) inset;
+}
+
+/* Subtle glow orbs inside card */
+.nf-card::before {
+    content: '';
+    position: absolute;
+    top: -60px;
+    right: -60px;
+    width: 220px;
+    height: 220px;
+    background: radial-gradient(circle, rgba(241, 66, 11, 0.12) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.nf-card::after {
+    content: '';
+    position: absolute;
+    bottom: -80px;
+    left: -60px;
+    width: 280px;
+    height: 280px;
+    background: radial-gradient(circle, rgba(42, 147, 193, 0.10) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* All card children sit above orbs */
+.nf-card > * {
+    position: relative;
+    z-index: 1;
+}
+
+/* ---- Badge ---- */
+.nf-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(42, 147, 193, 0.12);
+    border: 1px solid rgba(42, 147, 193, 0.35);
+    border-radius: 100px;
+    padding: 6px 16px;
+    margin-bottom: 24px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: #2a93c1;
+}
+
+.nf-badge-dot {
+    width: 7px;
+    height: 7px;
+    background: #f1420b;
+    border-radius: 50%;
+    animation: nf-pulse 2s ease-in-out infinite;
+}
+
+@keyframes nf-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+/* ---- Heading ---- */
+.nf-heading {
+    font-family: 'Oswald', sans-serif;
+    font-size: 2rem;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0 0 6px 0;
+    line-height: 1.2;
+    letter-spacing: 0.5px;
+}
+
+.nf-heading span {
+    background: linear-gradient(135deg, #2a93c1 0%, #4ab3e1 50%, #f1420b 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* ---- Subtitle ---- */
+.nf-subtitle {
+    font-size: 0.97rem;
+    color: rgba(255, 255, 255, 0.62);
+    margin: 0 0 32px 0;
+    line-height: 1.65;
+    max-width: 520px;
+}
+
+/* ---- Trust signals ---- */
+.nf-trust {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 32px;
+}
+
+.nf-trust-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.82rem;
+    color: rgba(255, 255, 255, 0.50);
+    font-weight: 500;
+}
+
+.nf-trust-icon {
+    width: 16px;
+    height: 16px;
+    color: #2a93c1;
+    flex-shrink: 0;
+}
+
+/* ---- Form ---- */
+.nf-form {
+    display: flex;
+    gap: 12px;
+    align-items: stretch;
+    flex-wrap: wrap;
+}
+
+.nf-input-wrap {
+    flex: 1;
+    min-width: 220px;
+    position: relative;
+}
+
+.nf-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(42, 147, 193, 0.25);
+    border-radius: 10px;
+    padding: 14px 18px 14px 46px;
+    font-size: 0.97rem;
+    color: #ffffff;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    height: 52px;
+}
+
+.nf-input::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+}
+
+.nf-input:focus {
+    border-color: #2a93c1;
+    background: rgba(42, 147, 193, 0.08);
+    box-shadow: 0 0 0 3px rgba(42, 147, 193, 0.15);
+}
+
+.nf-input.nf-error-state {
+    border-color: rgba(241, 66, 11, 0.6);
+    box-shadow: 0 0 0 3px rgba(241, 66, 11, 0.12);
+}
+
+/* Email icon inside input */
+.nf-input-icon {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    color: rgba(42, 147, 193, 0.6);
+    pointer-events: none;
+}
+
+/* ---- Submit button ---- */
+.nf-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 14px 28px;
+    background: linear-gradient(135deg, #f1420b 0%, #d13608 50%, #f1420b 100%);
+    background-size: 200% 100%;
+    background-position: 0% 0%;
+    color: #ffffff;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 700;
+    font-size: 0.97rem;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+    height: 52px;
+    transition: background-position 0.4s ease, transform 0.15s ease, box-shadow 0.2s ease;
+    box-shadow: 0 6px 20px rgba(241, 66, 11, 0.35);
+    min-width: 160px;
+}
+
+.nf-btn:hover:not(:disabled) {
+    background-position: 100% 0%;
+    transform: translateY(-1px);
+    box-shadow: 0 10px 28px rgba(241, 66, 11, 0.45);
+}
+
+.nf-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.nf-btn:disabled {
+    opacity: 0.75;
+    cursor: not-allowed;
+}
+
+/* Loading spinner in button */
+.nf-spinner {
+    display: none;
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255,255,255,0.35);
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: nf-spin 0.7s linear infinite;
+}
+
+@keyframes nf-spin {
+    to { transform: rotate(360deg); }
+}
+
+.nf-btn.nf-loading .nf-btn-text { display: none; }
+.nf-btn.nf-loading .nf-spinner { display: block; }
+
+/* ---- Message states ---- */
+.nf-message {
+    display: none;
+    margin-top: 16px;
+    padding: 14px 18px;
+    border-radius: 10px;
+    font-size: 0.92rem;
+    line-height: 1.5;
+    font-weight: 500;
+}
+
+.nf-message.nf-success {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: rgba(42, 147, 193, 0.12);
+    border: 1px solid rgba(42, 147, 193, 0.35);
+    color: #7dd3f0;
+}
+
+.nf-message.nf-failure {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: rgba(241, 66, 11, 0.10);
+    border: 1px solid rgba(241, 66, 11, 0.35);
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.nf-message svg {
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+/* ---- Privacy note ---- */
+.nf-privacy {
+    margin-top: 14px;
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.32);
+    text-align: center;
+    line-height: 1.5;
+}
+
+.nf-privacy a {
+    color: rgba(42, 147, 193, 0.65) !important;
+    text-decoration: none;
+}
+
+.nf-privacy a:hover {
+    color: #2a93c1 !important;
+}
+
+/* ---- Divider (used on blog page above form) ---- */
+.nf-divider {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 56px 0 48px;
+}
+
+.nf-divider-line {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(42, 147, 193, 0.3), transparent);
+}
+
+.nf-divider-diamond {
+    font-size: 0.7rem;
+    color: #2a93c1;
+    letter-spacing: 4px;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 600px) {
+    .nf-card {
+        padding: 32px 20px;
+    }
+
+    .nf-heading {
+        font-size: 1.5rem;
+    }
+
+    .nf-form {
+        flex-direction: column;
+    }
+
+    .nf-input-wrap {
+        min-width: 100%;
+    }
+
+    .nf-btn {
+        width: 100%;
+    }
+
+    .nf-trust {
+        gap: 12px;
+    }
+}
+</style>
+
+<!--
+  ====================================================================
+  NEURAL FEED DIVIDER (optional - use on blog page between posts list
+  and subscribe section)
+  ====================================================================
+-->
+<div class="nf-divider" aria-hidden="true">
+    <div class="nf-divider-line"></div>
+    <span class="nf-divider-diamond">&#9670; &#9670; &#9670;</span>
+    <div class="nf-divider-line"></div>
+</div>
+
+<!-- ====== CARD ====== -->
+<div class="nf-card" role="region" aria-label="Newsletter signup">
+
+    <!-- Badge -->
+    <div class="nf-badge">
+        <span class="nf-badge-dot" aria-hidden="true"></span>
+        Weekly Intelligence
+    </div>
+
+    <!-- Heading -->
+    <h2 class="nf-heading">Join <span>The Neural Feed</span></h2>
+
+    <!-- Subtitle -->
+    <p class="nf-subtitle">
+        Weekly intelligence on AI partnership, practical implementation,
+        and what is actually working in the field.
+    </p>
+
+    <!-- Trust signals -->
+    <div class="nf-trust" aria-label="Newsletter benefits">
+        <div class="nf-trust-item">
+            <svg class="nf-trust-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+            </svg>
+            <span>Every Friday</span>
+        </div>
+        <div class="nf-trust-item">
+            <svg class="nf-trust-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+            </svg>
+            <span>No fluff. No hype.</span>
+        </div>
+        <div class="nf-trust-item">
+            <svg class="nf-trust-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/>
+            </svg>
+            <span>Unsubscribe anytime</span>
+        </div>
+    </div>
+
+    <!-- Form - Direct Brevo API (CORS confirmed from purebrain.ai) -->
+    <form
+        id="nf-subscribe-form"
+        class="nf-form"
+        novalidate
+        aria-label="Subscribe to The Neural Feed newsletter"
+    >
+        <div class="nf-input-wrap">
+            <!-- Email icon -->
+            <svg class="nf-input-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/>
+                <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/>
+            </svg>
+            <label for="nf-email" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);">Email address</label>
+            <input
+                type="email"
+                id="nf-email"
+                name="nf_email"
+                class="nf-input"
+                placeholder="your@email.com"
+                autocomplete="email"
+                required
+                aria-required="true"
+                aria-describedby="nf-msg"
+            >
+        </div>
+
+        <button type="submit" class="nf-btn" id="nf-submit-btn" aria-live="polite">
+            <span class="nf-btn-text">Subscribe Free</span>
+            <div class="nf-spinner" aria-label="Submitting..." role="status"></div>
+        </button>
+    </form>
+
+    <!-- Status messages (populated by JS) -->
+    <div id="nf-msg" class="nf-message" role="alert" aria-live="polite"></div>
+
+    <!-- Privacy -->
+    <p class="nf-privacy">
+        No spam. Unsubscribe with one click at any time.
+        By subscribing you agree to our
+        <a href="https://purebrain.ai/privacy-policy/" rel="noopener">Privacy Policy</a>.
+    </p>
+
+</div>
+<!-- ====== END CARD ====== -->
+
+</section>
+<!-- ====== END NEURAL FEED SUBSCRIBE SECTION ====== -->
+
+<script>
+(function() {
+    'use strict';
+
+    var BREVO_API_KEY = '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';
+    var BREVO_LIST_ID = 3;
+
+    var form   = document.getElementById('nf-subscribe-form');
+    var input  = document.getElementById('nf-email');
+    var btn    = document.getElementById('nf-submit-btn');
+    var msgEl  = document.getElementById('nf-msg');
+
+    if (!form) return;
+
+    function showSuccess(msg) {
+        msgEl.className = 'nf-message nf-success';
+        msgEl.innerHTML =
+            '<svg width="20" height="20" viewBox="0 0 20 20" fill="#2a93c1" aria-hidden="true">' +
+            '<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>' +
+            '<span>' + msg + '</span>';
+    }
+
+    function showError(msg) {
+        msgEl.className = 'nf-message nf-failure';
+        msgEl.innerHTML =
+            '<svg width="20" height="20" viewBox="0 0 20 20" fill="#f1420b" aria-hidden="true">' +
+            '<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>' +
+            '<span>' + msg + '</span>';
+    }
+
+    function setLoading(on) {
+        btn.disabled = on;
+        if (on) {
+            btn.classList.add('nf-loading');
+            btn.setAttribute('aria-busy', 'true');
+        } else {
+            btn.classList.remove('nf-loading');
+            btn.setAttribute('aria-busy', 'false');
+        }
+    }
+
+    function isValidEmail(email) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    }
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        var email = (input.value || '').trim();
+
+        if (!email || !isValidEmail(email)) {
+            input.classList.add('nf-error-state');
+            input.focus();
+            showError('Please enter a valid email address.');
+            return;
+        }
+        input.classList.remove('nf-error-state');
+        msgEl.className = 'nf-message';
+
+        setLoading(true);
+
+        fetch('https://api.brevo.com/v3/contacts', {
+            method: 'POST',
+            headers: {
+                'api-key': BREVO_API_KEY,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                email: email,
+                listIds: [BREVO_LIST_ID],
+                updateEnabled: true,
+                attributes: { SOURCE: 'purebrain-blog' }
+            })
+        })
+        .then(function(resp) {
+            setLoading(false);
+            if (resp.status === 201) {
+                form.style.display = 'none';
+                showSuccess("You're in! Look for your first issue this Friday.");
+            } else if (resp.status === 204) {
+                form.style.display = 'none';
+                showSuccess("You're already subscribed! We'll keep the insights coming.");
+            } else if (resp.status === 400) {
+                return resp.json().then(function(data) {
+                    if (data.message && data.message.indexOf('already') !== -1) {
+                        form.style.display = 'none';
+                        showSuccess("You're already subscribed! We'll keep the insights coming.");
+                    } else {
+                        showError(data.message || 'Invalid request. Please check your email.');
+                    }
+                });
+            } else {
+                showError('Something went wrong (code ' + resp.status + '). Please try again.');
+            }
+        })
+        .catch(function(err) {
+            setLoading(false);
+            console.error('[Neural Feed]', err);
+            showError('Could not connect. Please check your connection and try again.');
+        });
+    });
+
+    input.addEventListener('input', function() {
+        if (input.classList.contains('nf-error-state')) {
+            input.classList.remove('nf-error-state');
+            msgEl.className = 'nf-message';
+        }
+    });
+
+})();
+</script>

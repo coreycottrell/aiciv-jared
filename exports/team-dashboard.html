@@ -1,0 +1,1863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pure Technology — Team Task Dashboard</title>
+  <style>
+    /* =====================================================
+       RESET & BASE
+    ===================================================== */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --pb-blue: #2a93c1;
+      --pb-blue-light: #3db8f5;
+      --pb-blue-dark: #1a6a8f;
+      --pb-orange: #f1420b;
+      --pb-orange-light: #ff6a3d;
+      --pb-green: #22c55e;
+      --pb-yellow: #f59e0b;
+      --pb-purple: #8b5cf6;
+      --pb-bg: #0a0e1a;
+      --pb-surface: #111827;
+      --pb-surface-2: #1a2535;
+      --pb-surface-3: #1f2d40;
+      --pb-border: rgba(42, 147, 193, 0.15);
+      --pb-border-hover: rgba(42, 147, 193, 0.40);
+      --pb-text: #e6edf3;
+      --pb-text-muted: #7d8fa3;
+      --pb-text-dim: #4a5a6e;
+      --pb-radius: 12px;
+      --pb-radius-sm: 8px;
+      --pb-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      --pb-glow-blue: 0 0 24px rgba(42, 147, 193, 0.2);
+      --pb-glow-orange: 0 0 24px rgba(241, 66, 11, 0.2);
+      --transition: 0.22s ease;
+    }
+
+    html {
+      font-family: -apple-system, 'Inter', 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--pb-text);
+      background: var(--pb-bg);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      min-height: 100vh;
+      background: var(--pb-bg);
+    }
+
+    /* =====================================================
+       LOGIN SCREEN
+    ===================================================== */
+    #login-screen {
+      position: fixed;
+      inset: 0;
+      background: var(--pb-bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+
+    .login-card {
+      background: var(--pb-surface);
+      border: 1px solid var(--pb-border);
+      border-radius: 20px;
+      padding: 48px 40px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: var(--pb-shadow), var(--pb-glow-blue);
+      text-align: center;
+    }
+
+    .login-logo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 32px;
+    }
+
+    .login-logo-icon {
+      width: 44px;
+      height: 44px;
+    }
+
+    .login-logo-text {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .login-logo-text .blue { color: var(--pb-blue); }
+    .login-logo-text .orange { color: var(--pb-orange); }
+
+    .login-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--pb-text);
+      margin-bottom: 6px;
+    }
+
+    .login-subtitle {
+      font-size: 13px;
+      color: var(--pb-text-muted);
+      margin-bottom: 32px;
+    }
+
+    .login-form-group {
+      margin-bottom: 16px;
+      text-align: left;
+    }
+
+    .login-form-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--pb-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+
+    .login-form-group input,
+    .login-form-group select {
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--pb-surface-2);
+      border: 1px solid var(--pb-border);
+      border-radius: var(--pb-radius-sm);
+      color: var(--pb-text);
+      font-size: 14px;
+      outline: none;
+      transition: var(--transition);
+    }
+
+    .login-form-group input:focus,
+    .login-form-group select:focus {
+      border-color: var(--pb-blue);
+      box-shadow: 0 0 0 3px rgba(42, 147, 193, 0.12);
+    }
+
+    .login-form-group select option {
+      background: var(--pb-surface-2);
+    }
+
+    .login-btn {
+      width: 100%;
+      padding: 14px;
+      background: var(--pb-blue);
+      color: #fff;
+      border: none;
+      border-radius: var(--pb-radius-sm);
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      margin-top: 8px;
+    }
+
+    .login-btn:hover {
+      background: var(--pb-blue-light);
+      box-shadow: var(--pb-glow-blue);
+    }
+
+    .login-error {
+      background: rgba(241, 66, 11, 0.12);
+      border: 1px solid rgba(241, 66, 11, 0.3);
+      color: #ff8066;
+      border-radius: var(--pb-radius-sm);
+      padding: 10px 14px;
+      font-size: 13px;
+      margin-top: 12px;
+      display: none;
+    }
+
+    .login-error.visible {
+      display: block;
+    }
+
+    /* =====================================================
+       MAIN APP (hidden until login)
+    ===================================================== */
+    #app {
+      display: none;
+      min-height: 100vh;
+    }
+
+    #app.visible {
+      display: block;
+    }
+
+    /* =====================================================
+       TOP NAV
+    ===================================================== */
+    .topnav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10, 14, 26, 0.95);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--pb-border);
+      padding: 0 24px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .topnav-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .topnav-logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .topnav-logo svg {
+      width: 32px;
+      height: 32px;
+    }
+
+    .topnav-brand {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .topnav-brand .blue { color: var(--pb-blue); }
+    .topnav-brand .orange { color: var(--pb-orange); }
+
+    .topnav-divider {
+      width: 1px;
+      height: 20px;
+      background: var(--pb-border);
+    }
+
+    .topnav-page-title {
+      font-size: 14px;
+      color: var(--pb-text-muted);
+      font-weight: 500;
+    }
+
+    .topnav-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .user-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: var(--pb-surface-2);
+      border: 1px solid var(--pb-border);
+      border-radius: 20px;
+      font-size: 13px;
+    }
+
+    .user-avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--pb-blue), var(--pb-orange));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .logout-btn {
+      padding: 6px 14px;
+      background: transparent;
+      border: 1px solid var(--pb-border);
+      border-radius: 6px;
+      color: var(--pb-text-muted);
+      font-size: 12px;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .logout-btn:hover {
+      border-color: var(--pb-orange);
+      color: var(--pb-orange);
+    }
+
+    /* =====================================================
+       MAIN LAYOUT
+    ===================================================== */
+    .main-container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+
+    /* =====================================================
+       PAGE HEADER
+    ===================================================== */
+    .page-header {
+      margin-bottom: 32px;
+    }
+
+    .page-header h1 {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--pb-text);
+      margin-bottom: 6px;
+    }
+
+    .page-header p {
+      font-size: 14px;
+      color: var(--pb-text-muted);
+    }
+
+    /* =====================================================
+       STATS ROW
+    ===================================================== */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .stat-card {
+      background: var(--pb-surface);
+      border: 1px solid var(--pb-border);
+      border-radius: var(--pb-radius);
+      padding: 20px;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--pb-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--pb-text);
+    }
+
+    .stat-value.blue { color: var(--pb-blue); }
+    .stat-value.orange { color: var(--pb-orange); }
+    .stat-value.green { color: var(--pb-green); }
+    .stat-value.yellow { color: var(--pb-yellow); }
+
+    /* =====================================================
+       FILTER BAR
+    ===================================================== */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .filter-btn {
+      padding: 7px 16px;
+      border-radius: 20px;
+      border: 1px solid var(--pb-border);
+      background: transparent;
+      color: var(--pb-text-muted);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .filter-btn:hover {
+      border-color: var(--pb-blue);
+      color: var(--pb-blue);
+    }
+
+    .filter-btn.active {
+      background: var(--pb-blue);
+      border-color: var(--pb-blue);
+      color: #fff;
+    }
+
+    .filter-search {
+      margin-left: auto;
+      padding: 7px 14px;
+      background: var(--pb-surface);
+      border: 1px solid var(--pb-border);
+      border-radius: var(--pb-radius-sm);
+      color: var(--pb-text);
+      font-size: 13px;
+      outline: none;
+      min-width: 200px;
+      transition: var(--transition);
+    }
+
+    .filter-search:focus {
+      border-color: var(--pb-blue);
+    }
+
+    /* =====================================================
+       SECTION HEADER
+    ===================================================== */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--pb-text);
+    }
+
+    .section-count {
+      font-size: 12px;
+      color: var(--pb-text-muted);
+      background: var(--pb-surface-2);
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+
+    /* =====================================================
+       TASK GRID
+    ===================================================== */
+    .task-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+
+    .task-card {
+      background: var(--pb-surface);
+      border: 1px solid var(--pb-border);
+      border-radius: var(--pb-radius);
+      padding: 20px;
+      transition: var(--transition);
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .task-card::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: var(--card-accent, var(--pb-blue));
+      border-radius: 0 2px 2px 0;
+    }
+
+    .task-card:hover {
+      border-color: var(--pb-border-hover);
+      box-shadow: var(--pb-glow-blue);
+      transform: translateY(-1px);
+    }
+
+    .task-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .task-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--pb-text);
+      line-height: 1.4;
+      flex: 1;
+    }
+
+    .task-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    /* Delegation badge */
+    .delegation-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+    }
+
+    .delegation-A {
+      background: rgba(42, 147, 193, 0.15);
+      color: var(--pb-blue);
+      border: 1px solid rgba(42, 147, 193, 0.3);
+    }
+
+    .delegation-B {
+      background: rgba(241, 66, 11, 0.12);
+      color: var(--pb-orange);
+      border: 1px solid rgba(241, 66, 11, 0.3);
+    }
+
+    .delegation-C {
+      background: rgba(139, 92, 246, 0.12);
+      color: var(--pb-purple);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+    }
+
+    /* Priority badge */
+    .priority-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 9px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .priority-high {
+      background: rgba(241, 66, 11, 0.12);
+      color: #ff8066;
+    }
+
+    .priority-medium {
+      background: rgba(245, 158, 11, 0.12);
+      color: var(--pb-yellow);
+    }
+
+    .priority-low {
+      background: rgba(34, 197, 94, 0.12);
+      color: var(--pb-green);
+    }
+
+    /* Status badge */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .status-pending { background: rgba(125, 143, 163, 0.15); color: var(--pb-text-muted); }
+    .status-pending .status-dot { background: var(--pb-text-muted); }
+
+    .status-in-progress { background: rgba(42, 147, 193, 0.12); color: var(--pb-blue); }
+    .status-in-progress .status-dot { background: var(--pb-blue); animation: pulse 1.5s infinite; }
+
+    .status-complete { background: rgba(34, 197, 94, 0.12); color: var(--pb-green); }
+    .status-complete .status-dot { background: var(--pb-green); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .task-description {
+      font-size: 13px;
+      color: var(--pb-text-muted);
+      line-height: 1.6;
+      margin-bottom: 14px;
+    }
+
+    .task-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--pb-border);
+    }
+
+    .task-deadline {
+      font-size: 12px;
+      color: var(--pb-text-dim);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .task-deadline.overdue { color: var(--pb-orange); }
+    .task-deadline.soon { color: var(--pb-yellow); }
+
+    .task-files {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .file-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      background: var(--pb-surface-2);
+      border: 1px solid var(--pb-border);
+      border-radius: 6px;
+      font-size: 11px;
+      color: var(--pb-blue);
+      text-decoration: none;
+      transition: var(--transition);
+    }
+
+    .file-chip:hover {
+      border-color: var(--pb-blue);
+      background: rgba(42, 147, 193, 0.08);
+    }
+
+    /* =====================================================
+       STATUS CHANGE BUTTON
+    ===================================================== */
+    .status-change-btn {
+      padding: 5px 12px;
+      background: transparent;
+      border: 1px solid var(--pb-border);
+      border-radius: 6px;
+      color: var(--pb-text-muted);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--transition);
+      white-space: nowrap;
+    }
+
+    .status-change-btn:hover {
+      border-color: var(--pb-blue);
+      color: var(--pb-blue);
+      background: rgba(42, 147, 193, 0.05);
+    }
+
+    /* =====================================================
+       EMPTY STATE
+    ===================================================== */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--pb-text-muted);
+    }
+
+    .empty-state svg {
+      width: 48px;
+      height: 48px;
+      opacity: 0.3;
+      margin-bottom: 16px;
+    }
+
+    .empty-state h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--pb-text-dim);
+    }
+
+    .empty-state p {
+      font-size: 13px;
+    }
+
+    /* =====================================================
+       ADMIN PANEL
+    ===================================================== */
+    .admin-panel {
+      display: none;
+      margin-bottom: 40px;
+    }
+
+    .admin-panel.visible {
+      display: block;
+    }
+
+    .admin-card {
+      background: var(--pb-surface);
+      border: 1px solid rgba(241, 66, 11, 0.2);
+      border-radius: var(--pb-radius);
+      padding: 24px;
+    }
+
+    .admin-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--pb-orange);
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .admin-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 12px;
+    }
+
+    .admin-form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .admin-form-group label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--pb-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .admin-form-group input,
+    .admin-form-group select,
+    .admin-form-group textarea {
+      padding: 9px 12px;
+      background: var(--pb-surface-2);
+      border: 1px solid var(--pb-border);
+      border-radius: var(--pb-radius-sm);
+      color: var(--pb-text);
+      font-size: 13px;
+      outline: none;
+      transition: var(--transition);
+      font-family: inherit;
+    }
+
+    .admin-form-group textarea {
+      resize: vertical;
+      min-height: 72px;
+    }
+
+    .admin-form-group input:focus,
+    .admin-form-group select:focus,
+    .admin-form-group textarea:focus {
+      border-color: var(--pb-blue);
+    }
+
+    .admin-form-group select option {
+      background: #111827;
+    }
+
+    .admin-full-col {
+      grid-column: 1 / -1;
+    }
+
+    .admin-submit-btn {
+      padding: 10px 24px;
+      background: var(--pb-orange);
+      color: #fff;
+      border: none;
+      border-radius: var(--pb-radius-sm);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .admin-submit-btn:hover {
+      background: var(--pb-orange-light);
+      box-shadow: var(--pb-glow-orange);
+    }
+
+    .admin-msg {
+      font-size: 13px;
+      padding: 8px 14px;
+      border-radius: 6px;
+      margin-top: 12px;
+      display: none;
+    }
+
+    .admin-msg.success {
+      display: block;
+      background: rgba(34, 197, 94, 0.12);
+      color: var(--pb-green);
+      border: 1px solid rgba(34, 197, 94, 0.25);
+    }
+
+    .admin-msg.error {
+      display: block;
+      background: rgba(241, 66, 11, 0.12);
+      color: #ff8066;
+      border: 1px solid rgba(241, 66, 11, 0.25);
+    }
+
+    /* =====================================================
+       LOADING SPINNER
+    ===================================================== */
+    .loading-overlay {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 20px;
+    }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--pb-border);
+      border-top-color: var(--pb-blue);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* =====================================================
+       TOAST NOTIFICATION
+    ===================================================== */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 9999;
+      padding: 12px 20px;
+      background: var(--pb-surface-2);
+      border: 1px solid var(--pb-border);
+      border-radius: var(--pb-radius-sm);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--pb-text);
+      box-shadow: var(--pb-shadow);
+      opacity: 0;
+      transform: translateY(8px);
+      transition: all 0.3s ease;
+      pointer-events: none;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .toast.success { border-color: rgba(34, 197, 94, 0.4); color: var(--pb-green); }
+    .toast.error { border-color: rgba(241, 66, 11, 0.4); color: #ff8066; }
+
+    /* =====================================================
+       ADMIN ALL-TASKS TABLE
+    ===================================================== */
+    .admin-table-wrap {
+      overflow-x: auto;
+      margin-top: 24px;
+    }
+
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .admin-table th {
+      text-align: left;
+      padding: 8px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      color: var(--pb-text-muted);
+      border-bottom: 1px solid var(--pb-border);
+      white-space: nowrap;
+    }
+
+    .admin-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--pb-border);
+      vertical-align: middle;
+      color: var(--pb-text);
+    }
+
+    .admin-table tr:hover td {
+      background: var(--pb-surface-2);
+    }
+
+    .admin-table .task-delete-btn {
+      padding: 4px 10px;
+      background: transparent;
+      border: 1px solid rgba(241, 66, 11, 0.3);
+      border-radius: 5px;
+      color: var(--pb-orange);
+      font-size: 11px;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .admin-table .task-delete-btn:hover {
+      background: rgba(241, 66, 11, 0.1);
+    }
+
+    /* =====================================================
+       RESPONSIVE
+    ===================================================== */
+    @media (max-width: 640px) {
+      .main-container { padding: 20px 16px; }
+      .topnav { padding: 0 16px; }
+      .task-grid { grid-template-columns: 1fr; }
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+      .filter-bar { gap: 8px; }
+      .login-card { padding: 32px 24px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- =====================================================
+     LOGIN SCREEN
+===================================================== -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <!-- PureBrain hex icon SVG -->
+      <svg class="login-logo-icon" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="22,2 40,12 40,32 22,42 4,32 4,12" fill="none" stroke="#2a93c1" stroke-width="1.5"/>
+        <polygon points="22,8 35,15.5 35,28.5 22,36 9,28.5 9,15.5" fill="rgba(42,147,193,0.08)" stroke="rgba(42,147,193,0.3)" stroke-width="1"/>
+        <circle cx="22" cy="22" r="5" fill="#2a93c1" opacity="0.9"/>
+        <circle cx="22" cy="22" r="8" fill="none" stroke="#f1420b" stroke-width="0.8" stroke-dasharray="2 3"/>
+      </svg>
+      <span class="login-logo-text">
+        <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>
+      </span>
+    </div>
+
+    <h2 class="login-title">Team Dashboard</h2>
+    <p class="login-subtitle">Sign in to see your assigned tasks</p>
+
+    <form id="login-form" onsubmit="handleLogin(event)">
+      <div class="login-form-group">
+        <label>Select Your Name</label>
+        <select id="login-name" required>
+          <option value="">-- Choose your name --</option>
+          <!-- Team roster populated by JS -->
+        </select>
+      </div>
+      <div class="login-form-group">
+        <label>Email Address</label>
+        <input type="email" id="login-email" placeholder="your@email.com" required />
+      </div>
+      <button type="submit" class="login-btn">Sign In</button>
+      <div class="login-error" id="login-error">Name and email do not match our records. Please try again.</div>
+    </form>
+  </div>
+</div>
+
+<!-- =====================================================
+     MAIN APP
+===================================================== -->
+<div id="app">
+  <!-- Top Nav -->
+  <nav class="topnav">
+    <div class="topnav-left">
+      <div class="topnav-logo">
+        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <polygon points="16,1 29,8.5 29,23.5 16,31 3,23.5 3,8.5" fill="none" stroke="#2a93c1" stroke-width="1.2"/>
+          <circle cx="16" cy="16" r="4" fill="#2a93c1"/>
+          <circle cx="16" cy="16" r="6" fill="none" stroke="#f1420b" stroke-width="0.6" stroke-dasharray="2 2"/>
+        </svg>
+        <span class="topnav-brand"><span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span></span>
+      </div>
+      <div class="topnav-divider"></div>
+      <span class="topnav-page-title">Team Dashboard</span>
+    </div>
+    <div class="topnav-right">
+      <div class="user-badge">
+        <div class="user-avatar" id="nav-avatar">JD</div>
+        <span id="nav-username">Loading...</span>
+      </div>
+      <button class="logout-btn" onclick="handleLogout()">Sign Out</button>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="main-container">
+
+    <!-- Page Header -->
+    <div class="page-header">
+      <h1 id="dashboard-title">My Tasks</h1>
+      <p id="dashboard-subtitle">Your assigned work items and priorities</p>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="stats-row" id="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Total Assigned</div>
+        <div class="stat-value blue" id="stat-total">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">In Progress</div>
+        <div class="stat-value yellow" id="stat-inprogress">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Pending</div>
+        <div class="stat-value" id="stat-pending">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Completed</div>
+        <div class="stat-value green" id="stat-complete">—</div>
+      </div>
+      <div class="stat-card" id="stat-high-card">
+        <div class="stat-label">High Priority</div>
+        <div class="stat-value orange" id="stat-high">—</div>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <button class="filter-btn active" onclick="setFilter('all', this)">All</button>
+      <button class="filter-btn" onclick="setFilter('pending', this)">Pending</button>
+      <button class="filter-btn" onclick="setFilter('in-progress', this)">In Progress</button>
+      <button class="filter-btn" onclick="setFilter('complete', this)">Complete</button>
+      <button class="filter-btn" onclick="setFilter('high', this)">High Priority</button>
+      <input class="filter-search" type="text" placeholder="Search tasks..." oninput="setSearch(this.value)" id="search-input" />
+    </div>
+
+    <!-- Admin Panel (Jared only) -->
+    <div class="admin-panel" id="admin-panel">
+      <div class="admin-card">
+        <div class="admin-title">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          Admin: Create New Task
+        </div>
+        <div class="admin-grid">
+          <div class="admin-form-group">
+            <label>Task Title</label>
+            <input type="text" id="new-title" placeholder="e.g. Prepare Q1 Sales Report" />
+          </div>
+          <div class="admin-form-group">
+            <label>Assign To</label>
+            <select id="new-assignee">
+              <option value="">-- Select team member --</option>
+            </select>
+          </div>
+          <div class="admin-form-group">
+            <label>Delegation (A/B/C)</label>
+            <select id="new-delegation">
+              <option value="C">C — Team Member Handles</option>
+              <option value="A">A — Aether Handles</option>
+              <option value="B">B — Jared Handles</option>
+            </select>
+          </div>
+          <div class="admin-form-group">
+            <label>Priority</label>
+            <select id="new-priority">
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+              <option value="Low">Low</option>
+            </select>
+          </div>
+          <div class="admin-form-group">
+            <label>Status</label>
+            <select id="new-status">
+              <option value="Pending">Pending</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Complete">Complete</option>
+            </select>
+          </div>
+          <div class="admin-form-group">
+            <label>Deadline (optional)</label>
+            <input type="date" id="new-deadline" />
+          </div>
+          <div class="admin-form-group admin-full-col">
+            <label>Description</label>
+            <textarea id="new-description" placeholder="Describe what needs to be done..."></textarea>
+          </div>
+          <div class="admin-form-group admin-full-col">
+            <label>File Attachments (Google Drive URLs, comma-separated)</label>
+            <input type="text" id="new-files" placeholder="https://drive.google.com/file/..., https://docs.google.com/..." />
+          </div>
+          <div class="admin-form-group admin-full-col">
+            <button class="admin-submit-btn" onclick="createTask()">Create Task</button>
+            <div class="admin-msg" id="admin-msg"></div>
+          </div>
+        </div>
+
+        <!-- Admin: All Tasks Table -->
+        <div id="admin-all-tasks-section">
+          <div class="section-header" style="margin-top: 32px; margin-bottom: 0;">
+            <div class="section-title" style="color: var(--pb-text-muted); font-size: 14px;">All Team Tasks</div>
+            <button class="filter-btn" onclick="loadAllAdminTasks()" style="font-size: 12px; padding: 5px 12px;">Refresh</button>
+          </div>
+          <div class="admin-table-wrap">
+            <table class="admin-table" id="admin-table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Assigned To</th>
+                  <th>A/B/C</th>
+                  <th>Priority</th>
+                  <th>Status</th>
+                  <th>Deadline</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="admin-table-body">
+                <tr><td colspan="7" style="color: var(--pb-text-muted); text-align: center; padding: 20px;">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Task Sections -->
+    <div id="task-sections">
+      <!-- High Priority -->
+      <div id="section-high">
+        <div class="section-header">
+          <div class="section-title">🔴 High Priority</div>
+          <span class="section-count" id="count-high">0</span>
+        </div>
+        <div class="task-grid" id="grid-high"></div>
+      </div>
+
+      <!-- In Progress -->
+      <div id="section-inprogress" style="margin-top: 32px;">
+        <div class="section-header">
+          <div class="section-title">🔵 In Progress</div>
+          <span class="section-count" id="count-inprogress">0</span>
+        </div>
+        <div class="task-grid" id="grid-inprogress"></div>
+      </div>
+
+      <!-- Pending -->
+      <div id="section-pending" style="margin-top: 32px;">
+        <div class="section-header">
+          <div class="section-title">⚪ Pending</div>
+          <span class="section-count" id="count-pending">0</span>
+        </div>
+        <div class="task-grid" id="grid-pending"></div>
+      </div>
+
+      <!-- Complete -->
+      <div id="section-complete" style="margin-top: 32px;">
+        <div class="section-header">
+          <div class="section-title">✅ Completed</div>
+          <span class="section-count" id="count-complete">0</span>
+        </div>
+        <div class="task-grid" id="grid-complete"></div>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div class="loading-overlay" id="loading-overlay" style="display:none;">
+      <div class="spinner"></div>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state" id="empty-state" style="display:none;">
+      <svg fill="none" stroke="#2a93c1" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+      <h3>No tasks found</h3>
+      <p>No tasks match your current filter. Try selecting a different view.</p>
+    </div>
+
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+
+<script>
+/* =====================================================
+   CONFIGURATION
+===================================================== */
+const AIRTABLE_API_KEY = 'patcjYGyBxRGQfjdj.c7363c42481a5a9f13c400842e930fe22be3f75bdafbce3ee580a2ec2c2cd7e4';
+const AIRTABLE_BASE_ID = 'app3PhIudYCZ8VCCF';
+const AIRTABLE_TABLE   = 'Tasks';
+
+// Airtable API base URL
+const AT_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE}`;
+const AT_HEADERS = {
+  'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+  'Content-Type': 'application/json'
+};
+
+/* =====================================================
+   TEAM ROSTER
+   Format: { name, email, initials, role, isAdmin }
+===================================================== */
+const TEAM_ROSTER = [
+  // C-Suite & Leadership
+  { name: 'Jared Sanborn',       email: 'jaredsanborn@gmail.com',          initials: 'JS', role: 'CEO',                                  isAdmin: true },
+  { name: 'Melanie Salvador',    email: 'melanie@puretek.co',               initials: 'MS', role: 'Vice-Chairman & Deputy CEO' },
+  { name: 'Nils Waschkau',       email: 'nils@puretek.co',                  initials: 'NW', role: 'COO' },
+  { name: 'James Weinberg',      email: 'james@puretek.co',                  initials: 'JW', role: 'CFO' },
+  { name: 'Mike Daser',          email: 'mike@puretek.co',                   initials: 'MD', role: 'SVP Human Resources' },
+  { name: 'Eric Solomon',        email: 'eric@puretek.co',                   initials: 'ES', role: 'Chief Brilliance Actualizer' },
+  { name: 'Michael Schuman',     email: 'michael.schuman@puretek.co',        initials: 'MS', role: 'CCO' },
+  { name: 'Charles Finkelstein', email: 'charles@puretek.co',                initials: 'CF', role: 'CPO' },
+  { name: 'Timothy DeVore',      email: 'timothy@puretek.co',                initials: 'TD', role: 'CTO' },
+  { name: 'Rimah Harb',          email: 'rimah@puretek.co',                  initials: 'RH', role: 'Chief Strategy Officer' },
+  { name: 'Zenia Tata',          email: 'zeniatata@gmail.com',               initials: 'ZT', role: 'Chief Impact Officer' },
+  { name: 'Michael Hancock',     email: 'michael.hancock@puretek.co',        initials: 'MH', role: 'General Counsel' },
+
+  // Operations
+  { name: 'Edward Brennan',      email: 'ed@puretek.co',                     initials: 'EB', role: 'SVP Operations (Fractional)' },
+  { name: 'Roger Beaini',        email: 'roger.b@puretek.co',                initials: 'RB', role: 'VP Operations' },
+  { name: 'Chris Ishii',         email: 'chris@puretek.co',                  initials: 'CI', role: 'CXO' },
+  { name: 'Mireille Dirany',     email: 'mireille@puretek.co',               initials: 'MD', role: 'Executive Director, Office of CEO' },
+  { name: 'Linda Chaaya',        email: 'linda@puretek.co',                  initials: 'LC', role: 'Executive Assistant' },
+  { name: 'Micheline Akel',      email: 'micheline@puretek.co',              initials: 'MA', role: 'HR & Office Support Manager' },
+
+  // Finance
+  { name: 'Paula Bou Chaaya',    email: 'paula@puretek.co',                  initials: 'PB', role: 'VP Finance' },
+  { name: 'Cora Salvador',       email: 'cora@puretek.co',                   initials: 'CS', role: 'CFO PT Canada' },
+
+  // Commercial
+  { name: 'Alexander Logie',     email: 'alexander@puretek.co',              initials: 'AL', role: 'EVP Corporate Development' },
+  { name: 'Marcie McGovern',     email: 'marcie@puretek.co',                 initials: 'MM', role: 'VP Strategic Relations' },
+  { name: 'John Smith',          email: 'johnsmith.gu19@gmail.com',          initials: 'JS', role: 'VP Sales' },
+  { name: 'Jessie Cruz',         email: 'jessie@puretek.co',                 initials: 'JC', role: 'VP Revenue (Fractional)' },
+  { name: 'Mohamad El Madhoun',  email: 'mohamad@puretek.co',                initials: 'ME', role: 'EVP Revenue & Operations' },
+
+  // Marketing
+  { name: 'Phillip Bliss',       email: 'phillip@puretek.co',                initials: 'PB', role: 'CMO' },
+  { name: 'Robert Orlowski',     email: 'robert@puretek.co',                 initials: 'RO', role: 'SVP Marketing & Communication' },
+  { name: 'John Paris',          email: 'john.paris@puretek.co',             initials: 'JP', role: 'SVP Digital Strategy' },
+  { name: 'Nathan Olson',        email: 'nathan@puretek.co',                 initials: 'NO', role: 'President, Pure Marketing Group' },
+  { name: 'Natasha Carrasco',    email: 'natasha@puretek.co',                initials: 'NC', role: 'VP Operations (PMG)' },
+  { name: 'Baruch Santana',      email: 'baruch@puretek.co',                 initials: 'BS', role: 'Team Director Operations' },
+  { name: 'Moises Guerra',       email: 'moises@puretek.co',                 initials: 'MG', role: 'Social Media Strategist' },
+  { name: 'Dylan Diaz',          email: 'dylan@puretek.co',                  initials: 'DD', role: 'Team Director Commercial' },
+  { name: 'Ashley Tom',          email: 'ashley@puretek.co',                 initials: 'AT', role: 'Service Operations Manager' },
+  { name: 'Max Osborne',         email: 'max@puretek.co',                    initials: 'MO', role: 'Data Specialist' },
+
+  // Product
+  { name: 'Frank Thomas',        email: 'frank@puretek.co',                  initials: 'FT', role: 'SVP Product' },
+  { name: 'Desiree Vazquez',     email: 'desiree@puretek.co',                initials: 'DV', role: 'Director Design' },
+  { name: 'Ahsen Awan',          email: 'ahsen@puretek.co',                  initials: 'AA', role: 'Director Product Manager' },
+  { name: 'Waqas Nasir',         email: 'waqas@puretek.co',                  initials: 'WN', role: 'Product Owner & Software Dev' },
+  { name: 'Roger Singh',         email: 'roger.singh@puretek.co',            initials: 'RS', role: 'Chief of Staff Technology' },
+
+  // Technology
+  { name: 'Russell Korus',       email: 'russell@puretek.co',                initials: 'RK', role: 'Chief Digital Assets Officer' },
+  { name: 'Ethan DeVore',        email: 'ethan@puretek.co',                  initials: 'ED', role: 'Full Stack Developer' },
+  { name: 'Alex Seant',          email: 'alex@puretek.co',                   initials: 'AS', role: 'Senior Software Engineer' },
+  { name: 'Zafeer Hassan',       email: 'zafeer@puretek.co',                 initials: 'ZH', role: 'Sr. Software Developer' },
+  { name: 'Shahbaz Ali',         email: 'shahbaz@puretek.co',                initials: 'SA', role: 'Manager IT & DevOps' },
+  { name: 'Adeeb Doyle',         email: 'adeeb@puretek.co',                  initials: 'AD', role: 'Software Developer' },
+  { name: 'Samuel Saleh',        email: 'samuel@puretek.co',                 initials: 'SS', role: 'Junior Developer' },
+  { name: 'Zachary Skotek',      email: 'zachary@puretek.co',                initials: 'ZS', role: 'Junior Developer' },
+  { name: 'Emmanuel Akinleye',   email: 'emmanuel@puretek.co',               initials: 'EA', role: 'Junior Developer' },
+];
+
+/* =====================================================
+   STATE
+===================================================== */
+let currentUser    = null;
+let allTasks       = [];
+let currentFilter  = 'all';
+let currentSearch  = '';
+
+/* =====================================================
+   INIT
+===================================================== */
+document.addEventListener('DOMContentLoaded', () => {
+  populateLoginDropdown();
+  populateAdminAssignee();
+
+  // Check for saved session
+  const saved = sessionStorage.getItem('pt_user');
+  if (saved) {
+    try {
+      currentUser = JSON.parse(saved);
+      showDashboard();
+    } catch(e) { /* ignore */ }
+  }
+});
+
+function populateLoginDropdown() {
+  const sel = document.getElementById('login-name');
+  TEAM_ROSTER.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m.name;
+    opt.textContent = `${m.name} — ${m.role}`;
+    sel.appendChild(opt);
+  });
+}
+
+function populateAdminAssignee() {
+  const sel = document.getElementById('new-assignee');
+  TEAM_ROSTER.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m.name;
+    opt.textContent = `${m.name} (${m.role})`;
+    sel.appendChild(opt);
+  });
+}
+
+/* =====================================================
+   LOGIN
+===================================================== */
+function handleLogin(e) {
+  e.preventDefault();
+  const name  = document.getElementById('login-name').value.trim();
+  const email = document.getElementById('login-email').value.trim().toLowerCase();
+  const err   = document.getElementById('login-error');
+
+  const member = TEAM_ROSTER.find(m =>
+    m.name === name && m.email.toLowerCase() === email
+  );
+
+  if (!member) {
+    err.classList.add('visible');
+    return;
+  }
+
+  err.classList.remove('visible');
+  currentUser = member;
+  sessionStorage.setItem('pt_user', JSON.stringify(member));
+  showDashboard();
+}
+
+function handleLogout() {
+  sessionStorage.removeItem('pt_user');
+  currentUser = null;
+  allTasks    = [];
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app').classList.remove('visible');
+  document.getElementById('login-form').reset();
+}
+
+/* =====================================================
+   SHOW DASHBOARD
+===================================================== */
+function showDashboard() {
+  // Hide login, show app
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').classList.add('visible');
+
+  // Set nav user info
+  document.getElementById('nav-avatar').textContent   = currentUser.initials;
+  document.getElementById('nav-username').textContent = currentUser.name;
+
+  // Set page title
+  if (currentUser.isAdmin) {
+    document.getElementById('dashboard-title').textContent   = 'Admin Dashboard — All Tasks';
+    document.getElementById('dashboard-subtitle').textContent = `Full team task management • ${TEAM_ROSTER.length} team members`;
+    document.getElementById('admin-panel').classList.add('visible');
+  } else {
+    document.getElementById('dashboard-title').textContent   = `My Tasks`;
+    document.getElementById('dashboard-subtitle').textContent = `${currentUser.role} • Showing tasks assigned to you`;
+  }
+
+  loadTasks();
+  if (currentUser.isAdmin) loadAllAdminTasks();
+}
+
+/* =====================================================
+   AIRTABLE API
+===================================================== */
+async function airtableFetch(url, options = {}) {
+  const resp = await fetch(url, {
+    headers: AT_HEADERS,
+    ...options
+  });
+  if (!resp.ok) {
+    const txt = await resp.text();
+    throw new Error(`Airtable error ${resp.status}: ${txt}`);
+  }
+  return resp.json();
+}
+
+async function loadTasks() {
+  showLoading(true);
+  try {
+    let filterFormula = '';
+    if (!currentUser.isAdmin) {
+      // Filter by assigned name
+      const escaped = currentUser.name.replace(/'/g, "\\'");
+      filterFormula = `?filterByFormula={AssignedTo}='${escaped}'`;
+    }
+
+    const url = AT_URL + filterFormula + (filterFormula ? '&' : '?') + 'sort[0][field]=Priority&sort[0][direction]=desc';
+    const data = await airtableFetch(url);
+
+    allTasks = (data.records || []).map(r => ({
+      id:          r.id,
+      title:       r.fields.Title       || 'Untitled Task',
+      description: r.fields.Description || '',
+      assignedTo:  r.fields.AssignedTo  || '',
+      delegation:  r.fields.Delegation  || 'C',
+      priority:    r.fields.Priority    || 'Medium',
+      status:      r.fields.Status      || 'Pending',
+      deadline:    r.fields.Deadline    || '',
+      files:       r.fields.Files       || '',
+      createdAt:   r.fields.CreatedAt   || '',
+    }));
+
+    renderDashboard();
+  } catch(err) {
+    console.error('Load tasks error:', err);
+    // If Airtable table doesn't exist yet, show helpful message
+    if (err.message.includes('404') || err.message.includes('TABLE_NOT_FOUND')) {
+      showToast('Airtable table "Tasks" not found. Run setup or use demo data.', 'error');
+      loadDemoTasks();
+    } else {
+      showToast('Could not load tasks. Check API connection.', 'error');
+      loadDemoTasks();
+    }
+  } finally {
+    showLoading(false);
+  }
+}
+
+/* =====================================================
+   DEMO TASKS (fallback if Airtable not configured)
+===================================================== */
+function loadDemoTasks() {
+  const demos = [
+    {
+      id: 'demo-1',
+      title: 'Review Q1 Sales Pipeline Report',
+      description: 'Aether has prepared the Q1 pipeline analysis. Please review the findings and add your strategic notes before we present to investors.',
+      assignedTo: currentUser.isAdmin ? 'Jared Sanborn' : currentUser.name,
+      delegation: 'B',
+      priority: 'High',
+      status: 'Pending',
+      deadline: getTodayPlus(3),
+      files: 'https://drive.google.com/file/demo-sales-report',
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: 'demo-2',
+      title: 'Update LinkedIn Profile with New Role',
+      description: 'Please update your LinkedIn profile to reflect your current role and add Pure Technology as your employer. This helps with brand consistency.',
+      assignedTo: currentUser.isAdmin ? 'Nathan Olson' : currentUser.name,
+      delegation: 'C',
+      priority: 'Medium',
+      status: 'In Progress',
+      deadline: getTodayPlus(7),
+      files: '',
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: 'demo-3',
+      title: 'Onboarding Document Review',
+      description: 'Please review the updated onboarding materials and confirm they accurately reflect your role responsibilities. Add any missing items.',
+      assignedTo: currentUser.isAdmin ? 'Mike Daser' : currentUser.name,
+      delegation: 'C',
+      priority: 'Medium',
+      status: 'Pending',
+      deadline: getTodayPlus(14),
+      files: 'https://docs.google.com/document/demo-onboarding',
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: 'demo-4',
+      title: 'Team Bio Submission for Website',
+      description: 'Aether is building the team page for purebrain.ai. Please submit your professional bio (150-200 words) and a professional headshot photo.',
+      assignedTo: currentUser.isAdmin ? 'Phillip Bliss' : currentUser.name,
+      delegation: 'C',
+      priority: 'High',
+      status: 'Pending',
+      deadline: getTodayPlus(5),
+      files: '',
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: 'demo-5',
+      title: 'Strategy Deck Feedback — Investor Round',
+      description: 'Aether has drafted the updated investor strategy deck. Your input on slides 8-12 (revenue projections) is needed before final approval.',
+      assignedTo: currentUser.isAdmin ? 'Melanie Salvador' : currentUser.name,
+      delegation: 'B',
+      priority: 'High',
+      status: 'In Progress',
+      deadline: getTodayPlus(2),
+      files: 'https://docs.google.com/presentation/demo-investor-deck',
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: 'demo-6',
+      title: 'Quarterly Expense Report Submission',
+      description: 'Please submit all Q4 expense receipts and reports through the finance portal. Required for audit preparation.',
+      assignedTo: currentUser.isAdmin ? 'Paula Bou Chaaya' : currentUser.name,
+      delegation: 'C',
+      priority: 'Medium',
+      status: 'Complete',
+      deadline: getTodayPlus(-2),
+      files: '',
+      createdAt: new Date().toISOString()
+    }
+  ];
+
+  if (currentUser.isAdmin) {
+    allTasks = demos;
+  } else {
+    allTasks = demos.map(d => ({ ...d, assignedTo: currentUser.name }));
+  }
+
+  renderDashboard();
+  showToast('Showing demo tasks. Connect Airtable to use live data.', 'error');
+}
+
+function getTodayPlus(days) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
+}
+
+/* =====================================================
+   CREATE TASK (Admin)
+===================================================== */
+async function createTask() {
+  const title      = document.getElementById('new-title').value.trim();
+  const assignedTo = document.getElementById('new-assignee').value;
+  const delegation = document.getElementById('new-delegation').value;
+  const priority   = document.getElementById('new-priority').value;
+  const status     = document.getElementById('new-status').value;
+  const deadline   = document.getElementById('new-deadline').value;
+  const description = document.getElementById('new-description').value.trim();
+  const files      = document.getElementById('new-files').value.trim();
+  const msg        = document.getElementById('admin-msg');
+
+  if (!title || !assignedTo) {
+    showAdminMsg('Title and Assignee are required.', 'error');
+    return;
+  }
+
+  try {
+    const body = {
+      fields: {
+        Title: title,
+        AssignedTo: assignedTo,
+        Delegation: delegation,
+        Priority: priority,
+        Status: status,
+        Description: description,
+        Files: files,
+        CreatedAt: new Date().toISOString()
+      }
+    };
+
+    if (deadline) body.fields.Deadline = deadline;
+
+    await airtableFetch(AT_URL, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    });
+
+    showAdminMsg('Task created successfully!', 'success');
+    // Clear form
+    document.getElementById('new-title').value       = '';
+    document.getElementById('new-description').value = '';
+    document.getElementById('new-files').value        = '';
+    document.getElementById('new-deadline').value     = '';
+
+    // Reload
+    await loadTasks();
+    await loadAllAdminTasks();
+    showToast('Task created and assigned!', 'success');
+
+  } catch(err) {
+    console.error('Create task error:', err);
+    showAdminMsg(`Error: ${err.message}`, 'error');
+  }
+}
+
+/* =====================================================
+   UPDATE TASK STATUS
+===================================================== */
+async function cycleStatus(taskId, currentStatus) {
+  const sequence = { 'Pending': 'In Progress', 'In Progress': 'Complete', 'Complete': 'Pending' };
+  const nextStatus = sequence[currentStatus] || 'Pending';
+
+  try {
+    await airtableFetch(`${AT_URL}/${taskId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ fields: { Status: nextStatus } })
+    });
+
+    // Update local state
+    const task = allTasks.find(t => t.id === taskId);
+    if (task) {
+      task.status = nextStatus;
+      renderDashboard();
+    }
+
+    showToast(`Status → ${nextStatus}`, 'success');
+  } catch(err) {
+    console.error('Update status error:', err);
+    // For demo tasks, just update locally
+    const task = allTasks.find(t => t.id === taskId);
+    if (task && task.id.startsWith('demo-')) {
+      task.status = nextStatus;
+      renderDashboard();
+      showToast(`Status → ${nextStatus}`, 'success');
+    } else {
+      showToast('Could not update status', 'error');
+    }
+  }
+}
+
+/* =====================================================
+   DELETE TASK (Admin)
+===================================================== */
+async function deleteTask(taskId) {
+  if (!confirm('Delete this task permanently?')) return;
+  try {
+    await airtableFetch(`${AT_URL}/${taskId}`, { method: 'DELETE' });
+    allTasks = allTasks.filter(t => t.id !== taskId);
+    renderDashboard();
+    await loadAllAdminTasks();
+    showToast('Task deleted.', 'success');
+  } catch(err) {
+    // Demo fallback
+    allTasks = allTasks.filter(t => t.id !== taskId);
+    renderDashboard();
+    showToast('Task removed.', 'success');
+  }
+}
+
+/* =====================================================
+   LOAD ALL TASKS (Admin table)
+===================================================== */
+async function loadAllAdminTasks() {
+  const tbody = document.getElementById('admin-table-body');
+  tbody.innerHTML = '<tr><td colspan="7" style="color:var(--pb-text-muted);text-align:center;padding:16px">Loading...</td></tr>';
+  try {
+    const data = await airtableFetch(AT_URL + '?sort[0][field]=CreatedAt&sort[0][direction]=desc&maxRecords=100');
+    const records = (data.records || []).map(r => ({
+      id:         r.id,
+      title:      r.fields.Title      || 'Untitled',
+      assignedTo: r.fields.AssignedTo || '—',
+      delegation: r.fields.Delegation || 'C',
+      priority:   r.fields.Priority   || 'Medium',
+      status:     r.fields.Status     || 'Pending',
+      deadline:   r.fields.Deadline   || '—',
+    }));
+    renderAdminTable(records);
+  } catch(err) {
+    renderAdminTable(allTasks);
+  }
+}
+
+function renderAdminTable(records) {
+  const tbody = document.getElementById('admin-table-body');
+  if (!records.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="color:var(--pb-text-muted);text-align:center;padding:16px">No tasks yet. Create one above.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = records.map(r => `
+    <tr>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.title}</td>
+      <td>${r.assignedTo}</td>
+      <td><span class="delegation-badge delegation-${r.delegation}">${r.delegation}</span></td>
+      <td><span class="priority-badge priority-${r.priority.toLowerCase()}">${r.priority}</span></td>
+      <td><span class="status-badge status-${statusClass(r.status)}"><span class="status-dot"></span>${r.status}</span></td>
+      <td style="color:var(--pb-text-muted)">${r.deadline}</td>
+      <td><button class="task-delete-btn" onclick="deleteTask('${r.id}')">Delete</button></td>
+    </tr>
+  `).join('');
+}
+
+/* =====================================================
+   RENDER DASHBOARD
+===================================================== */
+function renderDashboard() {
+  let tasks = [...allTasks];
+
+  // Search
+  if (currentSearch) {
+    const q = currentSearch.toLowerCase();
+    tasks = tasks.filter(t =>
+      t.title.toLowerCase().includes(q) ||
+      t.description.toLowerCase().includes(q)
+    );
+  }
+
+  // Filter
+  if (currentFilter === 'pending')     tasks = tasks.filter(t => t.status === 'Pending');
+  if (currentFilter === 'in-progress') tasks = tasks.filter(t => t.status === 'In Progress');
+  if (currentFilter === 'complete')    tasks = tasks.filter(t => t.status === 'Complete');
+  if (currentFilter === 'high')        tasks = tasks.filter(t => t.priority === 'High');
+
+  // Update stats
+  const orig = allTasks;
+  document.getElementById('stat-total').textContent      = orig.length;
+  document.getElementById('stat-inprogress').textContent = orig.filter(t => t.status === 'In Progress').length;
+  document.getElementById('stat-pending').textContent    = orig.filter(t => t.status === 'Pending').length;
+  document.getElementById('stat-complete').textContent   = orig.filter(t => t.status === 'Complete').length;
+  document.getElementById('stat-high').textContent       = orig.filter(t => t.priority === 'High').length;
+
+  // Sort into buckets
+  const high       = tasks.filter(t => t.priority === 'High' && t.status !== 'Complete');
+  const inProgress = tasks.filter(t => t.status === 'In Progress' && t.priority !== 'High');
+  const pending    = tasks.filter(t => t.status === 'Pending'     && t.priority !== 'High');
+  const complete   = tasks.filter(t => t.status === 'Complete');
+
+  // Render grids
+  document.getElementById('grid-high').innerHTML       = high.length       ? high.map(taskCard).join('')       : '';
+  document.getElementById('grid-inprogress').innerHTML = inProgress.length ? inProgress.map(taskCard).join('') : '';
+  document.getElementById('grid-pending').innerHTML    = pending.length    ? pending.map(taskCard).join('')    : '';
+  document.getElementById('grid-complete').innerHTML   = complete.length   ? complete.map(taskCard).join('')   : '';
+
+  // Update counts
+  document.getElementById('count-high').textContent       = high.length;
+  document.getElementById('count-inprogress').textContent = inProgress.length;
+  document.getElementById('count-pending').textContent    = pending.length;
+  document.getElementById('count-complete').textContent   = complete.length;
+
+  // Show/hide sections
+  document.getElementById('section-high').style.display       = high.length       ? 'block' : 'none';
+  document.getElementById('section-inprogress').style.display = inProgress.length ? 'block' : 'none';
+  document.getElementById('section-pending').style.display    = pending.length    ? 'block' : 'none';
+  document.getElementById('section-complete').style.display   = complete.length   ? 'block' : 'none';
+
+  // Empty state
+  const totalVisible = high.length + inProgress.length + pending.length + complete.length;
+  document.getElementById('empty-state').style.display    = totalVisible === 0 ? 'block' : 'none';
+  document.getElementById('task-sections').style.display  = totalVisible === 0 ? 'none'  : 'block';
+}
+
+function taskCard(task) {
+  const accentColor = task.priority === 'High' ? 'var(--pb-orange)' :
+                      task.status === 'Complete' ? 'var(--pb-green)' : 'var(--pb-blue)';
+
+  const deadlineHtml = task.deadline ? (() => {
+    const today    = new Date(); today.setHours(0,0,0,0);
+    const due      = new Date(task.deadline + 'T00:00:00');
+    const diffDays = Math.round((due - today) / (1000 * 60 * 60 * 24));
+    let cls = '', label = '';
+    if (task.status === 'Complete') {
+      cls = ''; label = `Due ${formatDate(task.deadline)}`;
+    } else if (diffDays < 0) {
+      cls = 'overdue'; label = `Overdue by ${Math.abs(diffDays)}d`;
+    } else if (diffDays <= 3) {
+      cls = 'soon'; label = diffDays === 0 ? 'Due today' : `Due in ${diffDays}d`;
+    } else {
+      label = `Due ${formatDate(task.deadline)}`;
+    }
+    return `<span class="task-deadline ${cls}">
+      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      ${label}
+    </span>`;
+  })() : '';
+
+  const filesHtml = task.files ? task.files.split(',').filter(f => f.trim()).slice(0, 3).map((f, i) => {
+    const url   = f.trim();
+    const label = url.includes('docs.google.com') ? 'Doc' :
+                  url.includes('drive.google.com') ? `File ${i+1}` : `Link ${i+1}`;
+    return `<a class="file-chip" href="${url}" target="_blank" rel="noopener">
+      <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      ${label}
+    </a>`;
+  }).join('') : '';
+
+  const nextStatus = { 'Pending': 'Start', 'In Progress': 'Complete', 'Complete': 'Reopen' }[task.status] || 'Update';
+
+  return `
+    <div class="task-card" style="--card-accent: ${accentColor}">
+      <div class="task-card-header">
+        <div class="task-title">${escHtml(task.title)}</div>
+      </div>
+      <div class="task-meta">
+        <span class="delegation-badge delegation-${task.delegation}" title="${delegationLabel(task.delegation)}">${task.delegation} — ${delegationShort(task.delegation)}</span>
+        <span class="priority-badge priority-${task.priority.toLowerCase()}">${task.priority}</span>
+        <span class="status-badge status-${statusClass(task.status)}"><span class="status-dot"></span>${task.status}</span>
+      </div>
+      ${task.description ? `<div class="task-description">${escHtml(task.description)}</div>` : ''}
+      <div class="task-footer">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          ${deadlineHtml}
+          <div class="task-files">${filesHtml}</div>
+        </div>
+        <button class="status-change-btn" onclick="cycleStatus('${task.id}', '${task.status}')">${nextStatus} →</button>
+      </div>
+    </div>
+  `;
+}
+
+/* =====================================================
+   FILTERS
+===================================================== */
+function setFilter(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderDashboard();
+}
+
+function setSearch(val) {
+  currentSearch = val;
+  renderDashboard();
+}
+
+/* =====================================================
+   HELPERS
+===================================================== */
+function statusClass(s) {
+  if (s === 'In Progress') return 'in-progress';
+  if (s === 'Complete')    return 'complete';
+  return 'pending';
+}
+
+function delegationLabel(d) {
+  const m = { A: 'Aether handles', B: 'Jared handles', C: 'Team member handles' };
+  return m[d] || d;
+}
+
+function delegationShort(d) {
+  const m = { A: 'Aether', B: 'Jared', C: 'You' };
+  return m[d] || d;
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[parseInt(m)-1]} ${parseInt(d)}`;
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showLoading(show) {
+  document.getElementById('loading-overlay').style.display = show ? 'flex' : 'none';
+}
+
+function showAdminMsg(text, type) {
+  const el = document.getElementById('admin-msg');
+  el.textContent = text;
+  el.className = `admin-msg ${type}`;
+}
+
+function showToast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = `toast ${type} show`;
+  setTimeout(() => { t.classList.remove('show'); }, 3000);
+}
+</script>
+</body>
+</html>

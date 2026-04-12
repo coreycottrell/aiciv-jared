@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-WTDXL4VJ');</script>
+<!-- End Google Tag Manager -->
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+(function(c,l,a,r,i,t,y){
+    c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+    t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+    y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+})(window, document, "clarity", "script", "viy9bnc56x");
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aether Avatar — Glass Orb</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #080a12;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas {
+    width: 200px; height: 200px;
+    border-radius: 50%;
+    display: block;
+  }
+</style>
+
+<!-- UNIVERSAL REFERRAL CODE CAPTURE — 90-day cookie + localStorage -->
+<script>
+(function() {
+  // Read ?ref= or ?code= from URL
+  var params = new URLSearchParams(window.location.search);
+  var ref = params.get('ref') || params.get('code');
+  
+  if (ref && /^[A-Za-z0-9-]{4,16}$/.test(ref)) {
+    // Store in localStorage
+    try { localStorage.setItem('pb_ref', ref); } catch(e) {}
+    // Store in cookie (90-day expiry, all paths, SameSite=Lax)
+    var expires = new Date();
+    expires.setDate(expires.getDate() + 90);
+    document.cookie = 'pb_ref=' + encodeURIComponent(ref) + '; expires=' + expires.toUTCString() + '; path=/; SameSite=Lax';
+    // Fire click tracking (non-blocking)
+    try {
+      fetch('https://app.purebrain.ai/api/referral/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referral_code: ref.toUpperCase() }),
+        keepalive: true
+      }).catch(function(){});
+    } catch(e) {}
+  }
+  
+  // Global helper: read stored referral code at payment time
+  // Checks URL first, then localStorage, then cookie
+  window.getPbRef = function() {
+    // 1. Check current URL
+    var p = new URLSearchParams(window.location.search);
+    var urlRef = p.get('ref') || p.get('code');
+    if (urlRef && /^[A-Za-z0-9-]{4,16}$/.test(urlRef)) return urlRef;
+    // 2. Check localStorage
+    try {
+      var ls = localStorage.getItem('pb_ref');
+      if (ls && /^[A-Za-z0-9-]{4,16}$/.test(ls)) return ls;
+    } catch(e) {}
+    // 3. Check cookie
+    var match = document.cookie.match(/(?:^|;)\s*pb_ref=([^;]+)/);
+    if (match) {
+      var decoded = decodeURIComponent(match[1]);
+      if (/^[A-Za-z0-9-]{4,16}$/.test(decoded)) return decoded;
+    }
+    return null;
+  };
+})();
+</script>
+
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-WTDXL4VJ"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+<canvas id="c" width="400" height="400"></canvas>
+<script>
+(function() {
+  const canvas = document.getElementById('c');
+  const gl = canvas.getContext('webgl', { antialias: true, alpha: true });
+  if (!gl) { document.body.innerHTML = '<p style="color:#fff">WebGL not supported</p>'; return; }
+
+  const vsSource = `
+attribute vec2 aPos;
+varying vec2 vUv;
+void main() {
+  vUv = aPos * 0.5 + 0.5;
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}
+`;
+
+  /* Glass orb: transparent shell with refractive bending, glowing particles inside */
+  const fsSource = `
+precision highp float;
+varying vec2 vUv;
+uniform float uTime;
+uniform vec2 uMouse;
+uniform vec2 uRes;
+
+/* ----- Value noise ----- */
+float hash(vec3 p) {
+  p = fract(p * 0.3183099 + 0.1);
+  p *= 17.0;
+  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+float vnoise(vec3 x) {
+  vec3 i = floor(x); vec3 f = fract(x);
+  f = f*f*(3.0-2.0*f);
+  return mix(
+    mix(mix(hash(i),hash(i+vec3(1,0,0)),f.x),
+        mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),
+    mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),
+        mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z);
+}
+float fbm(vec3 p) {
+  float v=0.0; float a=0.5;
+  for(int i=0;i<4;i++){v+=a*vnoise(p);p*=2.2;a*=0.5;}
+  return v;
+}
+
+/* ----- Ray-sphere intersection ----- */
+float raySphere(vec3 ro, vec3 rd, float r) {
+  float b = dot(ro, rd);
+  float c = dot(ro, ro) - r*r;
+  float disc = b*b - c;
+  if(disc < 0.0) return -1.0;
+  return -b - sqrt(disc);
+}
+
+/* ----- Particle signed distance ----- */
+float sdParticle(vec3 p, vec3 center) {
+  return length(p - center) - 0.055;
+}
+
+/* ----- Particle positions (pre-computed names, no dynamic indexing) ----- */
+vec3 pPos0(float t) { return vec3(sin(t*0.61)*0.35, cos(t*0.47)*0.28, sin(t*0.83+1.1)*0.30); }
+vec3 pPos1(float t) { return vec3(cos(t*0.73+2.0)*0.32, sin(t*0.55+0.8)*0.38, cos(t*0.66)*0.25); }
+vec3 pPos2(float t) { return vec3(sin(t*0.89+3.0)*0.20, cos(t*0.71+1.5)*0.22, sin(t*0.52+2.2)*0.42); }
+vec3 pPos3(float t) { return vec3(cos(t*0.44+1.0)*0.45, sin(t*0.93+0.3)*0.18, cos(t*0.78+3.1)*0.28); }
+vec3 pPos4(float t) { return vec3(sin(t*0.57+0.7)*0.28, cos(t*0.38+2.5)*0.45, sin(t*0.91+0.9)*0.22); }
+vec3 pPos5(float t) { return vec3(cos(t*0.82+1.8)*0.38, sin(t*0.64+1.2)*0.30, cos(t*0.49+2.8)*0.35); }
+
+/* ----- Particle color by index ----- */
+vec3 pColBase0() { return vec3(0.16, 0.58, 0.76); } /* blue */
+vec3 pColBase1() { return vec3(0.94, 0.26, 0.04); } /* orange */
+vec3 pColBase2() { return vec3(0.16, 0.58, 0.76); }
+vec3 pColBase3() { return vec3(0.50, 0.40, 0.80); } /* violet */
+vec3 pColBase4() { return vec3(0.94, 0.26, 0.04); }
+vec3 pColBase5() { return vec3(0.16, 0.58, 0.76); }
+
+/* ----- Glow density from all particles ----- */
+void sampleParticles(vec3 p, float t, out float glow, out vec3 glowCol) {
+  glow = 0.0; glowCol = vec3(0.0);
+
+  float inv0 = max(0.0, 1.0 - length(p - pPos0(t)) / 0.38);
+  float inv1 = max(0.0, 1.0 - length(p - pPos1(t)) / 0.38);
+  float inv2 = max(0.0, 1.0 - length(p - pPos2(t)) / 0.38);
+  float inv3 = max(0.0, 1.0 - length(p - pPos3(t)) / 0.38);
+  float inv4 = max(0.0, 1.0 - length(p - pPos4(t)) / 0.38);
+  float inv5 = max(0.0, 1.0 - length(p - pPos5(t)) / 0.38);
+
+  float g0 = inv0*inv0*inv0;
+  float g1 = inv1*inv1*inv1;
+  float g2 = inv2*inv2*inv2;
+  float g3 = inv3*inv3*inv3;
+  float g4 = inv4*inv4*inv4;
+  float g5 = inv5*inv5*inv5;
+
+  glow = g0 + g1 + g2 + g3 + g4 + g5;
+  glowCol = pColBase0()*g0 + pColBase1()*g1 + pColBase2()*g2 +
+            pColBase3()*g3 + pColBase4()*g4 + pColBase5()*g5;
+}
+
+/* ----- Fresnel Schlick ----- */
+vec3 fresnel(float cosT, vec3 F0) {
+  return F0 + (1.0 - F0) * pow(clamp(1.0 - cosT, 0.0, 1.0), 5.0);
+}
+
+void main() {
+  vec2 fc = gl_FragCoord.xy;
+  vec2 ndc = (fc / uRes) * 2.0 - 1.0;
+  ndc.x *= uRes.x / uRes.y;
+
+  /* Mouse tilt */
+  vec2 mNorm = (uMouse / uRes - 0.5) * 2.0;
+  float tiltY = mNorm.x * 0.3;
+  float tiltX = mNorm.y * 0.3;
+
+  vec3 ro = vec3(0.0, 0.0, 3.0);
+  vec3 rd = normalize(vec3(ndc, -1.8));
+
+  /* Rotate view */
+  float cy = cos(tiltY), sy = sin(tiltY);
+  rd = vec3(cy*rd.x + sy*rd.z, rd.y, -sy*rd.x + cy*rd.z);
+  float cx = cos(tiltX), sx = sin(tiltX);
+  rd = vec3(rd.x, cx*rd.y - sx*rd.z, sx*rd.y + cx*rd.z);
+
+  float t = uTime;
+
+  /* Outer glass shell — IOR 1.50 */
+  float R = 1.0;
+  float IOR = 1.50;
+  float tHit = raySphere(ro, rd, R);
+
+  if(tHit < 0.0) {
+    gl_FragColor = vec4(0.0);
+    return;
+  }
+
+  vec3 pOuter = ro + tHit * rd;
+  vec3 N = normalize(pOuter);
+  vec3 V = -rd;
+  float NdV = max(dot(N, V), 0.0);
+
+  /* Fresnel at glass surface */
+  vec3 F0glass = vec3(0.04);
+  vec3 F = fresnel(NdV, F0glass);
+  float reflectance = (F.x + F.y + F.z) / 3.0;
+
+  /* Refracted ray inside glass */
+  float eta = 1.0 / IOR;
+  vec3 refRd = refract(rd, N, eta);
+  /* TIR fallback */
+  if(dot(refRd, refRd) < 0.01) refRd = rd;
+
+  /* March the refracted ray through the glass interior */
+  /* Find exit point (inner surface) */
+  float tExit = raySphere(pOuter, refRd, R * 0.9999);
+  vec3 pInner = pOuter + max(tExit, 0.001) * refRd;
+
+  /* Volume march: accumulate particle glow along refracted ray */
+  const int STEPS = 28;
+  vec3 accumGlow = vec3(0.0);
+  float transmittance = 1.0;
+
+  vec3 marchStart = pOuter + 0.01 * refRd;
+  vec3 marchEnd = pInner;
+  vec3 marchDir = normalize(marchEnd - marchStart);
+  float marchDist = length(marchEnd - marchStart);
+  float stepSize = marchDist / float(STEPS);
+
+  for(int i = 0; i < STEPS; i++) {
+    float fi = (float(i) + 0.5) / float(STEPS);
+    vec3 p = marchStart + marchDir * (fi * marchDist);
+
+    float glow; vec3 glowCol;
+    sampleParticles(p, t, glow, glowCol);
+
+    /* Beer-Lambert tinted absorption */
+    float absorb = 0.03;
+    float tbeer = exp(-absorb * stepSize);
+
+    /* Particle emission */
+    vec3 emission = glowCol * glow * stepSize * 3.5;
+
+    /* FBM-based internal haze */
+    float haze = fbm(p * 2.5 + t * 0.12) * 0.04;
+    emission += vec3(0.06, 0.12, 0.22) * haze * stepSize;
+
+    accumGlow += transmittance * emission;
+    transmittance *= tbeer;
+  }
+
+  /* Glass tint — very slight blue-green */
+  vec3 glassTint = vec3(0.72, 0.90, 0.98);
+
+  /* Internal color */
+  vec3 interior = accumGlow * glassTint + vec3(0.01, 0.02, 0.06) * transmittance;
+
+  /* Surface reflection — procedural env */
+  vec3 refl = reflect(rd, N);
+  float rY = refl.y;
+  vec3 envRefl = mix(vec3(0.03, 0.04, 0.10), vec3(0.15, 0.22, 0.40), max(rY, 0.0));
+  /* Orange accent in reflection */
+  vec3 oDirR = normalize(vec3(-0.9, 0.2, 0.4));
+  float oR = pow(max(dot(refl, oDirR), 0.0), 24.0);
+  envRefl += vec3(0.94, 0.26, 0.04) * oR * 0.6;
+  /* Blue accent */
+  vec3 bDirR = normalize(vec3(0.7, -0.1, -0.7));
+  float bR = pow(max(dot(refl, bDirR), 0.0), 16.0);
+  envRefl += vec3(0.16, 0.58, 0.76) * bR * 0.4;
+
+  /* Combine: reflection over glass over interior */
+  vec3 col = mix(interior, envRefl, reflectance * 0.6);
+
+  /* Gradient ring at equator */
+  float ringDist = abs(length(pOuter.xy) - 0.98) * 6.0;
+  float ringMask = max(0.0, 1.0 - ringDist);
+  float ringAngle = atan(pOuter.y, pOuter.x);
+  float ringT = fract(ringAngle / (2.0 * 3.14159) + t * 0.05);
+  vec3 ringCol = mix(vec3(0.16, 0.58, 0.76), vec3(0.94, 0.26, 0.04), ringT);
+  col = mix(col, ringCol * 2.0, ringMask * 0.5 * (1.0 - NdV));
+
+  /* Ae sigil as surface etching — visible through glass */
+  /* Compute spherical UV of inner intersection */
+  vec3 pN = normalize(pInner);
+  float sigU = atan(pN.z, pN.x) / (2.0 * 3.14159) + 0.5;
+  float sigV = asin(clamp(pN.y, -1.0, 1.0)) / 3.14159 + 0.5;
+  vec2 sUV = (vec2(sigU, sigV) - 0.5) * 2.2;
+  /* A left leg */
+  float dA = min(abs(sUV.x*0.8+sUV.y*0.6)-0.022,
+             min(abs((-sUV.x)*0.8+sUV.y*0.6)-0.022,
+                 abs(sUV.y - 0.10) - 0.016 + max(0.0, abs(sUV.x) - 0.16)));
+  /* E */
+  float dE = min(abs(sUV.x - 0.18) - 0.016 + max(0.0, abs(sUV.y) - 0.37),
+             min(abs(sUV.y - 0.36) - 0.016 + max(0.0, max(sUV.x - 0.30, 0.0 - sUV.x)),
+             min(abs(sUV.y) - 0.016 + max(0.0, max(sUV.x - 0.26, 0.0 - sUV.x)),
+                 abs(sUV.y + 0.36) - 0.016 + max(0.0, max(sUV.x - 0.30, 0.0 - sUV.x)))));
+  float sigil = min(dA, dE);
+  float sigilGlow = smoothstep(0.04, -0.04, sigil) * 0.7 * NdV;
+  col = mix(col, vec3(0.9, 0.95, 1.0) * 1.5, sigilGlow);
+
+  /* Soft edge feather for circular crop */
+  float outerEdge = length(pOuter.xy);
+  float edgeFade = smoothstep(1.0, 0.95, outerEdge);
+
+  /* Tone map */
+  col = col * (2.51*col + 0.03) / (col*(2.43*col+0.59)+0.14);
+  col = clamp(col, 0.0, 1.0);
+
+  gl_FragColor = vec4(col, edgeFade);
+}
+`;
+
+  function compile(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      console.error(gl.getShaderInfoLog(s), src);
+      return null;
+    }
+    return s;
+  }
+
+  const vs = compile(gl.VERTEX_SHADER, vsSource);
+  const fs = compile(gl.FRAGMENT_SHADER, fsSource);
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    console.error(gl.getProgramInfoLog(prog));
+    return;
+  }
+
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+  const aPos = gl.getAttribLocation(prog, 'aPos');
+  const uTime = gl.getUniformLocation(prog, 'uTime');
+  const uMouse = gl.getUniformLocation(prog, 'uMouse');
+  const uRes = gl.getUniformLocation(prog, 'uRes');
+
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+  let mx = canvas.width / 2, my = canvas.height / 2;
+  let tmx = mx, tmy = my;
+
+  document.addEventListener('mousemove', e => {
+    const r = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / r.width;
+    const scaleY = canvas.height / r.height;
+    tmx = (e.clientX - r.left) * scaleX;
+    tmy = (e.clientY - r.top) * scaleY;
+  });
+
+  function render(now) {
+    now *= 0.001;
+    mx += (tmx - mx) * 0.05;
+    my += (tmy - my) * 0.05;
+
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.useProgram(prog);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+    gl.uniform1f(uTime, now);
+    gl.uniform2f(uMouse, mx, canvas.height - my);
+    gl.uniform2f(uRes, canvas.width, canvas.height);
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    requestAnimationFrame(render);
+  }
+  requestAnimationFrame(render);
+})();
+</script>
+</body>
+</html>

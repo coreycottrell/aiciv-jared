@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AETHER Night 23 — Spectral Decomposition Avatar</title>
+<style>
+  :root { --navy: #080a12; --blue: #2a93c1; --orange: #f1420b; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--navy); }
+  canvas { display: block; width: 100%; height: 100%; }
+  #info {
+    position: fixed; top: 16px; left: 16px; color: rgba(255,255,255,0.5);
+    font: 11px/1.4 'SF Mono', monospace; pointer-events: none; z-index: 10;
+  }
+  #info h3 { color: rgba(255,255,255,0.8); font-size: 13px; margin-bottom: 4px; }
+  #fps { position: fixed; top: 16px; right: 16px; color: rgba(255,255,255,0.4);
+    font: 11px 'SF Mono', monospace; z-index: 10; }
+</style>
+</head>
+<body>
+<div id="info">
+  <h3>Night 23 / Exercise 1</h3>
+  Spectral Decomposition Avatar<br>
+  7-wavelength prismatic refraction<br>
+  Per-channel IOR separation + caustic fans
+</div>
+<div id="fps">--</div>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+if (!gl) document.body.innerHTML = '<p style="color:white;padding:2em">WebGL2 required</p>';
+
+function resize() {
+  const dpr = Math.min(devicePixelRatio, 2.0);
+  canvas.width = canvas.clientWidth * dpr;
+  canvas.height = canvas.clientHeight * dpr;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+resize();
+window.addEventListener('resize', resize);
+
+let mx = 0.5, my = 0.5;
+canvas.addEventListener('mousemove', e => {
+  mx = e.clientX / canvas.clientWidth;
+  my = e.clientY / canvas.clientHeight;
+});
+
+const vs = `#version 300 es
+in vec2 p;
+void main(){ gl_Position = vec4(p, 0, 1); }`;
+
+const fs = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform vec2 uRes;
+uniform float uTime;
+uniform vec2 uMouse;
+
+#define PI 3.14159265
+#define MAX_STEPS 80
+#define SURF_DIST 0.002
+
+// 7-wavelength spectral sampling (visible spectrum 400-700nm)
+// IOR varies by wavelength (Cauchy dispersion: n = A + B/lambda^2)
+// Using crown glass: A=1.5220, B=0.00459 (um^2)
+const float WAVELENGTHS[7] = float[7](0.400, 0.450, 0.500, 0.550, 0.600, 0.650, 0.700);
+const vec3 SPECTRAL_RGB[7] = vec3[7](
+  vec3(0.36, 0.00, 0.82),  // 400nm violet
+  vec3(0.05, 0.12, 1.00),  // 450nm blue
+  vec3(0.00, 0.80, 0.55),  // 500nm cyan-green
+  vec3(0.32, 1.00, 0.05),  // 550nm green
+  vec3(1.00, 0.78, 0.00),  // 600nm yellow
+  vec3(1.00, 0.35, 0.00),  // 650nm orange
+  vec3(0.95, 0.05, 0.02)   // 700nm red
+);
+
+float cauchyIOR(float lambda_um) {
+  return 1.5220 + 0.00459 / (lambda_um * lambda_um);
+}
+
+// Brain SDF with subtle organic deformation
+float hash(vec3 p) {
+  p = fract(p * vec3(443.897, 397.297, 491.187));
+  p += dot(p, p.yzx + 19.19);
+  return fract((p.x + p.y) * p.z);
+}
+
+float noise3(vec3 p) {
+  vec3 i = floor(p), f = fract(p);
+  f = f*f*(3.0-2.0*f);
+  float a = hash(i), b = hash(i+vec3(1,0,0));
+  float c = hash(i+vec3(0,1,0)), d = hash(i+vec3(1,1,0));
+  float e = hash(i+vec3(0,0,1)), f2 = hash(i+vec3(1,0,1));
+  float g = hash(i+vec3(0,1,1)), h = hash(i+vec3(1,1,1));
+  return mix(mix(mix(a,b,f.x),mix(c,d,f.x),f.y),
+             mix(mix(e,f2,f.x),mix(g,h,f.x),f.y), f.z);
+}
+
+float fbm(vec3 p) {
+  float v = 0.0, a = 0.5;
+  for(int i = 0; i < 4; i++) { v += a * noise3(p); p *= 2.1; a *= 0.5; }
+  return v;
+}
+
+float brainSDF(vec3 p) {
+  float sphere = length(p) - 1.2;
+  float folds = fbm(p * 2.5 + uTime * 0.05) * 0.15;
+  float gyri = sin(p.x*5.0 + p.y*3.0 + uTime*0.2) * 0.04
+             + sin(p.z*4.0 + p.x*6.0 - uTime*0.15) * 0.03;
+  return sphere + folds + gyri;
+}
+
+vec3 brainNormal(vec3 p) {
+  vec2 e = vec2(0.002, 0.0);
+  return normalize(vec3(
+    brainSDF(p+e.xyy) - brainSDF(p-e.xyy),
+    brainSDF(p+e.yxy) - brainSDF(p-e.yxy),
+    brainSDF(p+e.yyx) - brainSDF(p-e.yyx)
+  ));
+}
+
+float march(vec3 ro, vec3 rd, out float t) {
+  t = 0.0;
+  for(int i = 0; i < MAX_STEPS; i++) {
+    float d = brainSDF(ro + rd * t);
+    if(d < SURF_DIST) return d;
+    t += d * 0.8;
+    if(t > 12.0) break;
+  }
+  return 1e5;
+}
+
+// Refract ray through brain for a given wavelength
+vec3 spectralCaustic(vec3 lightPos, vec3 groundPoint, float ior) {
+  vec3 toLight = normalize(lightPos - groundPoint);
+  // Trace from ground point toward light, find brain intersection
+  float t;
+  float d = march(groundPoint + toLight * 0.01, toLight, t);
+  if(d > SURF_DIST * 2.0) return vec3(0.0);
+
+  vec3 hitPos = groundPoint + toLight * t;
+  vec3 n = brainNormal(hitPos);
+
+  // Refract entering glass
+  vec3 refracted = refract(toLight, n, 1.0 / ior);
+  if(length(refracted) < 0.001) return vec3(0.0); // TIR
+
+  // March through interior
+  float intT = 0.0;
+  for(int i = 0; i < 32; i++) {
+    vec3 ip = hitPos + refracted * intT;
+    float id = -brainSDF(ip);
+    if(id < SURF_DIST) break;
+    intT += max(id, 0.01) * 0.7;
+    if(intT > 4.0) break;
+  }
+
+  vec3 exitPos = hitPos + refracted * intT;
+  vec3 exitN = -brainNormal(exitPos);
+
+  // Refract exiting glass
+  vec3 exitRay = refract(refracted, exitN, ior);
+  if(length(exitRay) < 0.001) return vec3(0.0);
+
+  // Project to ground and compute energy
+  float convergence = max(dot(exitRay, vec3(0,-1,0)), 0.0);
+  float dist = length(exitPos - groundPoint);
+  float energy = convergence * exp(-dist * 0.5) * 0.15;
+
+  return vec3(energy);
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
+  vec3 ro = vec3(0.0, 0.5, 4.5);
+  vec3 rd = normalize(vec3(uv, -1.8));
+
+  // Subtle camera orbit from mouse
+  float ca = (uMouse.x - 0.5) * 0.3;
+  float sa = sin(ca), csa = cos(ca);
+  rd.xz = mat2(csa, -sa, sa, csa) * rd.xz;
+  ro.xz = mat2(csa, -sa, sa, csa) * ro.xz;
+
+  vec3 col = vec3(0.0);
+
+  // Orbiting light
+  float lt = uTime * 0.4;
+  vec3 lightPos = vec3(cos(lt)*3.0, 2.5, sin(lt)*3.0);
+
+  // March to brain
+  float t;
+  float d = march(ro, rd, t);
+
+  if(d < SURF_DIST * 2.0) {
+    vec3 pos = ro + rd * t;
+    vec3 n = brainNormal(pos);
+
+    // === SPECTRAL DECOMPOSITION: 7-wavelength refraction ===
+    vec3 spectralColor = vec3(0.0);
+    for(int w = 0; w < 7; w++) {
+      float ior = cauchyIOR(WAVELENGTHS[w]);
+      vec3 refr = refract(rd, n, 1.0 / ior);
+      if(length(refr) < 0.001) {
+        // Total internal reflection for this wavelength
+        refr = reflect(rd, n);
+      }
+
+      // March refracted ray through interior
+      float intT = 0.0;
+      vec3 intCol = vec3(0.0);
+      for(int i = 0; i < 40; i++) {
+        vec3 ip = pos + refr * intT;
+        float id = -brainSDF(ip);
+        if(id < SURF_DIST) break;
+        // Accumulate internal glow
+        float glow = exp(-intT * 1.5);
+        intCol += SPECTRAL_RGB[w] * glow * 0.02;
+        intT += max(id, 0.008) * 0.7;
+        if(intT > 3.0) break;
+      }
+
+      // Exit refraction
+      vec3 exitPos = pos + refr * intT;
+      vec3 exitN = -brainNormal(exitPos);
+      float exitIOR = ior;
+      vec3 exitRay = refract(refr, exitN, exitIOR);
+      if(length(exitRay) < 0.001) exitRay = reflect(refr, exitN);
+
+      // Environment sampling (simple gradient)
+      float envY = exitRay.y * 0.5 + 0.5;
+      vec3 envCol = mix(vec3(0.02, 0.04, 0.08), vec3(0.05, 0.1, 0.2), envY);
+
+      spectralColor += (intCol + envCol * 0.3) * SPECTRAL_RGB[w];
+    }
+    spectralColor /= 4.5; // Normalize energy
+
+    // Fresnel
+    float fresnel = pow(1.0 - max(dot(-rd, n), 0.0), 5.0);
+    fresnel = 0.04 + 0.96 * fresnel;
+
+    // Surface reflection
+    vec3 reflDir = reflect(rd, n);
+    float reflY = reflDir.y * 0.5 + 0.5;
+    vec3 reflCol = mix(vec3(0.03, 0.06, 0.12), vec3(0.1, 0.15, 0.25), reflY);
+
+    // Specular highlight
+    vec3 lDir = normalize(lightPos - pos);
+    vec3 h = normalize(lDir - rd);
+    float spec = pow(max(dot(n, h), 0.0), 128.0);
+
+    // Rim light (brand blue + orange)
+    float rim = pow(1.0 - max(dot(-rd, n), 0.0), 3.0);
+    vec3 rimCol = mix(vec3(0.165, 0.576, 0.757), vec3(0.945, 0.259, 0.043), rim);
+
+    col = mix(spectralColor, reflCol, fresnel)
+        + vec3(1.0, 0.95, 0.9) * spec * 2.0
+        + rimCol * rim * 0.4;
+
+    // Subsurface hint
+    float sss = max(dot(lDir, -n), 0.0) * 0.15;
+    col += vec3(0.165, 0.576, 0.757) * sss;
+  }
+
+  // Ground plane with spectral caustics
+  float groundY = -1.8;
+  if(rd.y < -0.01) {
+    float gt = (groundY - ro.y) / rd.y;
+    if(gt > 0.0 && (d > SURF_DIST * 2.0 || gt < t)) {
+      vec3 gp = ro + rd * gt;
+      if(abs(gp.x) < 6.0 && abs(gp.z) < 6.0) {
+        // Spectral caustic fan - each wavelength refracts differently
+        vec3 causticColor = vec3(0.0);
+        for(int w = 0; w < 7; w++) {
+          float ior = cauchyIOR(WAVELENGTHS[w]);
+          vec3 energy = spectralCaustic(lightPos, gp, ior);
+          causticColor += energy.x * SPECTRAL_RGB[w];
+        }
+
+        // Ground base
+        float falloff = exp(-length(gp.xz) * 0.15);
+        vec3 groundCol = vec3(0.01, 0.015, 0.025) * falloff;
+
+        // Subtle grid
+        float grid = smoothstep(0.02, 0.0, abs(fract(gp.x) - 0.5))
+                   + smoothstep(0.02, 0.0, abs(fract(gp.z) - 0.5));
+        groundCol += vec3(0.02, 0.03, 0.05) * grid * 0.3 * falloff;
+
+        col = groundCol + causticColor * 3.0;
+      }
+    }
+  }
+
+  // Atmospheric glow around brain
+  if(d > SURF_DIST * 2.0) {
+    float closestT = 0.0;
+    float minD = 1e5;
+    for(int i = 0; i < 40; i++) {
+      vec3 sp = ro + rd * closestT;
+      float sd = abs(brainSDF(sp));
+      minD = min(minD, sd);
+      closestT += max(sd, 0.05);
+      if(closestT > 8.0) break;
+    }
+    float glow = exp(-minD * 3.0) * 0.12;
+    col += vec3(0.165, 0.576, 0.757) * glow;
+  }
+
+  // Tone mapping + vignette
+  col = col / (col + 0.8);
+  col = pow(col, vec3(0.4545));
+  float vign = 1.0 - 0.3 * length((gl_FragCoord.xy / uRes - 0.5) * 1.4);
+  col *= vign;
+
+  fragColor = vec4(col, 1.0);
+}`;
+
+function compile(src, type) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+    console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(vs, gl.VERTEX_SHADER));
+gl.attachShader(prog, compile(fs, gl.FRAGMENT_SHADER));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+const pLoc = gl.getAttribLocation(prog, 'p');
+gl.enableVertexAttribArray(pLoc);
+gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
+
+const uRes = gl.getUniformLocation(prog, 'uRes');
+const uTime = gl.getUniformLocation(prog, 'uTime');
+const uMouse = gl.getUniformLocation(prog, 'uMouse');
+
+let frames = 0, lastFps = performance.now();
+const fpsEl = document.getElementById('fps');
+
+function render(time) {
+  gl.uniform2f(uRes, canvas.width, canvas.height);
+  gl.uniform1f(uTime, time * 0.001);
+  gl.uniform2f(uMouse, mx, my);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  frames++;
+  if(time - lastFps > 1000) {
+    fpsEl.textContent = Math.round(frames * 1000 / (time - lastFps)) + ' fps';
+    frames = 0;
+    lastFps = time;
+  }
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

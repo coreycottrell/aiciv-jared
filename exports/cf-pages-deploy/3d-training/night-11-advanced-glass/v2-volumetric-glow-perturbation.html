@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 11 V2 — Volumetric Glow + Noise Surface Perturbation</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #060606; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #info {
+    position: fixed; bottom: 20px; left: 20px; z-index: 10;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+    color: rgba(255,255,255,0.5); font-size: 12px; line-height: 1.6;
+  }
+  #info strong { color: rgba(42,147,193,0.8); }
+</style>
+</head>
+<body>
+<div id="info">
+  <strong>Night 11 V2</strong> — Volumetric Glow Layers + Noise Perturbation<br>
+  Stacked fog planes + FBM vertex displacement + inner volumetric scattering<br>
+  Move mouse to rotate
+</div>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// ── Scene ──
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x060608);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0, 6);
+
+// ── Noise-Perturbed Glass Orb (Vertex FBM Displacement) ──
+// Gap #5: Subtle noise-based surface perturbation
+// This creates an organic, living glass surface that subtly breathes
+
+const perturbedGlassVert = `
+  varying vec3 vNormal;
+  varying vec3 vWorldPos;
+  varying vec3 vViewDir;
+  varying float vDisplacement;
+  varying float vFresnel;
+  uniform float uTime;
+  uniform float uNoiseAmp;
+  uniform float uNoiseFreq;
+
+  // FBM noise (4 octaves)
+  vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+  vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+  vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+  vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+  float snoise(vec3 v) {
+    const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+    const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+    vec3 i = floor(v + dot(v, C.yyy));
+    vec3 x0 = v - i + dot(i, C.xxx);
+    vec3 g = step(x0.yzx, x0.xyz);
+    vec3 l = 1.0 - g;
+    vec3 i1 = min(g.xyz, l.zxy);
+    vec3 i2 = max(g.xyz, l.zxy);
+    vec3 x1 = x0 - i1 + C.xxx;
+    vec3 x2 = x0 - i2 + C.yyy;
+    vec3 x3 = x0 - D.yyy;
+    i = mod289(i);
+    vec4 p = permute(permute(permute(
+              i.z + vec4(0.0, i1.z, i2.z, 1.0))
+            + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+            + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+    float n_ = 0.142857142857;
+    vec3 ns = n_ * D.wyz - D.xzx;
+    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+    vec4 x_ = floor(j * ns.z);
+    vec4 y_ = floor(j - 7.0 * x_);
+    vec4 x = x_ * ns.x + ns.yyyy;
+    vec4 y = y_ * ns.x + ns.yyyy;
+    vec4 h = 1.0 - abs(x) - abs(y);
+    vec4 b0 = vec4(x.xy, y.xy);
+    vec4 b1 = vec4(x.zw, y.zw);
+    vec4 s0 = floor(b0)*2.0 + 1.0;
+    vec4 s1 = floor(b1)*2.0 + 1.0;
+    vec4 sh = -step(h, vec4(0.0));
+    vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+    vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+    vec3 p0 = vec3(a0.xy, h.x);
+    vec3 p1 = vec3(a0.zw, h.y);
+    vec3 p2 = vec3(a1.xy, h.z);
+    vec3 p3 = vec3(a1.zw, h.w);
+    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+    p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+    m = m * m;
+    return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+  }
+
+  float fbm(vec3 p) {
+    float f = 0.0;
+    float amp = 0.5;
+    float freq = 1.0;
+    for (int i = 0; i < 4; i++) {
+      f += amp * snoise(p * freq);
+      freq *= 2.1;
+      amp *= 0.45;
+    }
+    return f;
+  }
+
+  void main() {
+    float t = uTime;
+
+    // FBM displacement - 4 octaves of noise on the sphere surface
+    vec3 noiseCoord = normal * uNoiseFreq + vec3(t * 0.12, t * 0.09, t * 0.07);
+    float disp = fbm(noiseCoord) * uNoiseAmp;
+    vDisplacement = disp;
+
+    // Compute perturbed normal via finite differences
+    float eps = 0.005;
+    float dx = fbm(noiseCoord + vec3(eps, 0.0, 0.0)) - fbm(noiseCoord - vec3(eps, 0.0, 0.0));
+    float dy = fbm(noiseCoord + vec3(0.0, eps, 0.0)) - fbm(noiseCoord - vec3(0.0, eps, 0.0));
+    float dz = fbm(noiseCoord + vec3(0.0, 0.0, eps)) - fbm(noiseCoord - vec3(0.0, 0.0, eps));
+    vec3 grad = vec3(dx, dy, dz) / (2.0 * eps);
+    vec3 pertNormal = normalize(normal - grad * uNoiseAmp * 3.0);
+
+    vec3 displaced = position + normal * disp;
+
+    vec4 worldPos = modelMatrix * vec4(displaced, 1.0);
+    vWorldPos = worldPos.xyz;
+    vNormal = normalize(normalMatrix * pertNormal);
+    vViewDir = normalize(cameraPosition - worldPos.xyz);
+
+    float NdotV = max(dot(vNormal, vViewDir), 0.0);
+    vFresnel = pow(1.0 - NdotV, 3.0);
+
+    gl_Position = projectionMatrix * viewMatrix * worldPos;
+  }
+`;
+
+const perturbedGlassFrag = `
+  varying vec3 vNormal;
+  varying vec3 vWorldPos;
+  varying vec3 vViewDir;
+  varying float vDisplacement;
+  varying float vFresnel;
+  uniform float uTime;
+  uniform vec3 uBaseColor;
+  uniform vec3 uEdgeColor;
+
+  void main() {
+    vec3 N = normalize(vNormal);
+    vec3 V = normalize(vViewDir);
+    float NdotV = max(dot(N, V), 0.0);
+
+    // Base glass color modulated by displacement
+    // Peaks are brighter, valleys darker -- reveals the noise topology
+    float dispColor = smoothstep(-0.08, 0.08, vDisplacement);
+    vec3 baseColor = mix(uBaseColor * 0.5, uBaseColor * 1.5, dispColor);
+
+    // Fresnel-driven edge glow
+    vec3 edgeGlow = uEdgeColor * vFresnel * 1.5;
+
+    // Internal scattering simulation
+    // Light that enters the glass scatters and exits colored
+    float scatter = pow(1.0 - NdotV, 2.0) * 0.5;
+    vec3 scatterColor = mix(uBaseColor, uEdgeColor, scatter) * scatter;
+
+    // Thin film interference at edges (rainbow sheen)
+    float thinFilm = sin(NdotV * 12.0 + uTime * 0.5) * 0.5 + 0.5;
+    vec3 filmColor = vec3(
+      sin(thinFilm * 6.28) * 0.5 + 0.5,
+      sin(thinFilm * 6.28 + 2.094) * 0.5 + 0.5,
+      sin(thinFilm * 6.28 + 4.189) * 0.5 + 0.5
+    ) * pow(1.0 - NdotV, 5.0) * 0.3;
+
+    // Combine
+    vec3 color = baseColor * 0.3 + edgeGlow + scatterColor + filmColor;
+
+    // Glass alpha: more transparent at center, opaque at edges
+    float alpha = 0.15 + vFresnel * 0.7;
+
+    gl_FragColor = vec4(color, alpha);
+  }
+`;
+
+// ── Main Glass Orb ──
+const orbGeo = new THREE.SphereGeometry(1.4, 128, 128);
+const orbMat = new THREE.ShaderMaterial({
+  vertexShader: perturbedGlassVert,
+  fragmentShader: perturbedGlassFrag,
+  uniforms: {
+    uTime: { value: 0 },
+    uNoiseAmp: { value: 0.12 },
+    uNoiseFreq: { value: 2.8 },
+    uBaseColor: { value: new THREE.Color(0x2a93c1) },
+    uEdgeColor: { value: new THREE.Color(0x88ddff) }
+  },
+  transparent: true,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+  blending: THREE.NormalBlending
+});
+const orb = new THREE.Mesh(orbGeo, orbMat);
+scene.add(orb);
+
+// ── Inner Glow Core ──
+const coreGeo = new THREE.SphereGeometry(0.5, 64, 64);
+const coreMat = new THREE.ShaderMaterial({
+  vertexShader: perturbedGlassVert,
+  fragmentShader: `
+    varying float vFresnel;
+    varying float vDisplacement;
+    uniform float uTime;
+
+    void main() {
+      // Pulsing energy core
+      float pulse = sin(uTime * 1.5) * 0.3 + 0.7;
+      vec3 coreColor = vec3(0.945, 0.259, 0.043) * pulse * 2.0; // PureBrain orange
+      vec3 hotColor = vec3(1.0, 0.7, 0.3) * pulse * 3.0;
+
+      // Displacement reveals internal structure
+      float structure = smoothstep(-0.05, 0.05, vDisplacement);
+      vec3 color = mix(coreColor, hotColor, structure);
+
+      // Inverse fresnel -- brighter at center
+      float alpha = (1.0 - vFresnel * 0.5) * pulse;
+      gl_FragColor = vec4(color, alpha);
+    }
+  `,
+  uniforms: {
+    uTime: { value: 0 },
+    uNoiseAmp: { value: 0.08 },
+    uNoiseFreq: { value: 3.5 }
+  },
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending
+});
+const coreOrb = new THREE.Mesh(coreGeo, coreMat);
+scene.add(coreOrb);
+
+// ── Volumetric Fog Glow Layers ──
+// Gap #2 refinement: Proper depth-aware volumetric fog with Beer-Lambert falloff
+// 16 stacked planes with animated noise, each contributing a slice of fog density
+
+const fogVert = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const fogFrag = `
+  varying vec2 vUv;
+  uniform float uTime;
+  uniform float uOpacity;
+  uniform float uSpeed;
+  uniform vec2 uOffset;
+  uniform float uDepth;
+  uniform vec3 uColor;
+
+  // Simple hash noise
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+      mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
+      f.y
+    );
+  }
+
+  float fbm(vec2 p) {
+    float f = 0.0;
+    f += 0.5 * noise(p); p *= 2.1;
+    f += 0.25 * noise(p); p *= 2.3;
+    f += 0.125 * noise(p); p *= 2.0;
+    f += 0.0625 * noise(p);
+    return f;
+  }
+
+  void main() {
+    float t = uTime * uSpeed;
+    vec2 uv = vUv * 1.5 + uOffset;
+
+    // Two-pass anti-tiling fog
+    float n1 = fbm(uv * 1.4 + vec2(t * 0.031, t * 0.017));
+    float n2 = fbm(uv * 0.8 + vec2(-t * 0.021, t * 0.013));
+    float fog = n1 * 0.6 + n2 * 0.4;
+
+    // Radial falloff -- fog fades toward edges of plane
+    vec2 center = vUv - 0.5;
+    float radial = 1.0 - smoothstep(0.2, 0.5, length(center));
+
+    // Beer-Lambert depth attenuation (gap from night 3)
+    float beerLambert = exp(-uDepth * 0.3);
+
+    float alpha = fog * radial * uOpacity * beerLambert;
+    gl_FragColor = vec4(uColor, alpha);
+  }
+`;
+
+const fogGroup = new THREE.Group();
+scene.add(fogGroup);
+const FOG_LAYERS = 16;
+
+for (let i = 0; i < FOG_LAYERS; i++) {
+  const depth = i / (FOG_LAYERS - 1); // 0 to 1
+  const z = -5 + depth * 4.5; // z = -5 to -0.5
+
+  const geo = new THREE.PlaneGeometry(12, 12);
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: fogVert,
+    fragmentShader: fogFrag,
+    uniforms: {
+      uTime: { value: 0 },
+      uOpacity: { value: 0.04 + depth * 0.025 },
+      uSpeed: { value: 0.3 + depth * 0.4 },
+      uOffset: { value: new THREE.Vector2(Math.random() * 10, Math.random() * 10) },
+      uDepth: { value: depth },
+      uColor: { value: new THREE.Color().lerpColors(
+        new THREE.Color(0x0a1525),  // Deep dark blue far
+        new THREE.Color(0x2a93c1),  // PureBrain blue near
+        depth * 0.4
+      )}
+    },
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide
+  });
+
+  const plane = new THREE.Mesh(geo, mat);
+  plane.position.z = z;
+  fogGroup.add(plane);
+}
+
+// ── Floating Volumetric Glow Particles ──
+// Complement the fog with discrete glow points that drift through it
+const particleCount = 800;
+const particleGeo = new THREE.BufferGeometry();
+const positions = new Float32Array(particleCount * 3);
+const sizes = new Float32Array(particleCount);
+const alphas = new Float32Array(particleCount);
+const colors = new Float32Array(particleCount * 3);
+
+const PB_BLUE = new THREE.Color(0x2a93c1);
+const PB_ORANGE = new THREE.Color(0xf1420b);
+
+for (let i = 0; i < particleCount; i++) {
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos(2 * Math.random() - 1);
+  const r = 1.5 + Math.random() * 3.0;
+
+  positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+  positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+  positions[i * 3 + 2] = r * Math.cos(phi) - 2;
+
+  sizes[i] = 2 + Math.random() * 6;
+  alphas[i] = 0.1 + Math.random() * 0.5;
+
+  const c = Math.random() < 0.75 ? PB_BLUE : PB_ORANGE;
+  colors[i * 3] = c.r;
+  colors[i * 3 + 1] = c.g;
+  colors[i * 3 + 2] = c.b;
+}
+
+particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+particleGeo.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+particleGeo.setAttribute('aAlpha', new THREE.BufferAttribute(alphas, 1));
+particleGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+const particleMat = new THREE.ShaderMaterial({
+  vertexShader: `
+    attribute float aSize;
+    attribute float aAlpha;
+    varying float vAlpha;
+    varying vec3 vColor;
+    uniform float uTime;
+
+    void main() {
+      vAlpha = aAlpha;
+      vColor = color;
+
+      // Gentle drift animation
+      vec3 pos = position;
+      float t = uTime * 0.15;
+      pos.x += sin(t + position.y * 2.0) * 0.3;
+      pos.y += cos(t * 0.8 + position.x * 1.5) * 0.2;
+      pos.z += sin(t * 0.6 + position.z) * 0.15;
+
+      vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+      gl_PointSize = aSize * (350.0 / -mvPos.z);
+      gl_Position = projectionMatrix * mvPos;
+    }
+  `,
+  fragmentShader: `
+    varying float vAlpha;
+    varying vec3 vColor;
+
+    void main() {
+      vec2 uv = gl_PointCoord - 0.5;
+      float d = length(uv);
+      if (d > 0.5) discard;
+
+      // Soft glow falloff
+      float alpha = (1.0 - smoothstep(0.0, 0.5, d)) * vAlpha;
+      alpha *= alpha; // Quadratic falloff for softer glow
+
+      gl_FragColor = vec4(vColor * 1.5, alpha);
+    }
+  `,
+  uniforms: {
+    uTime: { value: 0 }
+  },
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  vertexColors: true
+});
+
+const particles = new THREE.Points(particleGeo, particleMat);
+scene.add(particles);
+
+// ── Lighting ──
+const light1 = new THREE.PointLight(0x2a93c1, 12, 20);
+light1.position.set(3, 2, 4);
+scene.add(light1);
+
+const light2 = new THREE.PointLight(0xf1420b, 8, 15);
+light2.position.set(-3, -1, 3);
+scene.add(light2);
+
+const ambient = new THREE.AmbientLight(0x0a1530, 0.5);
+scene.add(ambient);
+
+// ── Postprocessing ──
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.8, 0.3, 0.82
+));
+
+// ── Mouse ──
+const mouse = { x: 0, y: 0 };
+document.addEventListener('mousemove', (e) => {
+  mouse.x = (e.clientX / window.innerWidth - 0.5) * 2;
+  mouse.y = (e.clientY / window.innerHeight - 0.5) * 2;
+});
+
+// ── Animation ──
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  orbMat.uniforms.uTime.value = t;
+  coreMat.uniforms.uTime.value = t;
+  particleMat.uniforms.uTime.value = t;
+
+  // Update fog layers
+  fogGroup.children.forEach(plane => {
+    plane.material.uniforms.uTime.value = t;
+  });
+
+  // Camera orbit
+  camera.position.x += (mouse.x * 1.0 - camera.position.x) * 0.02;
+  camera.position.y += (-mouse.y * 0.6 - camera.position.y) * 0.02;
+  camera.lookAt(0, 0, 0);
+
+  // Orb breathing
+  const breath = 1.0 + Math.sin(t * 0.5) * 0.03;
+  orb.scale.setScalar(breath);
+
+  // Gentle rotation
+  orb.rotation.y = t * 0.08;
+  coreOrb.rotation.y = -t * 0.15;
+
+  // Animate noise amplitude for "breathing" perturbation
+  orbMat.uniforms.uNoiseAmp.value = 0.08 + Math.sin(t * 0.3) * 0.04;
+
+  composer.render();
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

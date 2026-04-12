@@ -1,0 +1,1456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PureBrain AI - Aether</title>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #050510;
+            color: #e0e0e0;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow-x: hidden;
+        }
+        .header {
+            text-align: center;
+            padding: 10px 20px 2px;
+            z-index: 10;
+        }
+        .header h1 {
+            font-family: 'Oswald', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+        .header .blue { color: #2a93c1; }
+        .header .orange {
+            color: #f1420b;
+            text-shadow: 0 0 8px rgba(241,66,11,0.6), 0 0 2px rgba(0,0,0,0.8);
+        }
+
+        .main-area {
+            display: flex;
+            gap: 16px;
+            max-width: 1100px;
+            width: 100%;
+            padding: 4px 16px;
+            align-items: flex-start;
+            flex: 1;
+        }
+
+        .avatar-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        #glCanvas {
+            display: block;
+            border-radius: 12px;
+            cursor: pointer;
+            width: 480px;
+            height: 480px;
+        }
+
+        /* CSS Fallback - improved glass concept */
+        #cssAvatar {
+            display: none;
+            width: 480px;
+            height: 480px;
+            border-radius: 12px;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            background: #020204;
+        }
+
+        #cssAvatar .orb-bg {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(ellipse at 50% 47%, #080a12 0%, #020204 100%);
+        }
+
+        #cssAvatar .orb-glow {
+            position: absolute;
+            top: 47%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 270px;
+            height: 270px;
+            border-radius: 50%;
+            background:
+                radial-gradient(ellipse at 28% 25%, rgba(255,255,255,0.18) 0%, transparent 35%),
+                radial-gradient(ellipse at 50% 50%, var(--state-color-light, #1a6a9a) 0%, var(--state-color-dark, #0d4a7a) 40%, transparent 70%),
+                radial-gradient(ellipse at 50% 50%, transparent 30%, rgba(2,2,4,0.85) 80%);
+            animation: orbPulse 4.2s ease-in-out infinite;
+            box-shadow:
+                -4px -4px 20px rgba(255,255,255,0.06),
+                inset 6px 0px 20px rgba(42,147,193,0.15),
+                0 20px 40px rgba(0,0,0,0.6);
+        }
+
+        #cssAvatar .orb-highlight {
+            position: absolute;
+            top: 22%;
+            left: 22%;
+            width: 28%;
+            height: 18%;
+            transform: rotate(-15deg);
+            background: radial-gradient(ellipse, rgba(255,255,255,0.22) 0%, transparent 70%);
+            border-radius: 50%;
+        }
+
+        #cssAvatar .orb-label {
+            position: absolute;
+            bottom: 40px;
+            width: 100%;
+            text-align: center;
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.9rem;
+            letter-spacing: 0.2em;
+            color: rgba(42,147,193,0.7);
+            text-transform: uppercase;
+        }
+
+        #cssAvatar.speaking .orb-glow {
+            background:
+                radial-gradient(ellipse at 28% 25%, rgba(255,255,255,0.15) 0%, transparent 35%),
+                radial-gradient(ellipse at 50% 50%, #6b2200 0%, #3a1000 40%, transparent 70%),
+                radial-gradient(ellipse at 50% 50%, transparent 30%, rgba(14,6,4,0.85) 80%);
+            box-shadow:
+                -4px -4px 20px rgba(255,255,255,0.04),
+                inset 6px 0px 20px rgba(241,66,11,0.2),
+                0 20px 40px rgba(0,0,0,0.6);
+        }
+        #cssAvatar.thinking .orb-glow {
+            background:
+                radial-gradient(ellipse at 28% 25%, rgba(255,255,255,0.15) 0%, transparent 35%),
+                radial-gradient(ellipse at 50% 50%, #2a0a5a 0%, #150535 40%, transparent 70%),
+                radial-gradient(ellipse at 50% 50%, transparent 30%, rgba(8,5,16,0.85) 80%);
+            box-shadow:
+                -4px -4px 20px rgba(255,255,255,0.04),
+                inset 6px 0px 20px rgba(123,79,201,0.2),
+                0 20px 40px rgba(0,0,0,0.6);
+        }
+        #cssAvatar.listening .orb-glow {
+            animation: orbPulse 3.5s ease-in-out infinite;
+        }
+
+        @keyframes orbPulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.012); }
+        }
+
+        .status {
+            text-align: center;
+            margin: 4px 0;
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.8rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            min-height: 18px;
+        }
+        .status.listening { color: #2a93c1; }
+        .status.speaking { color: #f1420b; }
+        .status.thinking { color: #8866cc; }
+        .status.idle { color: #334455; }
+
+        .chat-col {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-height: 85vh;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border: 1px solid rgba(42, 147, 193, 0.08);
+            border-radius: 12px;
+            background: rgba(8, 8, 24, 0.6);
+            min-height: 300px;
+        }
+        .chat-messages::-webkit-scrollbar { width: 3px; }
+        .chat-messages::-webkit-scrollbar-thumb { background: #223; border-radius: 3px; }
+
+        .msg {
+            max-width: 88%;
+            padding: 9px 13px;
+            border-radius: 12px;
+            font-size: 0.86rem;
+            line-height: 1.5;
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; } }
+
+        .msg.user {
+            align-self: flex-end;
+            background: linear-gradient(135deg, #162a42, #15203a);
+            color: #b0c8e0;
+            border-bottom-right-radius: 3px;
+        }
+        .msg.assistant {
+            align-self: flex-start;
+            background: linear-gradient(135deg, #141428, #101024);
+            color: #c8c8d8;
+            border: 1px solid rgba(42,147,193,0.08);
+            border-bottom-left-radius: 3px;
+        }
+        .msg.system { align-self: center; color: #445; font-size: 0.72rem; font-style: italic; }
+        .msg .sender { font-size: 0.65rem; font-weight: 600; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.08em; }
+        .msg.user .sender { color: #4a9fd0; }
+        .msg.assistant .sender { color: #f1420b; }
+
+        .chat-input-area {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px;
+            align-items: center;
+        }
+        .chat-input {
+            flex: 1;
+            padding: 9px 12px;
+            border: 1px solid rgba(42,147,193,0.15);
+            border-radius: 9px;
+            background: rgba(12,12,28,0.8);
+            color: #e0e0e0;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 0.86rem;
+            outline: none;
+        }
+        .chat-input:focus { border-color: #2a93c1; }
+        .chat-input::placeholder { color: #3a4a5a; }
+
+        .btn {
+            padding: 9px 14px;
+            border: none;
+            border-radius: 9px;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .btn:hover { transform: translateY(-1px); }
+        .btn-talk { background: linear-gradient(135deg, #2a93c1, #1a7aaa); color: white; min-width: 90px; }
+        .btn-talk.recording { background: linear-gradient(135deg, #f1420b, #d4380b); animation: talkPulse 1.2s infinite; }
+        @keyframes talkPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(241,66,11,0.3); } 50% { box-shadow: 0 0 0 10px rgba(241,66,11,0); } }
+        .btn-send { background: linear-gradient(135deg, #f1420b, #d4380b); color: white; }
+        .voice-indicator { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #fff; margin-right: 5px; animation: vp 0.6s infinite; }
+        @keyframes vp { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+        .welcome-msg { text-align: center; padding: 30px 16px; color: #556677; }
+        .welcome-msg h2 { font-family: 'Oswald', sans-serif; color: #2a93c1; font-size: 1.1rem; margin-bottom: 6px; }
+        .welcome-msg p { font-size: 0.82rem; line-height: 1.5; }
+
+        @media (max-width: 768px) {
+            .main-area { flex-direction: column; align-items: center; }
+            #glCanvas { width: 320px !important; height: 320px !important; }
+            #cssAvatar { width: 320px !important; height: 320px !important; }
+            .chat-col { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1><span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span> <span style="color:#fff">Talk to Aether</span></h1>
+</div>
+
+<div class="main-area">
+    <div class="avatar-col">
+        <canvas id="glCanvas"></canvas>
+        <div id="cssAvatar">
+            <div class="orb-bg"></div>
+            <div class="orb-glow"></div>
+            <div class="orb-highlight"></div>
+            <div class="orb-label">Aether</div>
+        </div>
+        <div class="status idle" id="statusText">Ready</div>
+    </div>
+    <div class="chat-col">
+        <div class="chat-messages" id="chatMessages">
+            <div class="welcome-msg">
+                <h2>Hello, I'm Aether</h2>
+                <p>I'm the orchestrating intelligence behind PureBrain.<br>
+                Click <strong>Talk</strong> to speak, or type below.</p>
+            </div>
+        </div>
+        <div class="chat-input-area">
+            <button class="btn btn-talk" id="talkBtn" onclick="toggleTalk()">Talk</button>
+            <input class="chat-input" id="chatInput" placeholder="Or type a message..." onkeydown="if(event.key==='Enter')sendText()" />
+            <button class="btn btn-send" onclick="sendText()">Send</button>
+        </div>
+    </div>
+</div>
+
+<!-- VERTEX SHADER -->
+<script id="vs" type="x-shader/x-vertex">
+attribute vec2 aPosition;
+void main() {
+    gl_Position = vec4(aPosition, 0.0, 1.0);
+}
+</script>
+
+<!-- FRAGMENT SHADER - Desktop: Gleb Kuznetsov / Milkinside quality -->
+<!-- Philosophy: Render LIGHT, not OBJECTS. Sphere = vessel for colored light. -->
+<script id="fs-desktop" type="x-shader/x-fragment">
+precision highp float;
+
+uniform vec2 uResolution;
+uniform float uTime;
+uniform float uAudioLevel;
+uniform float uState;
+
+// =============================================
+// HASH / NOISE (minimal - only where needed)
+// =============================================
+float hash(float n) { return fract(sin(n)*43758.5453); }
+
+vec3 mod289v3(vec3 x) { return x - floor(x*(1.0/289.0))*289.0; }
+vec4 mod289v4(vec4 x) { return x - floor(x*(1.0/289.0))*289.0; }
+vec4 permute(vec4 x) { return mod289v4(((x*34.0)+10.0)*x); }
+vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314*r; }
+
+float snoise(vec3 v) {
+    const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+    const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+    vec3 i  = floor(v + dot(v, C.yyy));
+    vec3 x0 = v - i + dot(i, C.xxx);
+    vec3 g = step(x0.yzx, x0.xyz);
+    vec3 l = 1.0 - g;
+    vec3 i1 = min(g.xyz, l.zxy);
+    vec3 i2 = max(g.xyz, l.zxy);
+    vec3 x1 = x0 - i1 + C.xxx;
+    vec3 x2 = x0 - i2 + C.yyy;
+    vec3 x3 = x0 - D.yyy;
+    i = mod289v3(i);
+    vec4 p = permute(permute(permute(
+        i.z + vec4(0.0,i1.z,i2.z,1.0))
+      + i.y + vec4(0.0,i1.y,i2.y,1.0))
+      + i.x + vec4(0.0,i1.x,i2.x,1.0));
+    float n_ = 0.142857142857;
+    vec3  ns = n_*D.wyz - D.xzx;
+    vec4 j = p - 49.0*floor(p*ns.z*ns.z);
+    vec4 x_ = floor(j*ns.z);
+    vec4 y_ = floor(j - 7.0*x_);
+    vec4 x = x_*ns.x + ns.yyyy;
+    vec4 y = y_*ns.x + ns.yyyy;
+    vec4 h = 1.0 - abs(x) - abs(y);
+    vec4 b0 = vec4(x.xy, y.xy);
+    vec4 b1 = vec4(x.zw, y.zw);
+    vec4 s0 = floor(b0)*2.0+1.0;
+    vec4 s1 = floor(b1)*2.0+1.0;
+    vec4 sh = -step(h, vec4(0.0));
+    vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+    vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+    vec3 p0 = vec3(a0.xy,h.x);
+    vec3 p1 = vec3(a0.zw,h.y);
+    vec3 p2 = vec3(a1.xy,h.z);
+    vec3 p3 = vec3(a1.zw,h.w);
+    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+    p0*=norm.x; p1*=norm.y; p2*=norm.z; p3*=norm.w;
+    vec4 m = max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0);
+    m = m*m;
+    return 42.0*dot(m*m, vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+}
+
+// =============================================
+// SDF - Perfect sphere. Zero FBM. Gleb law.
+// Only micro-breathing (0.998-1.002) allowed.
+// Audio ripple when speaking/listening.
+// =============================================
+float map(vec3 p) {
+    float t = uTime;
+    float audio = uAudioLevel;
+
+    // Breathing: very subtle, 6s period
+    float breathe = sin(t * (6.28318 / 6.0)) * 0.5 + 0.5;
+    float sphereRadius = 0.998 + breathe * 0.004; // 0.998 to 1.002
+
+    // NO surface noise. NO fbm. NO scratch. NO fingerprint.
+    // Gleb's glass is OPTICALLY PERFECT.
+    float sphere = length(p) - sphereRadius;
+
+    // Audio ripple ONLY when audio is significant
+    float ripple = 0.0;
+    if (audio > 0.15) {
+        float r = length(p);
+        ripple = sin(r * 10.0 - t * 4.0) * (audio - 0.15) * 0.004;
+    }
+
+    return sphere + ripple;
+}
+
+// Tetrahedral normal sampling for quality
+vec3 calcNormal(vec3 p) {
+    const float eps = 0.0010;
+    vec2 k = vec2(1.0, -1.0);
+    return normalize(
+        k.xyy*map(p + k.xyy*eps) +
+        k.yyx*map(p + k.yyx*eps) +
+        k.yxy*map(p + k.yxy*eps) +
+        k.xxx*map(p + k.xxx*eps)
+    );
+}
+
+// =============================================
+// MULTI-LIGHT STUDIO ENVIRONMENT
+// The core of Gleb's aesthetic: 6 colored lights
+// NOT a single white studio. A COLOR LAB.
+// =============================================
+vec3 studioEnv(vec3 dir, float sMix, float tMix, float audio) {
+    // Background: near-absolute black, tiny blue tint (Gleb's #020204)
+    vec3 env = vec3(0.003, 0.003, 0.006);
+
+    // LIGHT 1: KEY - warm white, upper left, soft softbox
+    // This is the primary shadow caster
+    vec3 L1dir = normalize(vec3(-0.8, 1.4, 0.6));
+    float L1 = pow(max(0.0, dot(dir, L1dir)), 6.0);
+    env += vec3(1.0, 0.96, 0.88) * L1 * 2.0;
+
+    // LIGHT 2: ELECTRIC BLUE fill - upper right opposite key
+    // Creates the vivid blue zone Gleb is known for
+    vec3 L2dir = normalize(vec3(0.7, 0.8, -0.4));
+    float L2 = pow(max(0.0, dot(dir, L2dir)), 4.0);
+    env += vec3(0.051, 0.086, 0.961) * L2 * 1.2; // #0D16F5
+
+    // LIGHT 3: VIOLET ambient - lower front
+    // Deep violet that gives the sphere its purple depth zone
+    vec3 L3dir = normalize(vec3(-0.4, -0.3, 0.9));
+    float L3 = pow(max(0.0, dot(dir, L3dir)), 2.0);
+    // State-dependent: idle=violet, speaking=deep red, thinking=deeper violet
+    vec3 L3colorIdle  = vec3(0.353, 0.055, 0.541);  // #5a0e8a
+    vec3 L3colorSpeak = vec3(0.545, 0.055, 0.118);  // #8b0e1e
+    vec3 L3colorThink = vec3(0.165, 0.027, 0.353);  // #2a0758
+    vec3 L3color = mix(mix(L3colorIdle, L3colorSpeak, sMix), L3colorThink, tMix);
+    env += L3color * L3 * 0.8;
+
+    // LIGHT 4: MAGENTA accent - right lower
+    // Tight lobe = small colored gleam; state-modulated
+    vec3 L4dir = normalize(vec3(1.0, -0.5, 0.3));
+    float L4 = pow(max(0.0, dot(dir, L4dir)), 10.0);
+    vec3 L4colorIdle  = vec3(0.820, 0.051, 0.808); // #D10DCE magenta
+    vec3 L4colorSpeak = vec3(0.894, 0.141, 0.141); // #E42424 red
+    vec3 L4color = mix(L4colorIdle, L4colorSpeak, sMix);
+    env += L4color * L4 * (0.5 + sMix * 0.4);
+
+    // LIGHT 5: CYAN rim - back right (creates glass silhouette glow)
+    vec3 L5dir = normalize(vec3(-0.2, 0.1, -1.0));
+    float L5 = pow(max(0.0, dot(dir, L5dir)), 12.0);
+    vec3 L5colorIdle  = vec3(0.094, 0.659, 0.827); // #18A8D3 cyan
+    vec3 L5colorThink = vec3(0.051, 0.086, 0.961); // electric blue in think
+    vec3 L5color = mix(L5colorIdle, L5colorThink, tMix);
+    env += L5color * L5 * 0.6;
+
+    // LIGHT 6: RED hot zone - bottom back
+    // Simulates heat/energy, adds warm counterpoint to cool blues
+    vec3 L6dir = normalize(vec3(0.3, -0.8, -0.5));
+    float L6 = pow(max(0.0, dot(dir, L6dir)), 5.0);
+    env += vec3(0.894, 0.141, 0.141) * L6 * (0.3 + sMix * 0.5); // More red when speaking
+
+    // Speaking: HOT WHITE core floods upward
+    if (sMix > 0.01) {
+        vec3 L7dir = normalize(vec3(0.0, 0.5, 0.5));
+        float L7 = pow(max(0.0, dot(dir, L7dir)), 3.0);
+        env += vec3(1.0, 0.65, 0.2) * L7 * sMix * 0.7; // Orange-white heat
+    }
+
+    // Thinking: cool blue dominance
+    if (tMix > 0.01) {
+        vec3 L8dir = normalize(vec3(0.5, 0.5, -0.5));
+        float L8 = pow(max(0.0, dot(dir, L8dir)), 4.0);
+        env += vec3(0.2, 0.4, 1.0) * L8 * tMix * 0.5;
+    }
+
+    return env;
+}
+
+// =============================================
+// REFRACTION
+// =============================================
+vec3 refractRay(vec3 rd, vec3 n, float ior) {
+    float cosI = dot(-rd, n);
+    float sinT2 = ior*ior*(1.0 - cosI*cosI);
+    if (sinT2 > 1.0) return reflect(rd, n);
+    float cosT = sqrt(1.0 - sinT2);
+    return ior*rd + (ior*cosI - cosT)*n;
+}
+
+// =============================================
+// VOLUMETRIC INTERIOR GLOW
+// Replaces icosahedron completely.
+// No wireframes. No geometry. Pure LIGHT.
+// The sphere contains colored light, not objects.
+// =============================================
+vec3 interiorLight(vec3 p, float t, float sMix, float tMix, float audio,
+                   vec3 coreColorA, vec3 coreColorB) {
+
+    vec3 glow = vec3(0.0);
+    float totalGlow = 0.0;
+
+    // CORE EMITTER: concentrated at center
+    // This is the "heart" of the sphere - what makes it appear to glow from within
+    float coreDist = length(p);
+    float coreGlow = exp(-coreDist / 0.22) * 0.85;
+    totalGlow += coreGlow;
+    glow += coreColorA * coreGlow;
+
+    // ORBITING SECONDARY EMITTER: complementary color, slow orbit
+    // Creates the sense that internal color zones are MOVING
+    float orbitAngle = t * (6.28318 / 12.0);
+    vec3 orbitPos = vec3(sin(orbitAngle), 0.1 + sin(t*0.3)*0.05, cos(orbitAngle)) * 0.3;
+    float secDist = length(p - orbitPos);
+    float secGlow = exp(-secDist * secDist / 0.05) * 0.45;
+    totalGlow += secGlow;
+    glow += coreColorB * secGlow;
+
+    // CORONA BAND: equatorial glow, tilted 23.5 degrees (Earth-like)
+    // Gives the sphere a sense of axis and orientation
+    vec3 bandNormal = normalize(vec3(0.0, cos(0.4102), sin(0.4102)));
+    float bandDist = abs(dot(normalize(p), bandNormal));
+    float pulseFactor = 0.5 + 0.5 * sin(t * 0.15);
+    float bandGlow = exp(-bandDist * bandDist / 0.007) * 0.3 * pulseFactor;
+    totalGlow += bandGlow;
+    glow += mix(coreColorA, coreColorB, 0.5) * bandGlow;
+
+    // SPEAKING STATE: hot white/orange core erupts from center
+    if (sMix > 0.01) {
+        float hotCore = exp(-coreDist / 0.10) * sMix * 1.2;
+        // Audio reactive: core brightens with voice
+        hotCore *= (1.0 + audio * 1.5);
+        glow += vec3(1.0, 0.65, 0.15) * hotCore; // Hot orange-white
+        // Secondary pulse rings (concentric audio waves)
+        float waveR = 0.2 + sin(t * 6.0 + audio * 8.0) * 0.08 * audio;
+        float wavePulse = exp(-abs(coreDist - waveR) / 0.03) * sMix * audio * 0.8;
+        glow += vec3(1.0, 0.4, 0.1) * wavePulse;
+    }
+
+    // THINKING STATE: deep violet/blue scan energy
+    if (tMix > 0.01) {
+        // Slow rotating energy plane (not geometric - soft volumetric)
+        float scanAngle = t * (6.28318 / 8.0); // 8-second rotation
+        vec3 scanDir = vec3(sin(scanAngle), 0.0, cos(scanAngle));
+        float scanProj = dot(normalize(p), scanDir);
+        float scanGlow = exp(-scanProj * scanProj / 0.04) * tMix * 0.6;
+        glow += vec3(0.3, 0.1, 1.0) * scanGlow; // Electric blue scan
+    }
+
+    // Modulate by interior visibility (thicker glass attenuates interior)
+    return glow;
+}
+
+// =============================================
+// MAIN
+// =============================================
+void main() {
+    vec2 uv = (gl_FragCoord.xy - 0.5*uResolution) / min(uResolution.x, uResolution.y);
+    float t = uTime;
+    float audio = uAudioLevel;
+
+    // =============================================
+    // STATE BLENDING
+    // =============================================
+    float sMix = smoothstep(0.5, 1.5, uState);   // 0=idle, 1=speaking
+    float tMix = smoothstep(2.5, 3.5, uState);   // 3=thinking
+
+    // State-dependent interior color pairs (A=core, B=secondary)
+    // Following Gleb's palette: maximum saturation, wide color gamut
+    // IDLE: deep teal-blue core + Gleb's deep violet secondary
+    vec3 idleCoreA = vec3(0.102, 0.302, 0.478); // #1a4d7a deep teal-blue
+    vec3 idleCoreB = vec3(0.235, 0.055, 0.306); // #3C0E4E Gleb's deep violet
+
+    // SPEAKING: deep hot red core + Gleb's magenta secondary
+    vec3 speakCoreA = vec3(0.420, 0.082, 0.020); // #6b1505 deep hot red
+    vec3 speakCoreB = vec3(0.820, 0.051, 0.808); // #D10DCE Gleb's magenta
+
+    // THINKING: deep violet core + Gleb's electric blue secondary
+    vec3 thinkCoreA = vec3(0.165, 0.039, 0.353); // #2a0a5a deep violet
+    vec3 thinkCoreB = vec3(0.051, 0.086, 0.961); // #0D16F5 Gleb's electric blue
+
+    vec3 coreA = mix(mix(idleCoreA, speakCoreA, sMix), thinkCoreA, tMix);
+    vec3 coreB = mix(mix(idleCoreB, speakCoreB, sMix), thinkCoreB, tMix);
+
+    // Rim light colors (state-dependent, used for silhouette glow)
+    vec3 rimIdle  = vec3(0.094, 0.659, 0.827); // #18A8D3 cyan
+    vec3 rimSpeak = vec3(0.894, 0.141, 0.141); // #E42424 red
+    vec3 rimThink = vec3(0.051, 0.086, 0.961); // #0D16F5 electric blue
+    vec3 rimColor = mix(mix(rimIdle, rimSpeak, sMix), rimThink, tMix);
+
+    // =============================================
+    // CAMERA
+    // Very slow orbit (90s) - doesn't telegraph "WebGL demo"
+    // Subtle micro-drift for life without obvious rotation
+    // =============================================
+    float camDist = 2.45; // Close enough for sphere to fill ~65% canvas height
+    // 90-second orbit: near-imperceptible but adds life
+    float camAngle = t * (6.28318 / 90.0);
+    // Sine drift: non-mechanical, organic path
+    camAngle += sin(t * 0.05) * 0.04;
+    float camY = 0.18 + sin(t * 0.08) * 0.03;
+    vec3 ro = vec3(sin(camAngle)*camDist, camY, cos(camAngle)*camDist);
+
+    // Target slightly above center (sphere sits at ~47% from top)
+    vec3 target = vec3(0.0, 0.05, 0.0);
+    vec3 fwd = normalize(target - ro);
+    vec3 right = normalize(cross(fwd, vec3(0.0,1.0,0.0)));
+    vec3 up = cross(right, fwd);
+    vec3 rd = normalize(fwd + uv.x*right + uv.y*up);
+
+    // Sphere micro-drift (barely perceptible, gives life without distraction)
+    vec3 sphereOffset = vec3(
+        snoise(vec3(t*0.06, 0.0, 0.0)),
+        snoise(vec3(0.0, t*0.05, 0.0)),
+        snoise(vec3(0.0, 0.0, t*0.07))
+    ) * 0.012;
+
+    // =============================================
+    // RAYMARCHING
+    // =============================================
+    float totalDist = 0.0;
+    float d;
+    vec3 p;
+    bool hit = false;
+
+    for (int i = 0; i < 80; i++) {
+        p = ro + rd*totalDist - sphereOffset;
+        d = map(p);
+        if (d < 0.0006) { hit = true; break; }
+        if (totalDist > 8.0) break;
+        totalDist += max(d*0.8, 0.0008);
+    }
+
+    // =============================================
+    // BACKGROUND - Gleb's breathing void
+    // #020204: not black, a blue-tinted void
+    // With atmospheric light bleed from sphere colors
+    // =============================================
+    vec3 bgBase = vec3(0.004, 0.004, 0.008); // #020204 near-Gleb
+    float bgVign = smoothstep(0.0, 1.2, length(uv) * 0.75);
+    vec3 bgColor = mix(bgBase, vec3(0.002, 0.002, 0.004), bgVign);
+
+    // LIGHT BLEED: Colored halos from sphere into void
+    // This is the "breathing" quality of Gleb's backgrounds
+    // Each colored light source bleeds softly into the background
+    float sphereProximity = smoothstep(0.65, 0.0, length(uv));
+
+    // Electric blue bleed (upper right zone)
+    vec2 blueBleedUV = uv - vec2(0.15, 0.1);
+    bgColor += vec3(0.051, 0.086, 0.961) * smoothstep(0.55, 0.0, length(blueBleedUV)) * 0.018;
+
+    // Magenta/violet bleed (lower right zone)
+    vec2 magBleedUV = uv - vec2(0.2, -0.15);
+    vec3 magBleed = mix(vec3(0.820, 0.051, 0.808), vec3(0.894, 0.141, 0.141), sMix);
+    bgColor += magBleed * smoothstep(0.5, 0.0, length(magBleedUV)) * 0.012;
+
+    // Cyan bleed behind sphere
+    bgColor += vec3(0.094, 0.659, 0.827) * sphereProximity * 0.010 * (1.0 - tMix);
+
+    // Speaking: orange-red atmospheric glow
+    bgColor += vec3(0.9, 0.3, 0.05) * sphereProximity * sMix * 0.025;
+
+    // Thinking: deep blue atmospheric glow
+    bgColor += vec3(0.1, 0.2, 0.8) * sphereProximity * tMix * 0.020;
+
+    // CAUSTIC PROJECTION: glass focusing light behind/in front of sphere
+    // Very subtle - only near the sphere
+    if (!hit) {
+        float causticMask = smoothstep(0.52, 0.12, length(uv));
+        if (causticMask > 0.001) {
+            float c1 = sin(uv.x * 13.0 + t * 0.35) * sin(uv.y * 10.0 + t * 0.25);
+            float c2 = sin(length(uv) * 16.0 - t * 0.5) * 0.5;
+            float caustic = pow(max((c1 + c2) * 0.5 + 0.5, 0.0), 3.0);
+            bgColor += coreA * caustic * causticMask * 0.030;
+        }
+    }
+
+    vec3 col = bgColor;
+
+    if (hit) {
+        vec3 n = calcNormal(p);
+        vec3 V = normalize(ro - p - sphereOffset);
+        float NdotV = max(dot(n, V), 0.0);
+
+        // =============================================
+        // FRESNEL - real glass f0=0.03
+        // Gleb uses SLIGHTLY lower f0 for more transparency at center
+        // Center: 3% reflection, 97% transmission
+        // Edge: ~100% reflection = the glass "money shot"
+        // =============================================
+        float f0 = 0.03;
+        float fresnel = f0 + (1.0 - f0) * pow(1.0 - NdotV, 5.0);
+
+        // Per-channel IOR for chromatic dispersion (N-BK7 optical glass values)
+        // This is the prismatic color separation Gleb uses
+        float iorR = 1.5110; // Red: least bent
+        float iorG = 1.5168; // Green: reference
+        float iorB = 1.5220; // Blue: most bent = blue fringe at edges
+
+        // =============================================
+        // REFLECTION
+        // =============================================
+        vec3 reflDir = reflect(-V, n);
+        vec3 envRefl = studioEnv(reflDir, sMix, tMix, audio);
+
+        // =============================================
+        // REFRACTION WITH CHROMATIC DISPERSION
+        // Three separate channels = prismatic light splitting
+        // =============================================
+        vec3 refrDirR = refractRay(rd, n, 1.0/iorR);
+        vec3 refrDirG = refractRay(rd, n, 1.0/iorG);
+        vec3 refrDirB = refractRay(rd, n, 1.0/iorB);
+
+        // March through glass to find exit point (20 steps)
+        vec3 pInside = p + rd*0.02;
+        float exitDist = 0.0;
+        vec3 exitP = pInside;
+        for (int j = 0; j < 20; j++) {
+            exitP = pInside + refrDirG*exitDist;
+            float dExit = -map(exitP - sphereOffset);
+            if (dExit < 0.001 || exitDist > 2.5) break;
+            exitDist += max(dExit*0.8, 0.002);
+        }
+        vec3 exitNorm = -calcNormal(exitP - sphereOffset);
+
+        // Beer's law absorption through glass thickness
+        // Red absorbed most, blue least = natural glass blue tint
+        // Gleb's glass goes subtly blue-violet at depth
+        float thickness = exitDist;
+        vec3 absorption = exp(-vec3(0.05, 0.03, 0.01) * thickness);
+
+        // Environment seen THROUGH the glass (chromatic per channel)
+        vec3 exitRefrDirR = refractRay(refrDirR, exitNorm, iorR);
+        vec3 exitRefrDirG = refractRay(refrDirG, exitNorm, iorG);
+        vec3 exitRefrDirB = refractRay(refrDirB, exitNorm, iorB);
+
+        // Sample colored environment through each channel
+        // This is what creates the vivid color zones seen through the glass
+        vec3 envRefrR = studioEnv(exitRefrDirR, sMix, tMix, audio);
+        vec3 envRefrG = studioEnv(exitRefrDirG, sMix, tMix, audio);
+        vec3 envRefrB = studioEnv(exitRefrDirB, sMix, tMix, audio);
+        vec3 envRefr = vec3(envRefrR.r, envRefrG.g, envRefrB.b) * absorption;
+
+        // =============================================
+        // VOLUMETRIC INTERIOR GLOW
+        // The interior is LIGHT, not geometry
+        // What Gleb calls "a compressed galaxy"
+        // =============================================
+        vec3 interiorP = exitP - sphereOffset;
+
+        vec3 intGlow = interiorLight(interiorP, t, sMix, tMix, audio, coreA, coreB);
+
+        // Interior visibility attenuated by glass thickness
+        // (thicker glass absorbs more of interior light)
+        float interiorVis = exp(-thickness * 0.35);
+        intGlow *= interiorVis;
+
+        // Glass tint through the material (very subtle)
+        float tintStr = 0.18;
+        envRefr = mix(envRefr, envRefr + coreA * 0.25, tintStr);
+
+        // =============================================
+        // SPECULAR HIGHLIGHTS - GOLD, NOT WHITE
+        // This single change transforms perceived material quality.
+        // White = plastic. Gold = precious crystal.
+        // =============================================
+        vec3 keyLightDir = normalize(vec3(-0.8, 1.4, 0.6));
+        vec3 H_key = normalize(keyLightDir + V);
+
+        // Primary: extremely tight (480) gold highlight - the glass "star"
+        vec3 goldSpec = vec3(0.784, 0.659, 0.290); // #C8A84A gold
+        // Speaking state: gold shifts toward hotter #FFB830
+        vec3 hotGold = vec3(1.0, 0.722, 0.188); // #FFB830
+        vec3 specColor = mix(goldSpec, hotGold, sMix);
+
+        float spec_tight = pow(max(dot(n, H_key), 0.0), 480.0) * 5.5;
+        // Secondary: soft warm near-white halo around primary
+        float spec_soft  = pow(max(dot(n, H_key), 0.0), 40.0)  * 0.12;
+        vec3  specSoftColor = vec3(0.88, 0.80, 0.78); // warm near-white
+
+        // =============================================
+        // MATERIAL COMPOSITION
+        // Glass = transmission + reflection, Fresnel weighted
+        // =============================================
+
+        // Transmission: colored environment light seen through glass
+        vec3 glassTrans = envRefr * (1.0 - fresnel);
+
+        // Add interior volumetric glow (seen through transmission)
+        // Audio amplifies interior brightness
+        glassTrans += intGlow * (0.9 + audio * 0.6);
+
+        // Reflection layer (Fresnel weighted - mirrors at edges)
+        vec3 reflLayer = envRefl * fresnel;
+
+        // GOLD specular on reflection layer
+        reflLayer += specColor * spec_tight;
+        reflLayer += specSoftColor * spec_soft;
+
+        // Combine transmission + reflection
+        col = glassTrans + reflLayer;
+
+        // Rim light: colored silhouette edge (state-dependent)
+        // This is what gives the sphere its "glow" silhouette
+        float rimFresnel = pow(1.0 - NdotV, 3.5) * 0.45;
+        col += rimColor * rimFresnel * (0.7 + audio * 0.4);
+
+        // Speaking: subtle energy aura just outside sphere surface
+        float energyField = exp(-abs(totalDist - 1.02) * 18.0) * sMix;
+        col += vec3(0.9, 0.3, 0.05) * energyField * 0.06;
+
+        // Screen-space chromatic aberration at silhouette edges
+        // Gleb uses this as a feature: directional fringing at edges
+        float caStrength = pow(1.0 - NdotV, 4.0) * 0.006;
+        col.r += caStrength * 0.5;   // Red fringe outward
+        col.b -= caStrength * 0.4;   // Blue fringe inward
+    }
+
+    // =============================================
+    // POST PROCESSING - Gleb-calibrated
+    // =============================================
+
+    // Luminance
+    float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
+
+    // BLOOM: restrained on mid-tones (Gleb's bloom doesn't bleed)
+    // Pass 1: wide soft (threshold 0.8, not 0.85 - very selective)
+    float wideBoom = smoothstep(0.80, 1.1, lum) * 0.12;
+    // Pass 2: tight sparkle (fires ONLY on gold specular peak)
+    float sparkle = smoothstep(1.3, 2.0, lum) * 0.40;
+    col += col * wideBoom;
+    col += col * sparkle;
+
+    // ACES filmic tone mapping
+    col = (col*(2.51*col + vec3(0.03))) / (col*(2.43*col + vec3(0.59)) + vec3(0.14));
+
+    // GAMMA: 0.90 (Gleb's richness - slightly more aggressive)
+    col = pow(max(col, vec3(0.0)), vec3(0.90));
+
+    // VIGNETTE: starts at 0.45 from center (frames without masking sphere)
+    // Strength: ~22% darkening
+    float vign = 1.0 - smoothstep(0.45, 1.05, length(uv) * 1.05);
+    col *= 0.78 + vign * 0.22;
+
+    // FILM GRAIN: nearly invisible (0.0012 max, Gleb's renders are CLEAN)
+    // Only in the darkest areas - pure background only
+    float grain = snoise(vec3(gl_FragCoord.xy * 1.8, t * 22.0)) * 0.0012;
+    col += grain * smoothstep(0.08, 0.0, lum); // Only in pure black areas
+
+    gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}
+</script>
+
+<!-- FRAGMENT SHADER - Mobile: Gleb quality within mediump budget -->
+<script id="fs-mobile" type="x-shader/x-fragment">
+precision mediump float;
+
+uniform vec2 uResolution;
+uniform float uTime;
+uniform float uAudioLevel;
+uniform float uState;
+
+float hash(float n) { return fract(sin(n)*43758.5453); }
+
+float noise(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    f = f*f*(3.0-2.0*f);
+    float n2 = i.x + i.y*157.0 + 113.0*i.z;
+    return mix(
+        mix(mix(hash(n2), hash(n2+1.0), f.x), mix(hash(n2+157.0), hash(n2+158.0), f.x), f.y),
+        mix(mix(hash(n2+113.0), hash(n2+114.0), f.x), mix(hash(n2+270.0), hash(n2+271.0), f.x), f.y),
+        f.z);
+}
+
+// SDF: perfect sphere, no surface noise (Gleb law on mobile too)
+float map(vec3 p) {
+    float t = uTime;
+    float audio = uAudioLevel;
+    float breathe = sin(t * (6.28318 / 6.0)) * 0.5 + 0.5;
+    float sphereRadius = 0.998 + breathe * 0.004;
+    float sphere = length(p) - sphereRadius;
+    float ripple = 0.0;
+    if (audio > 0.15) {
+        ripple = sin(length(p) * 10.0 - t * 4.0) * (audio - 0.15) * 0.004;
+    }
+    return sphere + ripple;
+}
+
+vec3 calcNormal(vec3 p) {
+    float e = 0.003;
+    return normalize(vec3(
+        map(p+vec3(e,0,0))-map(p-vec3(e,0,0)),
+        map(p+vec3(0,e,0))-map(p-vec3(0,e,0)),
+        map(p+vec3(0,0,e))-map(p-vec3(0,0,e))
+    ));
+}
+
+// Multi-light studio for mobile (4 lights, simplified)
+vec3 studioEnvMob(vec3 dir, float sMix, float tMix) {
+    vec3 env = vec3(0.003, 0.003, 0.006);
+
+    // Key warm white
+    vec3 L1dir = normalize(vec3(-0.8, 1.4, 0.6));
+    float L1 = pow(max(0.0, dot(dir, L1dir)), 6.0);
+    env += vec3(1.0, 0.96, 0.88) * L1 * 1.8;
+
+    // Electric blue fill
+    vec3 L2dir = normalize(vec3(0.7, 0.8, -0.4));
+    float L2 = pow(max(0.0, dot(dir, L2dir)), 4.0);
+    env += vec3(0.051, 0.086, 0.961) * L2 * 1.0;
+
+    // Violet/red ambient (state-dependent)
+    vec3 L3dir = normalize(vec3(-0.4, -0.3, 0.9));
+    float L3 = pow(max(0.0, dot(dir, L3dir)), 2.0);
+    vec3 L3c = mix(vec3(0.353, 0.055, 0.541), vec3(0.545, 0.055, 0.118), sMix);
+    env += L3c * L3 * 0.7;
+
+    // Cyan rim
+    vec3 L4dir = normalize(vec3(-0.2, 0.1, -1.0));
+    float L4 = pow(max(0.0, dot(dir, L4dir)), 12.0);
+    env += vec3(0.094, 0.659, 0.827) * L4 * 0.5;
+
+    return env;
+}
+
+void main() {
+    vec2 uv = (gl_FragCoord.xy - 0.5*uResolution) / min(uResolution.x, uResolution.y);
+    float t = uTime;
+    float audio = uAudioLevel;
+
+    float sMix = smoothstep(0.5, 1.5, uState);
+    float tMix = smoothstep(2.5, 3.5, uState);
+
+    // State core colors
+    vec3 idleCoreA  = vec3(0.102, 0.302, 0.478);
+    vec3 idleCoreB  = vec3(0.235, 0.055, 0.306);
+    vec3 speakCoreA = vec3(0.420, 0.082, 0.020);
+    vec3 speakCoreB = vec3(0.820, 0.051, 0.808);
+    vec3 thinkCoreA = vec3(0.165, 0.039, 0.353);
+    vec3 thinkCoreB = vec3(0.051, 0.086, 0.961);
+
+    vec3 coreA = mix(mix(idleCoreA, speakCoreA, sMix), thinkCoreA, tMix);
+    vec3 coreB = mix(mix(idleCoreB, speakCoreB, sMix), thinkCoreB, tMix);
+
+    vec3 rimIdle  = vec3(0.094, 0.659, 0.827);
+    vec3 rimSpeak = vec3(0.894, 0.141, 0.141);
+    vec3 rimThink = vec3(0.051, 0.086, 0.961);
+    vec3 rimColor = mix(mix(rimIdle, rimSpeak, sMix), rimThink, tMix);
+
+    // Camera: 90-second orbit (same as desktop for consistency)
+    float camDist = 2.45;
+    float camAngle = t * (6.28318 / 90.0) + sin(t * 0.05) * 0.04;
+    float camY = 0.18;
+    vec3 ro = vec3(sin(camAngle)*camDist, camY, cos(camAngle)*camDist);
+    vec3 target = vec3(0.0, 0.05, 0.0);
+    vec3 fwd = normalize(target - ro);
+    vec3 right2 = normalize(cross(fwd, vec3(0.0,1.0,0.0)));
+    vec3 up2 = cross(right2, fwd);
+    vec3 rd = normalize(fwd + uv.x*right2 + uv.y*up2);
+
+    // Raymarch - 40 steps for mobile
+    float totalDist = 0.0;
+    vec3 p;
+    bool hit = false;
+
+    for (int i = 0; i < 40; i++) {
+        p = ro + rd*totalDist;
+        float d = map(p);
+        if (d < 0.002) { hit = true; break; }
+        if (totalDist > 8.0) break;
+        totalDist += max(d*0.8, 0.002);
+    }
+
+    // Background with light bleed
+    vec3 col = vec3(0.004, 0.004, 0.008);
+    float bgVign = smoothstep(0.0, 1.2, length(uv) * 0.75);
+    col = mix(col, vec3(0.002, 0.002, 0.004), bgVign);
+
+    // Light bleed (simplified for mobile)
+    float sphereProx = smoothstep(0.65, 0.0, length(uv));
+    col += vec3(0.051, 0.086, 0.961) * smoothstep(0.55, 0.0, length(uv - vec2(0.15, 0.1))) * 0.015;
+    col += vec3(0.9, 0.3, 0.05) * sphereProx * sMix * 0.020;
+    col += vec3(0.1, 0.2, 0.8) * sphereProx * tMix * 0.015;
+
+    if (hit) {
+        vec3 n = calcNormal(p);
+        vec3 V = normalize(ro - p);
+        float NdotV = max(dot(n, V), 0.0);
+
+        // Fresnel f0=0.03 (real glass)
+        float f0 = 0.03;
+        float fresnel = f0 + (1.0 - f0) * pow(1.0 - NdotV, 5.0);
+
+        // Reflection
+        vec3 reflDir = reflect(-V, n);
+        vec3 envRefl = studioEnvMob(reflDir, sMix, tMix);
+
+        // Single-channel refraction (mobile budget)
+        float ior = 1.5168;
+        float cosI = dot(-rd, n);
+        float sinT2 = ior*ior*(1.0 - cosI*cosI);
+        vec3 refrDir = (sinT2 > 1.0)
+            ? reflect(rd, n)
+            : (ior*rd + (ior*cosI - sqrt(max(0.0, 1.0-sinT2)))*n);
+
+        vec3 envRefr = studioEnvMob(refrDir, sMix, tMix);
+        // Beer's law (simplified)
+        envRefr *= vec3(0.97, 0.985, 1.0); // Natural glass blue tint
+
+        // Subtle glass tint
+        envRefr = mix(envRefr, envRefr + coreA * 0.2, 0.18);
+
+        // Volumetric interior glow (simplified for mobile)
+        float coreDist = length(p);
+        float coreGlow = exp(-coreDist / 0.22) * 0.85 * (1.0 + audio * 0.8);
+        // Orbiting secondary
+        float orbitAngle = t * (6.28318 / 12.0);
+        vec3 orbitPos = vec3(sin(orbitAngle), 0.1, cos(orbitAngle)) * 0.3;
+        float secGlow = exp(-length(p - orbitPos) * length(p - orbitPos) / 0.05) * 0.4;
+
+        vec3 intGlow = (coreA * coreGlow + coreB * secGlow);
+        intGlow *= exp(-totalDist * 0.3); // Attenuate by glass thickness
+
+        // Speaking hot core
+        if (sMix > 0.01) {
+            intGlow += vec3(1.0, 0.65, 0.15) * exp(-coreDist / 0.10) * sMix * (1.0 + audio * 1.2);
+        }
+        // Thinking scan
+        if (tMix > 0.01) {
+            float scanAngle = t * (6.28318 / 8.0);
+            float scanProj = dot(normalize(p), vec3(sin(scanAngle), 0.0, cos(scanAngle)));
+            intGlow += vec3(0.3, 0.1, 1.0) * exp(-scanProj*scanProj/0.04) * tMix * 0.5;
+        }
+
+        // GOLD specular (not white - same as desktop)
+        vec3 keyLightDir = normalize(vec3(-0.8, 1.4, 0.6));
+        vec3 H1 = normalize(keyLightDir + V);
+        vec3 goldSpec = vec3(0.784, 0.659, 0.290); // #C8A84A
+        vec3 specColor = mix(goldSpec, vec3(1.0, 0.722, 0.188), sMix);
+        float spec_tight = pow(max(dot(n, H1), 0.0), 380.0) * 4.5;
+        float spec_soft  = pow(max(dot(n, H1), 0.0), 40.0)  * 0.08;
+
+        // Glass material
+        vec3 glassTrans = envRefr * (1.0 - fresnel);
+        glassTrans += intGlow;
+        glassTrans += coreA * max(dot(n, keyLightDir), 0.0) * 0.05;
+
+        vec3 reflLayer = envRefl * fresnel;
+        reflLayer += specColor * spec_tight;
+        reflLayer += vec3(0.88, 0.80, 0.78) * spec_soft;
+
+        col = glassTrans + reflLayer;
+
+        // Rim light
+        float rimFresnel = pow(1.0 - NdotV, 3.5) * 0.45;
+        col += rimColor * rimFresnel * (0.7 + audio * 0.4);
+
+        // Speaking energy field
+        col += vec3(0.9, 0.3, 0.05) * exp(-abs(totalDist - 1.02) * 18.0) * sMix * 0.05;
+    }
+
+    // ACES + Gamma + Vignette (same as desktop)
+    col = (col*(2.51*col+vec3(0.03)))/(col*(2.43*col+vec3(0.59))+vec3(0.14));
+    col = pow(max(col, vec3(0.0)), vec3(0.90));
+    float vign = 1.0 - smoothstep(0.45, 1.05, length(uv) * 1.05);
+    col *= 0.78 + vign * 0.22;
+
+    gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}
+</script>
+
+<script>
+// ============================================
+// CONFIG
+// ============================================
+var API_BASE = window.location.origin;
+var SESSION_ID = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+
+// ============================================
+// MOBILE DETECTION
+// ============================================
+var isMobile = (
+    window.innerWidth < 768 ||
+    ('ontouchstart' in window) ||
+    (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) ||
+    /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+);
+
+// ============================================
+// WEBGL SETUP
+// ============================================
+var canvas = document.getElementById('glCanvas');
+var cssAvatar = document.getElementById('cssAvatar');
+var dpr = Math.min(window.devicePixelRatio || 1, isMobile ? 1 : 2);
+var canvasSize = isMobile ? 320 : 480;
+canvas.width = canvasSize * dpr;
+canvas.height = canvasSize * dpr;
+
+var gl = null;
+var program = null;
+var uResolution, uTime, uAudioLevel, uState;
+var webglActive = false;
+
+function tryCompileProgram(fsSource, precision) {
+    if (precision === 'mediump') {
+        fsSource = fsSource.replace('precision highp float;', 'precision mediump float;');
+    }
+
+    var vsSource = document.getElementById('vs').textContent;
+    var vs = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vs, vsSource);
+    gl.compileShader(vs);
+    if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+        console.warn('VS compile error:', gl.getShaderInfoLog(vs));
+        gl.deleteShader(vs);
+        return null;
+    }
+
+    var fs = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fs, fsSource);
+    gl.compileShader(fs);
+    if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+        console.warn('FS compile error (' + precision + '):', gl.getShaderInfoLog(fs));
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
+        return null;
+    }
+
+    var prog = gl.createProgram();
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+        console.warn('Program link error:', gl.getProgramInfoLog(prog));
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
+        gl.deleteProgram(prog);
+        return null;
+    }
+    return prog;
+}
+
+function initWebGL() {
+    try {
+        gl = canvas.getContext('webgl', { antialias: false, alpha: false }) ||
+             canvas.getContext('experimental-webgl', { antialias: false, alpha: false });
+    } catch(e) { gl = null; }
+
+    if (!gl) { showCSSFallback('WebGL not supported'); return false; }
+
+    var fsId = isMobile ? 'fs-mobile' : 'fs-desktop';
+    var fsSource = document.getElementById(fsId).textContent;
+
+    program = tryCompileProgram(fsSource, isMobile ? 'mediump' : 'highp');
+
+    if (!program && !isMobile) {
+        console.warn('Desktop highp failed, trying mediump...');
+        program = tryCompileProgram(fsSource, 'mediump');
+    }
+
+    if (!program && isMobile) {
+        console.warn('Mobile shader failed, trying desktop with mediump...');
+        var desktopSrc = document.getElementById('fs-desktop').textContent;
+        program = tryCompileProgram(desktopSrc, 'mediump');
+    }
+
+    if (!program) { showCSSFallback('Shader compilation failed'); return false; }
+
+    gl.useProgram(program);
+
+    var vertices = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
+    var buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+    var aPosition = gl.getAttribLocation(program, 'aPosition');
+    gl.enableVertexAttribArray(aPosition);
+    gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
+
+    uResolution = gl.getUniformLocation(program, 'uResolution');
+    uTime = gl.getUniformLocation(program, 'uTime');
+    uAudioLevel = gl.getUniformLocation(program, 'uAudioLevel');
+    uState = gl.getUniformLocation(program, 'uState');
+
+    try {
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.uniform2f(uResolution, canvas.width, canvas.height);
+        gl.uniform1f(uTime, 0.0);
+        gl.uniform1f(uAudioLevel, 0.0);
+        gl.uniform1f(uState, 0.0);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    } catch(e) { showCSSFallback('Render error: ' + e.message); return false; }
+
+    if (gl.isContextLost()) { showCSSFallback('WebGL context lost'); return false; }
+
+    webglActive = true;
+    canvas.style.display = 'block';
+    cssAvatar.style.display = 'none';
+    return true;
+}
+
+function showCSSFallback(reason) {
+    console.warn('Falling back to CSS avatar:', reason);
+    canvas.style.display = 'none';
+    cssAvatar.style.display = 'block';
+    webglActive = false;
+    document.getElementById('statusText').textContent = 'Ready';
+}
+
+canvas.addEventListener('webglcontextlost', function(e) {
+    e.preventDefault();
+    showCSSFallback('WebGL context lost at runtime');
+}, false);
+
+canvas.addEventListener('webglcontextrestored', function() {
+    console.log('WebGL context restored, reinitializing...');
+    if (!initWebGL()) showCSSFallback('Context restore failed');
+}, false);
+
+canvas.style.display = 'none';
+cssAvatar.style.display = 'block';
+initWebGL();
+
+// ============================================
+// STATE + AUDIO
+// ============================================
+var state = 'idle';
+var audioLevel = 0;
+var targetAudioLevel = 0;
+var startTime = performance.now();
+var audioCtx = null;
+var analyser = null;
+var currentStateFloat = 0;
+var targetStateFloat = 0;
+
+function ensureAudioCtx() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.connect(audioCtx.destination);
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+}
+
+// ============================================
+// RENDER LOOP
+// ============================================
+function render() {
+    var now = (performance.now() - startTime) / 1000.0;
+
+    audioLevel += (targetAudioLevel - audioLevel) * 0.12;
+    currentStateFloat += (targetStateFloat - currentStateFloat) * 0.06;
+
+    if (analyser) {
+        var freqData = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(freqData);
+        var sum = 0;
+        for (var i = 0; i < freqData.length; i++) sum += freqData[i];
+        var measured = (sum / freqData.length) / 255;
+        if (measured > 0.01) targetAudioLevel = measured;
+    }
+
+    var intensity = audioLevel;
+    if (state === 'speaking')       intensity = Math.max(intensity, 0.35 + Math.sin(now*3)*0.15);
+    else if (state === 'listening') intensity = Math.max(intensity, 0.1 + Math.sin(now*2)*0.04);
+    else if (state === 'thinking')  intensity = Math.max(intensity, 0.18 + Math.sin(now*4)*0.1);
+    else                            intensity = Math.max(intensity, 0.04 + Math.sin(now*1.2)*0.03);
+
+    if (webglActive && gl && !gl.isContextLost()) {
+        try {
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.uniform2f(uResolution, canvas.width, canvas.height);
+            gl.uniform1f(uTime, now);
+            gl.uniform1f(uAudioLevel, intensity);
+            gl.uniform1f(uState, currentStateFloat);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        } catch(e) { showCSSFallback('Render loop error'); }
+    }
+
+    requestAnimationFrame(render);
+}
+
+render();
+
+// ============================================
+// SPEECH RECOGNITION
+// ============================================
+var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+var recognition = null;
+var isRecording = false;
+
+function toggleTalk() {
+    if (isRecording) stopRecording();
+    else startRecording();
+}
+
+function startRecording() {
+    if (!SpeechRecognition) {
+        addMessage('system', 'Speech recognition not supported. Use Chrome or type below.');
+        return;
+    }
+    ensureAudioCtx();
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+        var source = audioCtx.createMediaStreamSource(stream);
+        source.connect(analyser);
+        window._micStream = stream;
+    }).catch(function() {});
+
+    recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    recognition.onresult = function(event) {
+        var final = '', interim = '';
+        for (var i = event.resultIndex; i < event.results.length; i++) {
+            if (event.results[i].isFinal) final += event.results[i][0].transcript;
+            else interim += event.results[i][0].transcript;
+        }
+        if (final) { stopRecording(); sendMessage(final.trim()); }
+        if (interim) document.getElementById('chatInput').value = interim;
+    };
+    recognition.onerror = function(e) { if (e.error !== 'no-speech') addMessage('system', 'Speech error: ' + e.error); stopRecording(); };
+    recognition.onend = function() { if (isRecording) try { recognition.start(); } catch(e) {} };
+    try {
+        recognition.start();
+        isRecording = true;
+        var btn = document.getElementById('talkBtn');
+        btn.classList.add('recording');
+        btn.innerHTML = '<span class="voice-indicator"></span>Listening...';
+        setAvatarState('listening');
+    } catch(e) { addMessage('system', 'Could not start speech recognition.'); }
+}
+
+function stopRecording() {
+    isRecording = false;
+    if (recognition) try { recognition.stop(); } catch(e) {}
+    if (window._micStream) { window._micStream.getTracks().forEach(function(t) { t.stop(); }); window._micStream = null; }
+    var btn = document.getElementById('talkBtn');
+    btn.classList.remove('recording');
+    btn.textContent = 'Talk';
+}
+
+// ============================================
+// CHAT
+// ============================================
+function sendText() {
+    var input = document.getElementById('chatInput');
+    var text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    sendMessage(text);
+}
+
+function sendMessage(text) {
+    addMessage('user', text);
+    setAvatarState('thinking');
+    fetch(API_BASE + '/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, session_id: SESSION_ID })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.error) { addMessage('system', 'Error: ' + data.error); setAvatarState('idle'); return; }
+        addMessage('assistant', data.response);
+        speakResponse(data.response);
+    })
+    .catch(function() { addMessage('system', 'Connection error.'); setAvatarState('idle'); });
+}
+
+function addMessage(role, text) {
+    var container = document.getElementById('chatMessages');
+    var welcome = container.querySelector('.welcome-msg');
+    if (welcome) welcome.remove();
+    var msg = document.createElement('div');
+    msg.className = 'msg ' + role;
+    if (role === 'user' || role === 'assistant') {
+        var sender = document.createElement('div');
+        sender.className = 'sender';
+        sender.textContent = role === 'user' ? 'You' : 'Aether';
+        msg.appendChild(sender);
+    }
+    var textEl = document.createElement('div');
+    textEl.textContent = text;
+    msg.appendChild(textEl);
+    container.appendChild(msg);
+    container.scrollTop = container.scrollHeight;
+}
+
+// ============================================
+// TTS
+// ============================================
+var currentAudioSource = null;
+
+function speakResponse(text) {
+    setAvatarState('speaking');
+    fetch(API_BASE + '/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text, voice: 'onyx' })
+    })
+    .then(function(r) { return r.arrayBuffer(); })
+    .then(function(audioData) {
+        ensureAudioCtx();
+        return audioCtx.decodeAudioData(audioData);
+    })
+    .then(function(audioBuffer) {
+        var source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(analyser);
+        currentAudioSource = source;
+        source.onended = function() { setAvatarState('idle'); targetAudioLevel = 0; currentAudioSource = null; };
+        source.start(0);
+    })
+    .catch(function() {
+        var utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 0.95; utterance.pitch = 0.9;
+        var sim = setInterval(function() { if (state === 'speaking') targetAudioLevel = 0.3 + Math.random()*0.4; }, 50);
+        utterance.onend = function() { clearInterval(sim); setAvatarState('idle'); targetAudioLevel = 0; };
+        utterance.onerror = utterance.onend;
+        speechSynthesis.speak(utterance);
+    });
+}
+
+function stopSpeaking() {
+    if (currentAudioSource) try { currentAudioSource.stop(); } catch(e) {}
+    currentAudioSource = null;
+    speechSynthesis.cancel();
+    setAvatarState('idle');
+    targetAudioLevel = 0;
+}
+
+function setAvatarState(s) {
+    state = s;
+    var el = document.getElementById('statusText');
+    var labels = { idle:'Ready', speaking:'Aether Speaking', listening:'Listening to You', thinking:'Thinking...' };
+    el.textContent = labels[s] || s;
+    el.className = 'status ' + s;
+    cssAvatar.className = s === 'idle' ? '' : s;
+
+    if (s === 'speaking')       { targetStateFloat = 1; targetAudioLevel = 0.3; }
+    else if (s === 'listening') { targetStateFloat = 2; targetAudioLevel = 0.1; }
+    else if (s === 'thinking')  { targetStateFloat = 3; targetAudioLevel = 0.2; }
+    else                        { targetStateFloat = 0; targetAudioLevel = 0; }
+}
+
+canvas.addEventListener('click', function() { if (state === 'speaking') stopSpeaking(); });
+cssAvatar.addEventListener('click', function() { if (state === 'speaking') stopSpeaking(); });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 10 V1: Raymarched SDF Liquid Avatar</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #080a12; overflow: hidden; }
+canvas { display: block; width: 100vw; height: 100vh; }
+.label {
+  position: fixed; bottom: 20px; left: 20px;
+  font-family: 'SF Pro Display', -apple-system, sans-serif;
+  color: rgba(255,255,255,0.4); font-size: 11px; letter-spacing: 2px;
+  text-transform: uppercase;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="label">Night 10 / V1 / Raymarched SDF Liquid Avatar</div>
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio, 2);
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+resize();
+window.addEventListener('resize', resize);
+
+const vsrc = `#version 300 es
+in vec2 a_pos;
+void main() { gl_Position = vec4(a_pos, 0.0, 1.0); }`;
+
+const fsrc = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+
+uniform float u_time;
+uniform vec2 u_res;
+
+// IQ's cubic smooth min - from tonight's Shadertoy research
+float smin(float a, float b, float k) {
+  k *= 6.0;
+  float h = max(k - abs(a - b), 0.0) / k;
+  return min(a, b) - h * h * h * k * (1.0 / 6.0);
+}
+
+// Noise for liquid displacement
+float hash(vec3 p) {
+  p = fract(p * 0.3183099 + 0.1);
+  p *= 17.0;
+  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float noise(vec3 x) {
+  vec3 i = floor(x);
+  vec3 f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x),
+                 mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+             mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                 mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+}
+
+float fbm(vec3 p) {
+  float v = 0.0, a = 0.5;
+  for (int i = 0; i < 4; i++) {
+    v += a * noise(p);
+    p *= 2.0;
+    a *= 0.5;
+  }
+  return v;
+}
+
+// SDF primitives
+float sdSphere(vec3 p, float r) { return length(p) - r; }
+float sdTorus(vec3 p, vec2 t) { vec2 q = vec2(length(p.xz) - t.x, p.y); return length(q) - t.y; }
+float sdOctahedron(vec3 p, float s) {
+  p = abs(p);
+  return (p.x + p.y + p.z - s) * 0.57735027;
+}
+
+// The avatar SDF - 3 forms merging with smooth minimum
+float mapAvatar(vec3 p) {
+  float t = u_time * 0.4;
+
+  // Breathing displacement
+  float disp = fbm(p * 2.0 + t * 0.3) * 0.15;
+
+  // Primary: large sphere (head)
+  vec3 p1 = p - vec3(0.0, 0.3, 0.0);
+  float d1 = sdSphere(p1, 0.7 + disp);
+
+  // Secondary: torus ring (crown/halo)
+  vec3 p2 = p - vec3(0.0, 0.5 + sin(t) * 0.1, 0.0);
+  float d2 = sdTorus(p2, vec2(0.9, 0.08 + sin(t * 2.0) * 0.02));
+
+  // Tertiary: octahedron (core crystal)
+  vec3 p3 = p - vec3(0.0, -0.2, 0.0);
+  float angle = t * 0.7;
+  mat3 rot = mat3(cos(angle), 0, sin(angle), 0, 1, 0, -sin(angle), 0, cos(angle));
+  p3 = rot * p3;
+  float d3 = sdOctahedron(p3, 0.45 + disp * 0.5);
+
+  // Smooth merge all three - THIS is the technique gap being closed
+  float k = 0.35 + sin(t * 0.5) * 0.1; // breathing merge radius
+  float d = smin(d1, d2, k);
+  d = smin(d, d3, k * 0.8);
+
+  // Additional liquid noise displacement
+  d += fbm(p * 3.0 + t * 0.2) * 0.04;
+
+  return d;
+}
+
+// Compute normal via central differences
+vec3 calcNormal(vec3 p) {
+  vec2 e = vec2(0.001, 0.0);
+  return normalize(vec3(
+    mapAvatar(p + e.xyy) - mapAvatar(p - e.xyy),
+    mapAvatar(p + e.yxy) - mapAvatar(p - e.yxy),
+    mapAvatar(p + e.yyx) - mapAvatar(p - e.yyx)
+  ));
+}
+
+// Soft shadow
+float softShadow(vec3 ro, vec3 rd, float mint, float maxt, float k) {
+  float res = 1.0;
+  float t = mint;
+  for (int i = 0; i < 32; i++) {
+    float h = mapAvatar(ro + rd * t);
+    res = min(res, k * h / t);
+    t += clamp(h, 0.02, 0.1);
+    if (res < 0.001 || t > maxt) break;
+  }
+  return clamp(res, 0.0, 1.0);
+}
+
+// Chrome F0 values from Night 8
+vec3 fresnelSchlick(float cosTheta, vec3 F0) {
+  return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy * 2.0 - u_res) / u_res.y;
+
+  // Camera orbit
+  float camAngle = u_time * 0.15;
+  vec3 ro = vec3(sin(camAngle) * 3.0, 0.8 + sin(u_time * 0.2) * 0.3, cos(camAngle) * 3.0);
+  vec3 ta = vec3(0.0, 0.15, 0.0);
+  vec3 ww = normalize(ta - ro);
+  vec3 uu = normalize(cross(ww, vec3(0, 1, 0)));
+  vec3 vv = cross(uu, ww);
+  vec3 rd = normalize(uv.x * uu + uv.y * vv + 1.8 * ww);
+
+  // Raymarch
+  float t = 0.0;
+  float d;
+  for (int i = 0; i < 100; i++) {
+    vec3 p = ro + rd * t;
+    d = mapAvatar(p);
+    if (d < 0.001 || t > 10.0) break;
+    t += d * 0.8; // slight understep for safety
+  }
+
+  vec3 col = vec3(0.02, 0.025, 0.04); // dark bg matching #080a12
+
+  if (d < 0.001) {
+    vec3 p = ro + rd * t;
+    vec3 n = calcNormal(p);
+    vec3 v = normalize(ro - p);
+
+    // Gleb-style 3-light setup
+    vec3 lightKey = normalize(vec3(1.0, 1.2, 0.8));
+    vec3 lightFill = normalize(vec3(-0.8, -0.3, 0.6));
+    vec3 lightRim = normalize(vec3(0.0, 0.3, -1.0));
+
+    float NdotL1 = max(dot(n, lightKey), 0.0);
+    float NdotL2 = max(dot(n, lightFill), 0.0);
+    float NdotL3 = max(dot(n, lightRim), 0.0);
+    float NdotV = max(dot(n, v), 0.001);
+
+    // Chrome PBR from Night 8
+    vec3 F0_chrome = vec3(0.78, 0.76, 0.82);
+    vec3 fresnel = fresnelSchlick(NdotV, F0_chrome);
+
+    // Soft shadows
+    float shadow = softShadow(p + n * 0.01, lightKey, 0.02, 5.0, 16.0);
+
+    // Lighting: warm key + cool fill + orange rim (Gleb signature)
+    vec3 keyLight = vec3(1.0, 0.92, 0.85) * NdotL1 * shadow * 1.2;
+    vec3 fillLight = vec3(0.3, 0.4, 0.7) * NdotL2 * 0.4;
+    vec3 rimLight = vec3(1.0, 0.5, 0.15) * pow(NdotL3 * (1.0 - NdotV), 2.0) * 1.5;
+
+    // Environment approximation
+    vec3 refl = reflect(-v, n);
+    vec3 envCol = mix(vec3(0.05, 0.08, 0.15), vec3(0.2, 0.15, 0.3), refl.y * 0.5 + 0.5);
+
+    col = fresnel * envCol * 0.6 + keyLight * 0.5 + fillLight + rimLight;
+
+    // Emissive veins in smooth-min blend zones (where forms merge)
+    float blendZone = smoothstep(0.0, 0.15, abs(d));
+    float veinNoise = fbm(p * 8.0 + u_time * 0.5);
+    vec3 emissive = vec3(0.1, 0.5, 1.0) * veinNoise * (1.0 - blendZone) * 0.8;
+    col += emissive; // ADDITIVE per Night 8 learning
+
+    // Fog for depth
+    float fog = 1.0 - exp(-t * t * 0.015);
+    col = mix(col, vec3(0.02, 0.025, 0.04), fog);
+  }
+
+  // Post-processing: Gleb stack
+  // Chromatic aberration
+  // (simplified for fullscreen quad - offset UV recalc)
+  col = pow(col, vec3(0.85)); // slight lift
+
+  // Vignette (asymmetric per Night 9)
+  vec2 vuv = gl_FragCoord.xy / u_res;
+  float vig = 1.0 - dot((vuv - vec2(0.48, 0.5)) * 1.3, (vuv - vec2(0.48, 0.5)) * 1.3);
+  col *= smoothstep(0.0, 0.7, vig);
+
+  // Film grain
+  float grain = (hash(vec3(gl_FragCoord.xy, u_time * 100.0)) - 0.5) * 0.04;
+  col += grain;
+
+  // Tone mapping
+  col = col / (col + 0.8);
+  col = pow(col, vec3(1.0 / 2.2));
+
+  fragColor = vec4(col, 1.0);
+}`;
+
+function createShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderInfoLog(s) || gl.getShaderParameter(s, gl.COMPILE_STATUS)) return s;
+  console.error(gl.getShaderInfoLog(s));
+  gl.deleteShader(s);
+}
+
+const vs = createShader(gl.VERTEX_SHADER, vsrc);
+const fs = createShader(gl.FRAGMENT_SHADER, fsrc);
+const prog = gl.createProgram();
+gl.attachShader(prog, vs);
+gl.attachShader(prog, fs);
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const quad = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
+const aPos = gl.getAttribLocation(prog, 'a_pos');
+gl.enableVertexAttribArray(aPos);
+gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+const uTime = gl.getUniformLocation(prog, 'u_time');
+const uRes = gl.getUniformLocation(prog, 'u_res');
+
+function render(t) {
+  gl.uniform1f(uTime, t * 0.001);
+  gl.uniform2f(uRes, canvas.width, canvas.height);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

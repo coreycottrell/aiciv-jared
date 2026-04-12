@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Enter the Logo — Pure Technology Portal</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%; height: 100%;
+  background: #000;
+  overflow: hidden;
+}
+canvas { display: block; }
+
+/* Vignette overlay — always on */
+#vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 40%,
+    rgba(0,0,0,0.55) 75%,
+    rgba(0,0,0,0.92) 100%
+  );
+  z-index: 10;
+}
+
+/* Speed-line overlay (CSS, supplemental) */
+#speedOverlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 30%,
+    rgba(43,147,193,0.04) 70%,
+    transparent 100%
+  );
+  z-index: 5;
+}
+#speedOverlay.active { opacity: 1; }
+
+/* Scan-line pulse — fires on orange energy waves */
+#scanPulse {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(241,66,11,0.18) 0%,
+    transparent 70%
+  );
+  z-index: 6;
+  transition: opacity 0.08s ease;
+}
+
+/* HUD: phase label (fades in/out) */
+#phaseHud {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(43,147,193,0.6);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.8s ease;
+  z-index: 20;
+}
+#phaseHud.visible { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div id="vignette"></div>
+<div id="speedOverlay"></div>
+<div id="scanPulse"></div>
+<div id="phaseHud">Enter the Logo</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ============================================================
+//  ENTER THE LOGO — Pure Technology Hexagon Portal Dive
+//  Three.js r160+  |  UnrealBloom + OutputPass
+//
+//  Logo geometry: 13 rings, 5°/ring twist, vertex-up at outer
+//  Colors: #2B93C1 (blue/outer) ↔ #F1420B (orange/inner)
+//
+//  Phase 1 (0–3s)   — Approach: camera moves toward the logo
+//  Phase 2 (3–6s)   — Entry: accelerate into the center void
+//  Phase 3 (6s+)    — Infinite tunnel: hexagonal rings recycled forever
+// ============================================================
+
+const DEG = Math.PI / 180;
+
+// ── Brand colors ──────────────────────────────────────────────
+const BLUE_RGB   = { r: 43,  g: 147, b: 193 };
+const ORANGE_RGB = { r: 241, g: 66,  b: 11  };
+
+function brandColor(t) {
+  // t=0 → orange (inner/deep), t=1 → blue (outer/surface)
+  const r = BLUE_RGB.r   + (ORANGE_RGB.r - BLUE_RGB.r)   * (1 - t);
+  const g = BLUE_RGB.g   + (ORANGE_RGB.g - BLUE_RGB.g)   * (1 - t);
+  const b = BLUE_RGB.b   + (ORANGE_RGB.b - BLUE_RGB.b)   * (1 - t);
+  return new THREE.Color(r / 255, g / 255, b / 255);
+}
+
+// ── Logo ring spec (forensic from logo-exact-recreation.html) ─
+const RING_NORMS = [
+  0.110, 0.160, 0.220, 0.280, 0.335, 0.400,
+  0.460, 0.535, 0.615, 0.685, 0.755, 0.840, 0.970
+];
+const INNER_NORM = 0.110;
+const OUTER_NORM = 0.970;
+const N_RINGS = RING_NORMS.length;
+
+function normToT(n) {
+  return Math.max(0, Math.min(1, (n - INNER_NORM) / (OUTER_NORM - INNER_NORM)));
+}
+
+// ── Easing helpers ────────────────────────────────────────────
+function easeInCubic(t)   { return t * t * t; }
+function easeOutCubic(t)  { return 1 - Math.pow(1 - t, 3); }
+function easeInOutCubic(t){ return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }
+function clamp(v,a,b)     { return Math.max(a, Math.min(b, v)); }
+
+// ── Hex vertex generator ──────────────────────────────────────
+function hexVerts(radius, rotRad) {
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const a = rotRad + (Math.PI * 2 * i) / 6;
+    pts.push(new THREE.Vector3(radius * Math.cos(a), radius * Math.sin(a), 0));
+  }
+  return pts;
+}
+
+// ── Scene ─────────────────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+
+const camera = new THREE.PerspectiveCamera(
+  62, window.innerWidth / window.innerHeight, 0.01, 600
+);
+camera.position.set(0, 0, 4.5); // start: looking at logo from front
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+document.body.appendChild(renderer.domElement);
+
+// ── Post-processing ───────────────────────────────────────────
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  1.8,   // strength — rich glow
+  0.85,  // radius
+  0.78   // threshold
+);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
+
+// ============================================================
+//  PHASE 1 LOGO — The "arrival" logo (full 3D layered logo)
+//  3 units each offset in Z, giving depth
+// ============================================================
+
+const LOGO_SCALE = 1.35;   // world-unit radius for outer ring
+const logoGroup = new THREE.Group();
+
+function buildLogoLayer(unitIndex) {
+  const group = new THREE.Group();
+  const zOffset = (unitIndex - 1) * 0.10; // -0.10, 0.0, +0.10
+  group.position.z = zOffset;
+  const rotBias = unitIndex * 9 * DEG;
+
+  for (let i = 0; i < N_RINGS; i++) {
+    const normR  = RING_NORMS[i];
+    const radius = normR * LOGO_SCALE;
+    const t      = normToT(normR);
+    const rotRad = 30 * DEG + i * 5 * DEG + rotBias;
+    const color  = brandColor(t);
+    const zRing  = (1 - t) * 0.18 - 0.09;
+
+    // Hex ring
+    const verts = hexVerts(radius, rotRad);
+    const positions = [];
+    for (let j = 0; j <= 6; j++) {
+      const v = verts[j % 6];
+      positions.push(v.x, v.y, zRing);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.92 });
+    group.add(new THREE.Line(geo, mat));
+
+    // Spokes to next ring
+    if (i < N_RINGS - 1) {
+      const normR2  = RING_NORMS[i + 1];
+      const radius2 = normR2 * LOGO_SCALE;
+      const t2      = normToT(normR2);
+      const rotRad2 = 30 * DEG + (i + 1) * 5 * DEG + rotBias;
+      const zRing2  = (1 - t2) * 0.18 - 0.09;
+      const verts2  = hexVerts(radius2, rotRad2);
+      const spokeColor = brandColor((t + t2) / 2);
+
+      for (let k = 0; k < 6; k++) {
+        const pA = new THREE.Vector3(verts[k].x,  verts[k].y,  zRing);
+        const pB = new THREE.Vector3(verts2[k].x, verts2[k].y, zRing2);
+        const pC = new THREE.Vector3(verts2[(k+1)%6].x, verts2[(k+1)%6].y, zRing2);
+
+        const sg0 = new THREE.BufferGeometry().setFromPoints([pA, pB]);
+        group.add(new THREE.Line(sg0, new THREE.LineBasicMaterial({
+          color: spokeColor, transparent: true, opacity: 0.7
+        })));
+        const sg1 = new THREE.BufferGeometry().setFromPoints([pA, pC]);
+        group.add(new THREE.Line(sg1, new THREE.LineBasicMaterial({
+          color: spokeColor, transparent: true, opacity: 0.35
+        })));
+      }
+    }
+  }
+  return group;
+}
+
+for (let u = 0; u < 3; u++) {
+  logoGroup.add(buildLogoLayer(u));
+}
+scene.add(logoGroup);
+
+// ============================================================
+//  TUNNEL SYSTEM — The infinite hex spiral inside
+//  N_TUNNEL rings repeated along Z, recycled as camera advances
+// ============================================================
+
+const TUNNEL_RINGS_COUNT = 120;  // active rings in pool
+const RING_SPACING       = 1.2;  // Z distance between rings
+const TUNNEL_START_Z     = -6;   // where tunnel begins (Z into scene)
+const BASE_SPEED         = 16;   // units/sec at full speed (phase 3)
+const TUNNEL_TWIST_DEG   = 7;    // degrees rotation per ring (spiral)
+
+// Tunnel radius breathing: oscillates between min/max
+const TUNNEL_RADIUS_BASE = 1.5;
+const TUNNEL_RADIUS_AMP  = 0.28;
+const TUNNEL_BREATHE_FREQ= 0.18; // cycles/sec
+
+// Color cycling along tunnel: blue→grey→orange→blue repeating
+// Position param p (0–1 repeating) → color
+function tunnelColor(p, depth) {
+  // p: position in ring sequence, depth: 0=near, 1=far
+  // Cycle: blue (0) → grey (0.33) → orange (0.66) → blue (1)
+  const cycle = p % 1.0;
+  let r, g, b;
+  if (cycle < 0.33) {
+    const local = cycle / 0.33;
+    r = BLUE_RGB.r   + (120 - BLUE_RGB.r)   * local;
+    g = BLUE_RGB.g   + (120 - BLUE_RGB.g)   * local;
+    b = BLUE_RGB.b   + (120 - BLUE_RGB.b)   * local;
+  } else if (cycle < 0.66) {
+    const local = (cycle - 0.33) / 0.33;
+    r = 120 + (ORANGE_RGB.r - 120) * local;
+    g = 120 + (ORANGE_RGB.g - 120) * local;
+    b = 120 + (ORANGE_RGB.b - 120) * local;
+  } else {
+    const local = (cycle - 0.66) / 0.34;
+    r = ORANGE_RGB.r + (BLUE_RGB.r - ORANGE_RGB.r) * local;
+    g = ORANGE_RGB.g + (BLUE_RGB.g - ORANGE_RGB.g) * local;
+    b = ORANGE_RGB.b + (BLUE_RGB.b - ORANGE_RGB.b) * local;
+  }
+  return new THREE.Color(r / 255, g / 255, b / 255);
+}
+
+// Build one tunnel ring line object
+function buildTunnelRing(ringIndex) {
+  // Total ring uses all 13 logo radii stacked — but here one ring = the whole hex outline
+  const twist = ringIndex * TUNNEL_TWIST_DEG * DEG;
+  const colorParam = (ringIndex / TUNNEL_RINGS_COUNT) * 2.5; // cycle through colors 2.5x
+  const color = tunnelColor(colorParam, ringIndex / TUNNEL_RINGS_COUNT);
+
+  // Radius will be updated each frame (breathing), build at base radius
+  const positions = new Float32Array(7 * 3); // 6 vertices + close
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+  const mat = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.85,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+
+  const ring = new THREE.LineLoop(geo, mat);
+
+  // Store ring metadata
+  ring.userData = {
+    index: ringIndex,
+    twist,
+    colorParam,
+    baseZ: TUNNEL_START_Z - ringIndex * RING_SPACING
+  };
+
+  return ring;
+}
+
+// Create tunnel ring pool
+const tunnelGroup = new THREE.Group();
+const tunnelRings = [];
+
+for (let i = 0; i < TUNNEL_RINGS_COUNT; i++) {
+  const ring = buildTunnelRing(i);
+  ring.position.z = TUNNEL_START_Z - i * RING_SPACING;
+  tunnelGroup.add(ring);
+  tunnelRings.push(ring);
+}
+
+scene.add(tunnelGroup);
+tunnelGroup.visible = false; // hidden until phase 3
+
+// Update ring vertex positions each frame (breathing)
+function updateTunnelRingGeometry(ring, time) {
+  const breathe = TUNNEL_RADIUS_BASE + TUNNEL_RADIUS_AMP *
+    Math.sin(time * TUNNEL_BREATHE_FREQ * Math.PI * 2 +
+             ring.userData.index * 0.3);
+
+  const twist = ring.userData.twist;
+  const pos   = ring.geometry.attributes.position;
+
+  for (let i = 0; i < 7; i++) {
+    const a   = twist + (Math.PI * 2 * (i % 6)) / 6;
+    pos.setXYZ(i, breathe * Math.cos(a), breathe * Math.sin(a), 0);
+  }
+  pos.needsUpdate = true;
+}
+
+// ============================================================
+//  SECONDARY TUNNEL RINGS — 13 logo-ring radii per plane
+//  Gives the "you can see all the rings at once" effect inside
+// ============================================================
+
+const DETAIL_RING_COUNT = 40;  // how many detail planes in tunnel
+const detailGroup = new THREE.Group();
+scene.add(detailGroup);
+detailGroup.visible = false;
+
+function buildDetailPlane(planeIndex) {
+  const group = new THREE.Group();
+  const twist   = planeIndex * TUNNEL_TWIST_DEG * DEG;
+  const zPos    = TUNNEL_START_Z - planeIndex * RING_SPACING * 3;
+
+  for (let i = 0; i < N_RINGS; i++) {
+    const normR  = RING_NORMS[i];
+    const radius = normR * TUNNEL_RADIUS_BASE * 1.4;
+    const t      = normToT(normR);
+    const rotRad = 30 * DEG + i * 5 * DEG + twist;
+    const color  = brandColor(t);
+
+    const verts = hexVerts(radius, rotRad);
+    const positions = [];
+    for (let j = 0; j <= 6; j++) {
+      const v = verts[j % 6];
+      positions.push(v.x, v.y, 0);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    const mat = new THREE.LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.5 + 0.4 * t,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    group.add(new THREE.Line(geo, mat));
+  }
+
+  group.position.z = zPos;
+  group.userData = { baseZ: zPos, planeIndex };
+  return group;
+}
+
+const detailPlanes = [];
+for (let i = 0; i < DETAIL_RING_COUNT; i++) {
+  const plane = buildDetailPlane(i);
+  detailGroup.add(plane);
+  detailPlanes.push(plane);
+}
+
+// ============================================================
+//  PARTICLES — Speed lines + ambient field
+// ============================================================
+
+// Speed stream particles
+const PARTICLE_COUNT = 2000;
+const particlePositions = new Float32Array(PARTICLE_COUNT * 3);
+const particleVelocities = new Float32Array(PARTICLE_COUNT);
+
+for (let i = 0; i < PARTICLE_COUNT; i++) {
+  // Random radial position in a tube around Z axis
+  const angle  = Math.random() * Math.PI * 2;
+  const radius = 0.4 + Math.random() * 2.8;
+  const z      = Math.random() * 60 - 30;
+
+  particlePositions[i * 3]     = radius * Math.cos(angle);
+  particlePositions[i * 3 + 1] = radius * Math.sin(angle);
+  particlePositions[i * 3 + 2] = z;
+  particleVelocities[i]         = 4 + Math.random() * 12; // units/sec toward camera
+}
+
+const particleGeo = new THREE.BufferGeometry();
+particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+
+// Color particles: mix of blue and faint white
+const particleColors = new Float32Array(PARTICLE_COUNT * 3);
+for (let i = 0; i < PARTICLE_COUNT; i++) {
+  const useOrange = Math.random() < 0.25;
+  if (useOrange) {
+    particleColors[i * 3]     = ORANGE_RGB.r / 255;
+    particleColors[i * 3 + 1] = ORANGE_RGB.g / 255;
+    particleColors[i * 3 + 2] = ORANGE_RGB.b / 255;
+  } else {
+    const brightness = 0.35 + Math.random() * 0.65;
+    particleColors[i * 3]     = BLUE_RGB.r / 255 * brightness;
+    particleColors[i * 3 + 1] = BLUE_RGB.g / 255 * brightness;
+    particleColors[i * 3 + 2] = BLUE_RGB.b / 255 * brightness;
+  }
+}
+particleGeo.setAttribute('color', new THREE.BufferAttribute(particleColors, 3));
+
+const particleMat = new THREE.PointsMaterial({
+  size: 0.03,
+  vertexColors: true,
+  transparent: true,
+  opacity: 0,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+
+const particles = new THREE.Points(particleGeo, particleMat);
+scene.add(particles);
+
+// ============================================================
+//  ENERGY WAVE SYSTEM — Orange pulses from deep in the tunnel
+// ============================================================
+
+const WAVE_INTERVAL = 3.8;   // seconds between waves
+const MAX_WAVES     = 4;
+const wavePool      = [];
+let   lastWaveTime  = 0;
+
+function createEnergyWave() {
+  // Hex ring that starts small and EXPANDS toward camera
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(7 * 3);
+  for (let i = 0; i < 7; i++) {
+    const a = (Math.PI * 2 * (i % 6)) / 6;
+    pos[i * 3]     = Math.cos(a);
+    pos[i * 3 + 1] = Math.sin(a);
+    pos[i * 3 + 2] = 0;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.LineBasicMaterial({
+    color: new THREE.Color(ORANGE_RGB.r/255, ORANGE_RGB.g/255, ORANGE_RGB.b/255),
+    transparent: true,
+    opacity: 0.9,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  const wave = new THREE.LineLoop(geo, mat);
+  wave.position.z = -80; // starts far into tunnel
+  wave.userData   = { age: 0, maxAge: 6.0, startZ: -80, endZ: camera.position.z + 2 };
+  scene.add(wave);
+  wavePool.push(wave);
+}
+
+function updateEnergyWaves(delta, totalTime) {
+  if (totalTime - lastWaveTime > WAVE_INTERVAL && wavePool.length < MAX_WAVES) {
+    createEnergyWave();
+    lastWaveTime = totalTime;
+  }
+
+  for (let i = wavePool.length - 1; i >= 0; i--) {
+    const w = wavePool[i];
+    w.userData.age += delta;
+    const progress  = w.userData.age / w.userData.maxAge;
+
+    if (progress >= 1) {
+      scene.remove(w);
+      wavePool.splice(i, 1);
+      // Trigger scan flash
+      triggerScanFlash();
+      continue;
+    }
+
+    // Move from deep Z to camera
+    w.position.z = w.userData.startZ + (w.userData.endZ - w.userData.startZ) * progress;
+
+    // Scale up as it approaches
+    const scale   = 0.3 + progress * 3.5;
+    w.scale.setScalar(scale);
+
+    // Fade out as it passes
+    const fadeOut  = progress > 0.7 ? 1 - (progress - 0.7) / 0.3 : 1;
+    const fadeIn   = Math.min(1, progress * 5);
+    w.material.opacity = 0.85 * fadeIn * fadeOut;
+  }
+}
+
+// CSS scan flash
+const scanPulseEl = document.getElementById('scanPulse');
+let scanFlashTimeout = null;
+function triggerScanFlash() {
+  scanPulseEl.style.opacity = '1';
+  if (scanFlashTimeout) clearTimeout(scanFlashTimeout);
+  scanFlashTimeout = setTimeout(() => { scanPulseEl.style.opacity = '0'; }, 150);
+}
+
+// ============================================================
+//  ANIMATION STATE MACHINE
+//  Phase 1: Approach (0–3s)
+//  Phase 2: Entry    (3–6s)
+//  Phase 3: Infinite (6s+)
+// ============================================================
+
+const PHASE1_END = 3.0;
+const PHASE2_END = 6.0;
+
+// Phase 1: camera Z from 4.5 → 0.5 (approaching logo)
+const PHASE1_CAM_START = 4.5;
+const PHASE1_CAM_END   = 0.5;
+
+// Phase 2: camera Z from 0.5 → -3.5 (punching through the center)
+const PHASE2_CAM_START = 0.5;
+const PHASE2_CAM_END   = -3.5;
+
+// Phase 3 camera: moves along Z-axis at constant speed, tunnel recycles
+let tunnelCamZ         = PHASE2_CAM_END;
+const PHASE3_SPEED_EASE_IN = 2.0; // seconds to reach full speed
+
+let totalTime       = 0;
+let currentPhase    = 1;
+let phaseVisible    = false;
+let tunnelStarted   = false;
+let lastLogoDist    = 0;
+
+const phaseHudEl    = document.getElementById('phaseHud');
+const speedOverlay  = document.getElementById('speedOverlay');
+
+// Show HUD briefly at start
+setTimeout(() => {
+  phaseHudEl.classList.add('visible');
+  setTimeout(() => phaseHudEl.classList.remove('visible'), 2500);
+}, 300);
+
+// ── Resize handler ────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+  bloomPass.resolution.set(window.innerWidth, window.innerHeight);
+});
+
+// ============================================================
+//  MAIN RENDER LOOP
+// ============================================================
+
+const clock = new THREE.Clock();
+let tunnelProgress = 0; // how far camera has traveled in phase 3
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const delta = Math.min(clock.getDelta(), 0.05); // cap at 50ms
+  totalTime  += delta;
+  const t     = totalTime;
+
+  // ─── PHASE 1: APPROACH ──────────────────────────────────────
+  if (currentPhase === 1) {
+    const p   = clamp(t / PHASE1_END, 0, 1);
+    const ep  = easeInCubic(p);
+    const camZ = PHASE1_CAM_START + (PHASE1_CAM_END - PHASE1_CAM_START) * ep;
+
+    camera.position.set(0, 0, camZ);
+    camera.lookAt(0, 0, 0);
+
+    // Subtle logo slow rotation during approach
+    logoGroup.rotation.z = t * 0.08;
+    logoGroup.rotation.x = 0.05 * Math.sin(t * 0.4);
+
+    // Bloom breathes gently
+    bloomPass.strength = 1.8 + 0.3 * Math.sin(t * 1.2);
+
+    // Particles begin to appear as we approach
+    particleMat.opacity = clamp(p * 0.6, 0, 0.6);
+
+    // Advance particles slowly (pre-warp drift)
+    updateParticles(delta * 0.3, 2, t);
+
+    if (t >= PHASE1_END) {
+      currentPhase = 2;
+      speedOverlay.classList.add('active');
+      // Show "Entering..." HUD
+      phaseHudEl.textContent = 'Entering...';
+      phaseHudEl.classList.add('visible');
+      setTimeout(() => phaseHudEl.classList.remove('visible'), 1800);
+    }
+  }
+
+  // ─── PHASE 2: ENTRY ─────────────────────────────────────────
+  else if (currentPhase === 2) {
+    const raw  = t - PHASE1_END;
+    const dur  = PHASE2_END - PHASE1_END;
+    const p    = clamp(raw / dur, 0, 1);
+    const ep   = easeInCubic(p);
+    const camZ = PHASE2_CAM_START + (PHASE2_CAM_END - PHASE2_CAM_START) * ep;
+
+    camera.position.set(0, 0, camZ);
+    camera.lookAt(0, 0, 0);
+
+    // Logo scales UP in view as we fly into it
+    // Then disappears behind camera
+    const logoOpacity = clamp(1 - p * 1.8, 0, 1);
+    logoGroup.traverse(child => {
+      if (child.material && child.material.transparent) {
+        child.material.opacity = logoOpacity * 0.92;
+      }
+    });
+
+    if (p > 0.85) {
+      logoGroup.visible = false;
+    }
+
+    // FOV expands for wormhole effect
+    camera.fov = 62 + ep * 25;
+    camera.updateProjectionMatrix();
+
+    // Bloom spikes
+    bloomPass.strength = 1.8 + ep * 1.4;
+
+    // Particles at warp speed
+    particleMat.opacity = clamp(0.6 + ep * 0.3, 0, 0.9);
+    updateParticles(delta * (1 + ep * 3), 8 + ep * 20, t);
+
+    // Pre-activate tunnel geometry near end of phase 2
+    if (p > 0.5 && !tunnelStarted) {
+      tunnelGroup.visible = true;
+      detailGroup.visible = true;
+      tunnelStarted       = true;
+      tunnelCamZ          = PHASE2_CAM_END;
+    }
+
+    if (tunnelStarted) {
+      updateTunnelGeometry(t, 1.0);
+    }
+
+    if (t >= PHASE2_END) {
+      currentPhase = 3;
+      // Show "Inside" HUD
+      phaseHudEl.textContent = 'Inside the Logo';
+      phaseHudEl.classList.add('visible');
+      setTimeout(() => phaseHudEl.classList.remove('visible'), 2200);
+    }
+  }
+
+  // ─── PHASE 3: INFINITE TUNNEL ────────────────────────────────
+  else if (currentPhase === 3) {
+    const phaseAge = t - PHASE2_END;
+
+    // Speed ramps up then stays constant
+    const speedMult = clamp(phaseAge / PHASE3_SPEED_EASE_IN, 0, 1);
+    const currentSpeed = BASE_SPEED * speedMult;
+
+    tunnelProgress += currentSpeed * delta;
+    tunnelCamZ      = PHASE2_CAM_END - tunnelProgress;
+
+    camera.position.set(0, 0, tunnelCamZ);
+    camera.lookAt(0, 0, tunnelCamZ - 1); // always looking forward
+
+    // Subtle camera drift (gentle sway, not nauseating)
+    camera.position.x = 0.06 * Math.sin(t * 0.23);
+    camera.position.y = 0.04 * Math.sin(t * 0.19 + 1.1);
+
+    // FOV breathes with tunnel
+    camera.fov = 87 + 8 * Math.sin(t * TUNNEL_BREATHE_FREQ * Math.PI * 2);
+    camera.updateProjectionMatrix();
+
+    // Bloom breathes
+    bloomPass.strength = 2.0 + 0.5 * Math.sin(t * 0.7);
+
+    // Particles at full warp
+    particleMat.opacity = 0.75 + 0.2 * Math.sin(t * 1.4);
+    updateParticles(delta, currentSpeed, t);
+
+    // Tunnel geometry update (ring recycling)
+    updateTunnelGeometry(t, speedMult);
+
+    // Energy waves
+    updateEnergyWaves(delta, t);
+  }
+
+  composer.render();
+}
+
+// ============================================================
+//  PARTICLE UPDATE
+// ============================================================
+
+function updateParticles(delta, speed, time) {
+  const pos  = particleGeo.attributes.position.array;
+  const camZ = camera.position.z;
+
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    // Each particle moves toward camera at its own velocity * global speed scale
+    // particleVelocities[i] is 4-16 (variation factor), speed is the global warp scale
+    const vel = (particleVelocities[i] / 10) * speed; // normalize to ~0-1.6 * speed
+    pos[i * 3 + 2] += vel * delta;
+
+    // Recycle behind camera threshold
+    if (pos[i * 3 + 2] > camZ + 3) {
+      const angle  = Math.random() * Math.PI * 2;
+      const radius = 0.25 + Math.random() * 2.2;
+      pos[i * 3]     = camera.position.x + radius * Math.cos(angle);
+      pos[i * 3 + 1] = camera.position.y + radius * Math.sin(angle);
+      pos[i * 3 + 2] = camZ - 55 - Math.random() * 25;
+    }
+  }
+  particleGeo.attributes.position.needsUpdate = true;
+}
+
+// ============================================================
+//  TUNNEL GEOMETRY UPDATE
+//  Recycles rings as camera moves forward
+// ============================================================
+
+function updateTunnelGeometry(time, speedMult) {
+  const camZ     = camera.position.z;
+  const recycleZ = camZ + 4; // behind camera threshold
+
+  // ── Tunnel rings: single-pass O(n) recycle ────────────────────
+  // First pass: find current min Z among all rings
+  let minRingZ = Infinity;
+  for (let i = 0; i < tunnelRings.length; i++) {
+    if (tunnelRings[i].position.z < minRingZ) minRingZ = tunnelRings[i].position.z;
+  }
+
+  // Second pass: recycle, update geometry, update opacity
+  for (let i = 0; i < tunnelRings.length; i++) {
+    const ring = tunnelRings[i];
+
+    if (ring.position.z > recycleZ) {
+      // Place at back of chain
+      minRingZ          -= RING_SPACING;
+      ring.position.z    = minRingZ;
+
+      // Cycle through color gradient based on tunnel position
+      const depthFrac   = Math.abs(minRingZ - camZ) / (TUNNEL_RINGS_COUNT * RING_SPACING);
+      const colorParam  = (depthFrac * 3.0) % 2.5; // cycle color 3x over tunnel depth
+      ring.material.color.copy(tunnelColor(colorParam, depthFrac));
+      ring.userData.twist = (ring.userData.twist + TUNNEL_TWIST_DEG * DEG) % (Math.PI * 2);
+    }
+
+    // Update geometry for breathing radius
+    updateTunnelRingGeometry(ring, time);
+
+    // Fade near-camera rings to avoid harsh pop-in
+    const dist = ring.position.z - camZ; // negative = ahead of camera (correct)
+    const absDist = Math.abs(dist);
+    ring.material.opacity = absDist < 1.2 ? clamp(absDist / 1.2, 0, 1) * 0.85 : 0.85;
+  }
+
+  // ── Detail planes: single-pass O(n) recycle ──────────────────
+  let minPlaneZ = Infinity;
+  for (let i = 0; i < detailPlanes.length; i++) {
+    if (detailPlanes[i].position.z < minPlaneZ) minPlaneZ = detailPlanes[i].position.z;
+  }
+
+  for (let i = 0; i < detailPlanes.length; i++) {
+    const plane = detailPlanes[i];
+    if (plane.position.z > recycleZ) {
+      minPlaneZ         -= RING_SPACING * 3;
+      plane.position.z   = minPlaneZ;
+    }
+  }
+}
+
+// ── Start ─────────────────────────────────────────────────────
+animate();
+
+</script>
+</body>
+</html>

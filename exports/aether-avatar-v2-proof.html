@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aether Avatar v2 — PureBrain Proof of Concept</title>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --pb-blue:   #2a93c1;
+    --pb-orange: #f1420b;
+    --pb-dark:   #060606;
+    --pb-gold:   #C8A84A;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--pb-dark);
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  /* =================== BACKGROUND GRADIENT =================== */
+  #bg-gradient {
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 50% at 70% 20%, rgba(42,147,193,0.06) 0%, transparent 70%),
+      radial-gradient(ellipse 40% 40% at 30% 80%, rgba(42,147,193,0.03) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+    transition: background 1.2s ease;
+  }
+
+  /* =================== CANVAS =================== */
+  #canvas-wrap {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+  }
+
+  canvas {
+    display: block;
+    width: 480px !important;
+    height: 480px !important;
+  }
+
+  /* =================== LOADING SCREEN =================== */
+  #loading-screen {
+    position: fixed;
+    inset: 0;
+    background: #060606;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+    transition: opacity 1s ease, visibility 1s ease;
+  }
+  #loading-screen.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .load-logo {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+  }
+  .load-logo .blue  { color: var(--pb-blue); }
+  .load-logo .ai    { color: var(--pb-orange); }
+
+  .load-rings {
+    position: relative;
+    width: 64px;
+    height: 64px;
+  }
+  .load-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 2px solid transparent;
+  }
+  .load-ring-outer {
+    border-top-color: var(--pb-blue);
+    border-right-color: rgba(42,147,193,0.3);
+    animation: spin-cw 1.4s linear infinite;
+  }
+  .load-ring-inner {
+    inset: 10px;
+    border-top-color: var(--pb-orange);
+    border-left-color: rgba(241,66,11,0.3);
+    animation: spin-ccw 1.0s linear infinite;
+  }
+  @keyframes spin-cw  { to { transform: rotate(360deg); } }
+  @keyframes spin-ccw { to { transform: rotate(-360deg); } }
+
+  .load-text {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+  }
+
+  /* =================== MODE BUTTONS =================== */
+  #ui {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  #mode-label {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(42,147,193,0.7);
+    height: 14px;
+    transition: color 0.6s ease;
+  }
+
+  #mode-buttons {
+    display: flex;
+    gap: 10px;
+  }
+
+  .mode-btn {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.55);
+    padding: 8px 20px;
+    border-radius: 100px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: 'Inter', system-ui, sans-serif;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: all 0.25s ease;
+    backdrop-filter: blur(8px);
+  }
+  .mode-btn:hover {
+    background: rgba(42,147,193,0.12);
+    border-color: rgba(42,147,193,0.4);
+    color: rgba(255,255,255,0.9);
+  }
+  .mode-btn.active {
+    background: rgba(42,147,193,0.2);
+    border-color: var(--pb-blue);
+    color: #fff;
+  }
+
+  /* =================== TOP LABEL =================== */
+  #top-label {
+    position: fixed;
+    top: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    text-align: center;
+  }
+  #top-label .title {
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.6);
+    letter-spacing: 0.1em;
+  }
+  #top-label .subtitle {
+    font-size: 10px;
+    color: rgba(255,255,255,0.25);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+
+<!-- Background gradient layer -->
+<div id="bg-gradient"></div>
+
+<!-- Canvas container -->
+<div id="canvas-wrap">
+  <canvas id="gl-canvas"></canvas>
+</div>
+
+<!-- Loading screen -->
+<div id="loading-screen">
+  <div class="load-logo">
+    <span class="blue">PUREBR</span><span class="ai">AI</span><span class="blue">N</span>
+  </div>
+  <div class="load-rings">
+    <div class="load-ring load-ring-outer"></div>
+    <div class="load-ring load-ring-inner"></div>
+  </div>
+  <div class="load-text">Initializing Aether</div>
+</div>
+
+<!-- Top label -->
+<div id="top-label">
+  <div class="title">Aether Avatar <span style="color:var(--pb-blue)">v2</span></div>
+  <div class="subtitle">Proof of Concept &nbsp;&bull;&nbsp; 2026-02-22</div>
+</div>
+
+<!-- Mode control buttons -->
+<div id="ui">
+  <div id="mode-label">Idle</div>
+  <div id="mode-buttons">
+    <button class="mode-btn active" onclick="setMode('idle')">Idle</button>
+    <button class="mode-btn" onclick="setMode('listening')">Listening</button>
+    <button class="mode-btn" onclick="setMode('thinking')">Thinking</button>
+    <button class="mode-btn" onclick="setMode('speaking')">Speaking</button>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }     from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass }     from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass }     from 'three/addons/postprocessing/OutputPass.js';
+
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+
+const PB_BLUE   = new THREE.Color('#2a93c1');
+const PB_ORANGE = new THREE.Color('#f1420b');
+const PB_GOLD   = new THREE.Color('#C8A84A');
+const PB_DARK   = new THREE.Color('#060606');
+const WHITE     = new THREE.Color('#ffffff');
+const CYAN      = new THREE.Color('#00D4FF');
+const PURPLE    = new THREE.Color('#8866AA');
+
+const CANVAS_W = 480;
+const CANVAS_H = 480;
+
+// ─── MODE DEFINITIONS ─────────────────────────────────────────────────────────
+
+const MODES = {
+  idle: {
+    name:          'Idle',
+    coreColor:     PB_BLUE.clone(),
+    coreIntensity: 3.0,
+    floatSpeed:    1.5,
+    floatAmp:      0.08,
+    idleRotSpeed:  0.002,
+    ringSpeed:     [0.30, -0.20],
+    gazeMultiplier: 0.7,
+    bloomStrength:  0.35,
+    glassColor:    new THREE.Color('#aaddff'),
+    bgGradient:    'radial-gradient(ellipse 60% 50% at 70% 20%, rgba(42,147,193,0.07) 0%, transparent 70%), radial-gradient(ellipse 40% 40% at 30% 80%, rgba(42,147,193,0.03) 0%, transparent 60%)',
+    ambientIntensity: 0.15,
+  },
+  listening: {
+    name:          'Listening',
+    coreColor:     CYAN.clone(),
+    coreIntensity: 3.5,
+    floatSpeed:    1.2,
+    floatAmp:      0.06,
+    idleRotSpeed:  0.001,
+    ringSpeed:     [0.12, -0.08],
+    gazeMultiplier: 1.6,
+    bloomStrength:  0.45,
+    glassColor:    new THREE.Color('#88eeff'),
+    bgGradient:    'radial-gradient(ellipse 70% 60% at 50% 50%, rgba(0,212,255,0.08) 0%, transparent 70%)',
+    ambientIntensity: 0.18,
+  },
+  thinking: {
+    name:          'Thinking',
+    coreColor:     PB_BLUE.clone(),
+    coreIntensity: 2.5,
+    floatSpeed:    0.8,
+    floatAmp:      0.04,
+    idleRotSpeed:  0.005,
+    ringSpeed:     [0.05, -0.03],
+    gazeMultiplier: 0.3,
+    bloomStrength:  0.28,
+    glassColor:    new THREE.Color('#9977cc'),
+    bgGradient:    'radial-gradient(ellipse 50% 40% at 50% 50%, rgba(136,102,170,0.06) 0%, transparent 65%)',
+    ambientIntensity: 0.12,
+  },
+  speaking: {
+    name:          'Speaking',
+    coreColor:     WHITE.clone(),
+    coreIntensity: 6.0,
+    floatSpeed:    2.0,
+    floatAmp:      0.10,
+    idleRotSpeed:  0.003,
+    ringSpeed:     [0.65, -0.45],
+    gazeMultiplier: 0.5,
+    bloomStrength:  0.65,
+    glassColor:    new THREE.Color('#cceeFF'),
+    bgGradient:    'radial-gradient(ellipse 80% 70% at 50% 50%, rgba(42,147,193,0.12) 0%, transparent 70%), radial-gradient(ellipse 40% 40% at 70% 30%, rgba(255,255,255,0.04) 0%, transparent 50%)',
+    ambientIntensity: 0.22,
+  },
+};
+
+// ─── SCENE SETUP ──────────────────────────────────────────────────────────────
+
+const canvas    = document.getElementById('gl-canvas');
+const renderer  = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setSize(CANVAS_W, CANVAS_H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+
+const scene  = new THREE.Scene();
+scene.background = new THREE.Color('#060606');
+
+const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+camera.position.set(0, 0, 4.5);
+
+// ─── LIGHTING RIG ─────────────────────────────────────────────────────────────
+
+// Key light — warm white from upper-left
+const keyLight = new THREE.DirectionalLight('#FFF8F0', 3.5);
+keyLight.position.set(-3, 4, 3);
+scene.add(keyLight);
+
+// Fill light — PureBrain blue (signature accent)
+const fillLight = new THREE.DirectionalLight('#2a93c1', 0.9);
+fillLight.position.set(4, -1, 2);
+scene.add(fillLight);
+
+// Rim light — cyan from behind-right
+const rimLight = new THREE.DirectionalLight('#18A8D3', 0.7);
+rimLight.position.set(3, 2, -4);
+scene.add(rimLight);
+
+// Accent — warm gold from below
+const goldLight = new THREE.DirectionalLight('#C8A84A', 0.5);
+goldLight.position.set(0, -4, 1);
+scene.add(goldLight);
+
+// Magenta accent (Gleb signature)
+const magentaLight = new THREE.DirectionalLight('#D10DCE', 0.4);
+magentaLight.position.set(-2, -2, -3);
+scene.add(magentaLight);
+
+// Ambient — dark navy, not gray
+const ambient = new THREE.AmbientLight('#0A0A1A', 0.15);
+scene.add(ambient);
+
+// Environment map for glass reflections (procedural RoomEnvironment equivalent)
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+pmremGenerator.compileEquirectangularShader();
+
+// Create a procedural environment using a series of colored point lights inside a box
+const envScene = new THREE.Scene();
+const envCols = ['#2a93c1','#D10DCE','#18A8D3','#FFF8F0','#C8A84A','#f1420b'];
+const envPositions = [
+  [0,5,0],[0,-5,0],[5,0,0],[-5,0,0],[0,0,5],[0,0,-5]
+];
+envCols.forEach((col,i) => {
+  const ep = new THREE.PointLight(col, 2.0);
+  ep.position.set(...envPositions[i]);
+  envScene.add(ep);
+});
+const envTexture = pmremGenerator.fromScene(envScene).texture;
+scene.environment = envTexture;
+setTimeout(() => pmremGenerator.dispose(), 2000);
+
+// ─── GEOMETRY ─────────────────────────────────────────────────────────────────
+
+// --- Outer glass sphere ---
+// Using MeshPhysicalMaterial with transmission = 1 for glass effect
+// (MeshTransmissionMaterial is R3F/Drei — we use the built-in physical equivalent)
+const outerGeo = new THREE.SphereGeometry(1.2, 128, 128);
+const outerMat = new THREE.MeshPhysicalMaterial({
+  transmission:    1.0,
+  thickness:       0.8,
+  roughness:       0.05,
+  ior:             1.5,
+  metalness:       0.0,
+  color:           new THREE.Color('#aaddff'),
+  envMapIntensity: 3.5,
+  // Gold specular highlight (Gleb signature — not white)
+  specularColor:   PB_GOLD.clone(),
+  specularIntensity: 1.0,
+  transparent:     true,
+  opacity:         0.95,
+  side:            THREE.FrontSide,
+  depthWrite:      false,
+});
+const outerMesh = new THREE.Mesh(outerGeo, outerMat);
+scene.add(outerMesh);
+
+// Glass backside (inner surface — creates the internal reflections)
+const innerGeo  = new THREE.SphereGeometry(1.19, 128, 128);
+const innerMat  = new THREE.MeshPhysicalMaterial({
+  transmission:    1.0,
+  thickness:       0.5,
+  roughness:       0.08,
+  ior:             1.5,
+  metalness:       0.0,
+  color:           new THREE.Color('#aaddff'),
+  envMapIntensity: 2.0,
+  specularColor:   PB_GOLD.clone(),
+  specularIntensity: 0.8,
+  transparent:     true,
+  opacity:         0.6,
+  side:            THREE.BackSide,
+  depthWrite:      false,
+});
+const innerMesh = new THREE.Mesh(innerGeo, innerMat);
+scene.add(innerMesh);
+
+// --- Orbiting rings ---
+// Ring 1 — inclined at 30 degrees
+const ring1Geo = new THREE.TorusGeometry(1.55, 0.012, 16, 256);
+const ring1Mat = new THREE.MeshPhysicalMaterial({
+  transmission:    0.9,
+  thickness:       0.05,
+  roughness:       0.08,
+  ior:             1.5,
+  metalness:       0.0,
+  color:           new THREE.Color('#aaddff'),
+  envMapIntensity: 4.0,
+  specularColor:   PB_GOLD.clone(),
+  specularIntensity: 1.2,
+  transparent:     true,
+  opacity:         0.85,
+  depthWrite:      false,
+});
+const ring1 = new THREE.Mesh(ring1Geo, ring1Mat);
+ring1.rotation.x = Math.PI * 0.18;  // 32-degree tilt
+ring1.rotation.z = Math.PI * 0.05;
+scene.add(ring1);
+
+// Ring 2 — counter-inclined at -45 degrees
+const ring2Geo = new THREE.TorusGeometry(1.38, 0.010, 16, 256);
+const ring2Mat = new THREE.MeshPhysicalMaterial({
+  transmission:    0.9,
+  thickness:       0.05,
+  roughness:       0.08,
+  ior:             1.5,
+  metalness:       0.0,
+  color:           new THREE.Color('#aaddff'),
+  envMapIntensity: 4.0,
+  specularColor:   PB_GOLD.clone(),
+  specularIntensity: 1.2,
+  transparent:     true,
+  opacity:         0.85,
+  depthWrite:      false,
+});
+const ring2 = new THREE.Mesh(ring2Geo, ring2Mat);
+ring2.rotation.x = -Math.PI * 0.25;  // -45-degree tilt
+ring2.rotation.y = Math.PI * 0.08;
+scene.add(ring2);
+
+// Ring orbital group wrapping (so rotation affects orbital plane)
+const ringGroup1 = new THREE.Group();
+ringGroup1.add(ring1);
+scene.add(ringGroup1);
+
+const ringGroup2 = new THREE.Group();
+ringGroup2.add(ring2);
+scene.add(ringGroup2);
+
+// Remove direct scene additions (re-add under groups)
+scene.remove(ring1);
+scene.remove(ring2);
+
+// --- Inner emissive core ---
+const coreGeo = new THREE.SphereGeometry(0.35, 64, 64);
+const coreMat = new THREE.MeshStandardMaterial({
+  color:            PB_BLUE.clone(),
+  emissive:         PB_BLUE.clone(),
+  emissiveIntensity: 3.0,
+  roughness:        1.0,
+  metalness:        0.0,
+});
+const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+scene.add(coreMesh);
+
+// Core haze — slightly larger, additive blending for glow aura
+const hazeGeo = new THREE.SphereGeometry(0.52, 32, 32);
+const hazeMat = new THREE.MeshBasicMaterial({
+  color:       PB_BLUE.clone(),
+  transparent: true,
+  opacity:     0.18,
+  blending:    THREE.AdditiveBlending,
+  depthWrite:  false,
+  side:        THREE.BackSide,
+});
+const hazeMesh = new THREE.Mesh(hazeGeo, hazeMat);
+scene.add(hazeMesh);
+
+// Orange spark particles (speaking mode — GPU-efficient approach)
+const SPARK_COUNT = 120;
+const sparkPositions = new Float32Array(SPARK_COUNT * 3);
+const sparkPhases    = new Float32Array(SPARK_COUNT);
+const sparkRadii     = new Float32Array(SPARK_COUNT);
+const sparkSpeeds    = new Float32Array(SPARK_COUNT);
+const sparkElevs     = new Float32Array(SPARK_COUNT);
+
+for (let i = 0; i < SPARK_COUNT; i++) {
+  sparkPhases[i]  = Math.random() * Math.PI * 2;
+  sparkRadii[i]   = 0.38 + Math.random() * 0.18;
+  sparkSpeeds[i]  = (0.8 + Math.random() * 1.2) * (Math.random() > 0.5 ? 1 : -1);
+  sparkElevs[i]   = (Math.random() - 0.5) * 0.35;
+}
+
+const sparkGeo  = new THREE.BufferGeometry();
+sparkGeo.setAttribute('position', new THREE.BufferAttribute(sparkPositions, 3));
+const sparkMat  = new THREE.PointsMaterial({
+  color:      PB_ORANGE.clone(),
+  size:       0.028,
+  transparent: true,
+  opacity:    0.0,
+  blending:   THREE.AdditiveBlending,
+  depthWrite: false,
+  sizeAttenuation: true,
+});
+const sparks = new THREE.Points(sparkGeo, sparkMat);
+scene.add(sparks);
+
+// ─── GAZE GROUP (cursor tracking container) ───────────────────────────────────
+
+// Wrap all avatar elements under a single group for cursor rotation
+const avatarGroup = new THREE.Group();
+
+// Re-parent everything
+scene.remove(outerMesh);
+scene.remove(innerMesh);
+scene.remove(coreMesh);
+scene.remove(hazeMesh);
+scene.remove(sparks);
+scene.remove(ringGroup1);
+scene.remove(ringGroup2);
+
+avatarGroup.add(outerMesh);
+avatarGroup.add(innerMesh);
+avatarGroup.add(coreMesh);
+avatarGroup.add(hazeMesh);
+avatarGroup.add(sparks);
+avatarGroup.add(ringGroup1);
+avatarGroup.add(ringGroup2);
+scene.add(avatarGroup);
+
+// ─── POSTPROCESSING ───────────────────────────────────────────────────────────
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+// Bloom — only truly emissive elements (inner core) will bloom
+// threshold at 0.85 means glass/rings stay clean, core glows
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(CANVAS_W, CANVAS_H),
+  0.35,   // strength
+  0.4,    // radius
+  0.85    // threshold
+);
+composer.addPass(bloomPass);
+
+// Vignette ShaderPass — dark corners push focus to center
+const VignetteShader = {
+  uniforms: {
+    tDiffuse:  { value: null },
+    uOffset:   { value: 0.5 },
+    uDarkness: { value: 0.8 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uOffset;
+    uniform float uDarkness;
+    varying vec2 vUv;
+    void main() {
+      vec4 color = texture2D(tDiffuse, vUv);
+      vec2 uv = (vUv - 0.5) * 2.0;
+      float vignette = 1.0 - dot(uv, uv) * uOffset;
+      vignette = clamp(pow(vignette, uDarkness), 0.0, 1.0);
+      gl_FragColor = vec4(color.rgb * vignette, color.a);
+    }
+  `,
+};
+const vignettePass = new ShaderPass(VignetteShader);
+composer.addPass(vignettePass);
+
+// OutputPass MUST be last — handles color space conversion and gamma
+composer.addPass(new OutputPass());
+
+// ─── STATE MACHINE ────────────────────────────────────────────────────────────
+
+let currentMode    = 'idle';
+let prevMode       = 'idle';
+let modeT          = 1.0;    // transition progress 0→1
+
+// Lerped working values
+let workCoreIntensity = 3.0;
+let workFloatSpeed    = 1.5;
+let workFloatAmp      = 0.08;
+let workIdleRotSpeed  = 0.002;
+let workRingSpeed0    = 0.30;
+let workRingSpeed1    = -0.20;
+let workGazeMult      = 0.7;
+let workBloomStrength = 0.35;
+let workAmbient       = 0.15;
+let workSparkOpacity  = 0.0;
+
+const workCoreColor  = PB_BLUE.clone();
+const workGlassColor = new THREE.Color('#aaddff');
+
+// ─── SYNTHETIC AUDIO ENGINE ───────────────────────────────────────────────────
+
+class SyntheticAudio {
+  constructor() {
+    this.mode    = 'idle';
+    this.t       = 0;
+    this.burstLen = 0.25;
+    this.burstT   = 0;
+    this.bass     = 0;
+    this.midHigh  = 0;
+  }
+  setMode(m) { this.mode = m; }
+  tick(dt) {
+    this.t += dt;
+    this.burstT += dt;
+    if (this.burstT > this.burstLen) {
+      this.burstT  = 0;
+      this.burstLen = 0.15 + Math.random() * 0.35;
+    }
+    const bp = this.burstT / this.burstLen;
+    let env = bp < 0.2
+      ? bp / 0.2
+      : 1.0 - ((bp - 0.2) / 0.8);
+
+    const modeAmp = {
+      idle:      0.08,
+      listening: 0.12,
+      thinking:  0.05,
+      speaking:  0.80,
+    }[this.mode] || 0.1;
+
+    const phoneme = Math.sin(this.t * 12) * 0.3 + 0.7;
+    const sibilant = Math.sin(this.t * 5) > 0.6 ? 0.4 : 0;
+
+    const raw = env * modeAmp * phoneme + sibilant * modeAmp * 0.3;
+    // Smooth
+    this.bass    += (raw - this.bass)    * 0.12;
+    this.midHigh += (raw - this.midHigh) * 0.18;
+  }
+}
+
+const synthAudio = new SyntheticAudio();
+
+// ─── CURSOR GAZE SYSTEM ───────────────────────────────────────────────────────
+
+const cursorNorm = { x: 0, y: 0 };  // -1 to 1
+const gazeTarget = { x: 0, y: 0 };  // lerped gaze rotation in radians
+const gazeCurrent= { x: 0, y: 0 };
+
+document.addEventListener('mousemove', (e) => {
+  cursorNorm.x = (e.clientX / window.innerWidth  - 0.5) * 2;
+  cursorNorm.y = (e.clientY / window.innerHeight - 0.5) * 2;
+});
+
+// ─── FLOAT ANIMATION ─────────────────────────────────────────────────────────
+
+let floatPhase = 0;
+
+// ─── RING ROTATION ANGLES ─────────────────────────────────────────────────────
+
+let ring1Angle = 0;
+let ring2Angle = 0;
+const RING1_TILT = new THREE.Euler(Math.PI * 0.18, 0, Math.PI * 0.05);
+const RING2_TILT = new THREE.Euler(-Math.PI * 0.25, Math.PI * 0.08, 0);
+
+// ─── SPARK ANIMATION ─────────────────────────────────────────────────────────
+
+let sparkAngles = new Float32Array(SPARK_COUNT);
+for (let i = 0; i < SPARK_COUNT; i++) sparkAngles[i] = sparkPhases[i];
+const sparkPosAttr = sparkGeo.getAttribute('position');
+
+// ─── LOADING ─────────────────────────────────────────────────────────────────
+
+let readyFrames  = 0;
+let loadingDone  = false;
+const loadScreen = document.getElementById('loading-screen');
+
+// ─── ANIMATION LOOP (single — never split into two rAF calls) ────────────────
+
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  // Cap dt to avoid spiral of death after tab switch
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const elapsed = clock.getElapsedTime();
+
+  // Loading dismissal
+  if (!loadingDone) {
+    readyFrames++;
+    if (readyFrames >= 4) {
+      loadingDone = true;
+      loadScreen.classList.add('hidden');
+    }
+  }
+
+  // Synthetic audio tick
+  synthAudio.tick(dt);
+
+  // ── Mode transition lerp ──
+  modeT = Math.min(modeT + dt * 1.1, 1.0);  // ~0.9s full transition
+  const src = MODES[prevMode];
+  const dst = MODES[currentMode];
+  const t   = smoothstep(0, 1, modeT);
+
+  workCoreIntensity = lerp(src.coreIntensity, dst.coreIntensity, t);
+  workFloatSpeed    = lerp(src.floatSpeed,    dst.floatSpeed,    t);
+  workFloatAmp      = lerp(src.floatAmp,      dst.floatAmp,      t);
+  workIdleRotSpeed  = lerp(src.idleRotSpeed,  dst.idleRotSpeed,  t);
+  workRingSpeed0    = lerp(src.ringSpeed[0],  dst.ringSpeed[0],  t);
+  workRingSpeed1    = lerp(src.ringSpeed[1],  dst.ringSpeed[1],  t);
+  workGazeMult      = lerp(src.gazeMultiplier,dst.gazeMultiplier,t);
+  workBloomStrength = lerp(src.bloomStrength, dst.bloomStrength, t);
+  workAmbient       = lerp(src.ambientIntensity, dst.ambientIntensity, t);
+  workSparkOpacity  = lerp(
+    currentMode === 'speaking' ? workSparkOpacity : 0,
+    currentMode === 'speaking' ? 0.75 : 0,
+    0.08
+  );
+
+  workCoreColor.lerp(dst.coreColor,  0.045);
+  workGlassColor.lerp(dst.glassColor, 0.035);
+
+  // ── Audio reactivity ──
+  const bassAmp    = synthAudio.bass;
+  const midHighAmp = synthAudio.midHigh;
+
+  // Scale outer sphere (audio → scale, not roughness!)
+  const outerScale = 1.0 + bassAmp * 0.06;
+  outerMesh.scale.setScalar(outerScale);
+  innerMesh.scale.setScalar(outerScale * 0.995);
+
+  // Inner core emissive intensity
+  const peakIntensity = workCoreIntensity + midHighAmp * 4.0;
+  coreMat.emissiveIntensity += (peakIntensity - coreMat.emissiveIntensity) * 0.12;
+  coreMat.emissive.copy(workCoreColor);
+  coreMat.color.copy(workCoreColor);
+
+  // Core haze matches
+  hazeMat.color.copy(workCoreColor);
+  hazeMat.opacity = 0.12 + midHighAmp * 0.18;
+
+  // Glass color lerp
+  outerMat.color.copy(workGlassColor);
+  innerMat.color.copy(workGlassColor);
+  ring1Mat.color.copy(workGlassColor);
+  ring2Mat.color.copy(workGlassColor);
+
+  // ── Float animation ──
+  floatPhase += dt * workFloatSpeed;
+  const floatY = Math.sin(floatPhase) * workFloatAmp;
+  const floatX = Math.sin(floatPhase * 0.6) * workFloatAmp * 0.4;
+
+  // ── Cursor gaze ──
+  const gazeRange = 0.28 * workGazeMult;  // max rotation radians
+  gazeTarget.x = -cursorNorm.y * gazeRange;
+  gazeTarget.y =  cursorNorm.x * gazeRange;
+
+  gazeCurrent.x += (gazeTarget.x - gazeCurrent.x) * 0.05;
+  gazeCurrent.y += (gazeTarget.y - gazeCurrent.y) * 0.05;
+
+  // ── Apply transforms to avatarGroup ──
+  avatarGroup.rotation.x = gazeCurrent.x;
+  avatarGroup.rotation.y = gazeCurrent.y;
+  avatarGroup.position.y = floatY;
+  avatarGroup.position.x = floatX * 0.3;
+
+  // ── Outer sphere idle rotation ──
+  outerMesh.rotation.y += workIdleRotSpeed;
+  outerMesh.rotation.x  = Math.sin(elapsed * 0.3) * 0.008;
+  innerMesh.rotation.y  = -outerMesh.rotation.y * 0.6;
+
+  // ── Ring orbital rotation ──
+  ring1Angle += workRingSpeed0 * dt;
+  ring2Angle += workRingSpeed1 * dt;
+
+  ringGroup1.rotation.set(RING1_TILT.x, ring1Angle, RING1_TILT.z);
+  ringGroup2.rotation.set(RING2_TILT.x, RING2_TILT.y + ring2Angle, 0);
+
+  // Additional ring rocking (makes them feel alive)
+  ring1.rotation.x = RING1_TILT.x + Math.sin(elapsed * 0.5) * 0.04;
+  ring2.rotation.x = RING2_TILT.x + Math.sin(elapsed * 0.4 + 1.2) * 0.04;
+
+  // ── Spark particles ──
+  const sparkSpeedMult = currentMode === 'speaking' ? 1.0 : 0.3;
+  for (let i = 0; i < SPARK_COUNT; i++) {
+    sparkAngles[i] += sparkSpeeds[i] * sparkSpeedMult * dt;
+    const angle = sparkAngles[i];
+    const r     = sparkRadii[i];
+    const elev  = sparkElevs[i] + Math.sin(elapsed * 0.8 + sparkPhases[i]) * 0.06;
+    sparkPosAttr.setXYZ(i,
+      Math.cos(angle) * r,
+      elev,
+      Math.sin(angle) * r
+    );
+  }
+  sparkPosAttr.needsUpdate = true;
+  sparkMat.opacity = workSparkOpacity;
+
+  // ── Postprocessing updates ──
+  bloomPass.strength  = workBloomStrength + midHighAmp * 0.3;
+  ambient.intensity   = workAmbient;
+
+  // ── Render ──
+  composer.render();
+}
+
+animate();
+
+// ─── MODE SWITCHING ───────────────────────────────────────────────────────────
+
+function smoothstep(min, max, val) {
+  const x = Math.max(0, Math.min(1, (val - min) / (max - min)));
+  return x * x * (3 - 2 * x);
+}
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function setMode(mode) {
+  if (mode === currentMode) return;
+
+  prevMode    = currentMode;
+  currentMode = mode;
+  modeT       = 0;
+
+  // Update UI
+  document.getElementById('mode-label').textContent = MODES[mode].name;
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('onclick').includes(`'${mode}'`));
+  });
+
+  // Update background gradient
+  document.getElementById('bg-gradient').style.background = MODES[mode].bgGradient;
+
+  // Sync synthetic audio engine
+  synthAudio.setMode(mode);
+}
+
+// Expose to global scope for onclick handlers (ES modules don't auto-pollute globals)
+window.setMode = setMode;
+
+// ─── POSTMESSAGE API ─────────────────────────────────────────────────────────
+
+window.addEventListener('message', (evt) => {
+  const origin = evt.origin;
+  // Allow file:// and purebrain.ai origins
+  const allowed = origin === 'null' || origin === '' ||
+    origin.includes('purebrain.ai') || origin.includes('localhost');
+  if (!allowed) return;
+
+  const { type, mode } = evt.data || {};
+  if (type === 'SET_MODE' && MODES[mode]) {
+    setMode(mode);
+  } else if (type === 'PING') {
+    evt.source.postMessage({ type: 'PONG', mode: currentMode, version: '2.0' }, evt.origin);
+  }
+});
+
+// Signal ready to parent (if embedded in iframe)
+window.parent.postMessage({ type: 'READY', version: '2.0' }, '*');
+
+// ─── AUTO-CYCLE DEMO (stops on user interaction) ─────────────────────────────
+
+const DEMO_MODES = ['idle', 'listening', 'thinking', 'speaking'];
+let demoCycleIdx = 0;
+let demoActive   = true;
+let demoTimer    = null;
+
+function nextDemoMode() {
+  if (!demoActive) return;
+  demoCycleIdx = (demoCycleIdx + 1) % DEMO_MODES.length;
+  setMode(DEMO_MODES[demoCycleIdx]);
+  demoTimer = setTimeout(nextDemoMode, 5000);
+}
+
+// Start demo after 4s
+demoTimer = setTimeout(nextDemoMode, 4000);
+
+// Stop auto-cycle on user interaction
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    demoActive = false;
+    clearTimeout(demoTimer);
+  });
+});
+
+</script>
+</body>
+</html>

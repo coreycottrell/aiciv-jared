@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GSAP Scroll-Driven Glass Avatar - Training Session Apr 01</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: #040608; font-family: system-ui; color: white; }
+
+  /* Fixed canvas behind scrollable content */
+  #canvas-container {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    z-index: 0;
+  }
+
+  /* Scrollable overlay sections */
+  .scroll-content {
+    position: relative;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .section {
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 10%;
+    pointer-events: auto;
+  }
+
+  .section-text {
+    max-width: 500px;
+    opacity: 0;
+    transform: translateY(40px);
+  }
+
+  .section:nth-child(odd) .section-text { margin-right: auto; }
+  .section:nth-child(even) .section-text { margin-left: auto; }
+
+  .section-text h2 {
+    font-size: 2.5rem;
+    font-weight: 200;
+    letter-spacing: 0.05em;
+    margin-bottom: 1rem;
+    background: linear-gradient(135deg, #2a93c1, #88ccff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .section-text p {
+    font-size: 1rem;
+    line-height: 1.7;
+    color: rgba(255,255,255,0.5);
+    font-weight: 300;
+  }
+
+  .section-text .accent {
+    color: #f1420b;
+    -webkit-text-fill-color: #f1420b;
+  }
+
+  #info {
+    position: fixed; bottom: 20px; left: 20px;
+    color: rgba(255,255,255,0.2); font-size: 11px;
+    pointer-events: none; z-index: 10;
+  }
+
+  /* Scroll indicator */
+  .scroll-hint {
+    position: fixed;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    pointer-events: none;
+    opacity: 0.4;
+    animation: pulseHint 2s ease-in-out infinite;
+  }
+  .scroll-hint span {
+    display: block;
+    width: 24px; height: 24px;
+    border-right: 2px solid rgba(42,147,193,0.5);
+    border-bottom: 2px solid rgba(42,147,193,0.5);
+    transform: rotate(45deg);
+    margin: -8px auto;
+  }
+
+  @keyframes pulseHint {
+    0%, 100% { opacity: 0.2; transform: translateX(-50%) translateY(0); }
+    50% { opacity: 0.5; transform: translateX(-50%) translateY(8px); }
+  }
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div class="scroll-content">
+  <!-- Section 1: Introduction (avatar appears as clear glass) -->
+  <div class="section" data-section="0">
+    <div class="section-text">
+      <h2>Pure Glass</h2>
+      <p>A form born from light and mathematics. Transmission at its purest -- where refraction reveals what lies beneath the surface.</p>
+    </div>
+  </div>
+
+  <!-- Section 2: Energy awakens (IOR shifts, bloom increases) -->
+  <div class="section" data-section="1">
+    <div class="section-text">
+      <h2>Energy <span class="accent">Awakens</span></h2>
+      <p>As index of refraction shifts, light bends differently through each layer. Chromatic dispersion separates wavelengths into prismatic bands of color.</p>
+    </div>
+  </div>
+
+  <!-- Section 3: Scale and rotation (avatar grows, rotates to reveal depth) -->
+  <div class="section" data-section="2">
+    <div class="section-text">
+      <h2>Depth Revealed</h2>
+      <p>Three nested shells, each rotating at prime-ratio speeds. The outer bends blue, the inner bends orange, and together they create parallax that cannot exist in two dimensions.</p>
+    </div>
+  </div>
+
+  <!-- Section 4: Color shift (blue to orange transition) -->
+  <div class="section" data-section="3">
+    <div class="section-text">
+      <h2>Color <span class="accent">Transforms</span></h2>
+      <p>From cool precision to warm intensity. The material shifts its spectral identity -- glass that remembers every wavelength of light that ever passed through it.</p>
+    </div>
+  </div>
+
+  <!-- Section 5: Full bloom (maximum energy, particles appear) -->
+  <div class="section" data-section="4">
+    <div class="section-text">
+      <h2>Full Radiance</h2>
+      <p>When every parameter reaches its peak: maximum bloom, deepest refraction, fastest rotation. This is what Gleb Kuznetsov sees when he closes his eyes.</p>
+    </div>
+  </div>
+</div>
+
+<div class="scroll-hint"><span></span><span></span></div>
+
+<div id="info">GSAP Scroll-Driven Glass Avatar | ScrollTrigger + Full Material Stack | Training Apr 01 2026</div>
+
+<!-- CDN imports -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<!-- GSAP + ScrollTrigger from CDN (classic script, not module) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+// ============================================================
+// SCROLL STATE (driven by GSAP ScrollTrigger)
+// ============================================================
+const scrollState = {
+  progress: 0,      // 0-1 overall scroll
+  section: 0,       // current section (0-4)
+  sectionProgress: 0, // progress within current section
+  ior: 1.5,
+  scale: 1.0,
+  rotationSpeed: 1.0,
+  bloomIntensity: 0.3,
+  colorMix: 0,      // 0 = blue, 1 = orange
+  particleOpacity: 0,
+};
+
+// ============================================================
+// CONSTANTS
+// ============================================================
+const BLUE   = new THREE.Color(0x2a93c1);
+const ORANGE = new THREE.Color(0xf1420b);
+const PHI    = 1.618033988749895;
+
+// ============================================================
+// RENDERER
+// ============================================================
+const container = document.getElementById('canvas-container');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x040608);
+
+const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0.2, 4.5);
+camera.lookAt(0, 0, 0);
+
+// ============================================================
+// PROCEDURAL ENV MAP (PMREM)
+// ============================================================
+const pmrem = new THREE.PMREMGenerator(renderer);
+pmrem.compileEquirectangularShader();
+
+function makeEnvMap() {
+  const size = 256;
+  const data = new Float32Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4;
+      const ny = y / size;
+      const nx = x / size;
+      const topLight = Math.pow(Math.max(0, 1 - ny * 2), 3);
+      const bottomFill = Math.pow(Math.max(0, ny * 2 - 1), 2) * 0.12;
+      data[i]     = 0.02 + topLight * 0.35 + bottomFill * 0.8;
+      data[i + 1] = 0.02 + topLight * 0.55 + bottomFill * 0.12;
+      data[i + 2] = 0.04 + topLight * 0.9  + bottomFill * 0.04;
+      data[i + 3] = 1.0;
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.FloatType);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.needsUpdate = true;
+  return pmrem.fromEquirectangular(tex).texture;
+}
+
+const envMap = makeEnvMap();
+scene.environment = envMap;
+
+// ============================================================
+// MATERIALS (scroll-driven parameters)
+// ============================================================
+const outerMat = new THREE.MeshPhysicalMaterial({
+  color: new THREE.Color(0x88ccff),
+  metalness: 0.0,
+  roughness: 0.02,
+  transmission: 0.95,
+  thickness: 0.6,
+  ior: 1.5,
+  iridescence: 0.3,
+  iridescenceIOR: 1.3,
+  iridescenceThicknessRange: [100, 400],
+  envMap,
+  envMapIntensity: 1.5,
+  transparent: true,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+});
+
+const innerMat = new THREE.MeshPhysicalMaterial({
+  color: BLUE.clone(),
+  metalness: 0.0,
+  roughness: 0.05,
+  transmission: 0.9,
+  thickness: 1.0,
+  ior: 1.7,
+  iridescence: 0.5,
+  iridescenceIOR: 1.5,
+  iridescenceThicknessRange: [200, 600],
+  envMap,
+  envMapIntensity: 1.2,
+  transparent: true,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+});
+
+const coreMat = new THREE.MeshStandardMaterial({
+  color: BLUE.clone(),
+  emissive: BLUE.clone(),
+  emissiveIntensity: 2.0,
+  metalness: 0.8,
+  roughness: 0.3,
+});
+
+const accentMat = new THREE.MeshStandardMaterial({
+  color: ORANGE.clone(),
+  emissive: ORANGE.clone(),
+  emissiveIntensity: 2.5,
+  metalness: 0.5,
+  roughness: 0.4,
+});
+
+// ============================================================
+// GEOMETRY
+// ============================================================
+const outerSphere = new THREE.Mesh(new THREE.SphereGeometry(1.2, 128, 128), outerMat);
+scene.add(outerSphere);
+
+const innerSphere = new THREE.Mesh(new THREE.SphereGeometry(0.85, 96, 96), innerMat);
+scene.add(innerSphere);
+
+const coreOrb = new THREE.Mesh(new THREE.SphereGeometry(0.25, 64, 64), coreMat);
+scene.add(coreOrb);
+
+const ring1 = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.015, 24, 128), accentMat);
+ring1.rotation.x = Math.PI * 0.5;
+scene.add(ring1);
+
+const ring2 = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.01, 20, 128), accentMat.clone());
+ring2.rotation.x = Math.PI * 0.35;
+ring2.rotation.z = Math.PI * 0.2;
+scene.add(ring2);
+
+// Floating particles (revealed in section 4-5)
+const particleGroup = new THREE.Group();
+const pGeo = new THREE.SphereGeometry(0.025, 12, 12);
+const pMat = new THREE.MeshStandardMaterial({
+  color: BLUE.clone(),
+  emissive: BLUE.clone(),
+  emissiveIntensity: 2.0,
+  transparent: true,
+  opacity: 0,
+});
+
+for (let i = 0; i < 40; i++) {
+  const p = new THREE.Mesh(pGeo, pMat.clone());
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.random() * Math.PI;
+  const r = 1.6 + Math.random() * 1.0;
+  p.position.set(
+    r * Math.sin(phi) * Math.cos(theta),
+    r * Math.cos(phi),
+    r * Math.sin(phi) * Math.sin(theta)
+  );
+  p.userData.orbit = { theta, phi, r, speed: 0.05 + Math.random() * 0.15 };
+  particleGroup.add(p);
+}
+scene.add(particleGroup);
+
+// ============================================================
+// LIGHTING
+// ============================================================
+scene.add(new THREE.DirectionalLight(0xffffff, 0.7).translateZ(3).translateY(4));
+const fillLight = new THREE.DirectionalLight(0x2a93c1, 0.3);
+fillLight.position.set(-3, 1, -2);
+scene.add(fillLight);
+const rimLight = new THREE.PointLight(0xf1420b, 0.4, 10);
+rimLight.position.set(-2, -1, 3);
+scene.add(rimLight);
+
+// ============================================================
+// POSTPROCESSING
+// ============================================================
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.3,   // initial low intensity
+  0.4,   // radius
+  0.9    // threshold
+);
+composer.addPass(bloomPass);
+
+// Vignette + grain
+const filmShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    time: { value: 0 },
+    vignetteIntensity: { value: 0.3 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float time;
+    uniform float vignetteIntensity;
+    varying vec2 vUv;
+    float hash(vec2 p) {
+      vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+      p3 += dot(p3, p3.yzx + 33.33);
+      return fract((p3.x + p3.y) * p3.z);
+    }
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      c.rgb += (hash(vUv * 800.0 + time * 80.0) - 0.5) * 0.035;
+      float vig = 1.0 - dot((vUv - 0.5) * 1.3, (vUv - 0.5) * 1.3) * vignetteIntensity;
+      c.rgb *= smoothstep(0.0, 1.0, vig);
+      gl_FragColor = c;
+    }
+  `
+};
+const filmPass = new ShaderPass(filmShader);
+composer.addPass(filmPass);
+
+// ============================================================
+// GSAP SCROLLTRIGGER SETUP
+// ============================================================
+gsap.registerPlugin(ScrollTrigger);
+
+// Overall scroll progress (0 to 1 across entire page)
+ScrollTrigger.create({
+  trigger: '.scroll-content',
+  start: 'top top',
+  end: 'bottom bottom',
+  scrub: 1,
+  onUpdate: (self) => {
+    scrollState.progress = self.progress;
+  }
+});
+
+// Per-section animations for text reveals
+document.querySelectorAll('.section').forEach((section, i) => {
+  const text = section.querySelector('.section-text');
+  if (!text) return;
+
+  gsap.to(text, {
+    opacity: 1,
+    y: 0,
+    duration: 0.8,
+    ease: 'power2.out',
+    scrollTrigger: {
+      trigger: section,
+      start: 'top 70%',
+      end: 'top 30%',
+      scrub: 1,
+    }
+  });
+
+  // Fade out as section exits
+  gsap.to(text, {
+    opacity: 0,
+    y: -30,
+    duration: 0.5,
+    scrollTrigger: {
+      trigger: section,
+      start: 'bottom 60%',
+      end: 'bottom 30%',
+      scrub: 1,
+    }
+  });
+});
+
+// Scroll-driven 3D parameters (scrub timeline)
+const scrollTL = gsap.timeline({
+  scrollTrigger: {
+    trigger: '.scroll-content',
+    start: 'top top',
+    end: 'bottom bottom',
+    scrub: 1.5,
+  }
+});
+
+// Section 0-1: IOR shifts from 1.5 to 2.0
+scrollTL.to(scrollState, { ior: 2.0, duration: 1 }, 0);
+// Section 1-2: Scale grows
+scrollTL.to(scrollState, { scale: 1.3, duration: 1 }, 1);
+// Section 1-2: Rotation speeds up
+scrollTL.to(scrollState, { rotationSpeed: 3.0, duration: 1 }, 1);
+// Section 2-3: Color shifts blue to orange
+scrollTL.to(scrollState, { colorMix: 1.0, duration: 1 }, 2);
+// Section 2-3: Bloom increases
+scrollTL.to(scrollState, { bloomIntensity: 0.8, duration: 1 }, 2);
+// Section 3-4: Particles appear
+scrollTL.to(scrollState, { particleOpacity: 1.0, duration: 1 }, 3);
+// Section 3-4: Full bloom
+scrollTL.to(scrollState, { bloomIntensity: 1.2, duration: 1 }, 3);
+// Section 4 hold: max intensity
+scrollTL.to(scrollState, { ior: 2.2, scale: 1.5, rotationSpeed: 5.0, duration: 0.5 }, 3.5);
+
+// Hide scroll hint after first scroll
+ScrollTrigger.create({
+  trigger: '.scroll-content',
+  start: 'top top',
+  end: '+=100',
+  onEnter: () => {
+    gsap.to('.scroll-hint', { opacity: 0, duration: 0.5 });
+  },
+  onLeaveBack: () => {
+    gsap.to('.scroll-hint', { opacity: 0.4, duration: 0.5 });
+  }
+});
+
+// ============================================================
+// SPRING MOUSE
+// ============================================================
+const mouse = { x: 0, y: 0 };
+const sMouse = { x: 0, y: 0 };
+window.addEventListener('mousemove', (e) => {
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+});
+
+// ============================================================
+// ANIMATION LOOP
+// ============================================================
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // Spring mouse
+  sMouse.x += (mouse.x - sMouse.x) * 0.04;
+  sMouse.y += (mouse.y - sMouse.y) * 0.04;
+
+  // === APPLY SCROLL STATE TO 3D ===
+  const s = scrollState;
+
+  // IOR animation (base from scroll + subtle sine oscillation)
+  outerMat.ior = s.ior + Math.sin(t * 0.317 * Math.PI * 2) * 0.08;
+  innerMat.ior = s.ior * 1.1 + Math.sin(t * 0.513 * Math.PI * 2) * 0.1;
+
+  // Iridescence (increases with scroll)
+  outerMat.iridescence = 0.3 + s.progress * 0.5;
+  innerMat.iridescence = 0.5 + s.progress * 0.4;
+
+  // Color interpolation (blue -> orange)
+  const currentColor = BLUE.clone().lerp(ORANGE, s.colorMix);
+  innerMat.color.copy(currentColor);
+  coreMat.color.copy(currentColor);
+  coreMat.emissive.copy(currentColor);
+
+  // Thickness changes with IOR
+  outerMat.thickness = 0.6 + (s.ior - 1.5) * 0.4;
+  innerMat.thickness = 1.0 + (s.ior - 1.5) * 0.6;
+
+  // Scale (scroll-driven)
+  const baseScale = s.scale;
+  outerSphere.scale.setScalar(baseScale);
+  innerSphere.scale.setScalar(baseScale * 0.71);
+  coreOrb.scale.setScalar(baseScale * 0.21 + Math.sin(t * 0.829 * Math.PI * 2) * 0.02);
+
+  // Rotation (speed driven by scroll)
+  const rotSpeed = s.rotationSpeed;
+  outerSphere.rotation.y = t * 0.08 * rotSpeed;
+  outerSphere.rotation.x = Math.sin(t * 0.317) * 0.1 * rotSpeed + sMouse.y * 0.15;
+  outerSphere.rotation.z = sMouse.x * 0.1;
+
+  innerSphere.rotation.y = -t * 0.13 * rotSpeed;
+  innerSphere.rotation.x = Math.sin(t * 0.513) * 0.12 * rotSpeed + sMouse.y * 0.1;
+
+  // Rings
+  ring1.rotation.z = t * 0.2 * rotSpeed;
+  ring1.scale.setScalar(baseScale);
+  ring2.rotation.y = t * 0.15 * rotSpeed;
+  ring2.scale.setScalar(baseScale);
+
+  // Core emissive intensity (pulses with scroll-driven bloom)
+  coreMat.emissiveIntensity = 2.0 + s.bloomIntensity * 2.0 + Math.sin(t * 0.513 * Math.PI * 2) * 0.5;
+
+  // Bloom (scroll-driven intensity)
+  bloomPass.strength = s.bloomIntensity;
+  bloomPass.threshold = Math.max(0.5, 0.9 - s.bloomIntensity * 0.4);
+
+  // Particles (scroll-driven opacity)
+  particleGroup.children.forEach((p, i) => {
+    const o = p.userData.orbit;
+    o.theta += o.speed * 0.01 * rotSpeed;
+    const pScale = baseScale * 0.8;
+    p.position.set(
+      o.r * pScale * Math.sin(o.phi) * Math.cos(o.theta),
+      o.r * pScale * Math.cos(o.phi) + Math.sin(t * 0.513 + o.theta) * 0.1,
+      o.r * pScale * Math.sin(o.phi) * Math.sin(o.theta)
+    );
+    p.material.opacity = s.particleOpacity;
+    p.material.transparent = true;
+
+    // Particle color matches current glass color
+    const pColor = BLUE.clone().lerp(ORANGE, s.colorMix * (i % 3 === 0 ? 1 : 0.3));
+    p.material.emissive.copy(pColor);
+    p.material.color.copy(pColor);
+  });
+
+  // Camera subtle movement (parallax with mouse)
+  camera.position.x = sMouse.x * 0.3;
+  camera.position.y = 0.2 + sMouse.y * 0.2;
+  camera.lookAt(0, 0, 0);
+
+  // Exposure ramp with bloom
+  renderer.toneMappingExposure = 1.0 + s.bloomIntensity * 0.15;
+
+  // Film grain time
+  filmPass.uniforms.time.value = t;
+
+  // Render
+  composer.render();
+}
+
+animate();
+
+// ============================================================
+// RESIZE
+// ============================================================
+window.addEventListener('resize', () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+});
+</script>
+</body>
+</html>

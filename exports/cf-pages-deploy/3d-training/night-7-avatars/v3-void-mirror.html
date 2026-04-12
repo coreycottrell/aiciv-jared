@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 7 V3 — Void Mirror Avatar</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #030508; overflow: hidden; }
+  canvas { display: block; }
+  #info {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    color: rgba(255,255,255,0.10);
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    z-index: 10;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="info">V3 — Void Mirror — Ultra-dark reflective chrome with minimal light</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ─── SCENE ───
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x030508);
+
+const camera = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 0.1, 5.2);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.9;
+document.body.appendChild(renderer.domElement);
+
+// ─── MOUSE ───
+const mouse = new THREE.Vector2(0, 0);
+const tmouse = new THREE.Vector2(0, 0);
+window.addEventListener('mousemove', e => {
+  tmouse.x = (e.clientX / innerWidth) * 2 - 1;
+  tmouse.y = -(e.clientY / innerHeight) * 2 + 1;
+});
+
+// ─── ENVIRONMENT — Very dark, minimal highlights ───
+const pmrem = new THREE.PMREMGenerator(renderer);
+const es = new THREE.Scene();
+const eg = new THREE.SphereGeometry(20, 32, 32);
+const em = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  vertexShader: `varying vec3 vP; void main() { vP = (modelMatrix * vec4(position,1.0)).xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  fragmentShader: `
+    varying vec3 vP;
+    void main() {
+      float y = normalize(vP).y;
+      vec3 col = vec3(0.002, 0.002, 0.005);
+      // Single razor-sharp highlight — like studio photography
+      float h = smoothstep(0.96, 1.0, dot(normalize(vP), normalize(vec3(1.5, 2.5, 2.0))));
+      col += vec3(0.8, 0.9, 1.0) * h * 5.0;
+      // Faint warm counter
+      float h2 = smoothstep(0.97, 1.0, dot(normalize(vP), normalize(vec3(-2.0, 0.5, -1.0))));
+      col += vec3(1.0, 0.3, 0.08) * h2 * 1.5;
+      // Subtle blue rim from below
+      float h3 = smoothstep(0.94, 1.0, dot(normalize(vP), normalize(vec3(0.0, -1.0, 0.5))));
+      col += vec3(0.1, 0.2, 0.5) * h3 * 1.0;
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `
+});
+es.add(new THREE.Mesh(eg, em));
+const envMap = pmrem.fromScene(es, 0.02).texture;
+scene.environment = envMap;
+es.dispose();
+
+// ─── MAIN FORM — Organic chrome blob (Gleb's "liquid metal" aesthetic) ───
+const mainGeo = new THREE.IcosahedronGeometry(1.0, 128);
+const mainMat = new THREE.MeshPhysicalMaterial({
+  color: 0x080810,
+  metalness: 1.0,
+  roughness: 0.02,
+  clearcoat: 1.0,
+  clearcoatRoughness: 0.01,
+  envMapIntensity: 3.0,
+  reflectivity: 1.0,
+});
+const mainMesh = new THREE.Mesh(mainGeo, mainMat);
+scene.add(mainMesh);
+
+// Store original positions for morphing
+const mainPos = mainGeo.attributes.position;
+const origPositions = new Float32Array(mainPos.array);
+
+// ─── ACCENT ORB — Single tiny glowing blue sphere ───
+const accentGeo = new THREE.SphereGeometry(0.06, 32, 32);
+const accentMat = new THREE.MeshBasicMaterial({
+  color: 0x2a93c1,
+  transparent: true,
+  opacity: 0.9,
+});
+const accent = new THREE.Mesh(accentGeo, accentMat);
+accent.position.set(1.4, 0.3, 0.5);
+scene.add(accent);
+
+// Accent glow
+const accentGlow = new THREE.Mesh(
+  new THREE.SphereGeometry(0.15, 16, 16),
+  new THREE.MeshBasicMaterial({
+    color: 0x2a93c1,
+    transparent: true,
+    opacity: 0.15,
+    blending: THREE.AdditiveBlending,
+  })
+);
+accentGlow.position.copy(accent.position);
+scene.add(accentGlow);
+
+// ─── EDGE LINE — Single geometric accent ───
+const edgeCurve = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(-2, -0.5, -1),
+  new THREE.Vector3(-1, 0.2, 0.5),
+  new THREE.Vector3(0, 0.8, 0),
+  new THREE.Vector3(1.2, 0.4, -0.3),
+  new THREE.Vector3(2, -0.3, 0.8),
+]);
+const edgeGeo = new THREE.TubeGeometry(edgeCurve, 80, 0.003, 4, false);
+const edgeMat = new THREE.MeshBasicMaterial({
+  color: 0x2a93c1,
+  transparent: true,
+  opacity: 0.25,
+  blending: THREE.AdditiveBlending,
+});
+const edge = new THREE.Mesh(edgeGeo, edgeMat);
+scene.add(edge);
+
+// ─── FLOATING PARTICLES — Sparse, dark space feeling ───
+const particleCount = 200;
+const particleGeo = new THREE.BufferGeometry();
+const particlePositions = new Float32Array(particleCount * 3);
+const particleSizes = new Float32Array(particleCount);
+for (let i = 0; i < particleCount; i++) {
+  particlePositions[i * 3] = (Math.random() - 0.5) * 12;
+  particlePositions[i * 3 + 1] = (Math.random() - 0.5) * 8;
+  particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 12;
+  particleSizes[i] = Math.random() * 2 + 0.5;
+}
+particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+particleGeo.setAttribute('size', new THREE.BufferAttribute(particleSizes, 1));
+
+const particleMat = new THREE.ShaderMaterial({
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  uniforms: {
+    uTime: { value: 0 },
+  },
+  vertexShader: `
+    attribute float size;
+    uniform float uTime;
+    varying float vAlpha;
+    void main() {
+      vec3 pos = position;
+      pos.y += sin(uTime * 0.3 + position.x * 0.5) * 0.1;
+      vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+      gl_PointSize = size * (200.0 / -mvPos.z);
+      gl_Position = projectionMatrix * mvPos;
+      vAlpha = smoothstep(8.0, 2.0, -mvPos.z) * 0.15;
+    }
+  `,
+  fragmentShader: `
+    varying float vAlpha;
+    void main() {
+      float d = length(gl_PointCoord - 0.5);
+      if (d > 0.5) discard;
+      float a = smoothstep(0.5, 0.0, d) * vAlpha;
+      gl_FragColor = vec4(0.3, 0.5, 0.8, a);
+    }
+  `
+});
+const particles = new THREE.Points(particleGeo, particleMat);
+scene.add(particles);
+
+// ─── LIGHTS — Minimal, dramatic ───
+const keyLight = new THREE.SpotLight(0xd0e0ff, 3, 15, 0.4, 0.8);
+keyLight.position.set(3, 4, 3);
+keyLight.target.position.set(0, 0, 0);
+scene.add(keyLight);
+scene.add(keyLight.target);
+
+const accentLight = new THREE.PointLight(0x2a93c1, 1.5, 5);
+accentLight.position.set(1.4, 0.3, 0.5);
+scene.add(accentLight);
+
+// ─── POSTPROCESSING ───
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+// Subtle bloom — less is more for dark chrome
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.35, 0.6, 0.85);
+composer.addPass(bloom);
+
+// Chromatic aberration
+const chromaticShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uOffset: { value: 0.001 },
+  },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uOffset;
+    varying vec2 vUv;
+    void main() {
+      vec2 dir = vUv - 0.5;
+      float d = length(dir);
+      float offset = uOffset * d * d;
+      float r = texture2D(tDiffuse, vUv + dir * offset).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vUv - dir * offset).b;
+      gl_FragColor = vec4(r, g, b, 1.0);
+    }
+  `
+};
+composer.addPass(new ShaderPass(chromaticShader));
+composer.addPass(new OutputPass());
+
+// ─── NOISE for vertex morphing ───
+function simplexLike(x, y, z) {
+  const s = Math.sin(x * 1.1 + y * 2.3 + z * 3.7) * 43758.5453;
+  return (s - Math.floor(s)) * 2 - 1;
+}
+
+function fbm3(x, y, z, t) {
+  let v = 0, a = 0.5;
+  for (let i = 0; i < 4; i++) {
+    v += a * simplexLike(x + t * 0.3, y + t * 0.2, z + t * 0.15);
+    x *= 2.1; y *= 2.1; z *= 2.1;
+    a *= 0.5;
+  }
+  return v;
+}
+
+// ─── ANIMATION ───
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  mouse.x += (tmouse.x - mouse.x) * 0.03;
+  mouse.y += (tmouse.y - mouse.y) * 0.03;
+
+  // Morph main form — SLOW, menacing organic deformation
+  for (let i = 0; i < mainPos.count; i++) {
+    const ox = origPositions[i * 3];
+    const oy = origPositions[i * 3 + 1];
+    const oz = origPositions[i * 3 + 2];
+
+    const noise = fbm3(ox * 2.0, oy * 2.0, oz * 2.0, t * 0.4);
+    const displacement = noise * 0.12;
+
+    const r = Math.sqrt(ox * ox + oy * oy + oz * oz);
+    const nx = ox / r, ny = oy / r, nz = oz / r;
+
+    mainPos.setXYZ(i,
+      ox + nx * displacement,
+      oy + ny * displacement,
+      oz + nz * displacement
+    );
+  }
+  mainPos.needsUpdate = true;
+  mainGeo.computeVertexNormals();
+
+  // Very slow rotation
+  mainMesh.rotation.y = t * 0.06 + mouse.x * 0.15;
+  mainMesh.rotation.x = Math.sin(t * 0.08) * 0.05 + mouse.y * 0.1;
+
+  // Accent orbit
+  const accentAngle = t * 0.4;
+  const accentR = 1.4 + Math.sin(t * 0.7) * 0.15;
+  accent.position.set(
+    Math.cos(accentAngle) * accentR,
+    0.3 + Math.sin(t * 0.5) * 0.2,
+    Math.sin(accentAngle) * accentR
+  );
+  accentGlow.position.copy(accent.position);
+  accentLight.position.copy(accent.position);
+
+  // Accent pulse
+  const pulse = 0.7 + Math.sin(t * 2.5) * 0.3;
+  accentMat.opacity = pulse;
+  accentGlow.material.opacity = pulse * 0.15;
+  accentLight.intensity = pulse * 2;
+
+  // Edge line subtle animation
+  edge.rotation.y = t * 0.03;
+  edgeMat.opacity = 0.15 + Math.sin(t * 1.5) * 0.1;
+
+  // Particles
+  particleMat.uniforms.uTime.value = t;
+
+  // Camera — very subtle movement
+  camera.position.x = Math.sin(t * 0.05) * 0.1 + mouse.x * 0.4;
+  camera.position.y = 0.1 + Math.cos(t * 0.07) * 0.05 + mouse.y * 0.2;
+  camera.lookAt(0, 0, 0);
+
+  composer.render();
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

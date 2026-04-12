@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 4 — 3D Typography: CanvasTexture + Sprite Text + Floating Glass</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #050508;
+    overflow-x: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+  }
+
+  /* Fixed 3D canvas */
+  #canvas-container {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  /* Scroll wrapper */
+  #scroll-wrapper {
+    position: relative;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  /* Each scroll section */
+  .scroll-section {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0 8vw;
+  }
+
+  /* Typography */
+  .overline {
+    font-size: 0.65rem;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: rgba(42,147,193,0.7);
+    margin-bottom: 0.8rem;
+    opacity: 0;
+    transform: translateX(-12px);
+    transition: all 0.8s cubic-bezier(0.16,1,0.3,1);
+  }
+
+  .headline {
+    font-size: clamp(2.8rem, 6vw, 5.5rem);
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 0.95;
+    color: #fff;
+    margin-bottom: 1.2rem;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.9s cubic-bezier(0.16,1,0.3,1) 0.08s;
+  }
+
+  .headline .accent {
+    background: linear-gradient(135deg, #2a93c1, #44aaff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .headline .accent-orange {
+    background: linear-gradient(135deg, #f1420b, #ff6633);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .body-text {
+    font-size: clamp(1rem, 1.8vw, 1.25rem);
+    color: rgba(255,255,255,0.45);
+    line-height: 1.65;
+    max-width: 480px;
+    opacity: 0;
+    transform: translateY(14px);
+    transition: all 0.8s cubic-bezier(0.16,1,0.3,1) 0.18s;
+  }
+
+  .body-text strong { color: rgba(255,255,255,0.75); font-weight: 500; }
+
+  /* Reveal state */
+  .revealed .overline,
+  .revealed .headline,
+  .revealed .body-text {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Right-aligned sections */
+  .scroll-section.right {
+    align-items: flex-end;
+    text-align: right;
+  }
+  .scroll-section.right .body-text { margin-left: auto; }
+
+  /* Center section */
+  .scroll-section.center {
+    align-items: center;
+    text-align: center;
+  }
+  .scroll-section.center .body-text { max-width: 560px; text-align: center; }
+
+  /* Progress indicator */
+  #progress {
+    position: fixed;
+    left: 2rem;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    pointer-events: none;
+  }
+
+  .prog-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .prog-dot {
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    transition: all 0.4s cubic-bezier(0.16,1,0.3,1);
+  }
+  .prog-dot.active {
+    background: #2a93c1;
+    transform: scale(1.8);
+  }
+  .prog-label {
+    font-size: 0.55rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.15);
+    transition: color 0.4s ease;
+  }
+  .prog-item.active .prog-label { color: rgba(42,147,193,0.7); }
+</style>
+</head>
+<body>
+
+<div id="canvas-container">
+  <canvas id="c"></canvas>
+</div>
+
+<div id="scroll-wrapper">
+  <section class="scroll-section" id="sec-0">
+    <div class="overline">PureBrain</div>
+    <h1 class="headline">Think in<br><span class="accent">three dimensions</span></h1>
+    <p class="body-text">Every decision your AI makes is a vector through space. We made the invisible <strong>visible</strong>.</p>
+  </section>
+
+  <section class="scroll-section right" id="sec-1">
+    <div class="overline">Glass cognition</div>
+    <h1 class="headline">Light doesn't lie.<br>Neither does <span class="accent">your AI</span></h1>
+    <p class="body-text">Transmission. Refraction. The physics of transparency applied to every conversation.</p>
+  </section>
+
+  <section class="scroll-section" id="sec-2">
+    <div class="overline">Particle intelligence</div>
+    <h1 class="headline"><span class="accent-orange">10,000</span> thoughts.<br>One coherent answer.</h1>
+    <p class="body-text">Each particle is an attention head. Watch them <strong>converge</strong> toward insight.</p>
+  </section>
+
+  <section class="scroll-section center" id="sec-3">
+    <div class="overline">Luminous output</div>
+    <h1 class="headline">When insight <span class="accent">overflows</span></h1>
+    <p class="body-text">Bloom. The visual representation of a thought brighter than its container. This is what it looks like when your AI exceeds the frame.</p>
+  </section>
+
+  <section class="scroll-section center" id="sec-4">
+    <div class="overline">Ready</div>
+    <h1 class="headline">Your partner.<br>Finally <span class="accent">alive</span>.</h1>
+    <p class="body-text">PureBrain. Built for you. Learning from you. Thinking ahead for you.</p>
+  </section>
+</div>
+
+<nav id="progress">
+  <div class="prog-item active" data-sec="0">
+    <div class="prog-dot active"></div>
+    <span class="prog-label">Intro</span>
+  </div>
+  <div class="prog-item" data-sec="1">
+    <div class="prog-dot"></div>
+    <span class="prog-label">Glass</span>
+  </div>
+  <div class="prog-item" data-sec="2">
+    <div class="prog-dot"></div>
+    <span class="prog-label">Particles</span>
+  </div>
+  <div class="prog-item" data-sec="3">
+    <div class="prog-dot"></div>
+    <span class="prog-label">Bloom</span>
+  </div>
+  <div class="prog-item" data-sec="4">
+    <div class="prog-dot"></div>
+    <span class="prog-label">Finale</span>
+  </div>
+</nav>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.148.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.148.0/examples/jsm/"
+  }
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }    from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass }    from 'three/addons/postprocessing/ShaderPass.js';
+
+gsap.registerPlugin(ScrollTrigger);
+
+// ─── SETUP ───────────────────────────────────
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene  = new THREE.Scene();
+scene.background = new THREE.Color(0x050508);
+
+const camera = new THREE.PerspectiveCamera(44, innerWidth / innerHeight, 0.01, 100);
+camera.position.set(0, 0, 6);
+
+window.addEventListener('resize', () => {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  composer.setSize(innerWidth, innerHeight);
+});
+
+// ─── ENVIRONMENT ─────────────────────────────
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envTex = pmrem.fromScene(new THREE.RoomEnvironment(), 0.03);
+pmrem.dispose();
+scene.environment = envTex.texture;
+
+scene.add(new THREE.AmbientLight(0x2a93c1, 0.2));
+const kl = new THREE.DirectionalLight(0x88ccff, 2.0);
+kl.position.set(3, 4, 2);
+scene.add(kl);
+const rl = new THREE.DirectionalLight(0xf1420b, 0.7);
+rl.position.set(-4, -2, -2);
+scene.add(rl);
+
+// ─── POSTPROCESSING ──────────────────────────
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.5, 0.55, 0.82);
+composer.addPass(bloom);
+
+const finalPass = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, uCA: { value: 1.0 }, uTime: { value: 0 } },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uCA, uTime; varying vec2 vUv;
+    void main() {
+      vec2 ctr = vUv - 0.5; float str = uCA * 0.002;
+      float r = texture2D(tDiffuse, vUv + ctr * str).r;
+      float g = texture2D(tDiffuse, vUv + ctr * str * 0.4).g;
+      float b = texture2D(tDiffuse, vUv - ctr * str * 0.1).b;
+      vec3 col = vec3(r,g,b);
+      float grain = fract(sin(dot(vUv*80.+uTime*.01, vec2(12.989,78.233)))*43758.5);
+      col += (grain-.5)*.013;
+      float vig = 1. - smoothstep(.4,1.3,length(ctr)*0.9);
+      col *= vig;
+      gl_FragColor = vec4(col,1.);
+    }
+  `,
+});
+composer.addPass(finalPass);
+
+// ─── MAIN GLASS SPHERE ───────────────────────
+const sphere = new THREE.Mesh(
+  new THREE.SphereGeometry(1.1, 128, 128),
+  new THREE.MeshPhysicalMaterial({
+    color: new THREE.Color(0x2a93c1).multiplyScalar(0.08),
+    metalness: 0, roughness: 0.03,
+    transmission: 0.97, thickness: 1.4, ior: 1.55,
+    iridescence: 0.4, iridescenceIOR: 1.38,
+    iridescenceThicknessRange: [100, 800],
+    clearcoat: 0.7, clearcoatRoughness: 0.04,
+    attenuationColor: new THREE.Color(0x2a93c1),
+    attenuationDistance: 1.6,
+    envMapIntensity: 1.8,
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  })
+);
+scene.add(sphere);
+
+const core = new THREE.Mesh(
+  new THREE.SphereGeometry(0.22, 32, 32),
+  new THREE.MeshBasicMaterial({ color: new THREE.Color(0x2a93c1).multiplyScalar(5) })
+);
+scene.add(core);
+
+// ─── CANVAS TEXTURE TYPOGRAPHY SPRITES ───────
+// Key Day 4 discovery: CanvasTexture on a PlaneGeometry = 3D text in CDN builds
+// This is the path to Gleb-level text-in-3D without FontLoader
+
+function makeTextSprite(text, opts = {}) {
+  const {
+    fontSize   = 80,
+    fontFamily = '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
+    color      = 'rgba(255,255,255,0.9)',
+    weight     = '700',
+    letterSpacing = 0,
+    width      = 512,
+    height     = 128,
+    glow       = false,
+    glowColor  = 'rgba(42,147,193,0.6)',
+  } = opts;
+
+  const cv  = document.createElement('canvas');
+  cv.width  = width;
+  cv.height = height;
+  const ctx = cv.getContext('2d');
+
+  // Transparent background
+  ctx.clearRect(0, 0, width, height);
+
+  // Optional glow
+  if (glow) {
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur  = 24;
+  }
+
+  ctx.font         = `${weight} ${fontSize}px ${fontFamily}`;
+  ctx.fillStyle    = color;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Manual letter spacing (Canvas API doesn't support it natively in all browsers)
+  if (letterSpacing !== 0) {
+    const chars  = text.split('');
+    const totalW = ctx.measureText(text).width + letterSpacing * (chars.length - 1);
+    let x = width / 2 - totalW / 2;
+    chars.forEach(ch => {
+      ctx.fillText(ch, x + ctx.measureText(ch).width / 2, height / 2);
+      x += ctx.measureText(ch).width + letterSpacing;
+    });
+  } else {
+    ctx.fillText(text, width / 2, height / 2);
+  }
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function makeTextPlane(text, opts = {}) {
+  const {
+    planeW = 3.5,
+    planeH = 0.8,
+    canvasW = 512,
+    canvasH = 128,
+    ...rest
+  } = opts;
+
+  const tex = makeTextSprite(text, { width: canvasW, height: canvasH, ...rest });
+  const plane = new THREE.Mesh(
+    new THREE.PlaneGeometry(planeW, planeH),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide })
+  );
+  return plane;
+}
+
+// Floating text labels — orbit the sphere
+const labels = [
+  { text: 'TRANSMISSION',   pos: [0, 1.9, 0],    color: 'rgba(42,147,193,0.85)',  fontSize: 36, weight: '600', letterSpacing: 8, planeW: 3.2, planeH: 0.5 },
+  { text: 'IRIDESCENCE',    pos: [-1.7, 0, 1.0],  color: 'rgba(100,200,255,0.7)',  fontSize: 36, weight: '600', letterSpacing: 6, planeW: 2.8, planeH: 0.5 },
+  { text: 'REFRACTION',     pos: [1.9, 0, 0.5],   color: 'rgba(255,255,255,0.6)',  fontSize: 36, weight: '600', letterSpacing: 6, planeW: 2.6, planeH: 0.5 },
+  { text: 'BLOOM',          pos: [0, -1.7, 0.8],  color: 'rgba(241,66,11,0.8)',    fontSize: 50, weight: '700', letterSpacing: 10, planeW: 1.8, planeH: 0.6 },
+  { text: 'PUREBRAIN.AI',   pos: [0, 0, 2.5],     color: 'rgba(42,147,193,0.55)',  fontSize: 32, weight: '800', letterSpacing: 4, planeW: 3.0, planeH: 0.5, glow: true },
+];
+
+const textPlanes = labels.map(({ text, pos, color, fontSize, weight, letterSpacing, planeW, planeH, glow }) => {
+  const plane = makeTextPlane(text, { color, fontSize, weight, letterSpacing, planeW, planeH, glow, canvasW: 512, canvasH: 100 });
+  plane.position.set(...pos);
+  plane.userData.basePos = new THREE.Vector3(...pos);
+  plane.userData.orbitPhase = Math.random() * Math.PI * 2;
+  plane.userData.orbitSpeed = 0.15 + Math.random() * 0.1;
+  scene.add(plane);
+  return plane;
+});
+
+// ─── LARGE BACKGROUND "PUREBRAIN" TEXT ───────
+// Big, barely-visible atmospheric text behind everything
+const bgText = makeTextPlane('PUREBRAIN', {
+  color: 'rgba(42,147,193,0.07)',
+  fontSize: 140,
+  weight: '900',
+  letterSpacing: 20,
+  planeW: 8.0,
+  planeH: 1.2,
+  canvasW: 1024,
+  canvasH: 200,
+});
+bgText.position.set(0, 0, -1.5);
+scene.add(bgText);
+
+// ─── PARTICLES ───────────────────────────────
+const PN = 6000;
+const pPos = new Float32Array(PN * 3);
+const pCol = new Float32Array(PN * 3);
+const pSz  = new Float32Array(PN);
+
+const CB = new THREE.Color(0x2a93c1);
+const CO = new THREE.Color(0xf1420b);
+const CW = new THREE.Color(0xaaccff);
+
+for (let i = 0; i < PN; i++) {
+  const theta = Math.random() * Math.PI * 2;
+  const phi   = Math.acos(Math.random() * 2 - 1);
+  const r     = 1.6 + Math.random() * 3.0;
+  pPos[i*3+0] = Math.sin(phi)*Math.cos(theta)*r;
+  pPos[i*3+1] = Math.cos(phi)*r;
+  pPos[i*3+2] = Math.sin(phi)*Math.sin(theta)*r;
+  const rnd = Math.random();
+  const c = rnd < 0.6 ? CB : rnd < 0.8 ? CW : CO;
+  pCol[i*3+0] = c.r; pCol[i*3+1] = c.g; pCol[i*3+2] = c.b;
+  pSz[i] = 0.5 + Math.random() * 1.5;
+}
+
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+pGeo.setAttribute('color',    new THREE.BufferAttribute(pCol, 3));
+pGeo.setAttribute('size',     new THREE.BufferAttribute(pSz,  1));
+
+const pMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uPR: { value: renderer.getPixelRatio() }, uConc: { value: 0 } },
+  vertexShader: `
+    attribute float size; attribute vec3 color; varying vec3 vC; varying float vA;
+    uniform float uTime, uPR, uConc;
+    void main() {
+      vC = color;
+      vec3 pos = position;
+      float r = length(pos);
+      pos = normalize(pos) * mix(r, r * 0.6, uConc);
+      float ang = uTime * 0.06;
+      pos.xz = mat2(cos(ang),-sin(ang),sin(ang),cos(ang)) * pos.xz;
+      float dist = length(pos);
+      vA = (1.-smoothstep(2.0,5.0,dist)) * 0.7;
+      vec4 mv = modelViewMatrix * vec4(pos,1.);
+      gl_PointSize = size * uPR * (260./(-mv.z));
+      gl_Position = projectionMatrix * mv;
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vC; varying float vA;
+    void main() {
+      float d = length(gl_PointCoord-.5)*2.;
+      float a = (1.-smoothstep(.35,1.,d))*vA;
+      gl_FragColor = vec4(vC*1.5,a);
+    }
+  `,
+  transparent: true, depthWrite: false,
+  blending: THREE.AdditiveBlending, vertexColors: true,
+});
+
+scene.add(new THREE.Points(pGeo, pMat));
+
+// ─── GSAP SCROLL SYSTEM ───────────────────────
+// Camera keyframes — 5 sections
+const camKeys = [
+  { pos: [0, 0, 6.0],      look: [0, 0, 0],    bloom: 0.5,  ca: 1.0 },
+  { pos: [-1.8, 0.3, 5.5], look: [0.3, 0, 0],  bloom: 0.55, ca: 1.3 },
+  { pos: [1.5, -0.5, 5.0], look: [-0.2, 0, 0], bloom: 0.7,  ca: 1.6 },
+  { pos: [0, 0.5, 4.5],    look: [0, -0.1, 0], bloom: 0.9,  ca: 2.2 },
+  { pos: [0, 0, 5.8],      look: [0, 0, 0],    bloom: 0.6,  ca: 1.2 },
+];
+
+const state = { progress: 0, section: 0 };
+
+ScrollTrigger.create({
+  trigger: '#scroll-wrapper',
+  start: 'top top',
+  end: 'bottom bottom',
+  scrub: 1.0,
+  onUpdate: self => {
+    state.progress = self.progress;
+    const newSec = Math.min(Math.floor(self.progress * 5), 4);
+    if (newSec !== state.section) {
+      state.section = newSec;
+      updateProgress(newSec);
+    }
+  }
+});
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+function smoothstep(t) { return t * t * (3 - 2 * t); }
+
+function getCam(p) {
+  const n = camKeys.length - 1;
+  const raw = p * n;
+  const i = Math.min(Math.floor(raw), n - 1);
+  const t = smoothstep(raw - i);
+  const a = camKeys[i], b = camKeys[i + 1];
+  return {
+    px: lerp(a.pos[0], b.pos[0], t),
+    py: lerp(a.pos[1], b.pos[1], t),
+    pz: lerp(a.pos[2], b.pos[2], t),
+    lx: lerp(a.look[0], b.look[0], t),
+    ly: lerp(a.look[1], b.look[1], t),
+    lz: lerp(a.look[2], b.look[2], t),
+    bloom: lerp(a.bloom, b.bloom, t),
+    ca:    lerp(a.ca, b.ca, t),
+  };
+}
+
+// Section reveal via IntersectionObserver
+const sections = document.querySelectorAll('.scroll-section');
+const secObserver = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) e.target.classList.add('revealed');
+  });
+}, { threshold: 0.3 });
+sections.forEach(s => secObserver.observe(s));
+
+// Progress nav
+const progItems = document.querySelectorAll('.prog-item');
+function updateProgress(idx) {
+  progItems.forEach((item, i) => {
+    item.classList.toggle('active', i === idx);
+    item.querySelector('.prog-dot').classList.toggle('active', i === idx);
+  });
+}
+
+// ─── MOUSE ───────────────────────────────────
+let mx = 0, my = 0, smx = 0, smy = 0;
+window.addEventListener('mousemove', e => {
+  mx = (e.clientX / innerWidth  - 0.5) * 2;
+  my = (e.clientY / innerHeight - 0.5) * 2;
+});
+
+// ─── RENDER LOOP ─────────────────────────────
+const clock = new THREE.Clock();
+let breathPhase = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  smx += (mx - smx) * 0.04;
+  smy += (my - smy) * 0.04;
+
+  const p = state.progress;
+  const cs = getCam(p);
+
+  // Camera from GSAP scroll + mouse parallax
+  camera.position.set(cs.px + smx * 0.3, cs.py - smy * 0.2, cs.pz);
+  camera.lookAt(cs.lx, cs.ly, cs.lz);
+
+  // Post-processing
+  bloom.strength = cs.bloom;
+  finalPass.uniforms.uCA.value = cs.ca;
+  finalPass.uniforms.uTime.value = t;
+
+  // Sphere breathe
+  breathPhase += 0.008;
+  const breathe = 1.0
+    + Math.sin(breathPhase * 0.55) * 0.012
+    + Math.sin(breathPhase * 0.38) * 0.007
+    + Math.sin(breathPhase * 0.22) * 0.004;
+  sphere.scale.setScalar(breathe);
+  core.scale.setScalar(1.0 + Math.sin(t * 2.2) * 0.12);
+
+  // Text plane orbits — always face camera (billboarding) + slow rotation
+  textPlanes.forEach((plane, i) => {
+    const bp   = plane.userData.basePos;
+    const spd  = plane.userData.orbitSpeed;
+    const ph   = plane.userData.orbitPhase;
+
+    // Float around base position
+    plane.position.x = bp.x + Math.sin(t * spd + ph) * 0.08;
+    plane.position.y = bp.y + Math.cos(t * (spd * 0.7) + ph) * 0.06;
+    plane.position.z = bp.z + Math.sin(t * (spd * 0.5) + ph * 1.3) * 0.05;
+
+    // Billboard: always face camera (Y-axis soft)
+    plane.quaternion.copy(camera.quaternion);
+
+    // Opacity: fade based on scroll section (each label prominent in different section)
+    const relevantSection = i;  // label i is prominent in section i
+    const dist = Math.abs(state.section - relevantSection);
+    const targetAlpha = dist < 1.5 ? (1.0 - dist * 0.5) : 0.15;
+    plane.material.opacity = THREE.MathUtils.lerp(plane.material.opacity, targetAlpha, 0.04);
+  });
+
+  // Background text — very slow counter-rotation
+  bgText.quaternion.copy(camera.quaternion);
+  bgText.position.z = -1.5 - Math.sin(t * 0.2) * 0.2;
+
+  // Particles
+  pMat.uniforms.uTime.value  = t;
+  pMat.uniforms.uConc.value  = THREE.MathUtils.clamp((p - 0.3) * 2.0, 0, 1);
+
+  composer.render();
+}
+
+animate();
+window.scrollTo(0, 0);
+ScrollTrigger.refresh();
+</script>
+</body>
+</html>

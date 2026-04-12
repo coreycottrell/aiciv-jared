@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology — Storm to Order</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000000;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+  }
+
+  #canvas-container {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  #three-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  #phase-label {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.22);
+    pointer-events: none;
+    white-space: nowrap;
+    font-family: 'Courier New', monospace;
+    transition: opacity 1.5s ease;
+  }
+
+  #brand-tag {
+    position: fixed;
+    top: 28px;
+    right: 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 2s ease;
+  }
+  #brand-tag .name {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.75);
+  }
+  #brand-tag .sub {
+    font-size: 9px;
+    font-weight: 400;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: rgba(45,134,193,0.65);
+    margin-top: 3px;
+  }
+
+  #restart-btn {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.4);
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    letter-spacing: 2.5px;
+    padding: 7px 14px;
+    cursor: pointer;
+    border-radius: 2px;
+    text-transform: uppercase;
+    transition: all 0.3s;
+  }
+  #restart-btn:hover {
+    background: rgba(255,255,255,0.14);
+    color: rgba(255,255,255,0.85);
+    border-color: rgba(45,134,193,0.5);
+  }
+
+  #loading {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    color: rgba(45,134,193,0.6);
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    pointer-events: none;
+    transition: opacity 0.8s ease;
+  }
+</style>
+</head>
+<body>
+
+<div id="loading">Loading</div>
+
+<div id="canvas-container">
+  <canvas id="three-canvas"></canvas>
+</div>
+
+<div id="phase-label">Storm Forming</div>
+<div id="brand-tag">
+  <div class="name">Pure Technology</div>
+  <div class="sub">AI Partnership</div>
+</div>
+<button id="restart-btn">Replay</button>
+
+<!-- Three.js r160 via CDN importmap — same as assembly.html -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+// imports MUST be at module top level — never inside try/catch
+import * as THREE from 'three';
+import { EffectComposer }  from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }      from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass }      from 'three/addons/postprocessing/OutputPass.js';
+
+try {
+
+// ─────────────────────────────────────────────────────────────────────────
+// LOGO CONSTANTS — copied exactly from assembly.html
+// ─────────────────────────────────────────────────────────────────────────
+
+const LOGO = {
+  hexUnits:        3,
+  strokesPerUnit:  33,
+  rotationOffset:  9  * (Math.PI / 180),
+  twistPerLevel:   7  * (Math.PI / 180),
+  shrinkRate:      0.07,
+  colorOuter:      new THREE.Color('#2d86c1'),
+  colorInner:      new THREE.Color('#f1420b'),
+  innerBoost:      1.33,
+  desaturation:    0.52,
+  voidRadius:      0.04,
+  pointyTop:       Math.PI / 6,
+};
+
+const BASE_RADIUS = 1.6;
+
+function strokeColor(t) {
+  const blue   = LOGO.colorOuter.clone();
+  const orange = LOGO.colorInner.clone();
+  if (t < 0.25) {
+    return blue.clone().multiplyScalar(0.9 + t * 0.4);
+  } else if (t < 0.55) {
+    const alpha = (t - 0.25) / 0.30;
+    const mid   = blue.clone().lerp(orange, alpha);
+    const lum   = mid.r * 0.299 + mid.g * 0.587 + mid.b * 0.114;
+    const grey  = new THREE.Color(lum, lum, lum);
+    return mid.lerp(grey, LOGO.desaturation * (1 - Math.abs(alpha - 0.5) * 2));
+  } else {
+    const alpha = (t - 0.55) / 0.45;
+    const c = orange.clone().lerp(new THREE.Color('#ff6a2e'), alpha);
+    return c.multiplyScalar(1.0 + alpha * (LOGO.innerBoost - 1));
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// PRE-COMPUTE LOGO TARGET POSITIONS
+// 3 units × up to 33 strokes × 6 vertices each
+// ─────────────────────────────────────────────────────────────────────────
+
+const logoTargets = []; // { x, y, r, g, b }
+
+for (let u = 0; u < LOGO.hexUnits; u++) {
+  const unitAngle = u * LOGO.rotationOffset;
+  for (let s = 0; s < LOGO.strokesPerUnit; s++) {
+    const radius = BASE_RADIUS * Math.pow(1 - LOGO.shrinkRate, s);
+    if (radius < LOGO.voidRadius * BASE_RADIUS) break;
+    const ringAngle = LOGO.pointyTop + unitAngle + s * LOGO.twistPerLevel;
+    const t   = s / (LOGO.strokesPerUnit - 1);
+    const col = strokeColor(t);
+    for (let v = 0; v < 6; v++) {
+      const angle = ringAngle + v * (Math.PI / 3);
+      logoTargets.push({
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius,
+        r: col.r, g: col.g, b: col.b,
+      });
+    }
+  }
+}
+
+const TARGET_COUNT   = logoTargets.length;
+const PARTICLE_COUNT = 4000;
+
+// ─────────────────────────────────────────────────────────────────────────
+// SCENE & RENDERER — same pattern as assembly.html
+// ─────────────────────────────────────────────────────────────────────────
+
+const canvas   = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.25;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene  = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+
+const camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.01, 100);
+camera.position.set(0, 0, 6.5);
+camera.lookAt(0, 0, 0);
+
+// ─────────────────────────────────────────────────────────────────────────
+// POST-PROCESSING
+// ─────────────────────────────────────────────────────────────────────────
+
+const composer   = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass  = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  1.0, 0.5, 0.82
+);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
+
+// ─────────────────────────────────────────────────────────────────────────
+// NOISE / VELOCITY FIELD
+// ─────────────────────────────────────────────────────────────────────────
+
+function hash(n) {
+  n = Math.sin(n) * 43758.5453123;
+  return n - Math.floor(n);
+}
+
+function noise2(x, y) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  const fx  = x - ix, fy = y - iy;
+  const ux  = fx * fx * (3 - 2 * fx);
+  const uy  = fy * fy * (3 - 2 * fy);
+  const a   = hash(ix     + iy * 57);
+  const b   = hash(ix + 1 + iy * 57);
+  const c   = hash(ix     + (iy + 1) * 57);
+  const d   = hash(ix + 1 + (iy + 1) * 57);
+  return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
+}
+
+function stormVelocity(px, py, t) {
+  const dist   = Math.sqrt(px * px + py * py) + 0.001;
+  const vortex = 2.2 / (1.0 + dist * dist * 0.4);
+  const vxVort = -py / dist * vortex;
+  const vyVort =  px / dist * vortex;
+
+  const sc  = 0.55, eps = 0.01;
+  const n1  = noise2(px * sc + t * 0.25, py * sc);
+  const n2  = noise2(px * sc, py * sc + t * 0.25);
+  const n3  = noise2(px * sc + eps, py * sc + t * 0.25);
+  const n4  = noise2(px * sc + t * 0.25, py * sc + eps);
+  const vxN = (n3 - n2) / eps;
+  const vyN = (n4 - n1) / eps;
+
+  return { vx: vxVort + vxN * 0.6, vy: vyVort + vyN * 0.6 };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// PARTICLE SYSTEM
+// ─────────────────────────────────────────────────────────────────────────
+
+const pPos   = new Float32Array(PARTICLE_COUNT * 2);
+const pVel   = new Float32Array(PARTICLE_COUNT * 2);
+const pPhase = new Float32Array(PARTICLE_COUNT);
+const pType  = new Uint8Array(PARTICLE_COUNT);   // 0=blue 1=orange 2=white
+const pTargX = new Float32Array(PARTICLE_COUNT);
+const pTargY = new Float32Array(PARTICLE_COUNT);
+const pSnapX = new Float32Array(PARTICLE_COUNT);
+const pSnapY = new Float32Array(PARTICLE_COUNT);
+
+const bufPos  = new Float32Array(PARTICLE_COUNT * 3);
+const bufCol  = new Float32Array(PARTICLE_COUNT * 3);
+const bufSize = new Float32Array(PARTICLE_COUNT);
+
+function initParticles() {
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const ring  = 0.3 + Math.random() * 0.7;
+    const dist  = 0.8 + ring * 3.2;
+
+    pPos[i * 2]     = Math.cos(angle) * dist + (Math.random() - 0.5) * 0.4;
+    pPos[i * 2 + 1] = Math.sin(angle) * dist + (Math.random() - 0.5) * 0.4;
+
+    const speed     = 0.4 + Math.random() * 1.2;
+    pVel[i * 2]     = -Math.sin(angle) * speed;
+    pVel[i * 2 + 1] =  Math.cos(angle) * speed;
+
+    pPhase[i] = Math.random() * Math.PI * 2;
+
+    const rv = Math.random();
+    pType[i]  = rv < 0.45 ? 0 : rv < 0.90 ? 1 : 2;
+
+    if (i < TARGET_COUNT) {
+      pTargX[i] = logoTargets[i].x;
+      pTargY[i] = logoTargets[i].y;
+    } else {
+      const exitAngle = Math.random() * Math.PI * 2;
+      pTargX[i] = Math.cos(exitAngle) * (3.5 + Math.random() * 3);
+      pTargY[i] = Math.sin(exitAngle) * (3.5 + Math.random() * 3);
+    }
+
+    bufPos[i * 3]     = pPos[i * 2];
+    bufPos[i * 3 + 1] = pPos[i * 2 + 1];
+    bufPos[i * 3 + 2] = 0;
+    bufSize[i] = pType[i] === 2 ? 2.8 : 1.8;
+  }
+}
+
+initParticles();
+
+const particleGeom = new THREE.BufferGeometry();
+particleGeom.setAttribute('position', new THREE.BufferAttribute(bufPos,  3));
+particleGeom.setAttribute('color',    new THREE.BufferAttribute(bufCol,  3));
+particleGeom.setAttribute('size',     new THREE.BufferAttribute(bufSize, 1));
+
+const particleMat = new THREE.ShaderMaterial({
+  vertexShader: `
+    attribute float size;
+    attribute vec3 color;
+    varying vec3 vColor;
+    void main() {
+      vColor = color;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = size * (280.0 / -mv.z);
+      gl_Position = projectionMatrix * mv;
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vColor;
+    void main() {
+      vec2 uv = gl_PointCoord - vec2(0.5);
+      float d = length(uv);
+      if (d > 0.5) discard;
+      float core  = smoothstep(0.5, 0.0, d);
+      float halo  = smoothstep(0.5, 0.15, d) * 0.4;
+      float alpha = core + halo;
+      gl_FragColor = vec4(vColor * 1.6, alpha * 0.92);
+    }
+  `,
+  transparent: true,
+  blending:    THREE.AdditiveBlending,
+  depthWrite:  false,
+  vertexColors: true,
+});
+
+const particleSystem = new THREE.Points(particleGeom, particleMat);
+scene.add(particleSystem);
+
+// ─────────────────────────────────────────────────────────────────────────
+// LOGO LINE GEOMETRY — exact match to assembly.html spec
+// ─────────────────────────────────────────────────────────────────────────
+
+const lineObjects = []; // { line, mat, strokeIdx, unitIdx }
+
+for (let u = 0; u < LOGO.hexUnits; u++) {
+  const unitAngle = u * LOGO.rotationOffset;
+  for (let s = 0; s < LOGO.strokesPerUnit; s++) {
+    const radius = BASE_RADIUS * Math.pow(1 - LOGO.shrinkRate, s);
+    if (radius < LOGO.voidRadius * BASE_RADIUS) break;
+    const ringAngle = LOGO.pointyTop + unitAngle + s * LOGO.twistPerLevel;
+    const t   = s / (LOGO.strokesPerUnit - 1);
+    const col = strokeColor(t);
+
+    // 7 points to close the hexagon
+    const pts = [];
+    for (let v = 0; v <= 6; v++) {
+      const a = ringAngle + (v % 6) * (Math.PI / 3);
+      pts.push(new THREE.Vector3(Math.cos(a) * radius, Math.sin(a) * radius, 0));
+    }
+
+    const geom = new THREE.BufferGeometry().setFromPoints(pts);
+    const mat  = new THREE.LineBasicMaterial({
+      color:       col,
+      transparent: true,
+      opacity:     0,
+      linewidth:   1,
+      blending:    THREE.AdditiveBlending,
+      depthWrite:  false,
+    });
+
+    const line = new THREE.Line(geom, mat);
+    scene.add(line);
+    lineObjects.push({ line, mat, strokeIdx: s, unitIdx: u });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// ANIMATION TIMING
+// ─────────────────────────────────────────────────────────────────────────
+
+const T_STORM   = 3.0;   // pure vortex storm
+const T_DRIFT   = 3.5;   // drift toward targets
+const T_SNAP    = 4.3;   // snap + bloom flash
+const T_LINES   = 5.6;   // lines draw in, particles fade
+const T_SETTLE  = 6.4;   // static logo
+
+// ─────────────────────────────────────────────────────────────────────────
+// EASING
+// ─────────────────────────────────────────────────────────────────────────
+
+function smoothstep(e0, e1, x) {
+  const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+}
+function easeOutExpo(x) {
+  return x >= 1 ? 1 : 1 - Math.pow(2, -10 * x);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────────────────
+
+const clock       = new THREE.Clock();
+let animTime      = 0;
+let snapLocked    = false;
+let phase         = 'storm';
+
+const phaseLabel  = document.getElementById('phase-label');
+const brandTag    = document.getElementById('brand-tag');
+const loading     = document.getElementById('loading');
+
+loading.style.opacity = '0';
+setTimeout(() => { loading.style.display = 'none'; }, 800);
+
+// ─────────────────────────────────────────────────────────────────────────
+// RESTART
+// ─────────────────────────────────────────────────────────────────────────
+
+function restartAnimation() {
+  clock.getDelta(); // flush pending delta
+  animTime   = 0;
+  snapLocked = false;
+  phase      = 'storm';
+
+  initParticles();
+
+  for (const { mat } of lineObjects) mat.opacity = 0;
+  brandTag.style.opacity = '0';
+  phaseLabel.style.opacity = '1';
+  phaseLabel.textContent = 'Storm Forming';
+
+  particleGeom.attributes.position.needsUpdate = true;
+  particleGeom.attributes.size.needsUpdate     = true;
+  particleGeom.attributes.color.needsUpdate    = true;
+}
+
+document.getElementById('restart-btn').addEventListener('click', restartAnimation);
+
+// ─────────────────────────────────────────────────────────────────────────
+// MAIN LOOP
+// ─────────────────────────────────────────────────────────────────────────
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const delta  = Math.min(clock.getDelta(), 0.05);
+  animTime    += delta;
+  const t      = animTime;
+
+  // ── PHASE 1: PURE STORM (0 – 3s) ─────────────────────────────────────
+  if (t <= T_STORM) {
+    phaseLabel.textContent   = 'Storm Forming';
+    bloomPass.strength       = 1.4;
+    bloomPass.threshold      = 0.72;
+
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const px = pPos[i * 2];
+      const py = pPos[i * 2 + 1];
+
+      const v  = stormVelocity(px, py, t);
+      const dt = delta * 0.018;
+
+      pVel[i * 2]     += v.vx * dt;
+      pVel[i * 2 + 1] += v.vy * dt;
+      pVel[i * 2]     *= 0.982;
+      pVel[i * 2 + 1] *= 0.982;
+
+      pPos[i * 2]     += pVel[i * 2]     * delta;
+      pPos[i * 2 + 1] += pVel[i * 2 + 1] * delta;
+
+      // Soft boundary
+      const dist = Math.sqrt(px * px + py * py);
+      if (dist > 4.2) {
+        pPos[i * 2]     *= 0.972;
+        pPos[i * 2 + 1] *= 0.972;
+      }
+
+      bufPos[i * 3]     = pPos[i * 2];
+      bufPos[i * 3 + 1] = pPos[i * 2 + 1];
+
+      // Storm colors
+      if (pType[i] === 0) {
+        bufCol[i * 3] = 0.17; bufCol[i * 3 + 1] = 0.53; bufCol[i * 3 + 2] = 0.76;
+      } else if (pType[i] === 1) {
+        bufCol[i * 3] = 0.95; bufCol[i * 3 + 1] = 0.26; bufCol[i * 3 + 2] = 0.04;
+      } else {
+        const flick = 0.55 + 0.45 * Math.sin(t * 18 + pPhase[i]);
+        bufCol[i * 3] = flick; bufCol[i * 3 + 1] = flick; bufCol[i * 3 + 2] = flick;
+      }
+
+      bufSize[i] = pType[i] === 2 ? 2.2 + Math.random() * 1.8 : 1.6 + Math.random() * 0.4;
+    }
+
+  // ── PHASE 2: DRIFT / CONVERGENCE (3s – 3.5s) ─────────────────────────
+  } else if (t <= T_DRIFT) {
+    phaseLabel.textContent = 'Converging';
+    const p = smoothstep(T_STORM, T_DRIFT, t);
+    bloomPass.strength  = 1.4 + p * 1.0;
+    bloomPass.threshold = 0.72;
+
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const px = pPos[i * 2];
+      const py = pPos[i * 2 + 1];
+
+      const v = stormVelocity(px, py, t);
+
+      const pullStrength = p * p * 0.12;
+      const pullX = (pTargX[i] - px) * pullStrength;
+      const pullY = (pTargY[i] - py) * pullStrength;
+
+      pVel[i * 2]     = pVel[i * 2] * (1 - p * 0.08) + v.vx * 0.004 * (1 - p) + pullX;
+      pVel[i * 2 + 1] = pVel[i * 2 + 1] * (1 - p * 0.08) + v.vy * 0.004 * (1 - p) + pullY;
+
+      pPos[i * 2]     += pVel[i * 2]     * delta;
+      pPos[i * 2 + 1] += pVel[i * 2 + 1] * delta;
+
+      bufPos[i * 3]     = pPos[i * 2];
+      bufPos[i * 3 + 1] = pPos[i * 2 + 1];
+
+      // Colors resolve toward logo targets
+      if (i < TARGET_COUNT) {
+        const lr = logoTargets[i].r, lg = logoTargets[i].g, lb = logoTargets[i].b;
+        const sr = pType[i] === 0 ? 0.17 : pType[i] === 1 ? 0.95 : 1.0;
+        const sg = pType[i] === 0 ? 0.53 : pType[i] === 1 ? 0.26 : 1.0;
+        const sb = pType[i] === 0 ? 0.76 : pType[i] === 1 ? 0.04 : 1.0;
+        bufCol[i * 3]     = sr + (lr - sr) * p;
+        bufCol[i * 3 + 1] = sg + (lg - sg) * p;
+        bufCol[i * 3 + 2] = sb + (lb - sb) * p;
+      }
+
+      bufSize[i] = 1.7;
+    }
+
+  // ── PHASE 3: SNAP (3.5s – 4.3s) ─────────────────────────────────────
+  } else if (t <= T_SNAP) {
+    phaseLabel.textContent = 'SNAP';
+    const p     = smoothstep(T_DRIFT, T_SNAP, t);
+    const eased = easeOutExpo(p);
+
+    // Bloom flash spike
+    const flashP = Math.pow(Math.max(0, 1 - Math.abs(p - 0.2) / 0.3), 2);
+    bloomPass.strength  = 2.4 + flashP * 4.2;
+    bloomPass.threshold = 0.35 + flashP * 0.3;
+
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      if (!snapLocked) {
+        pSnapX[i] = pPos[i * 2];
+        pSnapY[i] = pPos[i * 2 + 1];
+      }
+
+      bufPos[i * 3]     = pSnapX[i] + (pTargX[i] - pSnapX[i]) * eased;
+      bufPos[i * 3 + 1] = pSnapY[i] + (pTargY[i] - pSnapY[i]) * eased;
+
+      if (i < TARGET_COUNT) {
+        bufCol[i * 3]     = logoTargets[i].r;
+        bufCol[i * 3 + 1] = logoTargets[i].g;
+        bufCol[i * 3 + 2] = logoTargets[i].b;
+      } else {
+        const fade = Math.max(0, 1 - eased * 1.5);
+        bufCol[i * 3]     *= fade;
+        bufCol[i * 3 + 1] *= fade;
+        bufCol[i * 3 + 2] *= fade;
+      }
+
+      bufSize[i] = i < TARGET_COUNT ? 2.2 + flashP * 2.0 : 1.0 * (1 - eased);
+    }
+
+    if (!snapLocked && p > 0.0) snapLocked = true;
+
+  // ── PHASE 4: LINES DRAW IN (4.3s – 5.6s) ─────────────────────────────
+  } else if (t <= T_LINES) {
+    phaseLabel.textContent = 'Forming Order';
+    const p = smoothstep(T_SNAP, T_LINES, t);
+    bloomPass.strength  = Math.max(0.8, 2.4 - p * 2.4);
+    bloomPass.threshold = 0.75;
+
+    // Particles locked at exact logo positions
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      bufPos[i * 3]     = pTargX[i];
+      bufPos[i * 3 + 1] = pTargY[i];
+    }
+
+    // Lines stagger in: outer rings first
+    for (const { mat, strokeIdx, unitIdx } of lineObjects) {
+      const normRing = strokeIdx / (LOGO.strokesPerUnit - 1);
+      const normUnit = unitIdx / LOGO.hexUnits;
+      const start    = normRing * 0.55 + normUnit * 0.08;
+      const end      = start + 0.38;
+      const lineP    = smoothstep(start, end, p);
+      mat.opacity    = lineP * 0.92;
+    }
+
+    // Particle dots fade as lines appear
+    for (let i = 0; i < TARGET_COUNT; i++) {
+      const fade = Math.max(0, 1 - smoothstep(0.2, 0.85, p));
+      bufCol[i * 3]     = logoTargets[i].r * fade;
+      bufCol[i * 3 + 1] = logoTargets[i].g * fade;
+      bufCol[i * 3 + 2] = logoTargets[i].b * fade;
+      bufSize[i] = 1.8 * fade;
+    }
+    for (let i = TARGET_COUNT; i < PARTICLE_COUNT; i++) {
+      bufCol[i * 3] = 0; bufCol[i * 3 + 1] = 0; bufCol[i * 3 + 2] = 0;
+      bufSize[i] = 0;
+    }
+
+    // Show brand tag
+    brandTag.style.opacity = Math.min(1, p * 2).toString();
+
+  // ── PHASE 5: STATIC LOGO (6.4s+) ─────────────────────────────────────
+  } else {
+    if (phase !== 'idle') {
+      phase = 'idle';
+      phaseLabel.style.opacity = '0';
+
+      // All particles gone
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        bufCol[i * 3] = 0; bufCol[i * 3 + 1] = 0; bufCol[i * 3 + 2] = 0;
+        bufSize[i] = 0;
+      }
+
+      // All lines fully visible
+      for (const { mat } of lineObjects) mat.opacity = 0.92;
+
+      bloomPass.strength  = 0.55;
+      bloomPass.threshold = 0.88;
+      brandTag.style.opacity = '1';
+    }
+
+    const idleT = t - T_SETTLE;
+
+    // Gentle breathing bloom
+    bloomPass.strength = 0.5 + Math.sin(idleT * 0.7) * 0.06;
+  }
+
+  // Commit GPU buffer updates
+  particleGeom.attributes.position.needsUpdate = true;
+  particleGeom.attributes.color.needsUpdate    = true;
+  particleGeom.attributes.size.needsUpdate     = true;
+
+  composer.render();
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// RESIZE
+// ─────────────────────────────────────────────────────────────────────────
+
+window.addEventListener('resize', () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+  bloomPass.resolution.set(w, h);
+});
+
+animate();
+
+} catch (err) {
+  console.error('[logo-3d-storm] init error:', err);
+  const loading = document.getElementById('loading');
+  loading.textContent = 'Error: ' + err.message;
+  loading.style.opacity = '1';
+  loading.style.color = '#f1420b';
+}
+</script>
+</body>
+</html>

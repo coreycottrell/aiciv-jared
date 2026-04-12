@@ -1,0 +1,1331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PureBrain Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     PUREBRAIN PORTAL — LOGIN PAGE
+     Self-contained. Preserves handleLogin() interface.
+     Neural Network background variant.
+     ============================================================ */
+
+  :root {
+    --bright-orange: #f1420b;
+    --orange: #ed6626;
+    --light-blue: #2a93c1;
+    --dark-blue: #3a60ab;
+    --black: #0a0a0a;
+    --white: #ffffff;
+    --muted: #888888;
+    --font-heading: 'Oswald', sans-serif;
+    --font-body: 'Plus Jakarta Sans', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    /* Portal-specific */
+    --card-bg: rgba(10, 10, 10, 0.85);
+    --field-bg: rgba(255, 255, 255, 0.04);
+    --field-border: rgba(255, 255, 255, 0.1);
+    --glow-orange: rgba(241, 66, 11, 0.35);
+    --glow-blue: rgba(42, 147, 193, 0.35);
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: var(--font-body);
+    background: var(--black);
+    color: var(--white);
+  }
+
+  /* ============================================================
+     NEURAL NETWORK CANVAS — full background
+     ============================================================ */
+
+  #pb-neural-canvas {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  /* ============================================================
+     OVERLAY — full screen login stage
+     ============================================================ */
+
+  #loginOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  #loginOverlay.hidden {
+    display: none;
+  }
+
+  /* ============================================================
+     CARD — materializes from light
+     ============================================================ */
+
+  .pb-login-card {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    background: var(--card-bg);
+    border-radius: 20px;
+    padding: 48px 40px 0;
+    text-align: center;
+
+    /* Glass morphism */
+    backdrop-filter: blur(28px) saturate(1.4);
+    -webkit-backdrop-filter: blur(28px) saturate(1.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+
+    /* Multi-layer glow */
+    box-shadow:
+      0 0 0 1px rgba(241, 66, 11, 0.08),
+      0 8px 32px rgba(0, 0, 0, 0.6),
+      0 0 60px rgba(42, 147, 193, 0.08),
+      0 0 120px rgba(241, 66, 11, 0.05),
+      inset 0 1px 0 rgba(255, 255, 255, 0.07);
+
+    animation: cardMaterialize 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.2s;
+    overflow: hidden;
+  }
+
+  /* Inner content wrapper with padding for all but footer */
+  .pb-card-content {
+    padding-bottom: 36px;
+  }
+
+  @keyframes cardMaterialize {
+    0% {
+      opacity: 0;
+      transform: translateY(24px) scale(0.97);
+      box-shadow:
+        0 0 0 1px rgba(241, 66, 11, 0),
+        0 4px 16px rgba(0, 0, 0, 0.3),
+        0 0 30px rgba(42, 147, 193, 0.03),
+        0 0 0px rgba(241, 66, 11, 0);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  /* Top edge — orange-to-blue gradient line */
+  .pb-login-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 10%;
+    right: 10%;
+    height: 1px;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(241, 66, 11, 0.6) 25%,
+      rgba(42, 147, 193, 0.8) 50%,
+      rgba(58, 96, 171, 0.6) 75%,
+      transparent 100%
+    );
+    border-radius: 1px;
+  }
+
+  /* ============================================================
+     LOGO — PURE BRAIN .ai
+     ============================================================ */
+
+  .pb-logo-wrap {
+    margin-bottom: 28px;
+    animation: logoReveal 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.5s;
+  }
+
+  @keyframes logoReveal {
+    0%   { opacity: 0; transform: translateY(-8px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Brand icon — actual PureBrain hexagonal spirograph */
+  .pb-logo-mark {
+    display: block;
+    width: 52px;
+    height: 52px;
+    margin: 0 auto 14px;
+    border-radius: 50%;
+    object-fit: cover;
+    box-shadow:
+      0 0 16px 4px rgba(42, 147, 193, 0.3),
+      0 0 32px 8px rgba(58, 96, 171, 0.2),
+      0 0 8px 2px rgba(241, 66, 11, 0.25);
+    animation: orbMarkGlow 3s ease-in-out infinite alternate;
+  }
+
+  @keyframes orbMarkGlow {
+    0%  { box-shadow: 0 0 16px 4px rgba(42,147,193,0.3), 0 0 32px 8px rgba(58,96,171,0.2), 0 0 8px 2px rgba(241,66,11,0.25); }
+    100%{ box-shadow: 0 0 20px 6px rgba(42,147,193,0.45), 0 0 40px 12px rgba(58,96,171,0.3), 0 0 12px 4px rgba(241,66,11,0.35); }
+  }
+
+  .pb-logo-wordmark {
+    font-family: var(--font-heading);
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    line-height: 1;
+  }
+
+  /* PUREBR = blue, AI = orange, N = blue, .ai = white — "AI" highlighted within "BRAIN" */
+  .pb-logo-wordmark .pure  { color: #2a93c1; }
+  .pb-logo-wordmark .brain { color: #f1420b; }
+  .pb-logo-wordmark .brain-n { color: #2a93c1; }
+  .pb-logo-wordmark .ai    { color: var(--white); font-weight: 400; }
+
+  /* ============================================================
+     HEADLINE + SUBTEXT
+     ============================================================ */
+
+  .pb-headline {
+    font-family: var(--font-heading);
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: var(--white);
+    margin-bottom: 8px;
+    animation: contentReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.65s;
+  }
+
+  .pb-subtext {
+    font-size: 13px;
+    color: var(--muted);
+    letter-spacing: 0.01em;
+    margin-bottom: 32px;
+    line-height: 1.5;
+    animation: contentReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.75s;
+  }
+
+  .pb-subtext strong {
+    color: rgba(255,255,255,0.55);
+    font-weight: 500;
+  }
+
+  @keyframes contentReveal {
+    0%   { opacity: 0; transform: translateY(8px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ============================================================
+     FORM — floating label fields
+     ============================================================ */
+
+  .pb-form {
+    text-align: left;
+    animation: contentReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.85s;
+  }
+
+  .pb-field {
+    position: relative;
+    margin-bottom: 20px;
+  }
+
+  .pb-field label {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.35);
+    pointer-events: none;
+    transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    letter-spacing: 0.01em;
+    z-index: 1;
+  }
+
+  /* Float label when input has value or is focused */
+  .pb-field input:not(:placeholder-shown) ~ label,
+  .pb-field input:focus ~ label {
+    top: 6px;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--light-blue);
+    font-weight: 600;
+  }
+
+  .pb-field input {
+    width: 100%;
+    height: 52px;
+    padding: 20px 14px 6px;
+    border-radius: 10px;
+    border: 1px solid var(--field-border);
+    background: var(--field-bg);
+    color: var(--white);
+    font-family: var(--font-body);
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .pb-field input::placeholder {
+    color: transparent; /* hidden — label floats instead */
+  }
+
+  .pb-field input:focus {
+    border-color: rgba(42, 147, 193, 0.6);
+    background: rgba(42, 147, 193, 0.05);
+    box-shadow:
+      0 0 0 3px rgba(42, 147, 193, 0.12),
+      inset 0 0 20px rgba(42, 147, 193, 0.04);
+  }
+
+  .pb-field input:focus ~ .pb-field-accent {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+
+  /* Bottom accent bar on focus */
+  .pb-field-accent {
+    position: absolute;
+    bottom: 0;
+    left: 10px;
+    right: 10px;
+    height: 2px;
+    background: linear-gradient(90deg, var(--orange), var(--light-blue));
+    border-radius: 0 0 2px 2px;
+    transform: scaleX(0);
+    opacity: 0;
+    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s;
+    pointer-events: none;
+  }
+
+  /* ============================================================
+     ERROR
+     ============================================================ */
+
+  .pb-error {
+    display: none;
+    color: #ff6b6b;
+    font-size: 13px;
+    margin-bottom: 16px;
+    padding: 10px 14px;
+    background: rgba(255, 107, 107, 0.08);
+    border: 1px solid rgba(255, 107, 107, 0.2);
+    border-radius: 8px;
+    line-height: 1.4;
+  }
+
+  /* ============================================================
+     SIGN IN BUTTON — orange-to-blue gradient + glow hover
+     ============================================================ */
+
+  .pb-signin-btn {
+    width: 100%;
+    height: 52px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    font-family: var(--font-heading);
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--white);
+    position: relative;
+    overflow: hidden;
+    transition: opacity 0.2s, transform 0.15s, box-shadow 0.3s;
+
+    /* Gradient */
+    background: linear-gradient(105deg,
+      var(--bright-orange) 0%,
+      var(--orange) 30%,
+      var(--light-blue) 70%,
+      var(--dark-blue) 100%
+    );
+
+    /* Subtle shadow to lift button */
+    box-shadow:
+      0 4px 20px rgba(241, 66, 11, 0.3),
+      0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+
+  .pb-signin-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow:
+      0 6px 30px rgba(241, 66, 11, 0.45),
+      0 0 40px rgba(42, 147, 193, 0.2),
+      0 3px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  .pb-signin-btn:active:not(:disabled) {
+    transform: translateY(0px);
+    box-shadow:
+      0 2px 12px rgba(241, 66, 11, 0.3),
+      0 1px 4px rgba(0, 0, 0, 0.4);
+  }
+
+  .pb-signin-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* Shimmer sweep on hover */
+  .pb-signin-btn::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(90deg,
+      transparent,
+      rgba(255,255,255,0.15),
+      transparent
+    );
+    transform: skewX(-20deg);
+    transition: left 0.5s ease;
+  }
+
+  .pb-signin-btn:hover:not(:disabled)::after {
+    left: 160%;
+  }
+
+  /* Loading state text */
+  .pb-signin-btn .btn-text      { display: inline; }
+  .pb-signin-btn .btn-loading   { display: none; }
+  .pb-signin-btn.loading .btn-text    { display: none; }
+  .pb-signin-btn.loading .btn-loading { display: inline; }
+
+  /* Spinner */
+  .pb-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spinnerRotate 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 8px;
+    margin-top: -2px;
+  }
+
+  @keyframes spinnerRotate {
+    to { transform: rotate(360deg); }
+  }
+
+  /* ============================================================
+     ESCAPE HATCH — configure gateway link
+     ============================================================ */
+
+  .pb-escape {
+    margin-top: 20px;
+    text-align: center;
+  }
+
+  .pb-escape a {
+    font-size: 12px;
+    color: rgba(255,255,255,0.25);
+    cursor: pointer;
+    text-decoration: none;
+    letter-spacing: 0.02em;
+    transition: color 0.2s;
+    border-bottom: 1px solid transparent;
+  }
+
+  .pb-escape a:hover {
+    color: rgba(255,255,255,0.5);
+    border-bottom-color: rgba(255,255,255,0.2);
+  }
+
+  /* ============================================================
+     AGENT COUNT — trust signal
+     ============================================================ */
+
+  .pb-trust-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 28px;
+    animation: contentReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.7s;
+  }
+
+  .pb-trust-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: rgba(255,255,255,0.35);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .pb-trust-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--orange);
+    box-shadow: 0 0 6px var(--orange);
+    animation: dotPulse 2s ease-in-out infinite;
+  }
+
+  .pb-trust-dot.blue {
+    background: var(--light-blue);
+    box-shadow: 0 0 6px var(--light-blue);
+    animation-delay: 0.7s;
+  }
+
+  @keyframes dotPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.5; transform: scale(0.7); }
+  }
+
+  .pb-trust-divider {
+    width: 1px;
+    height: 14px;
+    background: rgba(255,255,255,0.1);
+  }
+
+  /* ============================================================
+     FOOTER — Premium bottom banner with glow
+     ============================================================ */
+
+  .pb-footer {
+    position: relative;
+    margin-top: 28px;
+    overflow: hidden;
+    border-radius: 0 0 20px 20px;
+    animation: contentReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 1.0s;
+  }
+
+  /* Gradient glow bar — orange-to-blue, inspired by purebrain.ai homepage banner */
+  .pb-footer-glow-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(241, 66, 11, 0.8) 20%,
+      rgba(42, 147, 193, 0.9) 50%,
+      rgba(58, 96, 171, 0.7) 80%,
+      transparent 100%
+    );
+  }
+
+  /* The glowing banner background */
+  .pb-footer-inner {
+    position: relative;
+    padding: 22px 24px 24px;
+    background: linear-gradient(
+      180deg,
+      rgba(42, 147, 193, 0.06) 0%,
+      rgba(241, 66, 11, 0.08) 50%,
+      rgba(10, 10, 10, 0.4) 100%
+    );
+  }
+
+  /* Ambient radial glow behind the footer content */
+  .pb-footer-inner::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 90% 80% at 50% 120%,
+        rgba(241, 66, 11, 0.18) 0%,
+        rgba(42, 147, 193, 0.12) 40%,
+        transparent 70%
+      );
+    animation: footerGlowPulse 4s ease-in-out infinite alternate;
+    pointer-events: none;
+  }
+
+  @keyframes footerGlowPulse {
+    0%   { opacity: 0.6; transform: scale(1); }
+    100% { opacity: 1; transform: scale(1.04); }
+  }
+
+  .pb-footer-powered {
+    position: relative;
+    font-size: 10px;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    font-family: var(--font-mono);
+  }
+
+  /* POWERED BY brand styling */
+  .pb-footer-powered .pb-brand-pure    { color: #2a93c1; font-weight: 700; }
+  .pb-footer-powered .pb-brand-brain   { color: #f1420b; font-weight: 700; }
+  .pb-footer-powered .pb-brand-n       { color: #2a93c1; font-weight: 700; }
+  .pb-footer-powered .pb-brand-ai      { color: rgba(255,255,255,0.6); font-weight: 500; }
+  .pb-footer-powered .pb-brand-sep     { color: rgba(255,255,255,0.25); margin: 0 6px; }
+  .pb-footer-powered .pb-brand-pt      { color: rgba(255,255,255,0.55); font-weight: 600; letter-spacing: 0.08em; }
+
+  /* "AI Partnership. Redefined." — gradient text, prominent */
+  .pb-footer-tagline {
+    position: relative;
+    font-family: var(--font-heading);
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    line-height: 1.1;
+
+    /* Orange-to-blue gradient text */
+    background: linear-gradient(100deg,
+      #f1420b 0%,
+      #ed6626 30%,
+      #2a93c1 70%,
+      #3a60ab 100%
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+
+    /* Glow effect on the text */
+    filter: drop-shadow(0 0 12px rgba(241, 66, 11, 0.5)) drop-shadow(0 0 24px rgba(42, 147, 193, 0.3));
+    animation: taglineGlow 3s ease-in-out infinite alternate;
+  }
+
+  @keyframes taglineGlow {
+    0% {
+      filter: drop-shadow(0 0 8px rgba(241, 66, 11, 0.4)) drop-shadow(0 0 16px rgba(42, 147, 193, 0.25));
+    }
+    100% {
+      filter: drop-shadow(0 0 16px rgba(241, 66, 11, 0.65)) drop-shadow(0 0 32px rgba(42, 147, 193, 0.4));
+    }
+  }
+
+  .pb-footer-tagline .tagline-dot {
+    -webkit-text-fill-color: rgba(255,255,255,0.5);
+    font-weight: 400;
+  }
+
+  /* ============================================================
+     RESPONSIVE — mobile
+     ============================================================ */
+
+  @media (max-width: 480px) {
+    .pb-login-card {
+      border-radius: 16px;
+    }
+
+    .pb-card-content {
+      padding: 0 24px 28px;
+    }
+
+    .pb-headline  { font-size: 20px; }
+    .pb-trust-row { gap: 10px; }
+    .pb-trust-badge { font-size: 10px; }
+    .pb-footer { border-radius: 0 0 16px 16px; }
+    .pb-footer-tagline { font-size: 15px; }
+  }
+
+  /* ============================================================
+     REDUCED MOTION
+     ============================================================ */
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     NEURAL NETWORK CANVAS — replaces mesh gradient + particles + orb
+     ============================================================ -->
+<canvas id="pb-neural-canvas"></canvas>
+
+<!-- ============================================================
+     LOGIN OVERLAY
+     This replaces the existing #loginOverlay div in purebrain-frontend.html
+     ============================================================ -->
+<div id="loginOverlay">
+
+  <div class="pb-login-card">
+
+    <!-- All top content (logo, form, escape) in padded wrapper -->
+    <div class="pb-card-content">
+
+      <!-- Logo — PureBrain orb mark + wordmark -->
+      <div class="pb-logo-wrap">
+        <!-- PureBrain hexagonal spirograph icon from WordPress media library -->
+        <img class="pb-logo-mark" src="https://purebrain.ai/wp-content/uploads/2026/02/purebrain-icon-1.png" alt="PureBrain Icon" width="52" height="52" />
+        <div class="pb-logo-wordmark">
+          <!-- PUREBR = blue, AI = orange, N = blue, .ai = white — "AI" highlighted -->
+          <span class="pure">PUREBR</span><span class="brain">AI</span><span class="brain-n">N</span><span class="ai">.ai</span>
+        </div>
+      </div>
+
+      <!-- Headline — dynamic AI name variable -->
+      <!-- JS variable: window.AI_NAME = "YourAI"; replace "Your AI" below with that variable if needed -->
+      <h1 class="pb-headline">Your AI's Brain Stream</h1>
+      <!-- Subtext: updated copy — 50+ agents, neural network framing -->
+      <p class="pb-subtext">Your AI's Neural Network is waiting.<br><strong>50+ specialized agents</strong> ready to work.</p>
+
+      <!-- Trust badges -->
+      <div class="pb-trust-row">
+        <div class="pb-trust-badge">
+          <div class="pb-trust-dot"></div>
+          Active
+        </div>
+        <div class="pb-trust-divider"></div>
+        <div class="pb-trust-badge">
+          <div class="pb-trust-dot blue"></div>
+          Secure
+        </div>
+        <div class="pb-trust-divider"></div>
+        <div class="pb-trust-badge">
+          <div class="pb-trust-dot"></div>
+          Private
+        </div>
+      </div>
+
+      <!-- Form -->
+      <form class="pb-form" onsubmit="handleLogin(); return false;" autocomplete="on">
+
+        <!-- Field 1: AI Name — label + placeholder updated, ID preserved -->
+        <div class="pb-field">
+          <input
+            type="text"
+            id="loginAicivName"
+            placeholder="Your AI's Name"
+            autocomplete="username"
+            spellcheck="false"
+            autocorrect="off"
+            autocapitalize="off"
+          />
+          <label for="loginAicivName">Your AI's Name</label>
+          <div class="pb-field-accent"></div>
+        </div>
+
+        <div class="pb-field">
+          <input
+            type="password"
+            id="loginSecret"
+            placeholder="Secret"
+            autocomplete="current-password"
+          />
+          <label for="loginSecret">Secret</label>
+          <div class="pb-field-accent"></div>
+        </div>
+
+        <!-- Error -->
+        <div id="loginError" class="pb-error"></div>
+
+        <!-- Sign In -->
+        <button type="submit" id="loginButton" class="pb-signin-btn" onclick="handleLogin(); return false;">
+          <!-- Dynamic: replace "Your AI's" with actual AI name when wired -->
+          <span class="btn-text">Access Your AI's Brain Stream</span>
+          <span class="btn-loading">
+            <span class="pb-spinner"></span>Authenticating...
+          </span>
+        </button>
+
+      </form>
+
+      <!-- Escape hatch removed — not user-facing -->
+
+    </div><!-- /.pb-card-content -->
+
+    <!-- ============================================================
+         FOOTER — Premium closing banner with glow effect
+         Inspired by purebrain.ai homepage orange-to-blue gradient banner
+         ============================================================ -->
+    <div class="pb-footer">
+      <div class="pb-footer-glow-bar"></div>
+      <div class="pb-footer-inner">
+        <div class="pb-footer-powered">
+          POWERED BY&nbsp;
+          <span class="pb-brand-pure">PUREBR</span><span class="pb-brand-brain">AI</span><span class="pb-brand-n">N</span><span class="pb-brand-ai">.AI</span>
+          <span class="pb-brand-sep">&amp;</span>
+          <span class="pb-brand-pt">PURETECHNOLOGY.AI</span>
+        </div>
+        <div class="pb-footer-tagline">
+          AI Partnership<span class="tagline-dot">.</span> Redefined<span class="tagline-dot">.</span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.pb-login-card -->
+
+</div><!-- /#loginOverlay -->
+
+
+<!-- ============================================================
+     JAVASCRIPT
+     ============================================================ -->
+<script>
+/* ============================================================
+   NEURAL NETWORK BACKGROUND
+   Canvas-based neural network visualization:
+   - ~130 nodes across 3 depth layers
+   - Synaptic connections between nearby nodes
+   - Signal pulses traveling along connection lines
+   - Periodic neuron firing (brightness burst)
+   - Radial ambient glow at center (replaces orb)
+   - All colors: blue #2a93c1, orange #f1420b, dim white
+   - Target: smooth 60fps, no external deps
+   ============================================================ */
+(function initNeuralNetwork() {
+
+  const canvas = document.getElementById('pb-neural-canvas');
+  const ctx    = canvas.getContext('2d');
+
+  /* -----------------------------------------------------------
+     CONFIGURATION
+  ----------------------------------------------------------- */
+  const CFG = {
+    /* Node counts per layer (back → mid → front) */
+    layerCounts:    [50, 45, 35],
+    /* Node base radius per layer — back is smallest/dimmest */
+    layerRadius:    [1.0, 1.6, 2.4],
+    /* Base opacity per layer */
+    layerOpacity:   [0.18, 0.32, 0.55],
+    /* Drift speed multiplier per layer (parallax feel) */
+    layerSpeed:     [0.008, 0.014, 0.022],
+    /* Max connection distance (px) — scales with viewport */
+    connectDist:    180,
+    /* Max connections drawn per node (performance cap) */
+    maxConPerNode:  4,
+    /* Connection line base opacity */
+    lineOpacity:    0.10,
+    /* Number of concurrent signal pulses */
+    pulseCount:     18,
+    /* Signal travel speed (fraction of connection length per frame) */
+    pulseSpeed:     0.004,
+    /* Pulse dot radius */
+    pulseRadius:    2.2,
+    /* Probability a node fires spontaneously per frame */
+    fireChance:     0.0006,
+    /* Fire burst peak opacity multiplier */
+    firePeak:       3.0,
+    /* Fire decay rate */
+    fireDecay:      0.04,
+    /* Background base gradient opacity */
+    bgOpacity:      1.0,
+  };
+
+  /* -----------------------------------------------------------
+     STATE
+  ----------------------------------------------------------- */
+  let W = 0, H = 0;
+  let nodes   = [];
+  let pulses  = [];
+  let edges   = [];   /* pre-computed connection pairs */
+  let rafId   = null;
+  let paused  = false;
+  let time    = 0;
+
+  /* -----------------------------------------------------------
+     COLOR PALETTE
+  ----------------------------------------------------------- */
+  /* Each node gets a color type: 0=dim-white, 1=blue, 2=orange */
+  function pickNodeColor() {
+    const r = Math.random();
+    if (r < 0.55) return 0;  /* majority dim white */
+    if (r < 0.82) return 1;  /* ~27% blue */
+    return 2;                 /* ~18% orange */
+  }
+
+  function nodeRGB(type) {
+    if (type === 1) return [42,  147, 193];
+    if (type === 2) return [241,  66,  11];
+    return [200, 210, 230];
+  }
+
+  function pulseRGB(type) {
+    /* pulses match the origin node color */
+    return nodeRGB(type);
+  }
+
+  /* -----------------------------------------------------------
+     INIT NODES
+  ----------------------------------------------------------- */
+  function makeNode(layer) {
+    /* Distribute across full canvas with slight center bias */
+    const margin = 40;
+    return {
+      x:      margin + Math.random() * (W - margin * 2),
+      y:      margin + Math.random() * (H - margin * 2),
+      /* Drift direction — slow random walk */
+      vx:     (Math.random() - 0.5) * CFG.layerSpeed[layer],
+      vy:     (Math.random() - 0.5) * CFG.layerSpeed[layer],
+      r:      CFG.layerRadius[layer] * (0.7 + Math.random() * 0.6),
+      baseOp: CFG.layerOpacity[layer] * (0.6 + Math.random() * 0.8),
+      op:     0,       /* current rendered opacity (includes fire burst) */
+      phase:  Math.random() * Math.PI * 2,  /* pulse offset */
+      phaseSpeed: 0.004 + Math.random() * 0.008,
+      colorType: pickNodeColor(),
+      layer,
+      fire:   0,       /* fire burst intensity 0–1 */
+    };
+  }
+
+  function buildNodes() {
+    nodes = [];
+    for (let l = 0; l < 3; l++) {
+      const count = CFG.layerCounts[l];
+      for (let i = 0; i < count; i++) {
+        nodes.push(makeNode(l));
+      }
+    }
+  }
+
+  /* -----------------------------------------------------------
+     PRE-COMPUTE EDGES (rebuild on resize)
+     Only connect nodes on same or adjacent layers within distance.
+  ----------------------------------------------------------- */
+  function buildEdges() {
+    edges = [];
+    const dist2 = CFG.connectDist * CFG.connectDist;
+
+    /* Track connections per node for cap */
+    const conCount = new Uint8Array(nodes.length);
+
+    for (let i = 0; i < nodes.length; i++) {
+      const a = nodes[i];
+      for (let j = i + 1; j < nodes.length; j++) {
+        const b = nodes[j];
+        /* Only connect same/adjacent layers */
+        if (Math.abs(a.layer - b.layer) > 1) continue;
+        if (conCount[i] >= CFG.maxConPerNode) continue;
+        if (conCount[j] >= CFG.maxConPerNode) continue;
+
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        if (dx * dx + dy * dy < dist2) {
+          edges.push([i, j]);
+          conCount[i]++;
+          conCount[j]++;
+        }
+      }
+    }
+  }
+
+  /* -----------------------------------------------------------
+     INIT PULSES
+  ----------------------------------------------------------- */
+  function makePulse() {
+    if (edges.length === 0) return null;
+    const edgeIdx = Math.floor(Math.random() * edges.length);
+    const [ai, bi] = edges[edgeIdx];
+    const reversed = Math.random() < 0.5;
+    return {
+      edgeIdx,
+      t:          Math.random(),            /* 0..1 along edge */
+      speed:      CFG.pulseSpeed * (0.5 + Math.random()),
+      forward:    !reversed,
+      colorType:  nodes[ai].colorType,     /* inherit from source node */
+      opacity:    0.5 + Math.random() * 0.5,
+    };
+  }
+
+  function buildPulses() {
+    pulses = [];
+    for (let i = 0; i < CFG.pulseCount; i++) {
+      const p = makePulse();
+      if (p) pulses.push(p);
+    }
+  }
+
+  /* -----------------------------------------------------------
+     RESIZE
+  ----------------------------------------------------------- */
+  function resize() {
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+    buildNodes();
+    buildEdges();
+    buildPulses();
+  }
+
+  /* -----------------------------------------------------------
+     DRAW BACKGROUND
+     Deep dark base + subtle radial glows at center (replaces orb)
+  ----------------------------------------------------------- */
+  function drawBackground() {
+    /* Solid dark fill */
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, 0, W, H);
+
+    /* Ambient glow — blue upper-left + orange lower-right */
+    const cx = W * 0.5;
+    const cy = H * 0.5;
+
+    /* Blue glow */
+    const gb = ctx.createRadialGradient(cx - W * 0.15, cy - H * 0.12, 0, cx - W * 0.15, cy - H * 0.12, W * 0.55);
+    gb.addColorStop(0,   'rgba(42,147,193,0.10)');
+    gb.addColorStop(0.5, 'rgba(58,96,171,0.06)');
+    gb.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = gb;
+    ctx.fillRect(0, 0, W, H);
+
+    /* Orange glow */
+    const go = ctx.createRadialGradient(cx + W * 0.12, cy + H * 0.10, 0, cx + W * 0.12, cy + H * 0.10, W * 0.45);
+    go.addColorStop(0,   'rgba(241,66,11,0.08)');
+    go.addColorStop(0.5, 'rgba(200,50,10,0.04)');
+    go.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = go;
+    ctx.fillRect(0, 0, W, H);
+
+    /* Central soft glow — simulates the orb presence */
+    const pct = 0.5 + 0.02 * Math.sin(time * 0.3);
+    const gg = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.min(W, H) * pct);
+    gg.addColorStop(0,   'rgba(42,147,193,0.06)');
+    gg.addColorStop(0.3, 'rgba(58,96,171,0.04)');
+    gg.addColorStop(0.6, 'rgba(241,66,11,0.025)');
+    gg.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = gg;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  /* -----------------------------------------------------------
+     DRAW EDGES
+  ----------------------------------------------------------- */
+  function drawEdges() {
+    for (let e = 0; e < edges.length; e++) {
+      const [ai, bi] = edges[e];
+      const a = nodes[ai];
+      const b = nodes[bi];
+
+      /* Opacity fades with distance, boosted when either node fires */
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const distFade = 1 - dist / CFG.connectDist;
+      const fireBump = Math.max(a.fire, b.fire) * 0.3;
+      const lineOp = (CFG.lineOpacity + fireBump) * distFade;
+
+      /* Color: blend from both node colors — use the brighter/colored one */
+      const rgb = (a.colorType !== 0) ? nodeRGB(a.colorType) : nodeRGB(b.colorType);
+
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${lineOp.toFixed(3)})`;
+      ctx.lineWidth   = 0.6 + distFade * 0.4;
+      ctx.stroke();
+    }
+  }
+
+  /* -----------------------------------------------------------
+     DRAW NODES
+  ----------------------------------------------------------- */
+  function drawNodes() {
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      const rgb = nodeRGB(n.colorType);
+
+      /* Compute current opacity: base + sinusoidal pulse + fire burst */
+      const pulse = 0.5 + 0.5 * Math.sin(n.phase);
+      n.op = n.baseOp * (0.6 + 0.4 * pulse) + n.fire * (CFG.firePeak - 1) * n.baseOp;
+
+      /* Node body */
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${Math.min(n.op, 1).toFixed(3)})`;
+      ctx.fill();
+
+      /* Glow halo — larger for colored nodes and when firing */
+      if (n.colorType !== 0 || n.fire > 0.1) {
+        const haloR = n.r * (2.5 + n.fire * 3);
+        const haloOp = (n.colorType !== 0 ? 0.25 : 0.10) + n.fire * 0.35;
+        const grd = ctx.createRadialGradient(n.x, n.y, n.r * 0.5, n.x, n.y, haloR);
+        grd.addColorStop(0,   `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${haloOp.toFixed(3)})`);
+        grd.addColorStop(1,   `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0)`);
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, haloR, 0, Math.PI * 2);
+        ctx.fillStyle = grd;
+        ctx.fill();
+      }
+    }
+  }
+
+  /* -----------------------------------------------------------
+     DRAW PULSES (signal propagation)
+  ----------------------------------------------------------- */
+  function drawPulses() {
+    for (let p = 0; p < pulses.length; p++) {
+      const pulse = pulses[p];
+      const [ai, bi] = edges[pulse.edgeIdx];
+      const a = nodes[ai];
+      const b = nodes[bi];
+
+      /* Interpolate position along the edge */
+      const t  = pulse.forward ? pulse.t : 1 - pulse.t;
+      const px = a.x + (b.x - a.x) * t;
+      const py = a.y + (b.y - a.y) * t;
+
+      /* Fade in/out at endpoints */
+      const edgeFade = Math.sin(pulse.t * Math.PI);
+      const op = pulse.opacity * edgeFade;
+
+      const rgb = pulseRGB(pulse.colorType);
+
+      /* Bright core dot */
+      ctx.beginPath();
+      ctx.arc(px, py, CFG.pulseRadius, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${op.toFixed(3)})`;
+      ctx.fill();
+
+      /* Soft glow around pulse */
+      const grd = ctx.createRadialGradient(px, py, 0, px, py, CFG.pulseRadius * 3.5);
+      grd.addColorStop(0,   `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${(op * 0.6).toFixed(3)})`);
+      grd.addColorStop(1,   `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0)`);
+      ctx.beginPath();
+      ctx.arc(px, py, CFG.pulseRadius * 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = grd;
+      ctx.fill();
+    }
+  }
+
+  /* -----------------------------------------------------------
+     UPDATE LOOP
+  ----------------------------------------------------------- */
+  function update() {
+    time++;
+
+    /* Update nodes */
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+
+      /* Drift */
+      n.x += n.vx;
+      n.y += n.vy;
+
+      /* Soft bounce off edges with a margin */
+      const m = 20;
+      if (n.x < m)     { n.x = m;     n.vx = Math.abs(n.vx); }
+      if (n.x > W - m) { n.x = W - m; n.vx = -Math.abs(n.vx); }
+      if (n.y < m)     { n.y = m;     n.vy = Math.abs(n.vy); }
+      if (n.y > H - m) { n.y = H - m; n.vy = -Math.abs(n.vy); }
+
+      /* Phase increment for pulse animation */
+      n.phase += n.phaseSpeed;
+
+      /* Random fire event */
+      if (Math.random() < CFG.fireChance) {
+        n.fire = 1.0;
+      }
+      /* Fire decay */
+      if (n.fire > 0) {
+        n.fire -= CFG.fireDecay;
+        if (n.fire < 0) n.fire = 0;
+      }
+    }
+
+    /* Periodically rebuild edges (every 90 frames ≈ 1.5s at 60fps)
+       because nodes drift slowly — avoids stale connections */
+    if (time % 90 === 0) {
+      buildEdges();
+    }
+
+    /* Update pulses */
+    for (let p = 0; p < pulses.length; p++) {
+      const pulse = pulses[p];
+      pulse.t += pulse.speed;
+      if (pulse.t >= 1) {
+        /* Respawn with new edge */
+        const np = makePulse();
+        if (np) pulses[p] = np;
+        else    pulse.t = 0;
+      }
+    }
+  }
+
+  /* -----------------------------------------------------------
+     RENDER LOOP
+  ----------------------------------------------------------- */
+  function tick() {
+    if (paused) return;
+    update();
+    drawBackground();
+    drawEdges();
+    drawPulses();
+    drawNodes();
+    rafId = requestAnimationFrame(tick);
+  }
+
+  /* -----------------------------------------------------------
+     VISIBILITY — pause when tab is hidden
+  ----------------------------------------------------------- */
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      paused = true;
+      if (rafId) cancelAnimationFrame(rafId);
+    } else {
+      paused = false;
+      rafId = requestAnimationFrame(tick);
+    }
+  });
+
+  /* -----------------------------------------------------------
+     REDUCED MOTION — static frame only
+  ----------------------------------------------------------- */
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (prefersReduced) {
+    resize();
+    drawBackground();
+    drawEdges();
+    drawNodes();
+    return;
+  }
+
+  /* -----------------------------------------------------------
+     BOOT
+  ----------------------------------------------------------- */
+  window.addEventListener('resize', resize);
+  resize();
+  rafId = requestAnimationFrame(tick);
+
+})();
+
+
+/* ============================================================
+   FLOATING LABEL — enforce correct state on autofill
+   ============================================================ */
+document.querySelectorAll('.pb-field input').forEach(function(input) {
+  /* Chrome autofill fires animationstart on a named animation */
+  input.addEventListener('animationstart', function(e) {
+    if (e.animationName === 'onAutoFillStart') {
+      input.classList.add('has-value');
+    }
+  });
+});
+
+
+/* ============================================================
+   handleLogin() — STUB (replace with real implementation)
+   Preserves the same interface as the original frontend.
+   Reads from #loginAicivName and #loginSecret.
+   ============================================================ */
+function handleLogin() {
+  const nameInput   = document.getElementById('loginAicivName');
+  const secretInput = document.getElementById('loginSecret');
+  const errorDiv    = document.getElementById('loginError');
+  const button      = document.getElementById('loginButton');
+
+  if (!nameInput || !secretInput) return;
+
+  const aicivName = (nameInput.value   || '').trim();
+  const secret    = (secretInput.value || '').trim();
+
+  /* Clear previous error */
+  errorDiv.style.display = 'none';
+  errorDiv.textContent = '';
+
+  /* Basic client-side validation */
+  if (!aicivName) {
+    showLoginError('Please enter your AI\'s name.');
+    nameInput.focus();
+    return;
+  }
+  if (!secret) {
+    showLoginError('Please enter your secret.');
+    secretInput.focus();
+    return;
+  }
+
+  /* Show loading state */
+  button.classList.add('loading');
+  button.disabled = true;
+
+  /* -------- REPLACE THIS BLOCK with real gateway POST --------
+     Example:
+     fetch('/api/auth', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ name: aicivName, secret })
+     })
+     .then(r => r.json())
+     .then(data => {
+       if (data.ok) {
+         document.getElementById('loginOverlay').classList.add('hidden');
+         // initialise the app...
+       } else {
+         showLoginError(data.message || 'Invalid credentials.');
+       }
+     })
+     .catch(() => showLoginError('Connection failed. Please try again.'))
+     .finally(() => {
+       button.classList.remove('loading');
+       button.disabled = false;
+     });
+     ------------------------------------------------------------- */
+
+  /* Stub: simulate async call */
+  setTimeout(function() {
+    button.classList.remove('loading');
+    button.disabled = false;
+    /* Demo: hide overlay on success */
+    /* document.getElementById('loginOverlay').classList.add('hidden'); */
+    showLoginError('Gateway not configured — use "Configure gateway manually" below.');
+  }, 1200);
+}
+
+function showLoginError(msg) {
+  const errorDiv = document.getElementById('loginError');
+  if (!errorDiv) return;
+  errorDiv.textContent = msg;
+  errorDiv.style.display = 'block';
+  /* Shake animation */
+  errorDiv.style.animation = 'none';
+  errorDiv.offsetHeight; /* reflow */
+  errorDiv.style.animation = 'errorShake 0.35s cubic-bezier(0.36,0.07,0.19,0.97)';
+}
+
+/* Inject shake keyframes dynamically (keeps CSS tidy above) */
+(function() {
+  var s = document.createElement('style');
+  s.textContent = '@keyframes errorShake { 10%,90%{transform:translateX(-2px)} 20%,80%{transform:translateX(4px)} 30%,50%,70%{transform:translateX(-4px)} 40%,60%{transform:translateX(4px)} }';
+  document.head.appendChild(s);
+})();
+
+
+/* ============================================================
+   KEYBOARD — Enter key submits
+   ============================================================ */
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') {
+    const overlay = document.getElementById('loginOverlay');
+    if (overlay && !overlay.classList.contains('hidden')) {
+      handleLogin();
+    }
+  }
+});
+</script>
+</body>
+</html>

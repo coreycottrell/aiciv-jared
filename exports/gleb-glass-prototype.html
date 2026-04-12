@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gleb Kuznetsov Level Glass - PureBrain Prototype</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #060606;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    overflow-x: hidden;
+  }
+
+  /* ---- SCENE CONTAINER ---- */
+  #scene-wrapper {
+    width: 100%;
+    max-width: 900px;
+    padding: 20px;
+  }
+
+  #canvas-container {
+    width: 100%;
+    height: 600px;
+    position: relative;
+    background: #060606;
+    border-radius: 20px;
+    overflow: hidden;
+  }
+
+  canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+  }
+
+  /* ---- BACKGROUND BLEED (Gleb's colored light spill on bg) ---- */
+  #canvas-container::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    background:
+      radial-gradient(ellipse 60% 60% at 70% 30%,
+        rgba(13, 22, 245, 0.08) 0%, transparent 70%),
+      radial-gradient(ellipse 50% 50% at 30% 70%,
+        rgba(209, 13, 206, 0.06) 0%, transparent 70%),
+      radial-gradient(ellipse 40% 40% at 50% 50%,
+        rgba(24, 168, 211, 0.04) 0%, transparent 60%);
+  }
+
+  /* ---- INFO PANEL ---- */
+  #info {
+    text-align: center;
+    padding: 20px;
+    color: rgba(255,255,255,0.5);
+    font-size: 13px;
+    letter-spacing: 0.05em;
+  }
+
+  #info .title {
+    font-size: 18px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.85);
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+
+  .blue { color: #2a93c1; }
+  .orange { color: #f1420b; }
+
+  /* ---- CONTROLS ---- */
+  #controls {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+    padding: 16px;
+  }
+
+  .ctrl-btn {
+    padding: 8px 20px;
+    border-radius: 6px;
+    border: 1px solid rgba(42,147,193,0.3);
+    background: rgba(42,147,193,0.08);
+    color: rgba(255,255,255,0.7);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .ctrl-btn:hover {
+    border-color: rgba(42,147,193,0.7);
+    background: rgba(42,147,193,0.15);
+    color: #fff;
+  }
+  .ctrl-btn.active {
+    border-color: #2a93c1;
+    background: rgba(42,147,193,0.25);
+    color: #2a93c1;
+  }
+
+  /* ---- RECIPE PANEL ---- */
+  #recipe {
+    max-width: 900px;
+    width: 100%;
+    padding: 20px;
+  }
+
+  .recipe-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+  }
+
+  .recipe-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 16px;
+  }
+
+  .recipe-card h3 {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #2a93c1;
+    margin-bottom: 10px;
+  }
+
+  .recipe-card pre {
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    color: rgba(255,255,255,0.6);
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .recipe-card .key-val {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 11px;
+  }
+  .recipe-card .key-val:last-child { border-bottom: none; }
+  .recipe-card .key-val .k { color: rgba(255,255,255,0.5); }
+  .recipe-card .key-val .v { color: rgba(255,255,255,0.85); font-weight: 600; }
+  .recipe-card .key-val .v.special { color: #2a93c1; }
+
+  .status-indicator {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: rgba(255,255,255,0.4);
+    letter-spacing: 0.06em;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .loading-msg {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.4);
+    font-size: 14px;
+    letter-spacing: 0.05em;
+    z-index: 5;
+  }
+</style>
+</head>
+<body>
+
+<div id="scene-wrapper">
+  <div id="info">
+    <div class="title">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>
+      &nbsp;&middot;&nbsp; Gleb Kuznetsov Level Glass
+    </div>
+    <div>Three.js MeshPhysicalMaterial + Multi-light Studio + Post-processing</div>
+  </div>
+
+  <div id="canvas-container">
+    <div class="loading-msg" id="loading-msg">Initializing WebGL...</div>
+  </div>
+
+  <div id="controls">
+    <button class="ctrl-btn active" onclick="setMode('idle')">Idle</button>
+    <button class="ctrl-btn" onclick="setMode('blue')">PureBrain Blue</button>
+    <button class="ctrl-btn" onclick="setMode('orange')">PureBrain Orange</button>
+    <button class="ctrl-btn" onclick="setMode('hologram')">Hologram</button>
+    <button class="ctrl-btn" onclick="toggleRotation()">Pause/Resume</button>
+    <button class="ctrl-btn" onclick="toggleBloom()">Toggle Bloom</button>
+    <button class="ctrl-btn" onclick="toggleDOF()">Toggle DoF</button>
+  </div>
+</div>
+
+<div id="recipe">
+  <div class="recipe-grid">
+
+    <div class="recipe-card">
+      <h3>Glass Material (MeshPhysicalMaterial)</h3>
+      <div class="key-val"><span class="k">transmission</span><span class="v special">1.0</span></div>
+      <div class="key-val"><span class="k">thickness</span><span class="v special">0.8</span></div>
+      <div class="key-val"><span class="k">roughness</span><span class="v special">0.05</span></div>
+      <div class="key-val"><span class="k">ior</span><span class="v special">1.5</span></div>
+      <div class="key-val"><span class="k">chromaticAberration</span><span class="v special">0.8</span></div>
+      <div class="key-val"><span class="k">envMapIntensity</span><span class="v special">2.5</span></div>
+      <div class="key-val"><span class="k">metalness</span><span class="v">0.0</span></div>
+      <div class="key-val"><span class="k">attenuationColor</span><span class="v">#2a93c1</span></div>
+      <div class="key-val"><span class="k">attenuationDistance</span><span class="v special">0.5</span></div>
+      <div class="key-val"><span class="k">backside</span><span class="v special">true</span></div>
+    </div>
+
+    <div class="recipe-card">
+      <h3>Studio Lighting (6-Light Colored)</h3>
+      <div class="key-val"><span class="k">Key Light</span><span class="v">Warm White, intensity 3.5</span></div>
+      <div class="key-val"><span class="k">Fill Light</span><span class="v special">#0D16F5 (Electric Blue), 0.8</span></div>
+      <div class="key-val"><span class="k">Rim Light</span><span class="v special">#18A8D3 (Cyan), 0.6</span></div>
+      <div class="key-val"><span class="k">Accent Light</span><span class="v special">#D10DCE (Magenta), 0.4</span></div>
+      <div class="key-val"><span class="k">Ground Light</span><span class="v special">#E42424 (Red), 0.3</span></div>
+      <div class="key-val"><span class="k">HDRI Env</span><span class="v">Poly Haven Studio 1k</span></div>
+    </div>
+
+    <div class="recipe-card">
+      <h3>Post-Processing Stack</h3>
+      <div class="key-val"><span class="k">Bloom</span><span class="v special">threshold: 0.85, strength: 0.4</span></div>
+      <div class="key-val"><span class="k">DepthOfField</span><span class="v special">focus: 0.015, aperture: 0.025</span></div>
+      <div class="key-val"><span class="k">UnrealBloom</span><span class="v">radius: 0.4, strength: 0.3</span></div>
+      <div class="key-val"><span class="k">Vignette</span><span class="v">offset: 0.5, darkness: 0.8</span></div>
+      <div class="key-val"><span class="k">ChromaticAberration</span><span class="v special">0.003 screen-space</span></div>
+      <div class="key-val"><span class="k">FXAA</span><span class="v">Anti-aliasing</span></div>
+    </div>
+
+    <div class="recipe-card">
+      <h3>Geometry & Animation</h3>
+      <div class="key-val"><span class="k">Geometry</span><span class="v special">SphereGeometry(1.2, 128, 128)</span></div>
+      <div class="key-val"><span class="k">Outer Ring</span><span class="v">TorusGeometry(1.45, 0.015, 32, 128)</span></div>
+      <div class="key-val"><span class="k">Inner Core</span><span class="v special">OctahedronGeometry(0.4, 4)</span></div>
+      <div class="key-val"><span class="k">Float Speed</span><span class="v">0.8 Hz, 0.3 amplitude</span></div>
+      <div class="key-val"><span class="k">Idle Rotation</span><span class="v">0.15 rad/s Y-axis</span></div>
+      <div class="key-val"><span class="k">Mouse Follow</span><span class="v">4% lerp factor</span></div>
+      <div class="key-val"><span class="k">Background</span><span class="v special">#060606 + colored bleed</span></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Import map for Three.js modules -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ================================================================
+// GLEB KUZNETSOV LEVEL GLASS SCENE
+// PureBrain Brand: #2a93c1 blue, #f1420b orange, #060606 bg
+// Philosophy: Render LIGHT not OBJECTS. Glass is a lens for color.
+// ================================================================
+
+const container = document.getElementById('canvas-container');
+const loadingMsg = document.getElementById('loading-msg');
+
+// ---- RENDERER ----
+const renderer = new THREE.WebGLRenderer({
+  antialias: true,
+  alpha: false,
+  powerPreference: 'high-performance'
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.shadowMap.enabled = false; // transmission materials don't cast
+container.appendChild(renderer.domElement);
+
+// ---- SCENE + CAMERA ----
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x060606);
+
+const camera = new THREE.PerspectiveCamera(
+  45,
+  container.clientWidth / container.clientHeight,
+  0.1,
+  100
+);
+camera.position.set(0, 0, 4.5);
+camera.lookAt(0, 0, 0);
+
+// ================================================================
+// GLEB'S 6-LIGHT COLORED STUDIO ENVIRONMENT
+// "Multi-light colored environment" is the #1 Gleb technique
+// Each light is a specific hue, not generic white
+// ================================================================
+
+// L1: Key light - warm white softbox, upper-left
+const keyLight = new THREE.DirectionalLight(0xfff8f0, 3.5);
+keyLight.position.set(-2.5, 3.5, 2.0);
+scene.add(keyLight);
+
+// L2: Fill light - electric blue, upper-right (Gleb signature)
+const fillLight = new THREE.DirectionalLight(0x0D16F5, 0.9);
+fillLight.position.set(3, 2, 1);
+scene.add(fillLight);
+
+// L3: Rim light - cyan, back-right (creates glass edge shimmer)
+const rimLight = new THREE.DirectionalLight(0x18A8D3, 0.7);
+rimLight.position.set(2, -1, -3);
+scene.add(rimLight);
+
+// L4: Accent - magenta/neon pink, right-lower
+const accentLight = new THREE.DirectionalLight(0xD10DCE, 0.45);
+accentLight.position.set(3, -2, 1.5);
+scene.add(accentLight);
+
+// L5: Ground - saturated red-orange, bottom-back
+const groundLight = new THREE.DirectionalLight(0xE42424, 0.35);
+groundLight.position.set(-1, -3, -2);
+scene.add(groundLight);
+
+// L6: Ambient - minimal, dark blue (no generic gray ambient)
+const ambientLight = new THREE.AmbientLight(0x0a0a1a, 0.8);
+scene.add(ambientLight);
+
+// ================================================================
+// HDRI ENVIRONMENT MAP
+// Poly Haven Studio - the gold standard for glass material lighting
+// ================================================================
+
+let envMap = null;
+
+// Create a procedural HDR-equivalent environment using PMREMGenerator
+// (Used as fallback if HDRI load fails)
+function createProceduralEnv() {
+  const pmremGenerator = new THREE.PMREMGenerator(renderer);
+  pmremGenerator.compileEquirectangularShader();
+
+  // Create a multi-colored gradient environment that mimics Gleb's studio
+  const envScene = new THREE.Scene();
+
+  // Multiple colored spheres as light sources in environment
+  const envColors = [
+    { pos: [-5, 8, -5], color: 0xfff8f0, intensity: 5.0 },  // Key (warm white)
+    { pos: [8, 5, 3],   color: 0x1a30ff, intensity: 2.5 },  // Electric blue
+    { pos: [5, -3, -5], color: 0x18A8D3, intensity: 1.8 },  // Cyan rim
+    { pos: [-5, -5, 2], color: 0xE42424, intensity: 1.5 },  // Red ground
+    { pos: [3, 2, 8],   color: 0xD10DCE, intensity: 1.2 },  // Magenta accent
+    { pos: [0, -8, 0],  color: 0x0a0a20, intensity: 0.3 },  // Dark floor
+  ];
+
+  const envGeo = new THREE.SphereGeometry(1, 4, 4);
+  envColors.forEach(({ pos, color, intensity }) => {
+    const mat = new THREE.MeshBasicMaterial({
+      color: color,
+      side: THREE.BackSide,
+    });
+    const mesh = new THREE.Mesh(envGeo, mat);
+    mesh.position.set(...pos);
+    mesh.scale.setScalar(0.5);
+    envScene.add(mesh);
+  });
+
+  envMap = pmremGenerator.fromScene(envScene, 0.04).texture;
+  scene.environment = envMap;
+  pmremGenerator.dispose();
+}
+
+// Try to load actual Poly Haven HDRI
+const rgbeLoader = new RGBELoader();
+let hdriLoaded = false;
+
+// Try loading from the local file we downloaded, with CDN fallback
+const hdriSources = [
+  // Try a remotely accessible HDRI from hdrihaven CDN mirror
+  'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/poly_haven_studio_1k.hdr',
+];
+
+function tryLoadHDRI(sources, index = 0) {
+  if (index >= sources.length) {
+    console.log('All HDRI sources failed, using procedural environment');
+    createProceduralEnv();
+    buildScene();
+    return;
+  }
+
+  rgbeLoader.load(
+    sources[index],
+    (texture) => {
+      const pmremGenerator = new THREE.PMREMGenerator(renderer);
+      pmremGenerator.compileEquirectangularShader();
+      envMap = pmremGenerator.fromEquirectangular(texture).texture;
+      scene.environment = envMap;
+      texture.dispose();
+      pmremGenerator.dispose();
+      console.log('HDRI loaded from:', sources[index]);
+      hdriLoaded = true;
+      buildScene();
+    },
+    undefined,
+    () => {
+      console.log('HDRI load failed, trying next source...');
+      tryLoadHDRI(sources, index + 1);
+    }
+  );
+}
+
+// ================================================================
+// SCENE OBJECTS
+// Philosophy: Dark background, one premium glass object, subtle accent geometry
+// ================================================================
+
+let glassSphere = null;
+let innerCore = null;
+let orbitRing = null;
+let innerRing = null;
+let particleSystem = null;
+let sceneBuilt = false;
+
+function buildScene() {
+  if (sceneBuilt) return;
+  sceneBuilt = true;
+  loadingMsg.style.display = 'none';
+
+  // ---- MAIN GLASS SPHERE ----
+  // 128x128 segments - MANDATORY for glass/transmission materials
+  // Lower segment counts show visible facets through glass
+  const sphereGeo = new THREE.SphereGeometry(1.2, 128, 128);
+
+  // MeshPhysicalMaterial with transmission - the Three.js glass standard
+  const glassMat = new THREE.MeshPhysicalMaterial({
+    // Core glass properties
+    transmission: 1.0,           // 1.0 = fully transmissive (glass)
+    thickness: 0.8,              // Depth light travels through = refraction depth
+    roughness: 0.05,             // Nearly smooth glass (0 = mirror-smooth)
+    ior: 1.5,                    // Index of refraction (glass = 1.5, diamond = 2.42)
+
+    // Color tint (glass absorbs/tints what passes through)
+    attenuationColor: new THREE.Color(0x2a93c1),  // PureBrain blue glass tint
+    attenuationDistance: 0.5,    // How deep before full tint (lower = more tint)
+
+    // Surface properties
+    metalness: 0.0,              // Not metallic - glass
+    reflectivity: 0.2,           // Fresnel reflections at edges
+
+    // Environment interaction
+    envMapIntensity: 2.5,        // How strongly env map shows in reflections
+
+    // Performance
+    side: THREE.FrontSide,       // Render only front faces (back handled by thickness)
+  });
+
+  glassSphere = new THREE.Mesh(sphereGeo, glassMat);
+  glassSphere.position.y = 0.0;
+  scene.add(glassSphere);
+
+  // ---- INNER ENERGY CORE ----
+  // The volumetric glow inside the glass (Gleb technique: light, not geometry)
+  const coreGeo = new THREE.IcosahedronGeometry(0.42, 4);  // Smooth sphere approximation
+  const coreMat = new THREE.MeshStandardMaterial({
+    color: 0x2a93c1,             // PureBrain blue
+    emissive: 0x1a5a8a,          // Self-illumination
+    emissiveIntensity: 3.0,      // Strong glow
+    metalness: 0.0,
+    roughness: 1.0,              // Diffuse inner glow, no specular
+    transparent: true,
+    opacity: 0.9,
+  });
+  innerCore = new THREE.Mesh(coreGeo, coreMat);
+  innerCore.scale.setScalar(0.85);
+  scene.add(innerCore);
+
+  // ---- GLOWING HALO RING ----
+  // Orbiting ring around the sphere - Gleb often has a subtle ring element
+  const ringGeo = new THREE.TorusGeometry(1.55, 0.012, 32, 256);
+  const ringMat = new THREE.MeshStandardMaterial({
+    color: 0x2a93c1,
+    emissive: 0x2a93c1,
+    emissiveIntensity: 4.0,
+    metalness: 0.8,
+    roughness: 0.2,
+    transparent: true,
+    opacity: 0.6,
+  });
+  orbitRing = new THREE.Mesh(ringGeo, ringMat);
+  orbitRing.rotation.x = Math.PI / 2.5;  // Tilted like Saturn's rings
+  scene.add(orbitRing);
+
+  // ---- SECONDARY ACCENT RING ----
+  const innerRingGeo = new THREE.TorusGeometry(1.32, 0.008, 32, 256);
+  const innerRingMat = new THREE.MeshStandardMaterial({
+    color: 0xf1420b,             // PureBrain orange
+    emissive: 0xf1420b,
+    emissiveIntensity: 2.5,
+    metalness: 0.8,
+    roughness: 0.2,
+    transparent: true,
+    opacity: 0.4,
+  });
+  innerRing = new THREE.Mesh(innerRingGeo, innerRingMat);
+  innerRing.rotation.x = Math.PI / 3.8;
+  innerRing.rotation.z = Math.PI / 6;
+  scene.add(innerRing);
+
+  // ---- PARTICLE FIELD ----
+  // Subtle constellation of particles around the sphere
+  const particleCount = 400;
+  const particleGeo = new THREE.BufferGeometry();
+  const positions = new Float32Array(particleCount * 3);
+  const opacities = new Float32Array(particleCount);
+
+  for (let i = 0; i < particleCount; i++) {
+    // Distribute in a shell around the sphere (2.0 to 3.5 radius)
+    const r = 2.0 + Math.random() * 1.5;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    positions[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+    positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+    positions[i * 3 + 2] = r * Math.cos(phi);
+    opacities[i] = 0.2 + Math.random() * 0.6;
+  }
+
+  particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+  const particleMat = new THREE.PointsMaterial({
+    color: 0x2a93c1,
+    size: 0.025,
+    transparent: true,
+    opacity: 0.4,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true,
+  });
+
+  particleSystem = new THREE.Points(particleGeo, particleMat);
+  scene.add(particleSystem);
+
+  // ---- BACKGROUND SUBTLE PLANE ----
+  // Background gradient plane (adds depth behind the sphere)
+  const bgGeo = new THREE.PlaneGeometry(20, 20);
+  const bgMat = new THREE.MeshBasicMaterial({
+    color: 0x060606,
+    transparent: true,
+    opacity: 1.0,
+  });
+  const bgPlane = new THREE.Mesh(bgGeo, bgMat);
+  bgPlane.position.z = -5;
+  scene.add(bgPlane);
+
+  setupPostProcessing();
+}
+
+// ================================================================
+// POST-PROCESSING
+// Gleb's secret weapon: Bloom + DoF + Chromatic Aberration
+// Never skip this - it transforms good into premium
+// ================================================================
+
+let composer = null;
+let bloomPass = null;
+let bokehPass = null;
+let bloomEnabled = true;
+let dofEnabled = true;
+
+// Custom Chromatic Aberration Shader
+const ChromaticAberrationShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uOffset: { value: 0.003 },
+    uTime: { value: 0.0 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uOffset;
+    uniform float uTime;
+    varying vec2 vUv;
+
+    void main() {
+      vec2 center = vec2(0.5, 0.5);
+      vec2 dir = vUv - center;
+      float dist = length(dir);
+
+      // Chromatic aberration stronger at edges (physically correct)
+      float strength = uOffset * dist * dist * 3.0;
+
+      vec2 offsetR = dir * strength * 1.0;
+      vec2 offsetB = dir * strength * (-1.0);
+
+      float r = texture2D(tDiffuse, vUv + offsetR).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vUv + offsetB).b;
+
+      gl_FragColor = vec4(r, g, b, 1.0);
+    }
+  `
+};
+
+// Custom Vignette Shader
+const VignetteShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uOffset: { value: 0.5 },
+    uDarkness: { value: 0.9 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uOffset;
+    uniform float uDarkness;
+    varying vec2 vUv;
+
+    void main() {
+      vec4 color = texture2D(tDiffuse, vUv);
+      vec2 uv2 = (vUv - vec2(0.5)) * vec2(uOffset);
+      gl_FragColor = vec4(mix(color.rgb, vec3(0.0), dot(uv2, uv2) * uDarkness), color.a);
+    }
+  `
+};
+
+function setupPostProcessing() {
+  const size = new THREE.Vector2(
+    container.clientWidth * Math.min(window.devicePixelRatio, 2),
+    container.clientHeight * Math.min(window.devicePixelRatio, 2)
+  );
+
+  composer = new EffectComposer(renderer);
+
+  // Pass 1: Standard scene render
+  const renderPass = new RenderPass(scene, camera);
+  composer.addPass(renderPass);
+
+  // Pass 2: Bloom (Gleb's signature glow)
+  // luminanceThreshold = 0.85 means ONLY very bright pixels get bloom
+  // Don't set this too low or everything blooms (washed-out look)
+  bloomPass = new UnrealBloomPass(size, 0.35, 0.4, 0.85);
+  composer.addPass(bloomPass);
+
+  // Pass 3: Depth of Field (subtle - focus on sphere)
+  bokehPass = new BokehPass(scene, camera, {
+    focus: 4.5,       // Focus at camera.position.z = 4.5
+    aperture: 0.0001, // Very small = subtle DoF
+    maxblur: 0.003,   // Gentle max blur
+  });
+  composer.addPass(bokehPass);
+
+  // Pass 4: Chromatic Aberration (lens distortion at edges)
+  const chromaticPass = new ShaderPass(ChromaticAberrationShader);
+  composer.addPass(chromaticPass);
+
+  // Pass 5: Vignette (darkens edges, focuses attention on center)
+  const vignettePass = new ShaderPass(VignetteShader);
+  composer.addPass(vignettePass);
+
+  // Pass 6: FXAA Anti-aliasing (smooth edges)
+  const fxaaPass = new ShaderPass(FXAAShader);
+  fxaaPass.material.uniforms['resolution'].value.x = 1 / (container.clientWidth * renderer.getPixelRatio());
+  fxaaPass.material.uniforms['resolution'].value.y = 1 / (container.clientHeight * renderer.getPixelRatio());
+  composer.addPass(fxaaPass);
+
+  // Final output pass
+  const outputPass = new OutputPass();
+  composer.addPass(outputPass);
+}
+
+// ================================================================
+// STATE SYSTEM
+// Gleb's spheres are never static - they breathe, react, transform
+// ================================================================
+
+let currentMode = 'idle';
+let targetMode = 'idle';
+let modeBlend = 0.0;
+
+const modes = {
+  idle: {
+    coreColor: new THREE.Color(0x2a93c1),       // PureBrain blue
+    coreEmissive: new THREE.Color(0x1a5a8a),
+    coreIntensity: 3.0,
+    ringColor: new THREE.Color(0x2a93c1),
+    ringIntensity: 4.0,
+    innerRingColor: new THREE.Color(0xf1420b),  // PureBrain orange
+    innerRingIntensity: 2.5,
+    glassColor: new THREE.Color(0x2a93c1),
+    attenuationDist: 0.5,
+    fillLight: 0.9,
+    accentLight: 0.45,
+  },
+  blue: {
+    coreColor: new THREE.Color(0x1a8fd1),
+    coreEmissive: new THREE.Color(0x0a3a6a),
+    coreIntensity: 5.0,
+    ringColor: new THREE.Color(0x2a93c1),
+    ringIntensity: 7.0,
+    innerRingColor: new THREE.Color(0x18A8D3),
+    innerRingIntensity: 5.0,
+    glassColor: new THREE.Color(0x2a93c1),
+    attenuationDist: 0.3,
+    fillLight: 1.8,
+    accentLight: 0.8,
+  },
+  orange: {
+    coreColor: new THREE.Color(0xf1420b),       // PureBrain orange mode
+    coreEmissive: new THREE.Color(0x8a1a00),
+    coreIntensity: 5.0,
+    ringColor: new THREE.Color(0xf1420b),
+    ringIntensity: 6.0,
+    innerRingColor: new THREE.Color(0xffaa44),
+    innerRingIntensity: 4.0,
+    glassColor: new THREE.Color(0xf1420b),
+    attenuationDist: 0.4,
+    fillLight: 0.4,
+    accentLight: 0.8,
+  },
+  hologram: {
+    coreColor: new THREE.Color(0x40ffaa),       // Teal hologram
+    coreEmissive: new THREE.Color(0x004422),
+    coreIntensity: 4.0,
+    ringColor: new THREE.Color(0x40ffaa),
+    ringIntensity: 8.0,
+    innerRingColor: new THREE.Color(0x0088ff),
+    innerRingIntensity: 6.0,
+    glassColor: new THREE.Color(0x40ffaa),
+    attenuationDist: 0.6,
+    fillLight: 0.5,
+    accentLight: 1.2,
+  },
+};
+
+function setMode(mode) {
+  document.querySelectorAll('.ctrl-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  targetMode = mode;
+  currentMode = mode;
+}
+
+// ================================================================
+// ANIMATION LOOP
+// All movement is smooth, subtle, and purposeful
+// ================================================================
+
+const clock = new THREE.Clock();
+let mouseX = 0, mouseY = 0;
+let targetMouseX = 0, targetMouseY = 0;
+let autoRotate = true;
+let rotationAngle = 0;
+
+// Mouse tracking
+container.addEventListener('mousemove', (e) => {
+  const rect = container.getBoundingClientRect();
+  targetMouseX = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
+  targetMouseY = -((e.clientY - rect.top) / rect.height - 0.5) * 2;
+});
+
+container.addEventListener('mouseleave', () => {
+  targetMouseX = 0;
+  targetMouseY = 0;
+});
+
+function toggleRotation() {
+  autoRotate = !autoRotate;
+}
+
+function toggleBloom() {
+  bloomEnabled = !bloomEnabled;
+  if (bloomPass) bloomPass.strength = bloomEnabled ? 0.35 : 0.0;
+}
+
+function toggleDOF() {
+  dofEnabled = !dofEnabled;
+  if (bokehPass) bokehPass.enabled = dofEnabled;
+}
+
+// Expose to global for button handlers
+window.setMode = setMode;
+window.toggleRotation = toggleRotation;
+window.toggleBloom = toggleBloom;
+window.toggleDOF = toggleDOF;
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const elapsed = clock.getElapsedTime();
+  const delta = clock.getDelta() || 0.016;
+
+  if (!glassSphere) return;
+
+  // ---- SMOOTH MOUSE FOLLOW ----
+  // 4% per frame = ~0.6s lag = feels weighted and premium, not snappy
+  mouseX += (targetMouseX - mouseX) * 0.04;
+  mouseY += (targetMouseY - mouseY) * 0.04;
+
+  // ---- GLEB FLOAT ANIMATION ----
+  // Never static. Never mechanical. Uses 3 sine waves for organic feel.
+  const floatY  = Math.sin(elapsed * 0.8) * 0.12;
+  const floatX  = Math.sin(elapsed * 0.5 + 1.2) * 0.05;
+  const floatZ  = Math.sin(elapsed * 0.6 + 0.8) * 0.03;
+
+  glassSphere.position.set(floatX, floatY, floatZ);
+
+  // Mouse-reactive tilt (cursor follow = sphere "looks at" cursor)
+  if (autoRotate) {
+    rotationAngle += delta * 0.12;  // Very slow idle rotation
+  }
+  glassSphere.rotation.y = rotationAngle + mouseX * 0.25;
+  glassSphere.rotation.x = mouseY * 0.15;
+
+  // ---- INNER CORE ANIMATION ----
+  if (innerCore) {
+    innerCore.position.copy(glassSphere.position);
+    innerCore.rotation.y = elapsed * 0.4;
+    innerCore.rotation.x = elapsed * 0.25;
+    innerCore.rotation.z = elapsed * 0.18;
+
+    // Subtle core breathing (scale pulse)
+    const pulse = 1.0 + Math.sin(elapsed * 2.1) * 0.06;
+    innerCore.scale.setScalar(0.85 * pulse);
+
+    // Color shift with mode
+    const mode = modes[currentMode];
+    if (mode && innerCore.material) {
+      innerCore.material.color.lerp(mode.coreColor, 0.03);
+      innerCore.material.emissive.lerp(mode.coreEmissive, 0.03);
+      innerCore.material.emissiveIntensity +=
+        (mode.coreIntensity - innerCore.material.emissiveIntensity) * 0.03;
+    }
+  }
+
+  // ---- ORBIT RINGS ----
+  if (orbitRing) {
+    orbitRing.position.copy(glassSphere.position);
+    orbitRing.rotation.y = elapsed * 0.15;  // Very slow ring rotation
+    orbitRing.rotation.z = elapsed * 0.08;
+
+    const mode = modes[currentMode];
+    if (mode) {
+      orbitRing.material.color.lerp(mode.ringColor, 0.03);
+      orbitRing.material.emissive.lerp(mode.ringColor, 0.03);
+      orbitRing.material.emissiveIntensity +=
+        (mode.ringIntensity - orbitRing.material.emissiveIntensity) * 0.03;
+    }
+  }
+
+  if (innerRing) {
+    innerRing.position.copy(glassSphere.position);
+    innerRing.rotation.y = -elapsed * 0.22;  // Counter-rotate for interest
+    innerRing.rotation.x = elapsed * 0.12;
+
+    const mode = modes[currentMode];
+    if (mode) {
+      innerRing.material.color.lerp(mode.innerRingColor, 0.03);
+      innerRing.material.emissive.lerp(mode.innerRingColor, 0.03);
+      innerRing.material.emissiveIntensity +=
+        (mode.innerRingIntensity - innerRing.material.emissiveIntensity) * 0.03;
+    }
+  }
+
+  // ---- PARTICLE DRIFT ----
+  if (particleSystem) {
+    particleSystem.rotation.y = elapsed * 0.05;  // Very slow particle orbit
+    particleSystem.rotation.x = elapsed * 0.02;
+  }
+
+  // ---- GLASS MATERIAL MODE TRANSITIONS ----
+  if (glassSphere.material) {
+    const mode = modes[currentMode];
+    if (mode) {
+      glassSphere.material.attenuationColor.lerp(mode.glassColor, 0.02);
+      glassSphere.material.attenuationDistance +=
+        (mode.attenuationDist - glassSphere.material.attenuationDistance) * 0.02;
+    }
+  }
+
+  // ---- COLORED LIGHT ANIMATION ----
+  // Subtle variation in colored lights creates Gleb's "living" feel
+  fillLight.intensity = modes[currentMode]?.fillLight * (1.0 + Math.sin(elapsed * 0.7) * 0.1) || 0.9;
+  accentLight.intensity = modes[currentMode]?.accentLight * (1.0 + Math.sin(elapsed * 1.1 + 1.2) * 0.1) || 0.45;
+  rimLight.intensity = 0.7 + Math.sin(elapsed * 0.9 + 2.1) * 0.1;
+
+  // ---- RENDER ----
+  if (composer) {
+    composer.render();
+  } else {
+    renderer.render(scene, camera);
+  }
+}
+
+// ================================================================
+// RESIZE HANDLING
+// ================================================================
+
+function onResize() {
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  if (composer) {
+    composer.setSize(w, h);
+  }
+}
+window.addEventListener('resize', onResize);
+
+// ================================================================
+// BOOT SEQUENCE
+// Load environment first, then build scene
+// ================================================================
+
+tryLoadHDRI(hdriSources);
+
+// If HDRI takes too long, build scene with procedural env
+setTimeout(() => {
+  if (!sceneBuilt) {
+    console.log('HDRI timeout - building with procedural environment');
+    createProceduralEnv();
+    buildScene();
+  }
+}, 3000);
+
+animate();
+</script>
+</body>
+</html>

@@ -3,7 +3,7 @@ name: claim-verifier
 description: Adversarial fact-checker for thought leadership content accuracy
 tools: [Read, Write, Grep, Glob, WebFetch, WebSearch]
 skills: [scientific-inquiry, verification-before-completion, memory-first-protocol]
-model: sonnet-4-5
+model: opus
 created: 2025-12-29
 designed_by: agent-architect
 ---

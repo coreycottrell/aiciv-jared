@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-WTDXL4VJ');</script>
+<!-- End Google Tag Manager -->
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+(function(c,l,a,r,i,t,y){
+    c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+    t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+    y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+})(window, document, "clarity", "script", "viy9bnc56x");
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aether Avatar — Gleb Level v7</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #040608;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  #wrap {
+    position: relative;
+    width: 200px; height: 200px;
+  }
+  canvas {
+    width: 200px; height: 200px;
+    border-radius: 50%;
+    display: block;
+    position: absolute; top: 0; left: 0;
+  }
+  /* Gradient ring overlay */
+  #ring {
+    position: absolute; top: -3px; left: -3px;
+    width: 206px; height: 206px;
+    border-radius: 50%;
+    background: conic-gradient(
+      from 0deg,
+      #2a93c1 0%,
+      #4ab8e0 20%,
+      #f1420b 50%,
+      #ff6a3d 65%,
+      #2a93c1 100%
+    );
+    z-index: -1;
+    animation: ringRotate 8s linear infinite;
+  }
+  @keyframes ringRotate {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+  /* Ae monogram label */
+  #label {
+    position: absolute;
+    bottom: -26px; left: 50%;
+    transform: translateX(-50%);
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
+    color: rgba(160,200,255,0.7);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+</style>
+
+<!-- UNIVERSAL REFERRAL CODE CAPTURE — 90-day cookie + localStorage -->
+<script>
+(function() {
+  // Read ?ref= or ?code= from URL
+  var params = new URLSearchParams(window.location.search);
+  var ref = params.get('ref') || params.get('code');
+  
+  if (ref && /^[A-Za-z0-9-]{4,16}$/.test(ref)) {
+    // Store in localStorage
+    try { localStorage.setItem('pb_ref', ref); } catch(e) {}
+    // Store in cookie (90-day expiry, all paths, SameSite=Lax)
+    var expires = new Date();
+    expires.setDate(expires.getDate() + 90);
+    document.cookie = 'pb_ref=' + encodeURIComponent(ref) + '; expires=' + expires.toUTCString() + '; path=/; SameSite=Lax';
+    // Fire click tracking (non-blocking)
+    try {
+      fetch('https://app.purebrain.ai/api/referral/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referral_code: ref.toUpperCase() }),
+        keepalive: true
+      }).catch(function(){});
+    } catch(e) {}
+  }
+  
+  // Global helper: read stored referral code at payment time
+  // Checks URL first, then localStorage, then cookie
+  window.getPbRef = function() {
+    // 1. Check current URL
+    var p = new URLSearchParams(window.location.search);
+    var urlRef = p.get('ref') || p.get('code');
+    if (urlRef && /^[A-Za-z0-9-]{4,16}$/.test(urlRef)) return urlRef;
+    // 2. Check localStorage
+    try {
+      var ls = localStorage.getItem('pb_ref');
+      if (ls && /^[A-Za-z0-9-]{4,16}$/.test(ls)) return ls;
+    } catch(e) {}
+    // 3. Check cookie
+    var match = document.cookie.match(/(?:^|;)\s*pb_ref=([^;]+)/);
+    if (match) {
+      var decoded = decodeURIComponent(match[1]);
+      if (/^[A-Za-z0-9-]{4,16}$/.test(decoded)) return decoded;
+    }
+    return null;
+  };
+})();
+</script>
+
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-WTDXL4VJ"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+<div id="wrap">
+  <div id="ring"></div>
+  <canvas id="c" width="512" height="512"></canvas>
+  <div id="label">AETHER &middot; AI</div>
+</div>
+
+<script>
+(function() {
+"use strict";
+
+// ─── GL setup ───────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: true, premultipliedAlpha: false });
+if (!gl) {
+  // Fallback: try webgl1 — render note
+  const gl1 = canvas.getContext('webgl', { alpha: true });
+  if (!gl1) return;
+  document.body.style.background = '#040608';
+  return;
+}
+
+gl.enable(gl.BLEND);
+gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+
+const W = 512, H = 512;
+
+// ─── Shader helpers ─────────────────────────────────────────────────────────
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+    console.error(gl.getShaderInfoLog(s), src.slice(0, 300));
+  return s;
+}
+function link(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getLinkStatus) {} // ok
+  return p;
+}
+function makeQuad() {
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+  return buf;
+}
+function bindQuad(prog, buf, attr) {
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  const loc = gl.getAttribLocation(prog, attr);
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+function makeFBO(w, h) {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { tex, fb };
+}
+
+// ─── Quad buffer (shared) ────────────────────────────────────────────────────
+const quadBuf = makeQuad();
+
+// ─── FBOs ────────────────────────────────────────────────────────────────────
+const fboScene   = makeFBO(W, H);   // Background / scene behind glass
+const fboGlass   = makeFBO(W, H);   // Glass layer with refraction
+const fboCompose = makeFBO(W, H);   // Composite
+const fboBright  = makeFBO(W/2, H/2); // Bright areas for bloom
+const fboBlurH   = makeFBO(W/2, H/2);
+const fboBlurV   = makeFBO(W/2, H/2);
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  PASS 1: Background scene (fBm nebula + particle field + light probes)  ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+const VS_SIMPLE = `#version 300 es
+in vec2 aPos;
+out vec2 vUv;
+void main() { vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+const FS_SCENE = `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform float uTime;
+uniform vec2 uMouse;
+
+// ── Hash & FBM noise ──
+float hash13(vec3 p) {
+  p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+  p += dot(p, p.yxz + 33.33);
+  return fract((p.x + p.y) * p.z);
+}
+float vnoise(vec3 p) {
+  vec3 i = floor(p); vec3 f = fract(p);
+  f = f*f*(3.0-2.0*f);
+  return mix(
+    mix(mix(hash13(i),hash13(i+vec3(1,0,0)),f.x),mix(hash13(i+vec3(0,1,0)),hash13(i+vec3(1,1,0)),f.x),f.y),
+    mix(mix(hash13(i+vec3(0,0,1)),hash13(i+vec3(1,0,1)),f.x),mix(hash13(i+vec3(0,1,1)),hash13(i+vec3(1,1,1)),f.x),f.y),f.z);
+}
+float fbm(vec3 p) {
+  float v=0.0,a=0.5;
+  v+=a*vnoise(p);p*=2.1;a*=0.5;
+  v+=a*vnoise(p);p*=2.1;a*=0.5;
+  v+=a*vnoise(p);p*=2.1;a*=0.5;
+  v+=a*vnoise(p);
+  return v;
+}
+
+// ── Starfield ──
+float star(vec2 uv, vec2 center, float size) {
+  return smoothstep(size, size*0.2, length(uv - center));
+}
+
+void main() {
+  vec2 uv = vUv * 2.0 - 1.0;
+  float t = uTime * 0.08;
+
+  // Dark nebula background — blue-purple haze with orange wisps
+  vec3 p = vec3(uv * 1.4, t);
+  float n1 = fbm(p + vec3(0.0, 0.0, 0.0));
+  float n2 = fbm(p * 1.3 + vec3(5.2, 1.3, 0.0));
+  float n3 = fbm(p * 0.7 + vec3(-3.1, 4.7, 0.1));
+
+  // PureBrain blue nebula
+  vec3 blueNebula = vec3(0.05, 0.18, 0.42) * n1 * n1 * 2.2;
+  // Orange energy wisps
+  vec3 orangeWisp = vec3(0.55, 0.14, 0.02) * max(0.0, n2 - 0.45) * 3.0;
+  // Teal shimmer
+  vec3 tealShimmer = vec3(0.02, 0.22, 0.28) * max(0.0, n3 - 0.40) * 2.5;
+
+  vec3 col = blueNebula + orangeWisp + tealShimmer;
+  col = mix(vec3(0.008, 0.010, 0.018), col, 0.85);
+
+  // Scattered stars — 12 fixed positions using hash
+  float stars = 0.0;
+  for (int i = 0; i < 12; i++) {
+    float fi = float(i);
+    vec2 sc = vec2(hash13(vec3(fi, 1.7, 0.0)), hash13(vec3(fi, 3.1, 0.0))) * 2.0 - 1.0;
+    float brightness = hash13(vec3(fi, 7.3, 0.0));
+    float twinkle = 0.7 + 0.3 * sin(uTime * (0.5 + brightness * 1.5) + fi * 2.1);
+    stars += brightness * twinkle * star(uv, sc, 0.006 + brightness * 0.008);
+  }
+  col += vec3(0.85, 0.92, 1.0) * stars * 0.6;
+
+  // Rim vignette — darker center so glass stands out
+  float vign = 1.0 - smoothstep(0.3, 1.4, length(uv));
+  col *= 0.4 + vign * 0.6;
+
+  // Mouse-driven light probe — warm highlight from mouse position
+  vec2 mDir = uMouse * 2.0 - 1.0;
+  float mDist = length(uv - mDir * 0.5);
+  col += vec3(0.12, 0.22, 0.45) * smoothstep(1.2, 0.0, mDist) * 0.3;
+
+  fragColor = vec4(col, 1.0);
+}
+`;
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  PASS 2: Glass sphere with FBO-sampled refraction + caustics + IOR anim ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+const FS_GLASS = `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+
+uniform float uTime;
+uniform vec2 uMouse;
+uniform sampler2D uSceneTex;   // FBO: background scene
+
+// ── Math helpers ──
+const float PI = 3.14159265;
+
+// ── FBM for surface distortion & iridescence ──
+float hash13(vec3 p) {
+  p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+  p += dot(p, p.yxz + 33.33);
+  return fract((p.x + p.y) * p.z);
+}
+float vnoise(vec3 p) {
+  vec3 i = floor(p); vec3 f = fract(p);
+  f = f*f*(3.0-2.0*f);
+  return mix(
+    mix(mix(hash13(i),hash13(i+vec3(1,0,0)),f.x),mix(hash13(i+vec3(0,1,0)),hash13(i+vec3(1,1,0)),f.x),f.y),
+    mix(mix(hash13(i+vec3(0,0,1)),hash13(i+vec3(1,0,1)),f.x),mix(hash13(i+vec3(0,1,1)),hash13(i+vec3(1,1,1)),f.x),f.y),f.z);
+}
+float fbm3(vec3 p) {
+  float v=0.0,a=0.5;
+  v+=a*vnoise(p);p*=2.2;a*=0.5;
+  v+=a*vnoise(p);p*=2.2;a*=0.5;
+  v+=a*vnoise(p);
+  return v;
+}
+
+// ── Sphere ray intersection ──
+vec2 sphereHit(vec3 ro, vec3 rd, float r) {
+  float b = dot(ro, rd);
+  float c = dot(ro, ro) - r*r;
+  float disc = b*b - c;
+  if (disc < 0.0) return vec2(-1.0);
+  float sq = sqrt(disc);
+  return vec2(-b - sq, -b + sq);
+}
+
+// ── Analytical light model (PMREM-style custom probe) ──
+// 3 lights: warm key, PB blue fill, PB orange rim
+vec3 customEnv(vec3 n, float roughness) {
+  // Key light: warm white above-right
+  vec3 L0 = normalize(vec3(1.2, 1.8, 2.5));
+  float d0 = max(0.0, dot(n, L0));
+  vec3 c0 = vec3(1.0, 0.96, 0.88) * (pow(d0, 12.0) * 0.7 + pow(d0, 2.0) * 0.3);
+
+  // Fill: PureBrain blue left
+  vec3 L1 = normalize(vec3(-2.0, 0.5, 1.0));
+  float d1 = max(0.0, dot(n, L1));
+  vec3 c1 = vec3(0.16, 0.58, 0.86) * pow(d1, 4.0) * 0.6;
+
+  // Rim: PureBrain orange back-below
+  vec3 L2 = normalize(vec3(0.6, -0.8, -2.2));
+  float d2 = max(0.0, dot(n, L2));
+  vec3 c2 = vec3(0.95, 0.26, 0.04) * pow(d2, 6.0) * 0.8;
+
+  // Ambient: dark blue-teal sky
+  vec3 amb = mix(vec3(0.01, 0.02, 0.06), vec3(0.03, 0.08, 0.15), n.y * 0.5 + 0.5);
+
+  return (c0 + c1 + c2 + amb) * (1.0 - roughness * 0.5);
+}
+
+// ── Caustic light pattern (dual-layer normal map displacement) ──
+float causticLayer(vec2 uv, float t, float speed, float scale) {
+  vec2 p1 = uv * scale + vec2(t * speed, t * speed * 0.7);
+  vec2 p2 = uv * scale * 1.4 + vec2(-t * speed * 0.6, t * speed * 0.9);
+  float n1 = fbm3(vec3(p1, t * 0.05));
+  float n2 = fbm3(vec3(p2, t * 0.08 + 3.0));
+  // Gradient magnitude = caustic bright lines
+  float grad = abs(n1 - n2);
+  return 1.0 - smoothstep(0.0, 0.18, grad);
+}
+
+// ── Iridescence (thin film interference) ──
+vec3 iridescence(vec3 n, vec3 v, float thickness, float iorFilm) {
+  float cosTheta = abs(dot(n, v));
+  // Optical path difference
+  float opd = 2.0 * iorFilm * thickness * cosTheta;
+  // Map OPD to wavelength shift — creates spectral rainbow
+  float phi = opd * 6.28318;
+  vec3 iri;
+  iri.r = 0.5 + 0.5 * cos(phi + 0.0);
+  iri.g = 0.5 + 0.5 * cos(phi + 2.094);
+  iri.b = 0.5 + 0.5 * cos(phi + 4.189);
+  return iri;
+}
+
+// ── Pulse particles inside glass ──
+float neuralPulse(vec3 p, float t) {
+  float glow = 0.0;
+  // 8 pulse nodes on a fibonacci-like lattice inside the sphere
+  // Pre-named positions (GLSL ES safe)
+  vec3 n0 = vec3(0.50, 0.62, 0.28);
+  vec3 n1 = vec3(-0.48, 0.20, 0.55);
+  vec3 n2 = vec3(0.30, -0.58, 0.40);
+  vec3 n3 = vec3(-0.55, -0.25, -0.35);
+  vec3 n4 = vec3(0.18, 0.45, -0.62);
+  vec3 n5 = vec3(0.62, -0.30, -0.20);
+  vec3 n6 = vec3(-0.35, 0.55, -0.40);
+  vec3 n7 = vec3(-0.20, -0.48, 0.60);
+
+  // Phase-offset pulses for each node
+  float p0 = sin(t * 1.4 + 0.0) * 0.5 + 0.5;
+  float p1 = sin(t * 1.1 + 0.7) * 0.5 + 0.5;
+  float p2 = sin(t * 1.6 + 1.4) * 0.5 + 0.5;
+  float p3 = sin(t * 0.9 + 2.1) * 0.5 + 0.5;
+  float p4 = sin(t * 1.3 + 2.8) * 0.5 + 0.5;
+  float p5 = sin(t * 1.7 + 3.5) * 0.5 + 0.5;
+  float p6 = sin(t * 1.0 + 4.2) * 0.5 + 0.5;
+  float p7 = sin(t * 1.5 + 4.9) * 0.5 + 0.5;
+
+  float r = 0.08;
+  glow += p0 * smoothstep(r, 0.0, length(p - n0 * 0.62));
+  glow += p1 * smoothstep(r, 0.0, length(p - n1 * 0.62));
+  glow += p2 * smoothstep(r, 0.0, length(p - n2 * 0.62));
+  glow += p3 * smoothstep(r, 0.0, length(p - n3 * 0.62));
+  glow += p4 * smoothstep(r, 0.0, length(p - n4 * 0.62));
+  glow += p5 * smoothstep(r, 0.0, length(p - n5 * 0.62));
+  glow += p6 * smoothstep(r, 0.0, length(p - n6 * 0.62));
+  glow += p7 * smoothstep(r, 0.0, length(p - n7 * 0.62));
+
+  return clamp(glow, 0.0, 1.0);
+}
+
+void main() {
+  vec2 uv = vUv * 2.0 - 1.0;
+  float t = uTime;
+  float asp = 1.0; // square canvas
+
+  // Ray origin and direction (orthographic-ish, tight FOV)
+  vec3 ro = vec3(uv.x * asp, uv.y, 2.8);
+  vec3 rd = normalize(vec3(0.0, 0.0, -1.0));
+
+  // Subtle mouse parallax on ray direction
+  vec2 m = (uMouse - 0.5) * 2.0;
+  rd = normalize(rd + vec3(m * 0.04, 0.0));
+
+  // ── IOR animation — "woosh" breathing glass ──
+  // Oscillates between 1.30 (light glass) and 1.58 (dense glass)
+  float iorBase = 1.28 + 0.22 * sin(t * 2.2);
+  // Chromatic IOR split — per-channel for dispersion
+  float iorR = iorBase - 0.03;
+  float iorG = iorBase;
+  float iorB = iorBase + 0.04;
+
+  float sphereR = 0.78;
+  float innerR  = 0.72;
+
+  vec2 hit = sphereHit(ro, rd, sphereR);
+
+  // Default: sample scene texture (transparent background shows through)
+  vec3 sceneSample = texture(uSceneTex, vUv).rgb;
+  fragColor = vec4(0.0, 0.0, 0.0, 0.0);
+
+  if (hit.x < 0.0) {
+    // Miss — transparent
+    return;
+  }
+
+  // ── Outer sphere surface ──
+  vec3 hitOuter = ro + rd * hit.x;
+  vec3 normOuter = normalize(hitOuter);
+
+  // ── Refracted ray (3-channel chromatic dispersion) ──
+  vec3 rdR = refract(rd, normOuter, 1.0 / iorR);
+  vec3 rdG = refract(rd, normOuter, 1.0 / iorG);
+  vec3 rdB = refract(rd, normOuter, 1.0 / iorB);
+
+  // ── FBM surface deformation — ripple on the glass ──
+  // Adds subtle surface warp — more alive than perfect sphere
+  float surfaceNoise = fbm3(vec3(normOuter.xy * 3.0, t * 0.4)) * 0.03;
+  vec3 nDistorted = normalize(normOuter + vec3(surfaceNoise, surfaceNoise * 0.7, 0.0));
+
+  // ── Sample scene through refracted rays for each channel ──
+  // Project refracted ray to UV for FBO sampling
+  // Glass shell thickness — refracted ray exits at inner sphere
+  vec2 hitInner = sphereHit(hitOuter + rdG * 0.001, rdG, innerR);
+  vec3 exitPoint = hitOuter + rdG * 0.001 + rdG * max(0.0, hitInner.y);
+  // Map exit point to UV for scene sampling
+  vec2 refractUvG = (exitPoint.xy / 2.8) * 0.5 + 0.5;
+
+  // Per-channel offset (chromatic aberration in refraction)
+  float caScale = 0.018 + 0.006 * sin(t * 1.1);
+  vec2 caOffR = normOuter.xy * (-caScale * 1.2);
+  vec2 caOffB = normOuter.xy * (caScale * 1.4);
+
+  // Sample scene texture through refracted UV + CA offsets
+  float scR = texture(uSceneTex, refractUvG + caOffR).r;
+  float scG = texture(uSceneTex, refractUvG).g;
+  float scB = texture(uSceneTex, refractUvG + caOffB).b;
+  vec3 refractedScene = vec3(scR, scG, scB);
+
+  // ── Beer-Lambert tinted glass absorption ──
+  // Glass tint: PureBrain blue with depth-dependent absorption
+  float glassThickness = hit.y - hit.x;
+  vec3 glassTint = vec3(0.72, 0.90, 0.98);  // subtle cyan-blue tint
+  vec3 absorption = exp(-vec3(0.12, 0.04, 0.02) * glassThickness * 1.8);
+  refractedScene *= absorption * glassTint;
+
+  // ── Caustic light patterns (projected on inner surface) ──
+  vec2 causticUv = normOuter.xy * 2.0 + vec2(t * 0.03, t * 0.02);
+  float caustic1 = causticLayer(causticUv, t, 0.12, 1.8);
+  float caustic2 = causticLayer(causticUv + vec2(1.4, 0.7), t, 0.09, 2.3);
+  float causticMask = (caustic1 * 0.6 + caustic2 * 0.4) * 0.22;
+  // Blue and orange caustic light
+  vec3 causticColor = mix(vec3(0.20, 0.55, 0.98), vec3(0.98, 0.38, 0.08), caustic2);
+  vec3 causticLight = causticColor * causticMask;
+
+  // ── Neural pulse particles inside glass ──
+  float pulse = neuralPulse(normOuter, t);
+  // Blue particles + orange accent
+  vec3 pulseColor = mix(vec3(0.30, 0.72, 1.00), vec3(1.0, 0.40, 0.10), smoothstep(0.5, 0.9, pulse));
+  vec3 pulseGlow = pulseColor * pulse * 0.35;
+
+  // ── Iridescence (thin film on glass surface) ──
+  // FBM thickness variation — not uniform film = more organic
+  float filmThick = 0.08 + 0.05 * fbm3(vec3(normOuter * 4.0 + t * 0.1));
+  vec3 iriColor = iridescence(normOuter, -rd, filmThick, 1.35);
+  float iriStrength = 0.38 + 0.10 * sin(t * 0.7); // breathes gently
+
+  // ── Fresnel (view-angle reflectivity) ──
+  float cosV = abs(dot(normOuter, -rd));
+  float F0 = 0.06; // glass base reflectivity
+  float fresnel = F0 + (1.0 - F0) * pow(1.0 - cosV, 5.0);
+
+  // ── Specular reflection from custom PMREM probe ──
+  vec3 reflected = reflect(rd, nDistorted);
+  vec3 specEnv = customEnv(reflected, 0.04);
+  vec3 specular = specEnv * fresnel * 1.2;
+
+  // ── Emissive core glow (orange energy heart) ──
+  // Seen at glancing angles through transmission
+  float coreGlow = smoothstep(0.7, 0.0, length(normOuter - vec3(0.0, 0.0, 1.0)));
+  vec3 coreColor = vec3(0.95, 0.30, 0.05) * coreGlow * 0.18;
+
+  // ── Diffuse transmission (ambient glass glow) ──
+  vec3 diffuseEnv = customEnv(normOuter, 0.2);
+  vec3 transmission = refractedScene + causticLight + pulseGlow + coreColor;
+  transmission += diffuseEnv * 0.08;
+
+  // ── Iridescence layered on top ──
+  vec3 glassSurface = mix(transmission, iriColor * 0.5 + transmission * 0.5, iriStrength * (1.0 - fresnel));
+
+  // ── Combine: transmission + surface reflection ──
+  vec3 finalColor = mix(glassSurface, specular + glassSurface * 0.2, fresnel);
+
+  // ── Inner glass edge glow (rim light inside sphere) ──
+  float edgeMask = smoothstep(0.60, 0.78, length(hitOuter.xy));
+  vec3 rimGlow = mix(
+    vec3(0.18, 0.55, 0.98),   // blue rim
+    vec3(0.95, 0.32, 0.06),   // orange rim at bottom
+    smoothstep(-0.2, 0.5, hitOuter.y)
+  ) * edgeMask * 0.55;
+  finalColor += rimGlow;
+
+  // ── Disc alpha — circular avatar crop ──
+  float disc = smoothstep(0.78, 0.75, length(hitOuter.xy));
+  float alpha = disc;
+
+  // Small "Ae" monogram glow at center — very subtle
+  float mDist = length(uv * vec2(1.0, 1.6) - vec2(0.02, -0.05));
+  float monogram = smoothstep(0.18, 0.0, mDist) * 0.12;
+  finalColor += vec3(0.72, 0.90, 1.0) * monogram;
+
+  // Tone map — gentle, not blown out
+  finalColor = finalColor / (finalColor + vec3(0.85));
+  finalColor = pow(finalColor, vec3(0.92));
+
+  fragColor = vec4(finalColor * alpha, alpha);
+}
+`;
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  PASS 3: Extract bright pixels for bloom                                ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+const FS_BRIGHT = `#version 300 es
+precision mediump float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D uTex;
+uniform float uThreshold;
+void main() {
+  vec4 col = texture(uTex, vUv);
+  float lum = dot(col.rgb, vec3(0.2126, 0.7152, 0.0722));
+  float bright = max(0.0, lum - uThreshold);
+  fragColor = vec4(col.rgb * (bright / max(lum, 0.001)), col.a);
+}
+`;
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  PASS 4: Gaussian blur (separable, 9-tap)                               ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+const FS_BLUR = `#version 300 es
+precision mediump float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D uTex;
+uniform vec2 uDir;
+const float weights[5] = float[](0.2270270270, 0.1945945946, 0.1216216216, 0.0540540541, 0.0162162162);
+void main() {
+  vec4 result = texture(uTex, vUv) * weights[0];
+  for (int i = 1; i < 5; i++) {
+    vec2 off = uDir * float(i);
+    result += texture(uTex, vUv + off) * weights[i];
+    result += texture(uTex, vUv - off) * weights[i];
+  }
+  fragColor = result;
+}
+`;
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  PASS 5: Composite everything + postprocessing                          ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+const FS_COMPOSITE = `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D uScene;
+uniform sampler2D uGlass;
+uniform sampler2D uBloom;
+uniform float uTime;
+uniform vec2 uMouse;
+
+float hash21(vec2 p) {
+  p = fract(p * vec2(234.34, 435.345));
+  p += dot(p, p + 34.23);
+  return fract(p.x * p.y);
+}
+
+void main() {
+  vec2 uv = vUv;
+
+  // Sample all layers
+  vec4 scene = texture(uScene, uv);
+  vec4 glass = texture(uGlass, uv);
+  vec4 bloom  = texture(uBloom, uv);
+
+  // ── Chromatic aberration on final composite ──
+  float caAmt = 0.003 + 0.001 * sin(uTime * 0.8);
+  vec2 uvR = uv + vec2(caAmt, 0.0);
+  vec2 uvB = uv - vec2(caAmt, 0.0);
+  float glassR = texture(uGlass, uvR).r;
+  float glassG = glass.g;
+  float glassB = texture(uGlass, uvB).b;
+  float glassA = glass.a;
+
+  // Composite: scene behind, glass on top using alpha blend
+  vec3 col = scene.rgb;
+  vec3 glassFinal = vec3(glassR, glassG, glassB);
+  col = mix(col, glassFinal, glassA);
+
+  // Add bloom (additive, conservative)
+  col += bloom.rgb * 0.55;
+
+  // ── Vignette ──
+  vec2 cv = (uv - 0.5) * 2.0;
+  float vign = 1.0 - smoothstep(0.5, 1.4, length(cv));
+  col *= 0.72 + vign * 0.28;
+
+  // ── Film grain (very subtle) ──
+  float grain = hash21(uv + fract(uTime * 0.017)) - 0.5;
+  col += grain * 0.012;
+
+  // ── Circular mask — avatar is round ──
+  float r = length(cv);
+  float mask = smoothstep(1.02, 0.96, r);
+  float alpha = glassA * mask + scene.a * (1.0 - glassA) * mask;
+  // For standalone: show full circle
+  alpha = mask;
+
+  fragColor = vec4(col * mask, mask);
+}
+`;
+
+// ─── Build all programs ──────────────────────────────────────────────────────
+const progScene     = link(VS_SIMPLE, FS_SCENE);
+const progGlass     = link(VS_SIMPLE, FS_GLASS);
+const progBright    = link(VS_SIMPLE, FS_BRIGHT);
+const progBlur      = link(VS_SIMPLE, FS_BLUR);
+const progComposite = link(VS_SIMPLE, FS_COMPOSITE);
+
+// ─── Uniform locations (scene) ───────────────────────────────────────────────
+function u(prog, name) { return gl.getUniformLocation(prog, name); }
+
+const uScene = {
+  time:  u(progScene, 'uTime'),
+  mouse: u(progScene, 'uMouse'),
+};
+const uGlass = {
+  time:  u(progGlass, 'uTime'),
+  mouse: u(progGlass, 'uMouse'),
+  scene: u(progGlass, 'uSceneTex'),
+};
+const uBright = {
+  tex:       u(progBright, 'uTex'),
+  threshold: u(progBright, 'uThreshold'),
+};
+const uBlur = {
+  tex: u(progBlur, 'uTex'),
+  dir: u(progBlur, 'uDir'),
+};
+const uComp = {
+  scene: u(progComposite, 'uScene'),
+  glass: u(progComposite, 'uGlass'),
+  bloom: u(progComposite, 'uBloom'),
+  time:  u(progComposite, 'uTime'),
+  mouse: u(progComposite, 'uMouse'),
+};
+
+// ─── Render helpers ──────────────────────────────────────────────────────────
+function setTex(unit, tex) {
+  gl.activeTexture(gl.TEXTURE0 + unit);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+}
+function renderPass(prog, fbo, w, h, fn) {
+  if (fbo) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo.fb);
+    gl.viewport(0, 0, w, h);
+  } else {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, W, H);
+  }
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.useProgram(prog);
+  bindQuad(prog, quadBuf, 'aPos');
+  fn(prog);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+// ─── State ──────────────────────────────────────────────────────────────────
+let mouse = { x: 0.5, y: 0.5 };
+let targetMouse = { x: 0.5, y: 0.5 };
+let startTime = performance.now();
+
+canvas.addEventListener('mousemove', e => {
+  const r = canvas.getBoundingClientRect();
+  targetMouse.x = (e.clientX - r.left) / r.width;
+  targetMouse.y = 1.0 - (e.clientY - r.top) / r.height;
+});
+canvas.addEventListener('mouseleave', () => {
+  targetMouse = { x: 0.5, y: 0.5 };
+});
+
+// ─── Render loop ─────────────────────────────────────────────────────────────
+function frame() {
+  const t = (performance.now() - startTime) * 0.001;
+
+  // Spring mouse (0.055 = premium feel)
+  mouse.x += (targetMouse.x - mouse.x) * 0.055;
+  mouse.y += (targetMouse.y - mouse.y) * 0.055;
+
+  // ── PASS 1: Render scene to FBO ──
+  renderPass(progScene, fboScene, W, H, p => {
+    gl.uniform1f(uScene.time, t);
+    gl.uniform2f(uScene.mouse, mouse.x, mouse.y);
+  });
+
+  // ── PASS 2: Render glass (samples scene FBO) ──
+  setTex(0, fboScene.tex);
+  renderPass(progGlass, fboGlass, W, H, p => {
+    gl.uniform1f(uGlass.time, t);
+    gl.uniform2f(uGlass.mouse, mouse.x, mouse.y);
+    gl.uniform1i(uGlass.scene, 0);
+  });
+
+  // ── PASS 3: Extract bright for bloom ──
+  setTex(0, fboGlass.tex);
+  renderPass(progBright, fboBright, W/2, H/2, p => {
+    gl.uniform1i(uBright.tex, 0);
+    gl.uniform1f(uBright.threshold, 0.45); // conservative threshold
+  });
+
+  // ── PASS 4a: Horizontal blur ──
+  setTex(0, fboBright.tex);
+  renderPass(progBlur, fboBlurH, W/2, H/2, p => {
+    gl.uniform1i(uBlur.tex, 0);
+    gl.uniform2f(uBlur.dir, 2.0/(W/2), 0.0);
+  });
+
+  // ── PASS 4b: Vertical blur ──
+  setTex(0, fboBlurH.tex);
+  renderPass(progBlur, fboBlurV, W/2, H/2, p => {
+    gl.uniform1i(uBlur.tex, 0);
+    gl.uniform2f(uBlur.dir, 0.0, 2.0/(H/2));
+  });
+
+  // ── PASS 5: Composite to screen ──
+  setTex(0, fboScene.tex);
+  setTex(1, fboGlass.tex);
+  setTex(2, fboBlurV.tex);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, W, H);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.useProgram(progComposite);
+  bindQuad(progComposite, quadBuf, 'aPos');
+  gl.uniform1i(uComp.scene, 0);
+  gl.uniform1i(uComp.glass, 1);
+  gl.uniform1i(uComp.bloom, 2);
+  gl.uniform1f(uComp.time, t);
+  gl.uniform2f(uComp.mouse, mouse.x, mouse.y);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  requestAnimationFrame(frame);
+}
+
+// Init clear color
+gl.clearColor(0.0, 0.0, 0.0, 0.0);
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>

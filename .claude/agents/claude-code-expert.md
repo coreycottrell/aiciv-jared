@@ -3,7 +3,7 @@ name: claude-code-expert
 description: Claude Code CLI mastery specialist - platform optimization, tool expertise, and workflow efficiency for maximum AI effectiveness
 tools: [Read, Write, Grep, Glob, Bash, WebFetch, WebSearch]
 skills: [claude-code-ecosystem, claude-code-mastery, claude-code-conversation, verification-before-completion, memory-first-protocol]
-model: sonnet-4-5
+model: opus
 created: 2025-10-06
 role: Platform specialist and tool optimization consultant
 status: UNTESTED (0 invocations - hypothesis stage)

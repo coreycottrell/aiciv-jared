@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 11 V3: Animated Caustics Glass Sphere</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #080a12; overflow: hidden; }
+  canvas { display: block; }
+  #info {
+    position: fixed; bottom: 20px; left: 20px; color: rgba(255,255,255,0.4);
+    font: 12px/1.4 monospace; z-index: 10;
+  }
+</style>
+</head>
+<body>
+<div id="info">Night 11 V3 — Animated Caustics Glass Sphere<br>Technique: Projected caustic patterns + multi-layer Fresnel refraction</div>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#080a12');
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 0.8, 5);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+// === CAUSTIC PATTERN GENERATION ===
+// Real-time procedural caustics projected onto surfaces
+const causticsVert = `
+  varying vec2 vUv;
+  varying vec3 vWorldPos;
+  void main() {
+    vUv = uv;
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vWorldPos = wp.xyz;
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
+
+const causticsFrag = `
+  uniform float uTime;
+  uniform vec3 uLightPos;
+  uniform float uCausticScale;
+  uniform float uCausticIntensity;
+  uniform vec3 uCausticColor;
+
+  varying vec2 vUv;
+  varying vec3 vWorldPos;
+
+  // Voronoi-based caustic pattern (simulates light focusing through curved glass)
+  vec2 hash2(vec2 p) {
+    p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+    return fract(sin(p) * 43758.5453123);
+  }
+
+  float voronoi(vec2 x, float time) {
+    vec2 n = floor(x);
+    vec2 f = fract(x);
+
+    float md = 8.0;
+    for (int j = -1; j <= 1; j++) {
+      for (int i = -1; i <= 1; i++) {
+        vec2 g = vec2(float(i), float(j));
+        vec2 o = hash2(n + g);
+        // Animate cell centers — this creates the swimming caustic effect
+        o = 0.5 + 0.5 * sin(time * 0.8 + 6.2831 * o);
+        vec2 r = g + o - f;
+        float d = dot(r, r);
+        md = min(md, d);
+      }
+    }
+    return md;
+  }
+
+  float causticPattern(vec2 uv, float time) {
+    // Layer two voronoi at different scales for realistic caustics
+    float c1 = voronoi(uv * 3.0, time);
+    float c2 = voronoi(uv * 5.0 + 3.7, time * 1.3);
+
+    // Caustics are bright where light focuses (low voronoi = cell edge = light focus)
+    float caustic = pow(1.0 - c1, 3.0) * 0.6 + pow(1.0 - c2, 4.0) * 0.4;
+
+    // Sharp bright lines where multiple cells meet
+    caustic = pow(caustic, 1.5);
+
+    return caustic;
+  }
+
+  void main() {
+    // Project caustics from light position onto surface
+    vec3 lightDir = normalize(uLightPos - vWorldPos);
+    vec2 causticUV = vWorldPos.xz * uCausticScale;
+
+    // Slight distortion based on light angle
+    causticUV += lightDir.xz * 0.3;
+
+    float c = causticPattern(causticUV, uTime);
+
+    // Distance falloff from light
+    float dist = length(uLightPos - vWorldPos);
+    float falloff = 1.0 / (1.0 + dist * dist * 0.1);
+
+    vec3 color = uCausticColor * c * uCausticIntensity * falloff;
+
+    gl_FragColor = vec4(color, c * 0.7);
+  }
+`;
+
+// === GROUND PLANE with caustics ===
+const groundGeo = new THREE.PlaneGeometry(20, 20);
+const groundMat = new THREE.ShaderMaterial({
+  vertexShader: causticsVert,
+  fragmentShader: causticsFrag,
+  uniforms: {
+    uTime: { value: 0 },
+    uLightPos: { value: new THREE.Vector3(2, 5, 3) },
+    uCausticScale: { value: 0.8 },
+    uCausticIntensity: { value: 2.5 },
+    uCausticColor: { value: new THREE.Color(0x4488ff) }
+  },
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -1.8;
+scene.add(ground);
+
+// Solid dark ground underneath
+const solidGround = new THREE.Mesh(
+  new THREE.PlaneGeometry(20, 20),
+  new THREE.MeshStandardMaterial({ color: 0x0a0a1a, roughness: 0.8, metalness: 0.2 })
+);
+solidGround.rotation.x = -Math.PI / 2;
+solidGround.position.y = -1.81;
+solidGround.receiveShadow = true;
+scene.add(solidGround);
+
+// === MAIN GLASS SPHERE with multi-layer Fresnel ===
+const sphereGeo = new THREE.SphereGeometry(1.0, 128, 128);
+
+// Outer glass shell
+const outerMat = new THREE.MeshPhysicalMaterial({
+  color: 0x88bbff,
+  metalness: 0.0,
+  roughness: 0.0,
+  transmission: 0.96,
+  thickness: 3.0,
+  ior: 1.52,
+  attenuationColor: new THREE.Color(0x3355cc),
+  attenuationDistance: 2.0,
+  clearcoat: 1.0,
+  clearcoatRoughness: 0.02,
+  envMapIntensity: 2.0,
+  transparent: true,
+  side: THREE.FrontSide
+});
+const outerSphere = new THREE.Mesh(sphereGeo, outerMat);
+outerSphere.castShadow = true;
+scene.add(outerSphere);
+
+// Inner refraction layer — slightly smaller, different IOR
+const innerSphereGeo = new THREE.SphereGeometry(0.75, 64, 64);
+const innerMat = new THREE.MeshPhysicalMaterial({
+  color: 0xaaccff,
+  metalness: 0.0,
+  roughness: 0.0,
+  transmission: 0.98,
+  thickness: 2.0,
+  ior: 1.8,  // Higher IOR = more visible refraction layer
+  attenuationColor: new THREE.Color(0x6644ff),
+  attenuationDistance: 0.8,
+  transparent: true,
+  side: THREE.FrontSide
+});
+const innerSphere = new THREE.Mesh(innerSphereGeo, innerMat);
+scene.add(innerSphere);
+
+// Core emissive — the "soul"
+const coreGeo = new THREE.IcosahedronGeometry(0.25, 3);
+const coreMat = new THREE.MeshStandardMaterial({
+  color: 0xffffff,
+  emissive: 0x6644ff,
+  emissiveIntensity: 5.0,
+  metalness: 1.0,
+  roughness: 0.0
+});
+const core = new THREE.Mesh(coreGeo, coreMat);
+scene.add(core);
+
+// Energy filaments inside the sphere
+const filamentGroup = new THREE.Group();
+for (let i = 0; i < 6; i++) {
+  const curve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(
+      (Math.random() - 0.5) * 0.6,
+      (Math.random() - 0.5) * 0.6,
+      (Math.random() - 0.5) * 0.6
+    ),
+    new THREE.Vector3(
+      (Math.random() - 0.5) * 1.2,
+      (Math.random() - 0.5) * 1.2,
+      (Math.random() - 0.5) * 1.2
+    )
+  ]);
+  const tubGeo = new THREE.TubeGeometry(curve, 20, 0.008, 4, false);
+  const tubMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color().setHSL(0.7 + Math.random() * 0.15, 0.8, 0.7),
+    transparent: true,
+    opacity: 0.5,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  filamentGroup.add(new THREE.Mesh(tubGeo, tubMat));
+}
+scene.add(filamentGroup);
+
+// Orbiting small glass droplets
+const droplets = [];
+for (let i = 0; i < 5; i++) {
+  const dGeo = new THREE.SphereGeometry(0.08 + Math.random() * 0.06, 16, 16);
+  const dMat = new THREE.MeshPhysicalMaterial({
+    color: 0xaaddff,
+    metalness: 0.0,
+    roughness: 0.0,
+    transmission: 0.9,
+    thickness: 0.3,
+    ior: 1.5,
+    emissive: 0x4466cc,
+    emissiveIntensity: 1.0
+  });
+  const droplet = new THREE.Mesh(dGeo, dMat);
+  droplet.userData = {
+    angle: (i / 5) * Math.PI * 2,
+    radius: 1.6 + Math.random() * 0.4,
+    height: (Math.random() - 0.5) * 0.8,
+    speed: 0.2 + Math.random() * 0.15,
+    tilt: Math.random() * 0.5
+  };
+  scene.add(droplet);
+  droplets.push(droplet);
+}
+
+// === LIGHTING for caustic generation ===
+const mainLight = new THREE.SpotLight(0x6688ff, 8, 20, Math.PI * 0.3, 0.5);
+mainLight.position.set(2, 5, 3);
+mainLight.castShadow = true;
+mainLight.shadow.mapSize.set(1024, 1024);
+mainLight.lookAt(0, 0, 0);
+scene.add(mainLight);
+
+const fillLight = new THREE.PointLight(0xff6644, 2, 12);
+fillLight.position.set(-3, 1, 2);
+scene.add(fillLight);
+
+const rimLight = new THREE.PointLight(0xaa44ff, 3, 15);
+rimLight.position.set(0, -2, -4);
+scene.add(rimLight);
+
+const ambient = new THREE.AmbientLight(0x0a0a22, 0.8);
+scene.add(ambient);
+
+// === POST-PROCESSING ===
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloom = new UnrealBloomPass(
+  new THREE.Vector2(innerWidth, innerHeight), 0.9, 0.4, 0.8
+);
+composer.addPass(bloom);
+
+// Chromatic aberration + grain + vignette final pass
+const finalShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uTime: { value: 0 },
+    uCAStrength: { value: 0.003 }
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uTime;
+    uniform float uCAStrength;
+    varying vec2 vUv;
+
+    float rand(vec2 co){ return fract(sin(dot(co, vec2(12.9898,78.233))) * 43758.5453); }
+
+    void main(){
+      vec2 dir = vUv - 0.5;
+      float dist = length(dir);
+
+      // Chromatic aberration — stronger at edges
+      float ca = uCAStrength * dist;
+      float r = texture2D(tDiffuse, vUv + dir * ca).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vUv - dir * ca).b;
+      vec3 color = vec3(r, g, b);
+
+      // Film grain
+      float grain = rand(vUv + fract(uTime)) * 0.04;
+      color += grain - 0.02;
+
+      // Vignette
+      color *= 1.0 - dist * dist * 0.45;
+
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `
+};
+composer.addPass(new ShaderPass(finalShader));
+
+// === ANIMATION ===
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // Caustics animation
+  groundMat.uniforms.uTime.value = t;
+  finalShader.uniforms.uTime.value = t;
+
+  // Animate light position for moving caustics
+  mainLight.position.x = 2 + Math.sin(t * 0.3) * 1.5;
+  mainLight.position.z = 3 + Math.cos(t * 0.25) * 1.0;
+  groundMat.uniforms.uLightPos.value.copy(mainLight.position);
+
+  // Sphere breathing
+  const breathe = 1.0 + Math.sin(t * 0.7) * 0.03;
+  outerSphere.scale.setScalar(breathe);
+  innerSphere.scale.setScalar(breathe * 0.75);
+
+  // Core rotation + pulse
+  core.rotation.y = t * 0.6;
+  core.rotation.x = t * 0.35;
+  coreMat.emissiveIntensity = 4.0 + Math.sin(t * 2.0) * 2.0;
+
+  // Filament rotation
+  filamentGroup.rotation.y = t * 0.2;
+  filamentGroup.rotation.x = t * 0.12;
+
+  // Droplet orbits
+  droplets.forEach(d => {
+    const u = d.userData;
+    u.angle += u.speed * 0.016;
+    d.position.x = Math.cos(u.angle) * u.radius;
+    d.position.z = Math.sin(u.angle) * u.radius;
+    d.position.y = u.height + Math.sin(t * 0.5 + u.angle) * 0.3 + u.tilt * Math.sin(u.angle);
+  });
+
+  // Camera gentle orbit
+  camera.position.x = Math.sin(t * 0.08) * 0.5;
+  camera.position.y = 0.8 + Math.cos(t * 0.06) * 0.3;
+  camera.lookAt(0, 0, 0);
+
+  composer.render();
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

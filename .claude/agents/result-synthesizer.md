@@ -3,7 +3,7 @@ name: result-synthesizer
 description: Multi-agent result synthesis and consolidation specialist
 tools: [Read, Write, Grep, Glob]
 skills: [session-handoff-creation, verification-before-completion, memory-first-protocol]
-model: sonnet-4-5
+model: opus
 created: 2025-10-03
 ---
 

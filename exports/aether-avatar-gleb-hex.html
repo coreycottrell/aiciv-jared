@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aether — PureBrain AI Avatar</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --blue:   #2a93c1;
+  --orange: #f1420b;
+  --bg:     #060606;
+  --gold:   #C8A84A;
+  --text:   #dce8f0;
+  --dim:    rgba(220,232,240,0.38);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-x: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ---- HEADER ---- */
+header {
+  width: 100%;
+  max-width: 620px;
+  padding: 22px 20px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 20;
+}
+
+.logo {
+  font-family: 'Oswald', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  line-height: 1;
+}
+.logo .b { color: var(--blue); }
+.logo .o { color: var(--orange); text-shadow: 0 0 10px rgba(241,66,11,0.5); }
+
+.agent-tag {
+  font-size: 0.70rem;
+  letter-spacing: 0.18em;
+  color: var(--dim);
+  text-transform: uppercase;
+  font-weight: 400;
+}
+
+/* ---- CANVAS WRAP ---- */
+#cw {
+  position: relative;
+  width: 100%;
+  max-width: 580px;
+  aspect-ratio: 1;
+  background: var(--bg);
+}
+
+#cw canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Gleb colored light halo around canvas */
+#cw::after {
+  content: '';
+  position: absolute;
+  inset: -30px;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse 60% 60% at 65% 28%, rgba(42,147,193,0.07) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 50% at 30% 72%, rgba(241,66,11,0.06) 0%, transparent 55%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Demo badge */
+#demo-badge {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  font-size: 0.60rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+  padding: 5px 10px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 24px;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  z-index: 10;
+  transition: all 0.3s ease;
+}
+#demo-badge.on { color: var(--gold); border-color: rgba(200,168,74,0.4); }
+
+/* ---- CONTROLS ---- */
+#controls {
+  display: flex;
+  gap: 9px;
+  margin: 16px 0 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+  z-index: 20;
+}
+
+.btn {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.70rem;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  padding: 7px 15px;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 40px;
+  background: rgba(255,255,255,0.035);
+  color: var(--dim);
+  cursor: pointer;
+  transition: all 0.28s ease;
+  backdrop-filter: blur(5px);
+  outline: none;
+}
+.btn:hover { background: rgba(255,255,255,0.08); color: var(--text); border-color: rgba(255,255,255,0.2); transform: translateY(-1px); }
+.btn[data-mode="idle"].active    { color: var(--blue);   border-color: var(--blue);   background: rgba(42,147,193,0.11);  box-shadow: 0 0 12px rgba(42,147,193,0.2); }
+.btn[data-mode="speaking"].active{ color: var(--orange); border-color: var(--orange); background: rgba(241,66,11,0.11);   box-shadow: 0 0 12px rgba(241,66,11,0.25); }
+.btn[data-mode="thinking"].active{ color: #a57de8;       border-color: #a57de8;       background: rgba(165,125,232,0.11); box-shadow: 0 0 12px rgba(165,125,232,0.2); }
+.btn[data-mode="listening"].active{color: #18a8d3;       border-color: #18a8d3;       background: rgba(24,168,211,0.11);  box-shadow: 0 0 12px rgba(24,168,211,0.2); }
+
+/* ---- STATUS ---- */
+#status {
+  font-size: 0.68rem;
+  letter-spacing: 0.20em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 14px;
+  height: 16px;
+  transition: color 0.5s;
+}
+
+/* ---- FOOTER ---- */
+footer {
+  margin-top: auto;
+  padding: 14px 20px 20px;
+  font-size: 0.60rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(220,232,240,0.16);
+  text-align: center;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><span class="b">PUREBR</span><span class="o">AI</span><span class="b">N</span></div>
+  <div class="agent-tag">Aether &nbsp;&bull;&nbsp; AI Entity</div>
+</header>
+
+<div id="cw">
+  <div id="demo-badge" class="on">Auto Demo</div>
+</div>
+
+<div id="controls">
+  <button class="btn active" data-mode="idle">Idle</button>
+  <button class="btn"        data-mode="speaking">Speaking</button>
+  <button class="btn"        data-mode="thinking">Thinking</button>
+  <button class="btn"        data-mode="listening">Listening</button>
+</div>
+
+<div id="status">Idle — Blue Calm</div>
+
+<footer>PureBrain AI &bull; Aether Avatar v3 Definitive &bull; Hexagonal Glass</footer>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer }  from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }      from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass }      from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass }      from 'three/addons/postprocessing/OutputPass.js';
+
+// ============================================================
+// COLOR CONSTANTS
+// ============================================================
+const C = {
+  blue:   new THREE.Color(0x2a93c1),
+  orange: new THREE.Color(0xf1420b),
+  gold:   new THREE.Color(0xC8A84A),
+  cyan:   new THREE.Color(0x18A8D3),
+  violet: new THREE.Color(0x7b4fc9),
+  magenta:new THREE.Color(0xD10DCE),
+  bg:     new THREE.Color(0x060606),
+  bgDeep: new THREE.Color(0x020204),
+};
+
+// ============================================================
+// MODE DEFINITIONS
+// ============================================================
+const MODES = {
+  idle:     { label:'Idle — Blue Calm',         core:C.blue,   rim:C.cyan,   bloom:0.42, speed:0.60, envBlueStr:0.55, envOrangeStr:0.10 },
+  speaking: { label:'Speaking — Energy Active', core:C.orange, rim:C.orange, bloom:0.72, speed:1.45, envBlueStr:0.18, envOrangeStr:0.60 },
+  thinking: { label:'Thinking — Deep Focus',    core:C.violet, rim:C.violet, bloom:0.48, speed:0.38, envBlueStr:0.28, envOrangeStr:0.05 },
+  listening:{ label:'Listening — Open Aware',   core:C.cyan,   rim:C.cyan,   bloom:0.52, speed:0.88, envBlueStr:0.48, envOrangeStr:0.18 },
+};
+
+const DEMO_ORDER   = ['idle','speaking','thinking','listening'];
+const DEMO_TIMINGS = [5.0, 5.5, 5.5, 4.5]; // seconds per mode
+
+// ============================================================
+// RENDERER
+// ============================================================
+const wrap = document.getElementById('cw');
+const W0   = wrap.offsetWidth  || 580;
+const H0   = wrap.offsetHeight || 580;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference:'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
+renderer.setSize(W0, H0);
+renderer.outputColorSpace  = THREE.SRGBColorSpace;
+renderer.toneMapping       = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.88;
+wrap.appendChild(renderer.domElement);
+
+const scene  = new THREE.Scene();
+scene.background = C.bg;
+
+const camera = new THREE.PerspectiveCamera(38, W0 / H0, 0.01, 80);
+camera.position.set(0, 0.08, 4.8);
+camera.lookAt(0, 0, 0);
+
+// ============================================================
+// PROCEDURAL ENVIRONMENT MAP (PMREMGenerator — no files needed)
+// ============================================================
+const pmrem = new THREE.PMREMGenerator(renderer);
+pmrem.compileEquirectangularShader();
+
+function buildEnv(modeName) {
+  const cfg = MODES[modeName] || MODES.idle;
+  const W = 512, H = 256;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+
+  ctx.fillStyle = '#020204';
+  ctx.fillRect(0, 0, W, H);
+
+  // Warm key light — upper left (BRIGHT — Gleb always has a strong key)
+  const g1 = ctx.createRadialGradient(W*0.18, H*0.14, 0, W*0.18, H*0.14, W*0.55);
+  g1.addColorStop(0, 'rgba(255,250,240,0.90)');
+  g1.addColorStop(0.5,'rgba(255,240,210,0.42)');
+  g1.addColorStop(1, 'transparent');
+  ctx.fillStyle = g1; ctx.fillRect(0,0,W,H);
+
+  // Core color fill — upper right quadrant (strong)
+  const core = cfg.core;
+  const g2 = ctx.createRadialGradient(W*0.82, H*0.18, 0, W*0.82, H*0.18, W*0.62);
+  const cStr = Math.max(cfg.envBlueStr, 0.42); // minimum 0.42 so glass always picks up color
+  g2.addColorStop(0, `rgba(${~~(core.r*255)},${~~(core.g*255)},${~~(core.b*255)},${cStr})`);
+  g2.addColorStop(1, 'transparent');
+  ctx.fillStyle = g2; ctx.fillRect(0,0,W,H);
+
+  // Orange zone — lower left (stronger)
+  const oStr = Math.max(cfg.envOrangeStr, 0.25);
+  const g3 = ctx.createRadialGradient(W*0.20, H*0.80, 0, W*0.20, H*0.80, W*0.52);
+  g3.addColorStop(0, `rgba(241,66,11,${oStr})`);
+  g3.addColorStop(1, 'transparent');
+  ctx.fillStyle = g3; ctx.fillRect(0,0,W,H);
+
+  // Cyan rim — center-bottom (strong backlight — the Gleb "glow halo")
+  const g4 = ctx.createRadialGradient(W*0.50, H*0.92, 0, W*0.50, H*0.92, W*0.55);
+  g4.addColorStop(0, 'rgba(24,168,211,0.62)');
+  g4.addColorStop(1, 'transparent');
+  ctx.fillStyle = g4; ctx.fillRect(0,0,W,H);
+
+  // Magenta accent — right-lower
+  const g5 = ctx.createRadialGradient(W*0.76, H*0.72, 0, W*0.76, H*0.72, W*0.35);
+  g5.addColorStop(0, 'rgba(209,13,206,0.45)');
+  g5.addColorStop(1, 'transparent');
+  ctx.fillStyle = g5; ctx.fillRect(0,0,W,H);
+
+  // Gold specular zone — close to key (very hot spot)
+  const g6 = ctx.createRadialGradient(W*0.30, H*0.20, 0, W*0.30, H*0.20, W*0.18);
+  g6.addColorStop(0, 'rgba(255,220,110,0.88)');
+  g6.addColorStop(0.5,'rgba(200,168,74,0.48)');
+  g6.addColorStop(1, 'transparent');
+  ctx.fillStyle = g6; ctx.fillRect(0,0,W,H);
+
+  // Electric blue highlight — center top (for glass crown refraction)
+  const g7 = ctx.createRadialGradient(W*0.50, H*0.05, 0, W*0.50, H*0.05, W*0.30);
+  g7.addColorStop(0, 'rgba(13,22,245,0.55)');
+  g7.addColorStop(1, 'transparent');
+  ctx.fillStyle = g7; ctx.fillRect(0,0,W,H);
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  const envRT = pmrem.fromEquirectangular(tex);
+  tex.dispose();
+  return envRT.texture;
+}
+
+let envMap = buildEnv('idle');
+scene.environment = envMap;
+
+// ============================================================
+// GEOMETRY HELPERS
+// ============================================================
+
+// Regular hexagonal prism (CylinderGeometry with 6 radial segments)
+function hexPrism(r, h) {
+  return new THREE.CylinderGeometry(r, r, h, 6, 1, false);
+}
+
+// Closed hexagon ring (2D annulus extruded)
+function hexRingGeom(rOut, rIn, depth) {
+  const shape = new THREE.Shape();
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI*2/6)*i - Math.PI/6;
+    i===0 ? shape.moveTo(Math.cos(a)*rOut, Math.sin(a)*rOut)
+           : shape.lineTo(Math.cos(a)*rOut, Math.sin(a)*rOut);
+  }
+  shape.closePath();
+  const hole = new THREE.Path();
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI*2/6)*i - Math.PI/6;
+    i===0 ? hole.moveTo(Math.cos(a)*rIn, Math.sin(a)*rIn)
+           : hole.lineTo(Math.cos(a)*rIn, Math.sin(a)*rIn);
+  }
+  hole.closePath();
+  shape.holes.push(hole);
+  const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled:false });
+  g.center();
+  return g;
+}
+
+// ============================================================
+// GLASS MATERIAL
+// ============================================================
+const glassMat = new THREE.MeshPhysicalMaterial({
+  transmission:        1.0,
+  thickness:           0.9,
+  roughness:           0.02,
+  metalness:           0.0,
+  ior:                 1.50,
+  reflectivity:        0.95,
+  envMapIntensity:     4.5,
+  transparent:         true,
+  opacity:             1.0,
+  side:                THREE.DoubleSide,
+  color:               new THREE.Color(0xaaddff),
+  attenuationColor:    new THREE.Color(0x4ab8e0),
+  attenuationDistance: 2.8,
+  iridescence:         0.75,
+  iridescenceIOR:      1.38,
+  iridescenceThicknessRange: [120, 600],
+  clearcoat:           1.0,
+  clearcoatRoughness:  0.005,
+});
+
+// ============================================================
+// SCENE HIERARCHY
+//
+//  gazeGroup   (cursor pivot — gaze tracking only)
+//    spinGroup (continuous Y rotation + breathing)
+//      outerHex  (main glass prism)
+//      hexRings  (top/mid/bot decorative rings)
+//      edgeLines (6 vertical wire edges)
+//    energyCore  (blue torus knot)
+//    energyCore2 (orange torus knot)
+//    shardGroup  (inner hex shards)
+//    particles   (inner floating dots)
+//  orbitGroup  (satellite shards — in scene directly)
+// ============================================================
+
+const gazeGroup = new THREE.Group();
+scene.add(gazeGroup);
+
+const spinGroup = new THREE.Group();
+gazeGroup.add(spinGroup);
+
+// ---- OUTER HEX PRISM (glass shell) ----
+const outerHexGeom = hexPrism(1.04, 2.00);
+const outerHex     = new THREE.Mesh(outerHexGeom, glassMat);
+spinGroup.add(outerHex);
+
+// ---- HEX WIRE RINGS (as children of spinGroup so they rotate together) ----
+function hexWireRing(r, y, color, opacity = 0.55) {
+  const pts = [];
+  for (let i = 0; i <= 6; i++) {
+    const a = (Math.PI*2/6)*i - Math.PI/6;
+    pts.push(new THREE.Vector3(Math.cos(a)*r, y, Math.sin(a)*r));
+  }
+  const g = new THREE.BufferGeometry().setFromPoints(pts);
+  const m = new THREE.LineBasicMaterial({ color, transparent:true, opacity });
+  return new THREE.Line(g, m);
+}
+
+spinGroup.add(
+  hexWireRing(1.05,  0.965, 0x2a93c1, 0.65),  // top blue
+  hexWireRing(1.05, -0.965, 0x2a93c1, 0.65),  // bot blue
+  hexWireRing(0.90,  0.968, 0xf1420b, 0.48),  // top inner orange
+  hexWireRing(0.90, -0.968, 0xf1420b, 0.48),  // bot inner orange
+  hexWireRing(1.08,  0.0,   0xC8A84A, 0.72),  // mid gold equator
+  hexWireRing(0.92,  0.0,   0xC8A84A, 0.40),  // mid gold inner
+);
+
+// Cap hexagons (solid fill, very faint)
+const capGeom = hexPrism(1.01, 0.008);
+const capMat  = new THREE.MeshStandardMaterial({
+  color: 0x2a93c1, emissive: 0x2a93c1, emissiveIntensity: 0.55,
+  transparent: true, opacity: 0.28,
+});
+const topCap = new THREE.Mesh(capGeom, capMat);         topCap.position.y  =  0.965;
+const botCap = new THREE.Mesh(capGeom, capMat.clone()); botCap.position.y  = -0.965;
+spinGroup.add(topCap, botCap);
+
+// Vertical edge lines
+const edgeLineMat = new THREE.LineBasicMaterial({ color: 0x2a93c1, transparent:true, opacity:0.30 });
+for (let i = 0; i < 6; i++) {
+  const a = (Math.PI*2/6)*i - Math.PI/6;
+  const x = Math.cos(a)*1.04, z = Math.sin(a)*1.04;
+  const g = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(x,-0.965,z), new THREE.Vector3(x,0.965,z)
+  ]);
+  spinGroup.add(new THREE.Line(g, edgeLineMat.clone()));
+}
+
+// ============================================================
+// ENERGY SYSTEM (inside the glass)
+// ============================================================
+
+// PRIMARY SWIRL: blue torus-knot (mirrors the logo's vortex)
+const tkGeom1 = new THREE.TorusKnotGeometry(0.42, 0.065, 240, 22, 2, 3);
+const energyMat1 = new THREE.MeshStandardMaterial({
+  color: C.blue, emissive: C.blue, emissiveIntensity: 3.8,
+  roughness: 0.0, metalness: 0.0, transparent: true, opacity: 0.92,
+});
+const energyCore1 = new THREE.Mesh(tkGeom1, energyMat1);
+gazeGroup.add(energyCore1);
+
+// SECONDARY SWIRL: orange torus-knot (the orange in the logo)
+const tkGeom2 = new THREE.TorusKnotGeometry(0.35, 0.048, 200, 18, 3, 2);
+const energyMat2 = new THREE.MeshStandardMaterial({
+  color: C.orange, emissive: C.orange, emissiveIntensity: 3.2,
+  roughness: 0.0, metalness: 0.0, transparent: true, opacity: 0.88,
+});
+const energyCore2 = new THREE.Mesh(tkGeom2, energyMat2);
+energyCore2.rotation.z = Math.PI / 3;
+gazeGroup.add(energyCore2);
+
+// GOLD ACCENT: small gold torus-knot filament
+const tkGeom3 = new THREE.TorusKnotGeometry(0.24, 0.022, 140, 12, 5, 3);
+const energyMat3 = new THREE.MeshStandardMaterial({
+  color: C.gold, emissive: C.gold, emissiveIntensity: 2.8,
+  roughness: 0.0, metalness: 0.4, transparent: true, opacity: 0.80,
+});
+const energyCore3 = new THREE.Mesh(tkGeom3, energyMat3);
+energyCore3.rotation.x = Math.PI / 4;
+gazeGroup.add(energyCore3);
+
+// Core point lights (change with mode)
+const coreLight1 = new THREE.PointLight(C.blue,   3.8, 3.8);
+const coreLight2 = new THREE.PointLight(C.orange, 2.4, 3.2);
+coreLight2.position.set(0.28, 0, 0.28);
+scene.add(coreLight1, coreLight2);
+
+// ---- INNER HEX SHARDS ----
+const shardGroup = new THREE.Group();
+gazeGroup.add(shardGroup);
+
+function makeShard(r, h, col, emCol, emInt, px, py, pz, ry) {
+  const g = hexPrism(r, h);
+  const m = new THREE.MeshStandardMaterial({
+    color: col, emissive: emCol, emissiveIntensity: emInt,
+    roughness: 0.06, metalness: 0.15, transparent: true, opacity: 0.76,
+    envMapIntensity: 1.8,
+  });
+  const mesh = new THREE.Mesh(g, m);
+  // Edge outline for the Gleb hex aesthetic
+  const edges = new THREE.EdgesGeometry(g);
+  const eline = new THREE.LineSegments(edges,
+    new THREE.LineBasicMaterial({ color: emCol, transparent:true, opacity:0.55 }));
+  mesh.add(eline);
+  mesh.position.set(px, py, pz);
+  mesh.rotation.y = ry;
+  shardGroup.add(mesh);
+  return mesh;
+}
+
+const shard1 = makeShard(0.17, 0.52, 0x0f5880, C.blue,   3.0,  0.32,  0.12,  0.02, 0.0);
+const shard2 = makeShard(0.13, 0.40, 0xb02006, C.orange, 2.6, -0.22, -0.16,  0.20, Math.PI/3);
+const shard3 = makeShard(0.09, 0.28, 0x9a7a18, C.gold,   2.2,  0.02,  0.28, -0.22, Math.PI*0.65);
+
+// ---- CENTRAL VOID EYE (the black center from the PureBrain logo) ----
+// Small dark hexagon at absolute center — the "pupil" — with gold rim
+const eyeGeom = hexPrism(0.095, 0.22);
+const eyeMat  = new THREE.MeshStandardMaterial({
+  color: 0x000000, emissive: C.gold, emissiveIntensity: 0.5,
+  roughness: 0.0, metalness: 0.8, transparent: true, opacity: 0.88,
+});
+const eyeMesh = new THREE.Mesh(eyeGeom, eyeMat);
+const eyeEdge = new THREE.EdgesGeometry(eyeGeom);
+eyeMesh.add(new THREE.LineSegments(eyeEdge,
+  new THREE.LineBasicMaterial({ color: 0xC8A84A, transparent:true, opacity:0.80 })));
+gazeGroup.add(eyeMesh);
+
+// ---- PARTICLE FIELD (helical swirl inside the glass — logo-inspired) ----
+const particleGroup = new THREE.Group();
+gazeGroup.add(particleGroup);
+const ptGeo = new THREE.SphereGeometry(0.016, 6, 6);
+const ptMats = [];
+const ptCount = 28;
+
+for (let i = 0; i < ptCount; i++) {
+  const frac = i / ptCount;
+  // Color gradient: blue -> gold -> orange (like the logo vortex)
+  const col = frac < 0.5
+    ? new THREE.Color().lerpColors(C.blue,   C.gold,   frac * 2)
+    : new THREE.Color().lerpColors(C.gold,   C.orange, (frac-0.5)*2);
+  const mat = new THREE.MeshStandardMaterial({
+    color: col, emissive: col,
+    emissiveIntensity: 4.0 + Math.random() * 1.8,
+    roughness: 0, metalness: 0,
+  });
+  ptMats.push(mat);
+  const mesh = new THREE.Mesh(ptGeo, mat);
+  // Helical initial placement
+  const angle = frac * Math.PI * 2 * 2.5;  // 2.5 turns
+  const radius = 0.18 + Math.random() * 0.58;
+  mesh.position.set(
+    Math.cos(angle) * radius,
+    (frac - 0.5) * 1.65,
+    Math.sin(angle) * radius,
+  );
+  mesh.userData.initAngle  = angle;
+  mesh.userData.initRadius = radius;
+  mesh.userData.initY      = mesh.position.y;
+  particleGroup.add(mesh);
+}
+
+// ============================================================
+// ORBIT SATELLITES (outside the glass, orbiting)
+// ============================================================
+const orbitGroup = new THREE.Group();
+scene.add(orbitGroup);
+
+function makeOrbit(r, h, colHex, emHex, emInt, orR, orY, orSpd, orPhase) {
+  const g   = hexPrism(r, h);
+  const col = new THREE.Color(colHex);
+  const em  = new THREE.Color(emHex);
+  const m   = new THREE.MeshStandardMaterial({
+    color: col, emissive: em, emissiveIntensity: emInt,
+    roughness: 0.08, metalness: 0.20,
+    transparent: true, opacity: 0.70,
+    envMapIntensity: 1.4,
+  });
+  const mesh = new THREE.Mesh(g, m);
+  const edges = new THREE.EdgesGeometry(g);
+  mesh.add(new THREE.LineSegments(edges,
+    new THREE.LineBasicMaterial({ color: emHex, transparent:true, opacity:0.55 })));
+  mesh.userData = { orR, orY, orSpd, orPhase };
+  orbitGroup.add(mesh);
+  return mesh;
+}
+
+// Orbit satellites — close orbit, stays within composition
+// orR = orbit radius (1.10-1.18 keeps them tight against the hex face)
+const satellites = [
+  makeOrbit(0.085, 0.20, 0x093f60, 0x2a93c1, 3.0, 1.12,  0.24, 0.52, 0.00),
+  makeOrbit(0.070, 0.17, 0x7c1804, 0xf1420b, 2.6, 1.08, -0.20, 0.68, 1.30),
+  makeOrbit(0.058, 0.14, 0x7a6010, 0xC8A84A, 2.2, 1.16,  0.03, 0.40, 2.55),
+  makeOrbit(0.078, 0.19, 0x0b3550, 0x2a93c1, 2.8, 1.06, -0.32, 0.60, 3.85),
+  makeOrbit(0.065, 0.16, 0x952808, 0xf1420b, 2.4, 1.10,  0.38, 0.44, 5.20),
+  makeOrbit(0.048, 0.12, 0x45306a, 0x9b6fe0, 2.0, 1.14, -0.07, 0.35, 4.40),
+];
+
+// ============================================================
+// DIRECTIONAL LIGHTING RIG (6 lights — Gleb pattern)
+// ============================================================
+scene.add(new THREE.AmbientLight(0x080814, 0.5));
+
+// L1 — warm white key (upper-left-front)
+const keyLight  = new THREE.DirectionalLight(0xfff5e6, 2.8);
+keyLight.position.set(-2.2, 3.5, 1.8);
+scene.add(keyLight);
+
+// L2 — electric blue fill (upper-right)
+const fillLight = new THREE.DirectionalLight(C.blue, 2.2);
+fillLight.position.set(3.2, 1.8, -1.2);
+scene.add(fillLight);
+
+// L3 — cyan rim (behind, backlight for glass silhouette)
+const rimLight  = new THREE.DirectionalLight(C.cyan, 1.8);
+rimLight.position.set(-0.4, -1.4, -3.5);
+scene.add(rimLight);
+
+// L4 — magenta accent
+const accLight  = new THREE.DirectionalLight(C.magenta, 1.1);
+accLight.position.set(3.8, -1.8, 1.0);
+scene.add(accLight);
+
+// L5 — gold specular cue
+const goldLight = new THREE.DirectionalLight(new THREE.Color(0xffd878), 1.8);
+goldLight.position.set(-1.4, 2.2, 2.2);
+scene.add(goldLight);
+
+// L6 — orange underlight (warm floor bounce)
+const underLight = new THREE.PointLight(C.orange, 1.6, 4.5);
+underLight.position.set(0, -2.6, 0.8);
+scene.add(underLight);
+
+// ============================================================
+// POST-PROCESSING
+// ============================================================
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(W0, H0),
+  0.45,   // strength — Gleb restraint: suggests luminance without blowing out
+  0.42,   // radius
+  0.88    // threshold — only the brightest elements bloom
+);
+composer.addPass(bloomPass);
+
+// Chromatic aberration + vignette + film grain (custom ShaderPass)
+const vignCA = {
+  uniforms: {
+    tDiffuse:   { value: null },
+    uCA:        { value: 0.0028 },
+    uVignStr:   { value: 0.52 },
+    uTime:      { value: 0.0 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uCA;
+    uniform float uVignStr;
+    uniform float uTime;
+    varying vec2 vUv;
+    void main() {
+      // Chromatic aberration — stronger at edges
+      vec2  center = vUv - 0.5;
+      float edgeFac = smoothstep(0.18, 0.68, length(center));
+      vec2  rOff   = center * uCA * edgeFac;
+      float r = texture2D(tDiffuse, vUv + rOff).r;
+      float g = texture2D(tDiffuse, vUv        ).g;
+      float b = texture2D(tDiffuse, vUv - rOff ).b;
+      // Film grain — ONLY in dark regions, never in highlights
+      float grain = fract(sin(dot(vUv*380.0, vec2(12.9898,78.233)))*43758.5453 + uTime*0.0009) - 0.5;
+      float lum   = 0.299*r + 0.587*g + 0.114*b;
+      float gAmt  = grain * 0.0022 * (1.0 - lum * 3.5) * step(0.0, 0.28 - lum);
+      // Vignette
+      float v = 1.0 - smoothstep(0.44, 1.08, length(center) * uVignStr * 1.9);
+      gl_FragColor = vec4((vec3(r,g,b) + gAmt) * v, 1.0);
+    }
+  `,
+};
+const vigPass = new ShaderPass(vignCA);
+composer.addPass(vigPass);
+
+// OutputPass MUST be last
+composer.addPass(new OutputPass());
+
+// ============================================================
+// STATE / AUDIO ENGINE
+// ============================================================
+let mode         = 'idle';
+let modeT        = 1.0;           // 0→1 transition progress
+let audioAmp     = 0.0;           // raw synthetic amplitude
+let audioSmooth  = 0.0;           // smoothed for visual use
+let synthClock   = 0.0;
+let demoOn       = true;
+let demoTimer    = 0.0;
+let demoIdx      = 0;
+
+function synthAudio(dt) {
+  synthClock += dt;
+  const s = synthClock;
+  let amp = 0;
+  if (mode === 'speaking') {
+    const syl    = Math.sin(s * 9.1) * 0.5 + 0.5;
+    const wrd    = Math.sin(s * 2.3) * 0.5 + 0.5;
+    const phrase = Math.sin(s * 0.55)* 0.5 + 0.5;
+    const breath = Math.abs(Math.sin(s * 0.21));
+    amp = syl * 0.52 * wrd * (0.55 + phrase * 0.45) * (0.45 + breath * 0.55);
+    amp = Math.min(amp * 1.45, 1.0);
+  } else if (mode === 'listening') {
+    amp = (Math.sin(s*3.4)*0.5+0.5)*0.28 + (Math.sin(s*7.8)*0.5+0.5)*0.12;
+  } else if (mode === 'thinking') {
+    amp = Math.abs(Math.sin(s * 0.88)) * 0.32;
+  } else {
+    amp = Math.abs(Math.sin(s * 0.40)) * 0.10;
+  }
+  audioAmp    = amp;
+  audioSmooth = audioSmooth + (amp - audioSmooth) * Math.min(1, dt * 8.0);
+}
+
+function setMode(m, stopDemo = true) {
+  if (stopDemo) {
+    demoOn = false;
+    const badge = document.getElementById('demo-badge');
+    badge.classList.remove('on');
+    badge.textContent = 'Manual';
+  }
+  mode  = m;
+  modeT = 0.0;
+
+  document.querySelectorAll('.btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.mode === m));
+  document.getElementById('status').textContent = MODES[m]?.label || '';
+
+  // Rebuild env map for this mode
+  const old = envMap;
+  envMap = buildEnv(m);
+  scene.environment = envMap;
+  if (old) old.dispose();
+}
+
+document.querySelectorAll('.btn').forEach(b =>
+  b.addEventListener('click', () => setMode(b.dataset.mode, true)));
+
+const badge = document.getElementById('demo-badge');
+badge.addEventListener('click', () => {
+  demoOn = !demoOn;
+  if (demoOn) { badge.classList.add('on'); badge.textContent = 'Auto Demo'; }
+  else        { badge.classList.remove('on'); badge.textContent = 'Manual'; }
+});
+
+// ============================================================
+// CURSOR GAZE
+// ============================================================
+const mouse    = new THREE.Vector2();
+const gazeSmooth = new THREE.Vector2();
+const MAX_GAZE = 17 * Math.PI / 180;
+
+document.addEventListener('mousemove', e => {
+  const r = wrap.getBoundingClientRect();
+  mouse.x =  ((e.clientX - r.left) / r.width)  * 2 - 1;
+  mouse.y = -((e.clientY - r.top)  / r.height) * 2 + 1;
+});
+
+// Touch support
+document.addEventListener('touchmove', e => {
+  const t = e.touches[0];
+  const r = wrap.getBoundingClientRect();
+  mouse.x =  ((t.clientX - r.left) / r.width)  * 2 - 1;
+  mouse.y = -((t.clientY - r.top)  / r.height) * 2 + 1;
+}, { passive: true });
+
+// ============================================================
+// RESIZE
+// ============================================================
+window.addEventListener('resize', () => {
+  const w = wrap.offsetWidth, h = wrap.offsetHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+});
+
+// ============================================================
+// ANIMATION LOOP
+// ============================================================
+const clock = new THREE.Clock();
+let T = 0; // total elapsed
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const dt  = Math.min(clock.getDelta(), 0.05);
+  T        += dt;
+
+  // Mode transition blend
+  modeT = Math.min(modeT + dt * 0.75, 1.0);
+
+  // Synthetic audio
+  synthAudio(dt);
+
+  const cfg  = MODES[mode] || MODES.idle;
+  const spd  = cfg.speed;
+  const amp  = audioSmooth;
+
+  // ---- DEMO CYCLE ----
+  if (demoOn) {
+    demoTimer += dt;
+    if (demoTimer >= DEMO_TIMINGS[demoIdx]) {
+      demoTimer = 0;
+      demoIdx   = (demoIdx + 1) % DEMO_ORDER.length;
+      setMode(DEMO_ORDER[demoIdx], false);
+      badge.classList.add('on');
+      badge.textContent = 'Auto Demo';
+    }
+  }
+
+  // ---- GAZE TRACKING ----
+  gazeSmooth.lerp(mouse, 0.050);  // 5% lerp per frame
+  const pitchClamp = Math.max(-MAX_GAZE, Math.min(MAX_GAZE, gazeSmooth.y * MAX_GAZE));
+  const yawClamp   = Math.max(-MAX_GAZE, Math.min(MAX_GAZE, gazeSmooth.x * MAX_GAZE));
+  gazeGroup.rotation.x = pitchClamp * -1;
+  gazeGroup.rotation.y = yawClamp;
+
+  // ---- OUTER HEX SPIN + BREATHE ----
+  const breathe = 1.0
+    + Math.sin(T * 1.05 * spd) * 0.010
+    + amp * 0.055;
+  spinGroup.rotation.y = T * 0.095 * spd;
+  spinGroup.rotation.x = Math.sin(T * 0.17 * spd) * 0.038;
+  spinGroup.scale.setScalar(breathe);
+
+  // Cap caps pulse orange/blue with mode
+  topCap.material.emissive.lerpColors(C.blue, cfg.core, modeT * 0.8);
+  topCap.material.emissiveIntensity = 0.55 + amp * 0.6;
+  botCap.material.emissive.copy(topCap.material.emissive);
+  botCap.material.emissiveIntensity = topCap.material.emissiveIntensity;
+
+  // ---- ENERGY CORE (torus knots) ----
+  energyCore1.rotation.x = T * 0.62 * spd;
+  energyCore1.rotation.y = T * 0.40 * spd;
+  const coreScale = 1.0 + amp * 0.28;
+  energyCore1.scale.setScalar(coreScale);
+  energyMat1.emissive.lerpColors(C.blue, cfg.core, modeT * 0.75);
+  energyMat1.emissiveIntensity = 3.2 + amp * 2.5;
+
+  energyCore2.rotation.x = -T * 0.50 * spd;
+  energyCore2.rotation.z =  T * 0.70 * spd;
+  energyCore2.scale.setScalar(coreScale * 0.90);
+  energyMat2.emissive.lerpColors(C.orange, cfg.rim, modeT * 0.60);
+  energyMat2.emissiveIntensity = 2.8 + amp * 2.0;
+
+  energyCore3.rotation.y = T * 0.32 * spd;
+  energyCore3.rotation.x = -T * 0.44 * spd;
+  energyCore3.scale.setScalar(1.0 + amp * 0.20);
+  energyMat3.emissiveIntensity = 2.5 + amp * 1.8;
+
+  // Core lights
+  coreLight1.color.lerpColors(C.blue,   cfg.core, modeT * 0.8);
+  coreLight1.intensity = 3.8 + amp * 3.2;
+  coreLight2.color.lerpColors(C.orange, cfg.rim,  modeT * 0.65);
+  coreLight2.intensity = 2.4 + amp * 2.6;
+
+  // ---- CENTRAL EYE ----
+  eyeMesh.rotation.y = T * 0.15 * spd;
+  eyeMat.emissiveIntensity = 0.5 + amp * 1.8;
+  eyeMat.emissive.lerpColors(C.gold, cfg.core, modeT * 0.55);
+
+  // ---- INNER SHARDS ----
+  shardGroup.rotation.y = T * 0.20 * spd;
+  shardGroup.rotation.x = Math.sin(T * 0.28 * spd) * 0.055;
+  shard1.rotation.y = T * 0.50 * spd;
+  shard2.rotation.y = -T * 0.42 * spd;
+  shard3.rotation.y = T * 0.35 * spd;
+
+  // ---- PARTICLE HELICAL SWIRL ----
+  // Each particle follows a helical orbit, swirling like the logo vortex
+  particleGroup.rotation.y = T * 0.12 * spd;
+  for (let i = 0; i < ptCount; i++) {
+    const p    = particleGroup.children[i];
+    const frac = i / ptCount;
+    // Gradually increase swirl angle
+    const baseAngle = p.userData.initAngle + T * (0.22 + frac * 0.28) * spd;
+    const r = p.userData.initRadius;
+    p.position.x = Math.cos(baseAngle) * r;
+    p.position.z = Math.sin(baseAngle) * r;
+    // Vertical oscillation (breathing helix)
+    p.position.y = p.userData.initY + Math.sin(T * (0.55 + frac) + frac * 6.28) * 0.08;
+    // Wrap vertically
+    if (p.position.y >  0.88) p.userData.initY -= 0.04;
+    if (p.position.y < -0.88) p.userData.initY += 0.04;
+    // Pulse emissive with audio
+    ptMats[i].emissiveIntensity = 4.0 + amp * 3.2 + Math.sin(T*2.4 + frac*6.28)*0.8;
+  }
+
+  // ---- ORBIT SATELLITES ----
+  for (const sat of satellites) {
+    const { orR, orY, orSpd, orPhase } = sat.userData;
+    const ang = T * orSpd + orPhase;
+    sat.position.set(
+      Math.cos(ang) * orR,
+      orY + Math.sin(T * 0.38 + orPhase) * 0.14,
+      Math.sin(ang) * orR,
+    );
+    sat.rotation.y = T * 0.75 * spd;
+    sat.rotation.x = Math.sin(T * 0.50 + orPhase) * 0.38;
+    sat.scale.setScalar(1.0 + amp * 0.16);
+  }
+
+  // ---- FILL / RIM LIGHTS react to mode ----
+  fillLight.color.lerpColors(C.blue,  cfg.core, modeT * 0.55);
+  rimLight.color.lerpColors(C.cyan,   cfg.rim,  modeT * 0.60);
+
+  // ---- BLOOM dynamic (restrained — Gleb principle: suggests don't saturate) ----
+  bloomPass.strength = bloomPass.strength
+    + (cfg.bloom + amp * 0.28 - bloomPass.strength) * Math.min(1, dt * 4.0);
+
+  // ---- SHADER TIME ----
+  vigPass.uniforms.uTime.value = T;
+
+  // ---- CAMERA gentle drift (Gleb's slight movement) ----
+  camera.position.x = Math.sin(T * 0.085) * 0.14;
+  camera.position.y = 0.10 + Math.sin(T * 0.130) * 0.07;
+  camera.lookAt(0, 0, 0);
+
+  composer.render();
+}
+
+animate();
+</script>
+</body>
+</html>

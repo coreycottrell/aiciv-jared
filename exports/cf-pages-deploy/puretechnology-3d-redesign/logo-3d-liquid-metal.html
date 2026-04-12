@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology — Liquid Metal Formation</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%; height: 100%;
+  background: #000000;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#canvas-main { display: block; }
+#phase-label {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.18);
+  pointer-events: none;
+  transition: opacity 1s;
+}
+</style>
+</head>
+<body>
+
+<canvas id="canvas-main"></canvas>
+<div id="phase-label">Pure Technology</div>
+
+<script>
+// ============================================================
+//  PURE TECHNOLOGY — LIQUID METAL LOGO FORMATION
+//
+//  Phases:
+//  0-2s   : Black. Chrome droplets appear at random positions.
+//  2-5s   : Droplets flow toward center, merge into pool.
+//  5-8s   : Pool crystallizes outward→inward into logo strokes (chrome).
+//  8-10s  : Chrome transitions to final blue/orange colors.
+//  10s+   : Static logo. Subtle ambient glow only.
+//
+//  Technique:
+//  - Canvas 2D throughout (high-fidelity 2D > approximate 3D)
+//  - Chrome effect: layered gradient passes per hex edge
+//    (specular highlight + body tint + deep shadow)
+//  - Animated "liquid" phase: particles with flow fields
+//  - Crystallization: per-ring reveal timing with chrome→color lerp
+//  - Final state: exact match to 2D PNG spec
+// ============================================================
+
+const C = document.getElementById('canvas-main');
+const CTX = C.getContext('2d');
+
+// ─────────────────────────────────────────────────────────────
+//  CANVAS SIZING
+// ─────────────────────────────────────────────────────────────
+const SZ = Math.min(window.innerWidth, window.innerHeight, 700);
+C.width  = SZ;
+C.height = SZ;
+C.style.width  = SZ + 'px';
+C.style.height = SZ + 'px';
+
+const CX = SZ * 0.5;
+const CY = SZ * 0.5;
+const R  = SZ * 0.44; // outer hex vertex radius
+
+// ─────────────────────────────────────────────────────────────
+//  LOGO GEOMETRY CONSTANTS (exact match to 2D PNG spec)
+// ─────────────────────────────────────────────────────────────
+const STEPS       = 33;     // concentric hexagons per spiral arm
+const COPIES      = 3;      // 3 overlaid spiral arms
+const OFFSET_DEG  = 7;      // rotation offset between copies (degrees)
+const TWIST_DEG   = 4.5;    // twist per step (degrees, CCW)
+const VOID_PCT    = 6;      // center void radius as % of outer R
+const COLOR_MID   = 0.50;   // sigmoid color midpoint (0=outer blue, 1=inner orange)
+const COLOR_CURVE = 1.5;    // sigmoid sharpness
+const THICK       = SZ * 0.003; // stroke thickness scales with canvas
+
+const VOID_R  = R * (VOID_PCT / 100);
+const OFFSET_RAD = OFFSET_DEG * Math.PI / 180;
+const TWIST_RAD  = -(TWIST_DEG * Math.PI / 180); // negative = CCW
+
+// Brand colors
+const BLUE   = [43,  147, 193]; // #2B93C1
+const ORANGE = [241, 66,  11];  // #F1420B
+
+// ─────────────────────────────────────────────────────────────
+//  COLOR UTILITIES
+// ─────────────────────────────────────────────────────────────
+function sigmoid(t, mid, curve) {
+  return 1 / (1 + Math.exp(-curve * 6 * (t - mid)));
+}
+
+// t=0 → blue (outer), t=1 → orange (inner)
+function logoColor(t) {
+  const s = sigmoid(t, COLOR_MID, COLOR_CURVE);
+  return [
+    BLUE[0] + (ORANGE[0] - BLUE[0]) * s,
+    BLUE[1] + (ORANGE[1] - BLUE[1]) * s,
+    BLUE[2] + (ORANGE[2] - BLUE[2]) * s,
+  ];
+}
+
+// Chrome highlight color: simulated specular on dark metallic surface
+// highlight: 0=shadow, 0.5=body, 1=specular
+// tint: [r,g,b] base tint from logo color
+// ripple: animated value 0-1 for mercury wobble
+function chromeColor(tint, highlight, ripple) {
+  const spec  = highlight * highlight;
+  const shade = 1 - (1 - highlight) * (1 - highlight);
+  const bodyMix = Math.max(0, 1 - Math.abs(highlight - 0.5) * 3);
+  const specMix = spec;
+
+  const r = tint[0] * bodyMix * 0.6 + 255 * specMix + tint[0] * 0.15 + ripple * 30;
+  const g = tint[1] * bodyMix * 0.6 + 255 * specMix + tint[1] * 0.15 + ripple * 20;
+  const b = tint[2] * bodyMix * 0.6 + 255 * specMix + tint[2] * 0.15 + ripple * 40;
+
+  const darkFactor = Math.max(0.04, shade * 0.88 + 0.12);
+  const fr = Math.min(255, Math.round(r * darkFactor));
+  const fg = Math.min(255, Math.round(g * darkFactor));
+  const fb = Math.min(255, Math.round(b * darkFactor));
+  return [fr, fg, fb];
+}
+
+function lerpRGB(a, b, t) {
+  return [
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t,
+    a[2] + (b[2] - a[2]) * t,
+  ];
+}
+
+function rgbStr(c, alpha) {
+  if (alpha !== undefined) return `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${alpha})`;
+  return `rgb(${c[0]|0},${c[1]|0},${c[2]|0})`;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  HEXAGON GEOMETRY
+// ─────────────────────────────────────────────────────────────
+// Pointy-top: vertex 0 at top. angle adds extra rotation.
+function hexVerts(cx, cy, r, angle) {
+  const verts = [];
+  for (let i = 0; i < 6; i++) {
+    const a = angle + (-Math.PI / 2 + Math.PI / 6) + i * (Math.PI / 3);
+    verts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+  }
+  return verts;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  DRAW ONE HEX RING — supports both chrome and final-color modes
+// ─────────────────────────────────────────────────────────────
+// colorT: 0=outer blue, 1=inner orange (logo color position)
+// chromeFraction: 0=final logo colors, 1=pure chrome
+// t: animation time (for ripple)
+// alpha: global opacity
+function drawHexRing(ctx, cx, cy, r, angle, colorT, chromeFraction, t, alpha, thick) {
+  const verts = hexVerts(cx, cy, r, angle);
+  const tint = logoColor(colorT);
+
+  // Final logo color for this ring
+  const finalColor = logoColor(colorT);
+  const finalAlpha = 0.82 + colorT * 0.18;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.lineWidth = thick;
+  ctx.lineJoin = 'round';
+  ctx.lineCap  = 'round';
+
+  if (chromeFraction < 0.001) {
+    // Pure final color — single pass, efficient
+    ctx.beginPath();
+    ctx.moveTo(verts[0][0], verts[0][1]);
+    for (let j = 1; j < 6; j++) ctx.lineTo(verts[j][0], verts[j][1]);
+    ctx.closePath();
+    ctx.strokeStyle = rgbStr(finalColor, finalAlpha);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  // Chrome mode: multi-pass gradient per edge
+  const lightAngle = t * 0.3 + Math.PI * 0.25; // rotating light
+  const ripple = (Math.sin(t * 0.7 + colorT * 4) + 1) * 0.5;
+
+  for (let i = 0; i < 6; i++) {
+    const p0 = verts[i];
+    const p1 = verts[(i + 1) % 6];
+
+    const edgeAngle = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
+    const edgeNorm  = edgeAngle + Math.PI * 0.5;
+    const alignment = (Math.cos(edgeNorm - lightAngle) + 1) * 0.5;
+
+    const nx = Math.cos(edgeNorm);
+    const ny = Math.sin(edgeNorm);
+    const hw = thick * 0.5;
+    const mx = (p0[0] + p1[0]) * 0.5;
+    const my = (p0[1] + p1[1]) * 0.5;
+
+    const fresnelH = Math.pow(1 - alignment, 1.5) * 0.8 + alignment * 0.2;
+    const fresnelA = fresnelH * 0.7 + ripple * 0.3;
+
+    // Chrome color computation
+    function cCol(h) {
+      const chromC = chromeColor(tint, h + fresnelA * 0.2, ripple);
+      // Lerp between chrome and final based on chromeFraction
+      const mixed = lerpRGB(finalColor, chromC, chromeFraction);
+      return mixed;
+    }
+
+    const gBody = ctx.createLinearGradient(
+      mx - nx * hw, my - ny * hw,
+      mx + nx * hw, my + ny * hw
+    );
+    gBody.addColorStop(0.0, rgbStr(cCol(0.08)));
+    gBody.addColorStop(0.3, rgbStr(cCol(0.28)));
+    gBody.addColorStop(0.5, rgbStr(cCol(0.48)));
+    gBody.addColorStop(0.7, rgbStr(cCol(0.28)));
+    gBody.addColorStop(1.0, rgbStr(cCol(0.06)));
+
+    ctx.beginPath();
+    ctx.moveTo(p0[0], p0[1]);
+    ctx.lineTo(p1[0], p1[1]);
+    ctx.strokeStyle = gBody;
+    ctx.lineWidth = thick;
+    ctx.stroke();
+
+    // Specular highlight pass
+    const specStrength = (fresnelA * alignment + ripple * 0.35) * chromeFraction;
+    if (specStrength > 0.15) {
+      const specC = lerpRGB(finalColor, [255, 255, 255], chromeFraction * 0.85);
+      ctx.beginPath();
+      ctx.moveTo(p0[0], p0[1]);
+      ctx.lineTo(p1[0], p1[1]);
+      ctx.strokeStyle = rgbStr(specC, specStrength * 0.75);
+      ctx.lineWidth = thick * 0.16;
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────────────────────────
+//  DRAW FULL LOGO — with per-ring timing and chrome blend
+// ─────────────────────────────────────────────────────────────
+// revealProgress: 0=nothing visible, 1=fully revealed
+// chromeFraction: 1=chrome, 0=final color
+function drawLogo(ctx, cx, cy, t, revealProgress, chromeFraction, globalAlpha) {
+  // Draw 3 overlaid copies (arms)
+  const baseAngles = [0, OFFSET_RAD, -OFFSET_RAD];
+
+  ctx.save();
+  ctx.globalAlpha = globalAlpha;
+
+  for (let arm = 0; arm < COPIES; arm++) {
+    const baseAngle = baseAngles[arm];
+
+    for (let i = 0; i < STEPS; i++) {
+      const stepT = i / (STEPS - 1); // 0=outer, 1=inner
+      const r = R + (VOID_R - R) * stepT;
+      if (r <= VOID_R) continue;
+
+      const angle = baseAngle + i * TWIST_RAD;
+
+      // Ring reveal: outer rings appear first (from outside in)
+      // revealProgress goes 0→1; step i reveals at revealProgress > stepT * 0.9
+      // This means outer (i=0, stepT=0) reveals first, inner (i=STEPS-1, stepT=1) reveals last
+      const ringRevealAt = stepT * 0.95;
+      if (revealProgress < ringRevealAt) continue;
+
+      // Per-ring opacity: fade in during its reveal window
+      const ringFadeStart = ringRevealAt;
+      const ringFadeEnd   = Math.min(1, ringRevealAt + 0.06);
+      const ringAlpha = revealProgress >= ringFadeEnd ? 1.0
+        : (revealProgress - ringFadeStart) / (ringFadeEnd - ringFadeStart);
+
+      // Color position: stepT=0 (outer) → logo colorT=0 (blue), stepT=1 (inner) → colorT=1 (orange)
+      const colorT = stepT;
+
+      const thick = THICK * (0.85 + 0.3 * stepT); // inner rings slightly thicker
+      drawHexRing(ctx, cx, cy, r, angle, colorT, chromeFraction, t, ringAlpha, thick);
+    }
+  }
+
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────────────────────────
+//  CENTER VOID
+// ─────────────────────────────────────────────────────────────
+function drawVoid(ctx, cx, cy, revealProgress) {
+  if (revealProgress < 0.3) return;
+  const vAlpha = Math.min(1, (revealProgress - 0.3) / 0.2);
+  const voidGrd = ctx.createRadialGradient(cx, cy, 0, cx, cy, VOID_R * 1.8);
+  voidGrd.addColorStop(0.0,  `rgba(0,0,0,${vAlpha})`);
+  voidGrd.addColorStop(0.55, `rgba(0,0,0,${vAlpha * 0.9})`);
+  voidGrd.addColorStop(1.0,  `rgba(0,0,0,0)`);
+  ctx.beginPath();
+  ctx.arc(cx, cy, VOID_R * 1.8, 0, Math.PI * 2);
+  ctx.fillStyle = voidGrd;
+  ctx.fill();
+}
+
+// ─────────────────────────────────────────────────────────────
+//  AMBIENT GLOW (final state only)
+// ─────────────────────────────────────────────────────────────
+function drawAmbientGlow(ctx, cx, cy, t, alpha) {
+  if (alpha < 0.01) return;
+
+  // Outer blue halo
+  const pulse = 1 + 0.04 * Math.sin(t * 0.8);
+  const outerGlow = ctx.createRadialGradient(cx, cy, R * 0.85, cx, cy, R * 1.15 * pulse);
+  outerGlow.addColorStop(0.0, `rgba(43,147,193,${0.06 * alpha})`);
+  outerGlow.addColorStop(1.0, `rgba(43,147,193,0)`);
+  ctx.beginPath();
+  ctx.arc(cx, cy, R * 1.15 * pulse, 0, Math.PI * 2);
+  ctx.fillStyle = outerGlow;
+  ctx.fill();
+
+  // Inner orange core glow
+  const coreR = VOID_R * 3.5 * (1 + 0.03 * Math.sin(t * 1.4));
+  const coreGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR);
+  coreGlow.addColorStop(0.0, `rgba(241,66,11,${0.22 * alpha})`);
+  coreGlow.addColorStop(0.5, `rgba(241,66,11,${0.08 * alpha})`);
+  coreGlow.addColorStop(1.0, `rgba(241,66,11,0)`);
+  ctx.beginPath();
+  ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
+  ctx.fillStyle = coreGlow;
+  ctx.fill();
+}
+
+// ─────────────────────────────────────────────────────────────
+//  LIQUID DROPLET PARTICLES
+//  Appears during phase 1 (0-2s) and flows in phase 2 (2-5s)
+// ─────────────────────────────────────────────────────────────
+const PARTICLE_COUNT = 60;
+const particles = [];
+
+function initParticles() {
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    // Random positions around the outer edge / slightly beyond
+    const angle  = Math.random() * Math.PI * 2;
+    const dist   = R * (1.4 + Math.random() * 0.8); // start outside logo area
+    particles.push({
+      x: CX + Math.cos(angle) * dist,
+      y: CY + Math.sin(angle) * dist,
+      ox: CX + Math.cos(angle) * dist,   // origin for reset
+      oy: CY + Math.sin(angle) * dist,
+      size: 3 + Math.random() * 9,        // pixel radius
+      spawnTime: 0.2 + Math.random() * 1.6, // when it appears (sec)
+      speed: 0.6 + Math.random() * 0.5,    // flow speed factor
+      trail: [],
+      opacity: 0,
+      // Wobble phase
+      wobbleA: Math.random() * Math.PI * 2,
+      wobbleS: 0.8 + Math.random() * 1.2,
+    });
+  }
+}
+
+function updateParticles(t, flowProgress) {
+  // flowProgress: 0=not flowing, 1=fully converged at center
+  particles.forEach(p => {
+    // Spawn fade-in
+    if (t < p.spawnTime) {
+      p.opacity = 0;
+      return;
+    }
+    p.opacity = Math.min(1, (t - p.spawnTime) * 2);
+
+    // Flow toward center
+    const toX = CX - p.ox;
+    const toY = CY - p.oy;
+    const dist = Math.hypot(toX, toY);
+
+    // Ease-in: slow at start, fast as they approach center
+    const eased = flowProgress * flowProgress * p.speed;
+
+    // Wobble perpendicular to flow direction
+    const perpX = -toY / dist;
+    const perpY =  toX / dist;
+    const wobble = Math.sin(t * p.wobbleS + p.wobbleA) * 18 * (1 - eased);
+
+    p.x = p.ox + toX * eased + perpX * wobble;
+    p.y = p.oy + toY * eased + perpY * wobble;
+
+    // Track trail
+    p.trail.push({ x: p.x, y: p.y });
+    if (p.trail.length > 8) p.trail.shift();
+  });
+}
+
+function drawParticles(ctx, flowProgress, globalOpacity) {
+  if (globalOpacity < 0.01) return;
+
+  particles.forEach(p => {
+    if (p.opacity < 0.01) return;
+    const opacity = p.opacity * globalOpacity;
+    const sz = p.size * (1 - flowProgress * 0.6); // shrink as they flow in
+    if (sz < 0.5) return;
+
+    // Chrome droplet look: radial gradient
+    const grd = ctx.createRadialGradient(p.x - sz * 0.25, p.y - sz * 0.25, 0, p.x, p.y, sz);
+    grd.addColorStop(0.0, `rgba(255,255,255,${opacity * 0.9})`);
+    grd.addColorStop(0.2, `rgba(200,230,255,${opacity * 0.7})`);
+    grd.addColorStop(0.6, `rgba(80,140,200,${opacity * 0.4})`);
+    grd.addColorStop(1.0, `rgba(30,60,120,${opacity * 0.1})`);
+
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, sz, 0, Math.PI * 2);
+    ctx.fillStyle = grd;
+    ctx.fill();
+
+    // Trailing streak
+    if (p.trail.length > 2 && flowProgress > 0.05) {
+      ctx.beginPath();
+      ctx.moveTo(p.trail[0].x, p.trail[0].y);
+      for (let i = 1; i < p.trail.length; i++) {
+        ctx.lineTo(p.trail[i].x, p.trail[i].y);
+      }
+      ctx.strokeStyle = `rgba(180,220,255,${opacity * 0.25})`;
+      ctx.lineWidth = sz * 0.4;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+//  MERCURY POOL (phase 2-3 transition: center pooling)
+// ─────────────────────────────────────────────────────────────
+function drawPool(ctx, cx, cy, poolProgress, t) {
+  if (poolProgress < 0.01) return;
+
+  const maxR = R * 0.8 * poolProgress;
+  const ripple = 1 + 0.04 * Math.sin(t * 4.5) * (1 - poolProgress);
+
+  // Multi-layer chrome pool
+  const layers = [
+    { rf: 1.0, alpha: 0.25, color: [30, 90, 140] },
+    { rf: 0.7, alpha: 0.4,  color: [80, 160, 220] },
+    { rf: 0.4, alpha: 0.5,  color: [200, 230, 255] },
+    { rf: 0.1, alpha: 0.7,  color: [255, 255, 255] },
+  ];
+
+  layers.forEach(l => {
+    const r = maxR * l.rf * ripple;
+    const grd = ctx.createRadialGradient(
+      cx - r * 0.15, cy - r * 0.2, 0,
+      cx, cy, r
+    );
+    grd.addColorStop(0, rgbStr(l.color, l.alpha * poolProgress));
+    grd.addColorStop(1, rgbStr(l.color, 0));
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = grd;
+    ctx.fill();
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+//  PHASE TIMING
+// ─────────────────────────────────────────────────────────────
+const T_DROPLETS_START  = 0.0;   // droplets begin appearing
+const T_FLOW_START      = 2.0;   // droplets start flowing to center
+const T_POOL_START      = 2.5;   // pool forms at center
+const T_CRYSTALLIZE     = 5.0;   // logo strokes begin crystallizing
+const T_COLOR_SHIFT     = 8.0;   // chrome→final color transition
+const T_FINAL           = 10.0;  // fully static final logo
+
+function easeInOut(t) {
+  return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+}
+
+function easeOut(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+
+function getPhaseValues(t) {
+  // Particle opacity: fade in at start, fade out once crystallization starts
+  let particleOpacity = 0;
+  if (t >= T_DROPLETS_START && t < T_CRYSTALLIZE) {
+    const fadeIn  = clamp01((t - T_DROPLETS_START) / 0.8);
+    const fadeOut = t > 4.0 ? clamp01((T_CRYSTALLIZE - t) / 1.0) : 1.0;
+    particleOpacity = fadeIn * fadeOut;
+  }
+
+  // Flow progress: 0 at T_FLOW_START → 1 at T_POOL_START+1
+  const flowProgress = t < T_FLOW_START ? 0
+    : clamp01((t - T_FLOW_START) / (T_POOL_START + 1.5 - T_FLOW_START));
+
+  // Pool opacity
+  const poolProgress = t < T_POOL_START ? 0
+    : t < T_CRYSTALLIZE ? easeOut(clamp01((t - T_POOL_START) / (T_CRYSTALLIZE - T_POOL_START))) * 0.85
+    : 0; // pool dissolves as logo crystallizes
+
+  // Logo reveal (0→1): starts at T_CRYSTALLIZE, complete at T_COLOR_SHIFT
+  const revealProgress = t < T_CRYSTALLIZE ? 0
+    : easeOut(clamp01((t - T_CRYSTALLIZE) / (T_COLOR_SHIFT - T_CRYSTALLIZE)));
+
+  // Chrome fraction (1=full chrome, 0=final colors)
+  const chromeFraction = t < T_COLOR_SHIFT ? 1.0
+    : t > T_FINAL ? 0.0
+    : 1.0 - easeInOut(clamp01((t - T_COLOR_SHIFT) / (T_FINAL - T_COLOR_SHIFT)));
+
+  // Ambient glow (only visible in final phase)
+  const glowAlpha = t < T_COLOR_SHIFT ? 0
+    : clamp01((t - T_COLOR_SHIFT) / 2.5);
+
+  // Logo global opacity (appears with reveal)
+  const logoAlpha = revealProgress > 0.01 ? 1.0 : 0;
+
+  return {
+    particleOpacity,
+    flowProgress,
+    poolProgress,
+    revealProgress,
+    chromeFraction,
+    glowAlpha,
+    logoAlpha,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+//  MAIN RENDER LOOP
+// ─────────────────────────────────────────────────────────────
+initParticles();
+
+const startTime = performance.now();
+let lastT = 0;
+
+function render(timestamp) {
+  const elapsed = (timestamp - startTime) * 0.001; // seconds
+
+  const phase = getPhaseValues(elapsed);
+
+  // Update particles
+  if (phase.particleOpacity > 0 || elapsed < T_CRYSTALLIZE) {
+    updateParticles(elapsed, phase.flowProgress);
+  }
+
+  // ── Background ──────────────────────────────────────────
+  CTX.fillStyle = '#000000';
+  CTX.fillRect(0, 0, SZ, SZ);
+
+  // ── Ambient glow (behind logo) ───────────────────────────
+  if (phase.glowAlpha > 0.01) {
+    drawAmbientGlow(CTX, CX, CY, elapsed, phase.glowAlpha);
+  }
+
+  // ── Mercury pool ─────────────────────────────────────────
+  if (phase.poolProgress > 0.01) {
+    drawPool(CTX, CX, CY, phase.poolProgress, elapsed);
+  }
+
+  // ── Logo strokes ──────────────────────────────────────────
+  if (phase.revealProgress > 0.01) {
+    drawLogo(CTX, CX, CY, elapsed, phase.revealProgress, phase.chromeFraction, phase.logoAlpha);
+    drawVoid(CTX, CX, CY, phase.revealProgress);
+  }
+
+  // ── Particles ─────────────────────────────────────────────
+  if (phase.particleOpacity > 0.01) {
+    drawParticles(CTX, phase.flowProgress, phase.particleOpacity);
+  }
+
+  // ── Phase label ───────────────────────────────────────────
+  const label = document.getElementById('phase-label');
+  if (elapsed < T_FLOW_START) {
+    label.style.opacity = '0';
+  } else if (elapsed >= T_FINAL) {
+    label.style.opacity = '1';
+    label.textContent = 'Pure Technology';
+  }
+
+  requestAnimationFrame(render);
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

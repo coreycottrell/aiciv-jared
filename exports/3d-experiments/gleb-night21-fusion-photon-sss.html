@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AETHER Night 21 — Fusion: Photon Caustics + Dipole SSS</title>
+<style>
+  :root { --navy: #080a12; --blue: #2a93c1; --orange: #f1420b; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--navy); }
+  canvas { display: block; width: 100%; height: 100%; }
+  #info {
+    position: fixed; top: 16px; left: 16px; color: rgba(255,255,255,0.5);
+    font: 11px/1.4 'SF Mono', monospace; pointer-events: none; z-index: 10;
+  }
+  #info h3 { color: rgba(255,255,255,0.8); font-size: 13px; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div id="info">
+  <h3>Night 21 / Prototype 3</h3>
+  Fusion: SDF Photon Caustics + Dipole SSS<br>
+  Volumetric god rays + heartbeat pulse<br>
+  Internal scattering + external caustic projection
+</div>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+if (!gl) document.body.innerHTML = '<p style="color:white;padding:2em">WebGL2 required</p>';
+
+function resize() {
+  const dpr = Math.min(devicePixelRatio, 1.5); // Slightly lower for this heavy shader
+  canvas.width = canvas.clientWidth * dpr;
+  canvas.height = canvas.clientHeight * dpr;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+resize();
+window.addEventListener('resize', resize);
+
+let mx = 0.5, my = 0.5;
+canvas.addEventListener('mousemove', e => {
+  mx = e.clientX / canvas.clientWidth;
+  my = e.clientY / canvas.clientHeight;
+});
+
+const vs = `#version 300 es
+in vec2 p;
+void main(){ gl_Position = vec4(p, 0, 1); }`;
+
+const fs = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform vec2 uRes;
+uniform float uTime;
+uniform vec2 uMouse;
+
+#define PI 3.14159265
+#define TAU 6.28318530
+#define MAX_STEPS 100
+#define SURF_DIST 0.0015
+
+// ===== NOISE =====
+float hash(vec3 p) {
+  p = fract(p * vec3(443.897, 397.297, 491.187));
+  p += dot(p, p.yzx + 19.19);
+  return fract((p.x + p.y) * p.z);
+}
+
+float noise3(vec3 p) {
+  vec3 i = floor(p), f = fract(p);
+  f = f*f*(3.0-2.0*f);
+  float a = hash(i), b = hash(i+vec3(1,0,0));
+  float c = hash(i+vec3(0,1,0)), d = hash(i+vec3(1,1,0));
+  float e = hash(i+vec3(0,0,1)), f2 = hash(i+vec3(1,0,1));
+  float g = hash(i+vec3(0,1,1)), h = hash(i+vec3(1,1,1));
+  return mix(mix(mix(a,b,f.x),mix(c,d,f.x),f.y),
+             mix(mix(e,f2,f.x),mix(g,h,f.x),f.y), f.z);
+}
+
+float fbm(vec3 p) {
+  float v = 0.0, a = 0.5;
+  mat3 rot = mat3(0.8,-0.6,0, 0.6,0.8,0, 0,0,1);
+  for(int i = 0; i < 4; i++) {
+    v += a * noise3(p);
+    p = rot * p * 2.1;
+    a *= 0.45;
+  }
+  return v;
+}
+
+// ===== SDF =====
+float sdBrain(vec3 p) {
+  float sphere = length(p) - 1.15;
+  float disp = fbm(p * 2.8 + uTime * 0.04) * 0.22;
+  float sulci = sin(p.x*8.0+p.y*3.0)*sin(p.y*7.0+p.z*4.0)*0.035;
+  return sphere + disp - 0.12 + sulci;
+}
+
+float sdGround(vec3 p) { return p.y + 2.5; }
+
+vec2 scene(vec3 p) {
+  float brain = sdBrain(p);
+  float ground = sdGround(p);
+  return brain < ground ? vec2(brain, 1.0) : vec2(ground, 2.0);
+}
+
+float sceneDist(vec3 p) { return scene(p).x; }
+
+vec3 calcNormal(vec3 p) {
+  vec2 e = vec2(0.001, 0);
+  return normalize(vec3(
+    sceneDist(p+e.xyy)-sceneDist(p-e.xyy),
+    sceneDist(p+e.yxy)-sceneDist(p-e.yxy),
+    sceneDist(p+e.yyx)-sceneDist(p-e.yyx)
+  ));
+}
+
+// ===== DIPOLE SSS (Jensen 2001) =====
+// Simplified but physically grounded
+
+vec3 dipoleSSSAtPoint(vec3 p, vec3 n, vec3 lightDir, float thickness) {
+  // Heartbeat modulation
+  float heartbeat = 1.0 + 0.15 * (
+    smoothstep(0.0, 0.08, fract(uTime * 0.8)) *
+    smoothstep(0.25, 0.08, fract(uTime * 0.8)) +
+    smoothstep(0.3, 0.38, fract(uTime * 0.8)) *
+    smoothstep(0.55, 0.38, fract(uTime * 0.8))
+  );
+
+  // Per-channel optical properties (brain tissue inspired, brand-shifted)
+  vec3 sigma_a = vec3(0.04, 0.06, 0.12); // absorption
+  vec3 sigma_s = vec3(0.8, 1.0, 1.4);    // reduced scattering (blue-dominant for brand)
+  vec3 sigma_t = sigma_a + sigma_s;
+  vec3 alpha = sigma_s / sigma_t;         // albedo
+
+  // Diffusion
+  vec3 D = 1.0 / (3.0 * sigma_t);
+  vec3 sigma_tr = sqrt(sigma_a / D);
+
+  // Dipole distances
+  vec3 z_r = 1.0 / sigma_t;
+  float eta = 1.4; // IOR
+  float A = (1.0 + 0.668 + 0.0636*eta) / (1.0 - 0.668 - 0.0636*eta + 1.440/(eta*eta));
+  vec3 z_v = z_r * (1.0 + 4.0/3.0 * A);
+
+  // Distance from light entry to evaluation point (through material)
+  float r = thickness * heartbeat;
+  vec3 d_r = sqrt(vec3(r*r) + z_r*z_r);
+  vec3 d_v = sqrt(vec3(r*r) + z_v*z_v);
+
+  // Dipole Rd(r) per channel
+  vec3 Rd = (alpha / (4.0 * PI)) * (
+    z_r * (sigma_tr * d_r + 1.0) * exp(-sigma_tr * d_r) / (d_r * d_r * d_r) +
+    z_v * (sigma_tr * d_v + 1.0) * exp(-sigma_tr * d_v) / (d_v * d_v * d_v)
+  );
+
+  // Modulate by light angle
+  float NdotL = max(dot(n, lightDir), 0.0);
+  float backLight = max(dot(-n, lightDir), 0.0);
+
+  // SSS = deep scatter (back-lit) + surface scatter (front-lit)
+  vec3 sss = Rd * (backLight * 2.0 + NdotL * 0.3) * heartbeat;
+
+  return clamp(sss * 8.0, 0.0, 2.0);
+}
+
+// ===== PHOTON CAUSTICS =====
+vec3 refractRay(vec3 I, vec3 N, float eta) {
+  float cosi = dot(-I, N);
+  float k = 1.0 - eta*eta*(1.0-cosi*cosi);
+  if (k < 0.0) return reflect(I, N);
+  return eta*I + (eta*cosi - sqrt(k))*N;
+}
+
+float gatherCaustics(vec3 groundP, vec3 lightPos) {
+  float caustic = 0.0;
+  for (int i = 0; i < 20; i++) {
+    float fi = float(i);
+    float phi = fi * 2.399 + uTime * 0.4;
+    float cosTheta = 1.0 - (fi+0.5)/20.0 * 0.55;
+    float sinTheta = sqrt(1.0-cosTheta*cosTheta);
+    vec3 dir = normalize(mix(
+      vec3(sinTheta*cos(phi), -cosTheta, sinTheta*sin(phi)),
+      normalize(-lightPos), 0.65
+    ));
+
+    vec3 ro = lightPos, rd = dir;
+    float t = 0.0;
+    for (int s = 0; s < 48; s++) {
+      vec3 p = ro + rd * t;
+      float d = sdBrain(p);
+      if (d < 0.003) {
+        vec3 n = calcNormal(p);
+        vec3 refr = refractRay(rd, n, 1.0/1.45);
+        vec3 innerRo = p + refr * 0.02;
+        float it = 0.0;
+        for (int j = 0; j < 24; j++) {
+          vec3 ip = innerRo + refr * it;
+          float id = -sdBrain(ip);
+          if (id < 0.003) {
+            vec3 exitN = -calcNormal(ip);
+            vec3 exitRay = refractRay(refr, exitN, 1.45);
+            float gDist = -(ip.y + 2.5) / exitRay.y;
+            if (gDist > 0.0 && exitRay.y < 0.0) {
+              vec3 hitG = ip + exitRay * gDist;
+              float dist = length(hitG.xz - groundP.xz);
+              caustic += exp(-dist*dist*10.0) * 0.12;
+            }
+            break;
+          }
+          it += max(id, 0.012);
+          if (it > 4.0) break;
+        }
+        break;
+      }
+      t += max(d, 0.006);
+      if (t > 12.0) break;
+    }
+  }
+  return caustic;
+}
+
+// ===== GLASS + SSS SHADING =====
+vec3 shadeBrain(vec3 p, vec3 rd, vec3 n, vec3 lightPos) {
+  vec3 lightDir = normalize(lightPos - p);
+  float NdotV = max(dot(n, -rd), 0.0);
+
+  // Fresnel
+  float ior = 1.45;
+  float f0 = pow((1.0-ior)/(1.0+ior), 2.0);
+  float fresnel = f0 + (1.0-f0)*pow(1.0-NdotV, 5.0);
+
+  // Estimate thickness via inward march
+  float thickness = 0.0;
+  {
+    vec3 marchDir = -n;
+    vec3 mp = p + marchDir * 0.05;
+    for (int i = 0; i < 16; i++) {
+      float d = -sdBrain(mp);
+      if (d < 0.001) break;
+      thickness += d;
+      mp += marchDir * max(d, 0.02);
+      if (thickness > 3.0) break;
+    }
+  }
+
+  // Dipole SSS
+  vec3 sss = dipoleSSSAtPoint(p, n, lightDir, thickness);
+
+  // Glass absorption
+  vec3 absorption = exp(-vec3(0.2, 0.08, 0.03) * thickness * 1.5);
+
+  // Specular
+  vec3 h = normalize(lightDir - rd);
+  float spec = pow(max(dot(n, h), 0.0), 200.0);
+
+  // Environment reflection
+  vec3 refl = reflect(rd, n);
+  float envBright = smoothstep(-0.2, 0.6, refl.y);
+  vec3 envColor = mix(vec3(0.015, 0.03, 0.06), vec3(0.08, 0.15, 0.25), envBright);
+
+  // Rim glow
+  float rim = pow(1.0-NdotV, 3.5);
+  vec3 rimColor = vec3(0.165, 0.576, 0.757);
+
+  // Thin-area translucency (orange glow where thin)
+  vec3 thinGlow = vec3(0.945, 0.259, 0.043) * exp(-thickness * 2.0) * max(dot(-n, lightDir), 0.0) * 0.5;
+
+  // Combine layers
+  vec3 color = vec3(0.0);
+  color += sss * absorption;                          // Deep SSS through glass
+  color += envColor * fresnel * 0.6;                 // Environment reflection
+  color += thinGlow;                                  // Thin-area translucency
+  color += spec * vec3(1.0, 0.98, 0.95) * 2.5;      // Specular
+  color += rimColor * rim * 0.5;                      // Rim
+  color += absorption * vec3(0.04, 0.08, 0.14) * 0.3; // Base glass
+
+  return color;
+}
+
+// ===== RAY MARCH =====
+vec2 rayMarch(vec3 ro, vec3 rd) {
+  float t = 0.0;
+  for (int i = 0; i < MAX_STEPS; i++) {
+    vec3 p = ro + rd * t;
+    vec2 d = scene(p);
+    if (d.x < SURF_DIST) return vec2(t, d.y);
+    t += d.x * 0.75;
+    if (t > 25.0) break;
+  }
+  return vec2(-1.0, 0.0);
+}
+
+// ===== VOLUMETRIC GOD RAYS =====
+float godRays(vec3 ro, vec3 rd, float maxT, vec3 lightPos) {
+  float acc = 0.0;
+  float stepSize = min(maxT, 10.0) / 24.0;
+  for (int i = 0; i < 24; i++) {
+    vec3 sp = ro + rd * (float(i) * stepSize + stepSize * 0.5);
+    vec3 toLight = lightPos - sp;
+    float distL = length(toLight);
+
+    // Shadow test (is this point visible from light?)
+    float brainDist = sdBrain(sp);
+    float vis = smoothstep(0.0, 0.4, brainDist);
+
+    // Mie-like forward scattering
+    float cosAngle = dot(normalize(toLight), -rd);
+    float mie = 0.1 + 0.9 * pow(max(cosAngle, 0.0), 8.0);
+
+    acc += exp(-distL * 0.12) * vis * mie * 0.004;
+  }
+  return acc;
+}
+
+// ===== MAIN =====
+void main() {
+  vec2 uv = (gl_FragCoord.xy * 2.0 - uRes) / min(uRes.x, uRes.y);
+
+  // Camera
+  float camDist = 6.0;
+  float camY = uMouse.x * PI * 0.5 - PI * 0.25;
+  float camX = uMouse.y * 0.4 - 0.05;
+  vec3 ro = vec3(
+    sin(camY)*cos(camX)*camDist,
+    sin(camX)*camDist + 0.8,
+    cos(camY)*cos(camX)*camDist
+  );
+  vec3 target = vec3(0, -0.3, 0);
+  vec3 fwd = normalize(target - ro);
+  vec3 right = normalize(cross(fwd, vec3(0,1,0)));
+  vec3 up = cross(right, fwd);
+  vec3 rd = normalize(fwd + (uv.x*right + uv.y*up) * 0.75);
+
+  // Orbiting light
+  float la = uTime * 0.45;
+  vec3 lightPos = vec3(sin(la)*3.5, 4.0, cos(la)*3.5);
+
+  // March
+  vec2 hit = rayMarch(ro, rd);
+  float maxT = hit.x > 0.0 ? hit.x : 25.0;
+
+  vec3 color = vec3(0.008, 0.01, 0.018);
+
+  if (hit.x > 0.0) {
+    vec3 p = ro + rd * hit.x;
+    vec3 n = calcNormal(p);
+
+    if (hit.y < 1.5) {
+      // Brain - glass + SSS
+      color = shadeBrain(p, rd, n, lightPos);
+    } else {
+      // Ground
+      vec3 lightDir = normalize(lightPos - p);
+      float diff = max(dot(n, lightDir), 0.0);
+
+      // Soft shadow
+      float shadow = 1.0;
+      float st = 0.05;
+      for (int i = 0; i < 40; i++) {
+        float sd = sdBrain(p + lightDir * st);
+        if (sd < 0.001) { shadow = 0.0; break; }
+        shadow = min(shadow, 10.0 * sd / st);
+        st += sd;
+        if (st > 8.0) break;
+      }
+
+      // Caustics
+      float caustics = gatherCaustics(p, lightPos);
+
+      // Ground material
+      vec3 groundColor = vec3(0.018, 0.02, 0.028);
+
+      // Lighting
+      color = groundColor * (diff * shadow * 0.25 + 0.015);
+
+      // Caustic colors (brand)
+      vec3 causticBlue = vec3(0.165, 0.576, 0.757) * caustics * 2.5;
+      vec3 causticWhite = vec3(0.9, 0.95, 1.0) * caustics * caustics * 4.0;
+      color += causticBlue + causticWhite;
+
+      // Subtle orange secondary caustic
+      float c2 = gatherCaustics(p, lightPos + vec3(0.8, 0, 0.3));
+      color += vec3(0.945, 0.259, 0.043) * c2 * 1.2;
+
+      // Ground reflection of brain (fake)
+      float distToBrain = length(p.xz);
+      float reflBrain = exp(-distToBrain * distToBrain * 0.5) * 0.02;
+      color += vec3(0.1, 0.15, 0.25) * reflBrain;
+    }
+  }
+
+  // God rays
+  float gr = godRays(ro, rd, maxT, lightPos);
+  vec3 grColor = mix(vec3(0.2, 0.35, 0.6), vec3(0.165, 0.576, 0.757), 0.5);
+  color += grColor * gr;
+
+  // Secondary god ray (orange accent)
+  vec3 lightPos2 = vec3(sin(la + PI)*2.5, 3.0, cos(la + PI)*2.5);
+  float gr2 = godRays(ro, rd, maxT, lightPos2) * 0.4;
+  color += vec3(0.945, 0.259, 0.043) * gr2 * 0.5;
+
+  // Bloom
+  float lum = dot(color, vec3(0.299, 0.587, 0.114));
+  color += max(color - 0.7, 0.0) * 0.6;
+
+  // Chromatic aberration (subtle)
+  vec2 screenUv = gl_FragCoord.xy / uRes;
+  vec2 caDir = (screenUv - 0.5) * 0.003;
+  // Just tint edges slightly
+  float edgeDist = length(screenUv - 0.5);
+  color.r *= 1.0 + edgeDist * 0.1;
+  color.b *= 1.0 - edgeDist * 0.05;
+
+  // Vignette
+  float vig = 1.0 - dot(screenUv-0.5, screenUv-0.5) * 1.4;
+  color *= vig;
+
+  // Tone map (ACES)
+  color = (color*(2.51*color+0.03))/(color*(2.43*color+0.59)+0.14);
+
+  // Gamma
+  color = pow(clamp(color, 0.0, 1.0), vec3(1.0/2.2));
+
+  fragColor = vec4(color, 1.0);
+}`;
+
+/* ---- Compile ---- */
+function compileShader(src, type) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error('Shader error:', gl.getShaderInfoLog(s));
+    return null;
+  }
+  return s;
+}
+
+const vShader = compileShader(vs, gl.VERTEX_SHADER);
+const fShader = compileShader(fs, gl.FRAGMENT_SHADER);
+const prog = gl.createProgram();
+gl.attachShader(prog, vShader);
+gl.attachShader(prog, fShader);
+gl.linkProgram(prog);
+
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+  console.error('Link error:', gl.getProgramInfoLog(prog));
+}
+
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+const pLoc = gl.getAttribLocation(prog, 'p');
+gl.enableVertexAttribArray(pLoc);
+gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
+
+const uRes = gl.getUniformLocation(prog, 'uRes');
+const uTime = gl.getUniformLocation(prog, 'uTime');
+const uMouseLoc = gl.getUniformLocation(prog, 'uMouse');
+
+const t0 = performance.now();
+function frame() {
+  gl.uniform2f(uRes, canvas.width, canvas.height);
+  gl.uniform1f(uTime, (performance.now() - t0) * 0.001);
+  gl.uniform2f(uMouseLoc, mx, my);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  requestAnimationFrame(frame);
+}
+window.addEventListener('resize', resize);
+frame();
+</script>
+</body>
+</html>

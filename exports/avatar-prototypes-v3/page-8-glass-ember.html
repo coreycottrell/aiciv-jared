@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aether Avatars — Glass Ember Series</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #080a12;
+    color: #e8eaf0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 48px 24px 80px;
+  }
+
+  h1 {
+    font-size: 1.4rem;
+    font-weight: 300;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #7a8fa8;
+    margin-bottom: 6px;
+  }
+
+  .subtitle {
+    font-size: 0.78rem;
+    color: #3a4a5a;
+    letter-spacing: 0.14em;
+    margin-bottom: 56px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 52px 44px;
+    max-width: 720px;
+    width: 100%;
+  }
+
+  .avatar-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .avatar-wrap {
+    width: 300px;
+    height: 300px;
+    border-radius: 50%;
+    overflow: hidden;
+    position: relative;
+    background: #040608;
+    cursor: pointer;
+    flex-shrink: 0;
+    box-shadow: 0 0 40px rgba(0,0,0,0.8);
+    transition: box-shadow 0.3s ease;
+  }
+
+  .avatar-wrap:hover {
+    box-shadow: 0 0 60px rgba(241,66,11,0.18), 0 0 120px rgba(42,147,193,0.10);
+  }
+
+  .label {
+    font-size: 0.73rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #5a6a7a;
+    text-align: center;
+    line-height: 1.7;
+  }
+
+  .label strong {
+    display: block;
+    color: #9aaabb;
+    font-size: 0.82rem;
+    letter-spacing: 0.08em;
+    margin-bottom: 2px;
+    font-weight: 500;
+  }
+</style>
+</head>
+<body>
+
+<h1>Aether Avatars</h1>
+<div class="subtitle">Glass Ember Series — Variant Studies</div>
+
+<div class="grid">
+
+  <div class="avatar-card">
+    <div class="avatar-wrap" id="wrap-supernova">
+      <canvas id="c-supernova" width="300" height="300" style="display:block;width:100%;height:100%;"></canvas>
+    </div>
+    <div class="label"><strong>Glass Ember — Supernova</strong>Multiple cores · cracked veins · god rays</div>
+  </div>
+
+  <div class="avatar-card">
+    <div class="avatar-wrap" id="wrap-heartbeat">
+      <canvas id="c-heartbeat" width="300" height="300" style="display:block;width:100%;height:100%;"></canvas>
+    </div>
+    <div class="label"><strong>Glass Ember — Heartbeat</strong>Organic pulse · shockwave · Ae silhouette</div>
+  </div>
+
+  <div class="avatar-card">
+    <div class="avatar-wrap" id="wrap-nebula">
+      <canvas id="c-nebula" width="300" height="300" style="display:block;width:100%;height:100%;"></canvas>
+    </div>
+    <div class="label"><strong>Glass Ember — Nebula</strong>Gas clouds · deep cosmos · chromatic rim</div>
+  </div>
+
+  <div class="avatar-card">
+    <div class="avatar-wrap" id="wrap-lightning">
+      <canvas id="c-lightning" width="300" height="300" style="display:block;width:100%;height:100%;"></canvas>
+    </div>
+    <div class="label"><strong>Glass Ember — Captured Lightning</strong>Plasma arcs · electric tension · warm core</div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+// ===================================================================
+// SHARED GLSL LIBRARY — Compatible with GLSL ES 1.0 (WebGL 1.0)
+// ===================================================================
+
+const VALUE_NOISE_GLSL = `
+float _h3(vec3 p){
+  p=fract(p*vec3(443.8975,397.2973,491.1871));
+  p+=dot(p.zxy,p.yxz+19.19);
+  return fract(p.x*p.y*p.z);
+}
+float vnoise(vec3 p){
+  vec3 i=floor(p);vec3 f=fract(p);f=f*f*(3.-2.*f);
+  return mix(
+    mix(mix(_h3(i),_h3(i+vec3(1,0,0)),f.x),mix(_h3(i+vec3(0,1,0)),_h3(i+vec3(1,1,0)),f.x),f.y),
+    mix(mix(_h3(i+vec3(0,0,1)),_h3(i+vec3(1,0,1)),f.x),mix(_h3(i+vec3(0,1,1)),_h3(i+vec3(1,1,1)),f.x),f.y),f.z);
+}
+float vfbm(vec3 p){
+  float v=0.,a=.5;
+  mat3 rot=mat3(.8,.6,0.,-.6,.8,0.,0.,0.,1.);
+  for(int i=0;i<6;i++){v+=a*vnoise(p);p=rot*p*2.1+vec3(1.7,9.2,-3.1);a*=.5;}
+  return v;
+}
+float vfbm4(vec3 p){
+  float v=0.,a=.5;
+  mat3 rot=mat3(.8,.6,0.,-.6,.8,0.,0.,0.,1.);
+  for(int i=0;i<4;i++){v+=a*vnoise(p);p=rot*p*2.0+vec3(3.1,1.7,-2.3);a*=.5;}
+  return v;
+}
+`;
+
+const RAY_SPHERE_GLSL = `
+vec2 raySphere(vec3 ro,vec3 rd,float r){
+  float b=dot(ro,rd),c=dot(ro,ro)-r*r,h=b*b-c;
+  if(h<0.)return vec2(-1.);
+  h=sqrt(h);
+  return vec2(-b-h,-b+h);
+}
+`;
+
+const ACES_GLSL = `
+vec3 acesTone(vec3 c){
+  return c*(2.51*c+0.03)/(c*(2.43*c+0.59)+0.14);
+}
+`;
+</script>
+
+<!-- =================================================================
+     AVATAR 1 — SUPERNOVA
+     3 ember cores (computed inline), cracked glowing veins, thick god rays
+     ================================================================= -->
+<script>
+(function GlassEmberSupernova() {
+  const canvas = document.getElementById('c-supernova');
+  const wrap   = document.getElementById('wrap-supernova');
+  let hovered  = false;
+  wrap.addEventListener('mouseenter', () => hovered = true);
+  wrap.addEventListener('mouseleave', () => hovered = false);
+
+  const W = 300, H = 300;
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(1);
+  const scene  = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 10);
+  camera.position.z = 3;
+
+  const fragSrc = `
+    precision highp float;
+    uniform float uTime;
+    uniform float uHover;
+    uniform float uFlare;
+    uniform vec2  uRes;
+
+    ${VALUE_NOISE_GLSL}
+    ${RAY_SPHERE_GLSL}
+    ${ACES_GLSL}
+
+    // Ember glow at position relative to a core center
+    float singleEmber(vec3 p, vec3 center, float baseR) {
+      float d = length(p - center);
+      float blob = vnoise(p * 7.0 + center * 2.0) * 0.05;
+      float sdf  = d - (baseR + blob);
+      return exp(-max(sdf, 0.0) * 11.0);
+    }
+
+    // Color from ember distance and temperature factor
+    vec3 emberColTemp(float dist, float temp) {
+      vec3 deepred  = vec3(0.55, 0.03, 0.01);
+      vec3 orange   = vec3(1.0, 0.35, 0.03);
+      vec3 yellow   = vec3(1.0, 0.72, 0.2);
+      vec3 white    = vec3(1.0, 0.92, 0.78);
+      vec3 col = mix(deepred, orange, clamp(temp*3.0, 0.,1.));
+      col = mix(col, yellow,  clamp(temp*3.0-1.0, 0.,1.));
+      col = mix(col, white,   clamp(temp*3.0-2.0, 0.,1.));
+      float falloff = exp(-dist * 5.0);
+      return col * (0.3 + falloff * 0.7);
+    }
+
+    // Vein field — glowing cracks near surface
+    float veinField(vec3 p, float t) {
+      float eps = 0.04;
+      float n0 = vfbm4(p * 3.5 + vec3(t*0.05));
+      float nx = vfbm4(p * 3.5 + vec3(eps,0.,0.) + vec3(t*0.05));
+      float ny = vfbm4(p * 3.5 + vec3(0.,eps,0.) + vec3(t*0.05));
+      float nz = vfbm4(p * 3.5 + vec3(0.,0.,eps) + vec3(t*0.05));
+      float gmag = length(vec3(nx-n0, ny-n0, nz-n0)) / eps;
+      float surfFac = smoothstep(0.78, 0.96, length(p));
+      return smoothstep(0.20, 0.03, abs(gmag - 0.38)) * surfFac;
+    }
+
+    void main() {
+      vec2 uv = (gl_FragCoord.xy - uRes*0.5) / min(uRes.x, uRes.y);
+      vec3 ro  = vec3(0.0, 0.0, 3.5);
+      vec3 rd  = normalize(vec3(uv * 0.60, -1.0));
+      float t  = uTime;
+      float hB = uHover;
+      float flare = uFlare;
+
+      vec3 bg = vec3(0.008, 0.010, 0.018);
+
+      // Glass shell
+      vec2 hit = raySphere(ro, rd, 1.0);
+      if(hit.x < 0.0) { gl_FragColor = vec4(bg, 1.0); return; }
+
+      vec3 entryP = ro + rd * max(hit.x, 0.0);
+      vec3 outerN = normalize(entryP);
+      float cosIn = max(dot(-rd, outerN), 0.0);
+      float fr = pow(1.0 - cosIn, 5.0);
+
+      vec3 refRd = refract(rd, outerN, 1.0/1.50);
+      if(dot(refRd,refRd) < 0.01) refRd = rd;
+      vec3 iRo = entryP + refRd * 0.012;
+
+      vec2 iHit = raySphere(iRo, refRd, 0.975);
+      float tEnd = max(iHit.y, 0.001);
+
+      // ---- Raymarch ----
+      const int STEPS = 44;
+      float stepSz = tEnd / float(STEPS);
+      float transmit = 1.0;
+      vec3  acc = vec3(0.0);
+      vec3  veinAcc = vec3(0.0);
+
+      // Core positions (computed outside loop for GLSL ES 1.0 compat)
+      vec3 core0 = vec3(sin(t*0.23)*0.12, cos(t*0.18)*0.08, sin(t*0.31)*0.10);
+      vec3 core1 = vec3(sin(t*0.41+1.1)*0.28, cos(t*0.37+2.3)*0.25, sin(t*0.29+0.7)*0.22);
+      vec3 core2 = vec3(cos(t*0.53+3.2)*0.18, sin(t*0.47+1.8)*0.20, cos(t*0.38+0.4)*0.30);
+      float int0 = 1.0 + 0.4*sin(t*1.8+sin(t*0.7)*2.0);
+      float int1 = 0.65 + 0.35*sin(t*2.3+1.4);
+      float int2 = 0.45 + 0.3*sin(t*1.5+2.8);
+
+      // Medium fog density (pre-compute time-varying part)
+      float medFogBase = vfbm(vec3(t*0.04, t*0.03, t*0.05)) * 0.1;
+
+      for(int i = 0; i < STEPS; i++) {
+        float ts = (float(i) + 0.5) * stepSz;
+        vec3  p  = iRo + refRd * ts;
+        if(length(p) >= 0.975) break;
+
+        // Core 0 — primary, hottest
+        float g0 = singleEmber(p, core0, 0.17) * int0 * (1.0 + hB*1.3 + flare*2.5);
+        vec3  c0 = emberColTemp(length(p-core0), 0.85);
+        // Core 1 — secondary
+        float g1 = singleEmber(p, core1, 0.14) * int1 * (1.0 + hB*1.1 + flare*2.0);
+        vec3  c1 = emberColTemp(length(p-core1), 0.55);
+        // Core 2 — tertiary, cooler
+        float g2 = singleEmber(p, core2, 0.12) * int2 * (1.0 + hB*0.9 + flare*1.5);
+        vec3  c2 = emberColTemp(length(p-core2), 0.30);
+
+        float totalGlow = g0 + g1 + g2;
+
+        // God rays: volumetric fog scatters all ember light
+        float medFog = max(0.0, vfbm(p*1.4 + vec3(t*0.06)) * 0.15 * (1.0 - smoothstep(0.0, 0.95, length(p))));
+        vec3 rayLight  = (c0*g0 + c1*g1 + c2*g2) * medFog * 18.0 * (2.0 + hB*1.8 + flare*3.0);
+
+        // Veins near surface — orange-white glow proportional to nearby core heat
+        float vein = veinField(p, t);
+        float coreProx = clamp(g0*0.8 + g1*0.5 + g2*0.3, 0.0, 1.0);
+        vec3  veinCol = mix(vec3(0.9, 0.25, 0.02), vec3(1.0, 0.82, 0.5), coreProx);
+        veinAcc += transmit * vein * veinCol * stepSz * 6.0 * (1.0 + flare*4.0);
+
+        float medAbsorb = 0.04 + totalGlow * 0.015;
+        acc += transmit * ((c0*g0 + c1*g1 + c2*g2) * stepSz * 2.0 + rayLight * stepSz);
+        transmit *= exp(-medAbsorb * stepSz);
+        if(transmit < 0.003) break;
+      }
+
+      // Glass rim
+      float rimPulse = 0.5 + 0.5*sin(t*1.6);
+      vec3 rimBlue = vec3(0.14, 0.52, 0.76) * fr * (0.5 + hB*0.6 + flare*0.9 + rimPulse*0.07);
+
+      // Flare lights entire glass
+      vec3 flareRim = vec3(1.0, 0.6, 0.15) * flare * fr * 1.3;
+
+      // Specular
+      vec3 Lk = normalize(vec3(-0.5, 1.9, 1.1));
+      float NdL = max(dot(outerN, Lk), 0.0);
+      float specK = pow(max(dot(outerN, normalize(-rd + Lk)), 0.0), 180.0) * 0.5 * NdL;
+      vec3 glassSpec = vec3(0.7, 0.85, 1.0) * specK;
+
+      // Back-face vein glow bleeds through
+      vec3 exitP  = ro + rd * hit.y;
+      float backFr = pow(1.0 - max(dot(-rd, -normalize(exitP)), 0.0), 3.0);
+      vec3 veinRim = veinAcc * 0.35 * backFr;
+
+      vec3 col = bg;
+      col = mix(col, bg + acc, min(1.0 - transmit + fr*0.25, 1.0));
+      col += rimBlue + glassSpec + veinAcc*0.55 + veinRim + flareRim;
+
+      col = acesTone(col);
+      col = pow(max(col, vec3(0.0)), vec3(0.4545));
+      gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+    }
+  `;
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime:  { value: 0 },
+      uHover: { value: 0 },
+      uFlare: { value: 0 },
+      uRes:   { value: new THREE.Vector2(W, H) },
+    },
+    vertexShader: `void main(){gl_Position=vec4(position,1.);}`,
+    fragmentShader: fragSrc,
+  });
+
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
+  scene.add(quad);
+
+  let tick_t = 0, hoverVal = 0, flareVal = 0;
+  let nextFlare = 4.0 + Math.random() * 5.0;
+
+  function tick() {
+    tick_t += 0.016;
+    hoverVal += ((hovered ? 1 : 0) - hoverVal) * 0.05;
+
+    if(tick_t > nextFlare) {
+      flareVal = 1.0;
+      nextFlare = tick_t + 3.5 + Math.random() * 6.0;
+    }
+    flareVal *= 0.91;
+    if(hovered) flareVal = Math.max(flareVal, hoverVal * 0.35);
+
+    mat.uniforms.uTime.value  = tick_t;
+    mat.uniforms.uHover.value = hoverVal;
+    mat.uniforms.uFlare.value = flareVal;
+    renderer.render(scene, camera);
+    requestAnimationFrame(tick);
+  }
+  tick();
+})();
+</script>
+
+<!-- =================================================================
+     AVATAR 2 — HEARTBEAT
+     Rhythmic double-hump pulse, glass breathing, shockwave rings, Ae sigil
+     ================================================================= -->
+<script>
+(function GlassEmberHeartbeat() {
+  const canvas = document.getElementById('c-heartbeat');
+  const wrap   = document.getElementById('wrap-heartbeat');
+  let hovered  = false;
+  wrap.addEventListener('mouseenter', () => hovered = true);
+  wrap.addEventListener('mouseleave', () => hovered = false);
+
+  const W = 300, H = 300;
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(1);
+  const scene  = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 10);
+  camera.position.z = 3;
+
+  const fragSrc = `
+    precision highp float;
+    uniform float uTime;
+    uniform float uHover;
+    uniform float uPulse;
+    uniform float uPhase;
+    uniform vec2  uRes;
+
+    ${VALUE_NOISE_GLSL}
+    ${RAY_SPHERE_GLSL}
+    ${ACES_GLSL}
+
+    // Ember glow — smolders between beats, erupts on beat
+    float emberGlow(vec3 p, float t, float pulse) {
+      float noise = vnoise(p * 6.0 + vec3(t*0.25, t*0.18, t*0.22));
+      float core  = (1.0 - smoothstep(0.0, 0.65, length(p))) * (0.25 + pulse*0.75);
+      return noise * (0.3 + pulse*0.7) + core;
+    }
+
+    // Ember color — dim smoldering red to bright white-orange
+    vec3 emberCol(vec3 p, float pulse) {
+      float d = length(p);
+      vec3 smolder = mix(vec3(0.28,0.01,0.0), vec3(0.65,0.07,0.01), 1.0-smoothstep(0.0,0.7,d));
+      vec3 flare   = mix(vec3(0.9,0.28,0.03), vec3(1.0,0.88,0.62), smoothstep(0.35,0.0,d));
+      return mix(smolder, flare, pulse*pulse);
+    }
+
+    // Shockwave rings expand outward on each beat
+    float shockwave(vec3 p, float phase) {
+      float r = length(p);
+      float front  = phase * 0.92;
+      float front2 = phase * 0.58;
+      float w = 0.055;
+      float wave1 = smoothstep(w, 0.0, abs(r - front))  * (1.0 - phase) * smoothstep(0.05,0.12,phase);
+      float wave2 = smoothstep(w*0.7, 0.0, abs(r - front2)) * (1.0 - phase*0.6) * 0.5 * smoothstep(0.05,0.12,phase);
+      return wave1 + wave2;
+    }
+
+    // Ae sigil rendered as shadow silhouette against glowing interior
+    float sigilMask(vec3 p, float pulse) {
+      float vis = smoothstep(0.25, 0.65, pulse);
+      vec2  su  = p.xy * 2.2;
+      float faceOn = smoothstep(0.5, 0.0, abs(p.z));
+
+      // A strokes
+      float lA = smoothstep(0.065, 0.02, abs(su.x + su.y*0.7 + 0.08));
+      float rA = smoothstep(0.065, 0.02, abs(su.x - su.y*0.7 - 0.08));
+      float cA = smoothstep(0.055, 0.015, abs(su.y + 0.05))
+               * step(0.0, su.x+0.14) * step(0.0, 0.14-su.x);
+      // E strokes
+      float eV  = smoothstep(0.055, 0.015, abs(su.x + 0.14))
+                * smoothstep(0.24, 0.19, abs(su.y));
+      float eT  = smoothstep(0.055, 0.015, abs(su.y - 0.20))
+                * step(0.0, su.x+0.14) * step(0.0, 0.13-su.x);
+      float eMid= smoothstep(0.055, 0.015, abs(su.y))
+                * step(0.0, su.x+0.14) * step(0.0, 0.11-su.x);
+      float eBot= smoothstep(0.055, 0.015, abs(su.y + 0.20))
+                * step(0.0, su.x+0.14) * step(0.0, 0.13-su.x);
+
+      return clamp(lA+rA+cA+eV+eT+eMid+eBot, 0., 1.) * faceOn * vis;
+    }
+
+    void main() {
+      vec2 uv = (gl_FragCoord.xy - uRes*0.5) / min(uRes.x, uRes.y);
+      vec3 ro  = vec3(0.0, 0.0, 3.5);
+      vec3 rd  = normalize(vec3(uv * 0.60, -1.0));
+      float t  = uTime;
+      float pulse  = uPulse;
+      float phase  = uPhase;
+      float hB = uHover;
+
+      vec3 bg = vec3(0.008, 0.010, 0.018);
+
+      // Glass shell breathes — subtle radius swell on pulse
+      float breathe = 1.0 + pulse * 0.026;
+      vec2 hit = raySphere(ro, rd, breathe);
+      if(hit.x < 0.0) { gl_FragColor = vec4(bg, 1.0); return; }
+
+      vec3 entryP = ro + rd * max(hit.x, 0.0);
+      vec3 outerN = normalize(entryP / breathe);
+      float cosIn = max(dot(-rd, outerN), 0.0);
+      float fr = pow(1.0 - cosIn, 5.0);
+
+      vec3 refRd = refract(rd, outerN, 1.0/1.48);
+      if(dot(refRd,refRd) < 0.01) refRd = rd;
+      vec3 iRo = entryP + refRd * 0.012;
+
+      vec2 iHit = raySphere(iRo, refRd, breathe * 0.975);
+      float tEnd = max(iHit.y, 0.001);
+
+      const int STEPS = 40;
+      float stepSz = tEnd / float(STEPS);
+      float transmit = 1.0;
+      vec3  acc = vec3(0.0);
+
+      for(int i = 0; i < STEPS; i++) {
+        float ts = (float(i) + 0.5) * stepSz;
+        vec3  p  = iRo + refRd * ts;
+        if(length(p) >= 0.975 * breathe) break;
+
+        vec3 pn = p / breathe; // normalized position
+
+        float eg = max(0.0, emberGlow(pn, t, pulse) * 0.55);
+        vec3  ec = emberCol(pn, pulse);
+
+        // Shockwave flash
+        float sw = shockwave(pn, phase);
+        vec3 swCol = mix(vec3(0.9,0.35,0.04), vec3(1.0,0.78,0.32), pulse) * sw * 9.0;
+
+        // Ae sigil shadow — carves into density
+        float sigilSub = sigilMask(pn, pulse) * 0.88;
+        float effDens = max(0.0, eg - sigilSub * eg);
+
+        acc += transmit * (ec * effDens * stepSz * 2.5 + swCol * stepSz);
+        transmit *= exp(-(0.04 + effDens * 0.5) * stepSz);
+        if(transmit < 0.004) break;
+      }
+
+      // Rim: pulses orange-to-blue with heartbeat
+      vec3 rimCol = mix(vec3(0.14, 0.52, 0.76), vec3(0.95, 0.30, 0.04), pulse * 0.72);
+      vec3 rimLight = rimCol * fr * (0.4 + pulse*0.95 + hB*0.4);
+
+      // Beat halo
+      vec3 haloCol = vec3(0.9, 0.35, 0.04) * pulse * fr * 0.28;
+
+      // Specular
+      vec3 Lk = normalize(vec3(-0.5, 1.9, 1.1));
+      float NdL = max(dot(outerN, Lk), 0.0);
+      float specK = pow(max(dot(outerN, normalize(-rd + Lk)), 0.0), 180.0) * 0.45 * NdL;
+      vec3 glassSpec = vec3(0.7, 0.85, 1.0) * specK;
+
+      vec3 col = bg;
+      col = mix(col, bg + acc, min(1.0 - transmit + fr*0.25, 1.0));
+      col += rimLight + glassSpec + haloCol;
+
+      col = acesTone(col);
+      col = pow(max(col, vec3(0.0)), vec3(0.4545));
+      gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+    }
+  `;
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime:  { value: 0 },
+      uHover: { value: 0 },
+      uPulse: { value: 0 },
+      uPhase: { value: 0 },
+      uRes:   { value: new THREE.Vector2(W, H) },
+    },
+    vertexShader: `void main(){gl_Position=vec4(position,1.);}`,
+    fragmentShader: fragSrc,
+  });
+
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
+  scene.add(quad);
+
+  let tick_t = 0, hoverVal = 0;
+  let beatTimer = 0;
+  let nextBeatInterval = 0.95;
+  let beatLife = 0;
+  let beatActive = false;
+  const BEAT_DUR = 0.52;
+
+  function heartbeatEnv(p) {
+    // LUB-DUB waveform
+    if(p < 0.15)  return Math.pow(p/0.15, 0.5);
+    if(p < 0.32)  return Math.pow(1.0-(p-0.15)/0.17, 1.8);
+    if(p < 0.55)  return 0.32 * Math.pow(Math.sin((p-0.32)/0.23 * Math.PI), 0.8);
+    return 0.32 * Math.max(0, 1.0-(p-0.55)/0.45) * 0.25;
+  }
+
+  function tick() {
+    const dt = 0.016;
+    tick_t += dt;
+    hoverVal += ((hovered ? 1 : 0) - hoverVal) * 0.05;
+
+    beatTimer += dt;
+    const eff_interval = nextBeatInterval / (1.0 + hoverVal * 0.3);
+    if(beatTimer >= eff_interval) {
+      beatTimer = 0;
+      beatActive = true;
+      beatLife = 0;
+      nextBeatInterval = 0.88 + Math.random() * 0.24;
+    }
+    if(beatActive) {
+      beatLife += dt;
+      if(beatLife >= BEAT_DUR) { beatLife = BEAT_DUR; beatActive = false; }
+    }
+
+    const phase = beatActive ? beatLife / BEAT_DUR : 0;
+    const pulseVal = beatActive ? heartbeatEnv(phase) : 0;
+
+    mat.uniforms.uTime.value  = tick_t;
+    mat.uniforms.uHover.value = hoverVal;
+    mat.uniforms.uPulse.value = Math.min(pulseVal + hoverVal * 0.15, 1.0);
+    mat.uniforms.uPhase.value = phase;
+    renderer.render(scene, camera);
+    requestAnimationFrame(tick);
+  }
+  tick();
+})();
+</script>
+
+<!-- =================================================================
+     AVATAR 3 — NEBULA
+     Rotating gas clouds, hot spots, multi-color chromatic aberration rim
+     ================================================================= -->
+<script>
+(function GlassEmberNebula() {
+  const canvas = document.getElementById('c-nebula');
+  const wrap   = document.getElementById('wrap-nebula');
+  let hovered  = false;
+  wrap.addEventListener('mouseenter', () => hovered = true);
+  wrap.addEventListener('mouseleave', () => hovered = false);
+
+  const W = 300, H = 300;
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(1);
+  const scene  = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 10);
+  camera.position.z = 3;
+
+  const fragSrc = `
+    precision highp float;
+    uniform float uTime;
+    uniform float uHover;
+    uniform vec2  uRes;
+
+    ${VALUE_NOISE_GLSL}
+    ${RAY_SPHERE_GLSL}
+    ${ACES_GLSL}
+
+    // Gas density with rotating lobes
+    float gasDensity(vec3 p, float t) {
+      float ay = t * 0.07;
+      float cy = cos(ay), sy = sin(ay);
+      vec3 pr = vec3(cy*p.x+sy*p.z, p.y, -sy*p.x+cy*p.z);
+
+      float c1 = vfbm(pr * 1.8 + vec3(t*0.04, t*0.07, t*0.03));
+
+      float ax = t * 0.11;
+      float cx = cos(ax), sx = sin(ax);
+      vec3 pr2 = vec3(p.x, cx*p.y-sx*p.z, sx*p.y+cx*p.z);
+      float c2 = vfbm(pr2 * 2.4 + vec3(-t*0.09, t*0.05, -t*0.06)) * 0.7;
+
+      float c3 = vnoise(p * 4.2 + vec3(t*0.14, -t*0.08, t*0.11)) * 0.4;
+
+      float edge = 1.0 - smoothstep(0.55, 0.96, length(p));
+      return (c1 + c2*0.6 + c3*0.3) * edge;
+    }
+
+    // Nebula color — temperature map across space
+    vec3 nebulaColor(vec3 p, float t) {
+      float ay = t * 0.05;
+      float cy = cos(ay), sy = sin(ay);
+      vec3 pr = vec3(cy*p.x+sy*p.z, p.y, -sy*p.x+cy*p.z);
+
+      float h1 = vfbm(pr * 2.1 + vec3(t*0.06));
+      float h2 = vfbm(pr * 3.3 - vec3(t*0.09));
+      float h3 = vnoise(p * 5.5 + vec3(t*0.12));
+
+      float d = length(p);
+      float coreHeat = (1.0 - smoothstep(0.0, 0.4, d)) * (0.5 + h3*0.5);
+      float midHeat  = h1 * h2 * 1.5;
+      float blueWisp = smoothstep(0.5,0.9,h2) * smoothstep(0.3,0.6,1.0-h1);
+
+      vec3 deepPurple = vec3(0.12, 0.04, 0.28);
+      vec3 deepRed    = vec3(0.55, 0.04, 0.06);
+      vec3 orange     = vec3(0.95, 0.32, 0.03);
+      vec3 hotOrange  = vec3(1.0, 0.60, 0.15);
+      vec3 blueWhite  = vec3(0.55, 0.75, 1.0);
+      vec3 pureWhite  = vec3(0.95, 0.92, 1.0);
+
+      vec3 col = mix(deepPurple, deepRed, smoothstep(0.0,0.4,midHeat));
+      col = mix(col, orange,    smoothstep(0.3,0.7,midHeat));
+      col = mix(col, hotOrange, smoothstep(0.5,0.9,midHeat));
+      col = mix(col, pureWhite, coreHeat);
+      col = mix(col, blueWhite, blueWisp*0.6);
+      return col * (0.6 + h1*0.8);
+    }
+
+    // Compact hot spots — small star-like cores
+    float hotspot(vec3 p, vec3 center) {
+      return exp(-length(p-center) * 15.0);
+    }
+
+    void main() {
+      vec2 uv = (gl_FragCoord.xy - uRes*0.5) / min(uRes.x, uRes.y);
+      vec3 ro  = vec3(0.0, 0.0, 3.5);
+      vec3 rd  = normalize(vec3(uv * 0.60, -1.0));
+      float t  = uTime;
+      float hB = uHover;
+
+      vec3 bg = vec3(0.006, 0.008, 0.016);
+
+      vec2 hit = raySphere(ro, rd, 1.0);
+      if(hit.x < 0.0) { gl_FragColor = vec4(bg, 1.0); return; }
+
+      vec3 entryP = ro + rd * max(hit.x, 0.0);
+      vec3 outerN = normalize(entryP);
+      float cosIn = max(dot(-rd, outerN), 0.0);
+      float fr = pow(1.0 - cosIn, 5.0);
+
+      // Chromatic aberration: 3 slightly different IORs per channel
+      float iorR = 1.0/1.455;
+      float iorG = 1.0/1.485;
+      float iorB = 1.0/1.515;
+
+      vec3 refRd_r = refract(rd, outerN, iorR);
+      vec3 refRd_g = refract(rd, outerN, iorG);
+      vec3 refRd_b = refract(rd, outerN, iorB);
+      if(dot(refRd_g,refRd_g)<0.01) refRd_g=rd;
+      if(dot(refRd_r,refRd_r)<0.01) refRd_r=refRd_g;
+      if(dot(refRd_b,refRd_b)<0.01) refRd_b=refRd_g;
+
+      // Use green channel for distance
+      vec3 iRo = entryP + refRd_g * 0.012;
+      vec2 iHit = raySphere(iRo, refRd_g, 0.975);
+      float tEnd = max(iHit.y, 0.001);
+
+      // Hot spot positions (orbit-driven)
+      vec3 hs0 = vec3(sin(t*0.17)*0.30,  cos(t*0.14)*0.25, sin(t*0.21)*0.20);
+      vec3 hs1 = vec3(cos(t*0.23)*0.25, sin(t*0.19)*0.30,  cos(t*0.16)*0.28);
+      vec3 hs2 = vec3(sin(t*0.13)*0.20, sin(t*0.11)*0.15,  cos(t*0.27)*0.35);
+
+      // March per channel
+      const int STEPS = 42;
+      float stepSz = tEnd / float(STEPS);
+      float tr_r = 1.0, tr_g = 1.0, tr_b = 1.0;
+      float acc_r = 0.0, acc_g = 0.0, acc_b = 0.0;
+
+      for(int i = 0; i < STEPS; i++) {
+        float ts = (float(i) + 0.5) * stepSz;
+        vec3 p_g = iRo + refRd_g * ts;
+        // R slightly ahead, B slightly behind for CA effect
+        vec3 p_r = iRo + refRd_r * ts;
+        vec3 p_b = iRo + refRd_b * ts;
+        if(length(p_g) >= 0.97) break;
+
+        float dg = max(0.0, gasDensity(p_g, t) * 0.58 * (1.0 + hB*0.4));
+        float dr = max(0.0, gasDensity(p_r, t) * 0.56 * (1.0 + hB*0.4));
+        float db = max(0.0, gasDensity(p_b, t) * 0.60 * (1.0 + hB*0.4));
+
+        vec3 nc_g = nebulaColor(p_g, t);
+        vec3 nc_r = nebulaColor(p_r, t);
+        vec3 nc_b = nebulaColor(p_b, t);
+
+        // Hot spots — warm R/G, cool B
+        float hg = hotspot(p_g,hs0)*1.2 + hotspot(p_g,hs1)*0.9 + hotspot(p_g,hs2)*0.7;
+        float hr = hotspot(p_r,hs0)*1.2 + hotspot(p_r,hs1)*0.9 + hotspot(p_r,hs2)*0.7;
+        float hb = hotspot(p_b,hs0)*1.2 + hotspot(p_b,hs1)*0.9 + hotspot(p_b,hs2)*0.7;
+
+        float ar = exp(-(0.05 + dr*0.4)*stepSz);
+        float ag = exp(-(0.05 + dg*0.4)*stepSz);
+        float ab = exp(-(0.05 + db*0.4)*stepSz);
+
+        acc_r += tr_r * (nc_r.r * dr * stepSz*2.0 + hr * stepSz * 3.5);
+        acc_g += tr_g * (nc_g.g * dg * stepSz*2.0 + hg * 0.85 * stepSz * 3.5);
+        acc_b += tr_b * (nc_b.b * db * stepSz*2.0 + hb * 0.55 * stepSz * 3.5);
+        tr_r *= ar; tr_g *= ag; tr_b *= ab;
+        if(tr_r + tr_g + tr_b < 0.012) break;
+      }
+
+      float avgTr = (tr_r + tr_g + tr_b) / 3.0;
+
+      // Chromatic aberration Fresnel — each channel shifts hue
+      vec3 rimR = vec3(0.9, 0.14, 0.04) * fr * 0.45;
+      vec3 rimG = vec3(0.14, 0.52, 0.76) * fr * 0.38;
+      vec3 rimB = vec3(0.38, 0.20, 0.95) * fr * 0.55;
+
+      // Specular
+      vec3 Lk = normalize(vec3(-0.5, 1.9, 1.1));
+      float NdL = max(dot(outerN, Lk), 0.0);
+      float specK = pow(max(dot(outerN, normalize(-rd + Lk)), 0.0), 180.0) * 0.4 * NdL;
+      vec3 glassSpec = vec3(0.6, 0.8, 1.0) * specK;
+
+      vec3 acc = vec3(acc_r, acc_g, acc_b);
+      vec3 col = bg;
+      col = mix(col, bg + acc, min(1.0 - avgTr + fr*0.25, 1.0));
+      col.r += rimR.r; col.g += rimG.g; col.b += rimB.b;
+      col += glassSpec;
+
+      col = acesTone(col);
+      col = pow(max(col, vec3(0.0)), vec3(0.4545));
+      gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+    }
+  `;
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime:  { value: 0 },
+      uHover: { value: 0 },
+      uRes:   { value: new THREE.Vector2(W, H) },
+    },
+    vertexShader: `void main(){gl_Position=vec4(position,1.);}`,
+    fragmentShader: fragSrc,
+  });
+
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
+  scene.add(quad);
+
+  let tick_t = 0, hoverVal = 0;
+  function tick() {
+    tick_t += 0.016;
+    hoverVal += ((hovered ? 1 : 0) - hoverVal) * 0.05;
+    mat.uniforms.uTime.value  = tick_t;
+    mat.uniforms.uHover.value = hoverVal;
+    renderer.render(scene, camera);
+    requestAnimationFrame(tick);
+  }
+  tick();
+})();
+</script>
+
+<!-- =================================================================
+     AVATAR 4 — CAPTURED LIGHTNING
+     6 bolts with random-walk fractal paths, wall flash, warm ember core
+     NOTE: Uses 6 individual uniforms (no dynamic indexing) for GLSL ES 1.0
+     ================================================================= -->
+<script>
+(function GlassEmberLightning() {
+  const canvas = document.getElementById('c-lightning');
+  const wrap   = document.getElementById('wrap-lightning');
+  let hovered  = false;
+  wrap.addEventListener('mouseenter', () => hovered = true);
+  wrap.addEventListener('mouseleave', () => hovered = false);
+
+  const W = 300, H = 300;
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(1);
+  const scene  = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 10);
+  camera.position.z = 3;
+
+  // GLSL bolt evaluation — each bolt is a separate function call (unrolled for ES 1.0)
+  const BOLT_GLSL = `
+    float segDist(vec3 p, vec3 a, vec3 b) {
+      vec3 ab=b-a, ap=p-a;
+      float tt=clamp(dot(ap,ab)/dot(ab,ab),0.,1.);
+      return length(p-(a+tt*ab));
+    }
+
+    // One bolt: random-walk path with 5 segments, one branch at midpoint
+    float oneBolt(vec3 p, vec3 bA, vec3 bB, float intensity, float tOff) {
+      if(intensity < 0.01) return 0.0;
+      vec3 ab = normalize(bB - bA);
+      float len = length(bB - bA);
+      vec3 perp1 = normalize(cross(ab, vec3(0.577,0.577,0.577)));
+      vec3 perp2 = cross(ab, perp1);
+      float bR = 0.016 + intensity*0.012;
+      float glow = 0.0;
+      vec3 prev = bA;
+
+      // Segment 1
+      float d1a = vnoise(vec3(tOff*7.3+2.1, tOff*3.7, 0.))*2.-1.;
+      float d1b = vnoise(vec3(tOff*5.1, tOff*2.9+1.7, 0.))*2.-1.;
+      float dm1 = 0.18*sin(0.167*3.14159);
+      vec3 s1 = bA + ab*(0.167*len) + perp1*d1a*dm1 + perp2*d1b*dm1;
+      glow += smoothstep(bR*2.,0.,segDist(p,prev,s1))*intensity;
+      prev = s1;
+
+      // Segment 2
+      float d2a = vnoise(vec3(tOff*7.3+4.2, tOff*3.7, 0.))*2.-1.;
+      float d2b = vnoise(vec3(tOff*5.1, tOff*2.9+3.4, 0.))*2.-1.;
+      float dm2 = 0.18*sin(0.333*3.14159);
+      vec3 s2 = bA + ab*(0.333*len) + perp1*d2a*dm2 + perp2*d2b*dm2;
+      glow += smoothstep(bR*2.,0.,segDist(p,prev,s2))*intensity;
+      prev = s2;
+
+      // Segment 3 (midpoint — branch here)
+      float d3a = vnoise(vec3(tOff*7.3+6.3, tOff*3.7, 0.))*2.-1.;
+      float d3b = vnoise(vec3(tOff*5.1, tOff*2.9+5.1, 0.))*2.-1.;
+      float dm3 = 0.18*sin(0.5*3.14159);
+      vec3 s3 = bA + ab*(0.5*len) + perp1*d3a*dm3 + perp2*d3b*dm3;
+      glow += smoothstep(bR*2.,0.,segDist(p,prev,s3))*intensity;
+      // Branch
+      float bd1 = vnoise(vec3(tOff*4.1, tOff*3.2+7.0, 1.))*2.-1.;
+      float bd2 = vnoise(vec3(tOff*3.7+2.0, 1.5, tOff*2.8))*2.-1.;
+      vec3 brEnd = s3 + perp1*bd1*0.3 + perp2*bd2*0.3 + ab*0.12;
+      glow += smoothstep(bR*1.4,0.,segDist(p,s3,brEnd))*intensity*0.45;
+      prev = s3;
+
+      // Segment 4
+      float d4a = vnoise(vec3(tOff*7.3+8.4, tOff*3.7, 0.))*2.-1.;
+      float d4b = vnoise(vec3(tOff*5.1, tOff*2.9+6.8, 0.))*2.-1.;
+      float dm4 = 0.18*sin(0.667*3.14159);
+      vec3 s4 = bA + ab*(0.667*len) + perp1*d4a*dm4 + perp2*d4b*dm4;
+      glow += smoothstep(bR*2.,0.,segDist(p,prev,s4))*intensity;
+      prev = s4;
+
+      // Segment 5
+      float d5a = vnoise(vec3(tOff*7.3+10.5, tOff*3.7, 0.))*2.-1.;
+      float d5b = vnoise(vec3(tOff*5.1, tOff*2.9+8.5, 0.))*2.-1.;
+      float dm5 = 0.18*sin(0.833*3.14159);
+      vec3 s5 = bA + ab*(0.833*len) + perp1*d5a*dm5 + perp2*d5b*dm5;
+      glow += smoothstep(bR*2.,0.,segDist(p,prev,s5))*intensity;
+      glow += smoothstep(bR*2.,0.,segDist(p,s5,bB))*intensity;
+
+      return glow;
+    }
+
+    float wallHit(vec3 p, vec3 endPt, float intensity) {
+      float wallProx = smoothstep(0.82, 1.0, length(p));
+      float endProx  = exp(-length(p-endPt)*3.2);
+      return wallProx * endProx * intensity * 1.3;
+    }
+  `;
+
+  const fragSrc = `
+    precision highp float;
+    uniform float uTime;
+    uniform float uHover;
+    uniform vec2  uRes;
+    // 6 bolts — each as individual uniforms (no dynamic array index)
+    uniform vec3  uBA0; uniform vec3  uBB0; uniform float uBI0;
+    uniform vec3  uBA1; uniform vec3  uBB1; uniform float uBI1;
+    uniform vec3  uBA2; uniform vec3  uBB2; uniform float uBI2;
+    uniform vec3  uBA3; uniform vec3  uBB3; uniform float uBI3;
+    uniform vec3  uBA4; uniform vec3  uBB4; uniform float uBI4;
+    uniform vec3  uBA5; uniform vec3  uBB5; uniform float uBI5;
+
+    ${VALUE_NOISE_GLSL}
+    ${RAY_SPHERE_GLSL}
+    ${ACES_GLSL}
+    ${BOLT_GLSL}
+
+    // Warm ember core
+    float emberGlow(vec3 p, float t) {
+      float blob = vnoise(p*5.0+vec3(t*0.28,t*0.19,0.))*0.06;
+      float sdf  = length(p)-(0.22+blob);
+      float pulse= 0.6+0.4*sin(t*1.4+sin(t*0.55)*2.0);
+      return exp(-max(sdf,0.)*8.)*pulse;
+    }
+
+    vec3 emberCol(vec3 p) {
+      float d = length(p);
+      return mix(
+        mix(vec3(0.5,0.03,0.01), vec3(0.95,0.26,0.03), smoothstep(0.5,0.0,d)),
+        mix(vec3(0.95,0.26,0.03), vec3(1.0,0.82,0.55), smoothstep(0.22,0.0,d)),
+        smoothstep(0.40,0.05,d)
+      );
+    }
+
+    void main() {
+      vec2 uv = (gl_FragCoord.xy - uRes*0.5) / min(uRes.x, uRes.y);
+      vec3 ro  = vec3(0.0, 0.0, 3.5);
+      vec3 rd  = normalize(vec3(uv * 0.60, -1.0));
+      float t  = uTime;
+      float hB = uHover;
+
+      vec3 bg = vec3(0.006, 0.008, 0.016);
+
+      vec2 hit = raySphere(ro, rd, 1.0);
+      if(hit.x < 0.0) { gl_FragColor = vec4(bg, 1.0); return; }
+
+      vec3 entryP = ro + rd * max(hit.x, 0.0);
+      vec3 outerN = normalize(entryP);
+      float cosIn = max(dot(-rd, outerN), 0.0);
+      float fr = pow(1.0 - cosIn, 5.0);
+
+      vec3 refRd = refract(rd, outerN, 1.0/1.49);
+      if(dot(refRd,refRd)<0.01) refRd=rd;
+      vec3 iRo = entryP + refRd * 0.012;
+
+      vec2 iHit = raySphere(iRo, refRd, 0.975);
+      float tEnd = max(iHit.y, 0.001);
+
+      const int STEPS = 44;
+      float stepSz = tEnd / float(STEPS);
+      float transmit = 1.0;
+      vec3  acc = vec3(0.0);
+
+      for(int i = 0; i < STEPS; i++) {
+        float ts = (float(i) + 0.5) * stepSz;
+        vec3  p  = iRo + refRd * ts;
+        if(length(p) >= 0.974) break;
+
+        // All 6 bolts — individually evaluated (GLSL ES 1.0 safe)
+        float tOff0 = t*1.3;
+        float tOff1 = t*1.3+1.618;
+        float tOff2 = t*1.3+3.236;
+        float tOff3 = t*1.3+4.854;
+        float tOff4 = t*1.3+6.472;
+        float tOff5 = t*1.3+8.090;
+
+        float b0 = oneBolt(p, uBA0, uBB0, uBI0*(1.+hB*0.7), tOff0);
+        float b1 = oneBolt(p, uBA1, uBB1, uBI1*(1.+hB*0.7), tOff1);
+        float b2 = oneBolt(p, uBA2, uBB2, uBI2*(1.+hB*0.7), tOff2);
+        float b3 = oneBolt(p, uBA3, uBB3, uBI3*(1.+hB*0.7), tOff3);
+        float b4 = oneBolt(p, uBA4, uBB4, uBI4*(1.+hB*0.7), tOff4);
+        float b5 = oneBolt(p, uBA5, uBB5, uBI5*(1.+hB*0.7), tOff5);
+        float boltTotal = b0+b1+b2+b3+b4+b5;
+
+        // Wall flash from each bolt endpoint
+        float wf = wallHit(p,uBB0,uBI0)+wallHit(p,uBB1,uBI1)+wallHit(p,uBB2,uBI2)
+                 + wallHit(p,uBB3,uBI3)+wallHit(p,uBB4,uBI4)+wallHit(p,uBB5,uBI5);
+
+        // Lightning color: electric blue-white
+        vec3 boltCol = mix(vec3(0.5,0.65,1.0), vec3(0.88,0.92,1.0),
+                           clamp(boltTotal*0.4, 0.,1.));
+        // Wall flash — warm orange (ember bleeds out)
+        vec3 flashCol = mix(vec3(0.85,0.28,0.04), vec3(0.7,0.8,1.0), 0.55) * wf;
+
+        // Plasma medium fog
+        float fog = vnoise(p*3.2+vec3(t*0.18))*0.05*(1.-smoothstep(0.,0.9,length(p)));
+        vec3  fogCol = vec3(0.3,0.4,0.8) * fog * boltTotal * 3.0;
+
+        // Warm ember
+        float eg = emberGlow(p, t) * (1.0 + hB * 1.2);
+        vec3  ec = emberCol(p);
+
+        float glowDens = boltTotal*0.35 + eg*0.55;
+        acc += transmit * (boltCol*boltTotal*stepSz*2.4
+                         + ec*eg*stepSz*1.8
+                         + flashCol*stepSz*3.2
+                         + fogCol*stepSz);
+        transmit *= exp(-(0.04 + glowDens*0.3) * stepSz);
+        if(transmit < 0.003) break;
+      }
+
+      // Wall touch metric for rim color
+      float wallBolt = clamp(uBI0+uBI1+uBI2+uBI3+uBI4+uBI5, 0., 1.0) * 0.22;
+
+      vec3 rimCol = mix(vec3(0.22,0.55,1.0), vec3(0.9,0.45,0.08), wallBolt*2.5);
+      vec3 rimLight = rimCol * fr * (0.45 + hB*0.5 + wallBolt*0.6);
+
+      // Specular
+      vec3 Lk = normalize(vec3(-0.5, 1.9, 1.1));
+      float NdL = max(dot(outerN, Lk), 0.0);
+      float specK = pow(max(dot(outerN, normalize(-rd + Lk)), 0.0), 180.0) * 0.4 * NdL;
+      vec3 glassSpec = vec3(0.65, 0.8, 1.0) * specK;
+
+      // Surface flicker from active bolts
+      float flick = vnoise(vec3(t*8.0, outerN.x*3.0, outerN.y*3.0)) * wallBolt * 0.09;
+      vec3 elecSurf = vec3(0.5, 0.65, 1.0) * flick * fr;
+
+      vec3 col = bg;
+      col = mix(col, bg + acc, min(1.0 - transmit + fr*0.25, 1.0));
+      col += rimLight + glassSpec + elecSurf;
+
+      col = acesTone(col);
+      col = pow(max(col, vec3(0.0)), vec3(0.4545));
+      gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+    }
+  `;
+
+  // Build 6 pairs of uniforms
+  const uniforms = {
+    uTime:  { value: 0 },
+    uHover: { value: 0 },
+    uRes:   { value: new THREE.Vector2(W, H) },
+    uBA0: { value: new THREE.Vector3() }, uBB0: { value: new THREE.Vector3() }, uBI0: { value: 0 },
+    uBA1: { value: new THREE.Vector3() }, uBB1: { value: new THREE.Vector3() }, uBI1: { value: 0 },
+    uBA2: { value: new THREE.Vector3() }, uBB2: { value: new THREE.Vector3() }, uBI2: { value: 0 },
+    uBA3: { value: new THREE.Vector3() }, uBB3: { value: new THREE.Vector3() }, uBI3: { value: 0 },
+    uBA4: { value: new THREE.Vector3() }, uBB4: { value: new THREE.Vector3() }, uBI4: { value: 0 },
+    uBA5: { value: new THREE.Vector3() }, uBB5: { value: new THREE.Vector3() }, uBI5: { value: 0 },
+  };
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: `void main(){gl_Position=vec4(position,1.);}`,
+    fragmentShader: fragSrc,
+  });
+
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
+  scene.add(quad);
+
+  // ---- Bolt system ----
+  function rndSphere(r) {
+    let v; do { v = new THREE.Vector3((Math.random()*2-1)*r,(Math.random()*2-1)*r,(Math.random()*2-1)*r); } while(v.length()>r);
+    return v;
+  }
+  function rndSurface() {
+    return new THREE.Vector3(Math.random()*2-1,Math.random()*2-1,Math.random()*2-1).normalize().multiplyScalar(0.87+Math.random()*0.10);
+  }
+
+  const boltAKeys = ['uBA0','uBA1','uBA2','uBA3','uBA4','uBA5'];
+  const boltBKeys = ['uBB0','uBB1','uBB2','uBB3','uBB4','uBB5'];
+  const boltIKeys = ['uBI0','uBI1','uBI2','uBI3','uBI4','uBI5'];
+
+  const bolts = Array.from({length:6}, (_, i) => ({
+    life: 0, maxLife: 0, intensity: 0,
+    nextStrike: Math.random() * 2.0 + 0.2,
+    active: false,
+  }));
+
+  function spawnBolt(idx) {
+    const fromCore = Math.random() < 0.58;
+    const a = fromCore ? rndSphere(0.28) : rndSphere(0.52);
+    const b = Math.random() < 0.68 ? rndSurface() : rndSphere(0.62);
+    uniforms[boltAKeys[idx]].value.copy(a);
+    uniforms[boltBKeys[idx]].value.copy(b);
+    bolts[idx].life = 0;
+    bolts[idx].maxLife = 0.06 + Math.random() * 0.14;
+    bolts[idx].intensity = 0.75 + Math.random() * 0.25;
+    bolts[idx].active = true;
+    bolts[idx].nextStrike = 0;
+  }
+
+  let tick_t = 0, hoverVal = 0;
+
+  function tick() {
+    const dt = 0.016;
+    tick_t += dt;
+    hoverVal += ((hovered ? 1 : 0) - hoverVal) * 0.05;
+
+    for(let i = 0; i < 6; i++) {
+      const bolt = bolts[i];
+      if(bolt.active) {
+        bolt.life += dt;
+        const p2 = bolt.life / bolt.maxLife;
+        let intVal;
+        if(p2 < 0.15) {
+          intVal = bolt.intensity * (p2 / 0.15);
+        } else {
+          intVal = bolt.intensity * Math.pow(1.0 - (p2 - 0.15) / 0.85, 0.65);
+        }
+        uniforms[boltIKeys[i]].value = Math.max(0, intVal);
+        if(bolt.life >= bolt.maxLife) {
+          bolt.active = false;
+          uniforms[boltIKeys[i]].value = 0;
+          bolt.nextStrike = (0.2 + Math.random() * 1.6) / (1.0 + hoverVal * 0.7);
+        }
+      } else {
+        bolt.nextStrike -= dt;
+        if(bolt.nextStrike <= 0) spawnBolt(i);
+      }
+    }
+
+    uniforms.uTime.value  = tick_t;
+    uniforms.uHover.value = hoverVal;
+    renderer.render(scene, camera);
+    requestAnimationFrame(tick);
+  }
+  tick();
+})();
+</script>
+
+</body>
+</html>

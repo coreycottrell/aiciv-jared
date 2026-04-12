@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gleb Night 15 - Hi-Z SSR + Temporal Volumetrics + Adaptive Quality</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #080a12; overflow: hidden; font-family: 'Inter', sans-serif; }
+canvas { display: block; }
+#info {
+  position: fixed; top: 16px; left: 16px; color: rgba(255,255,255,0.5);
+  font-size: 11px; z-index: 10; pointer-events: none;
+}
+#gpu-tier {
+  position: fixed; top: 16px; right: 16px; color: rgba(255,255,255,0.4);
+  font-size: 10px; z-index: 10; pointer-events: none; text-align: right;
+}
+#variation-label {
+  position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%);
+  color: rgba(255,255,255,0.6); font-size: 13px; z-index: 10;
+  letter-spacing: 2px; text-transform: uppercase;
+}
+#nav {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 12px; z-index: 10;
+}
+#nav button {
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.7); padding: 8px 20px; border-radius: 6px;
+  cursor: pointer; font-size: 12px; letter-spacing: 1px; transition: all 0.3s;
+}
+#nav button:hover { background: rgba(42,147,193,0.2); border-color: rgba(42,147,193,0.5); }
+#nav button.active { background: rgba(42,147,193,0.3); border-color: #2a93c1; color: #fff; }
+#brand {
+  position: fixed; bottom: 8px; right: 16px; color: rgba(255,255,255,0.2);
+  font-size: 9px; z-index: 10; letter-spacing: 1px;
+}
+</style>
+</head>
+<body>
+<div id="info">NIGHT 15 | Gleb Mastery Training</div>
+<div id="gpu-tier">Detecting GPU...</div>
+<div id="variation-label">VARIATION 1: HI-Z DEPTH PYRAMID SSR</div>
+<div id="nav">
+  <button class="active" onclick="switchVariation(0)">V1: Hi-Z SSR</button>
+  <button onclick="switchVariation(1)">V2: Temporal Volumetrics</button>
+  <button onclick="switchVariation(2)">V3: Adaptive Quality</button>
+</div>
+<div id="brand">AETHER | PUREBRAIN.AI | NIGHT 15</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// ===== GPU TIER DETECTION (Variation 3 core) =====
+function detectGPUTier() {
+  const canvas = document.createElement('canvas');
+  const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+  if (!gl) return { tier: 0, name: 'No WebGL', maxSamples: 8, halfRes: true, bloomPasses: 1 };
+
+  const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+  const renderer = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'Unknown';
+  const maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+  const maxRenderbufferSize = gl.getParameter(gl.MAX_RENDERBUFFER_SIZE);
+  const isWebGL2 = !!canvas.getContext('webgl2');
+
+  // Tier classification
+  let tier = 1; // default: low
+  const lowerRenderer = renderer.toLowerCase();
+
+  if (lowerRenderer.includes('rtx') || lowerRenderer.includes('rx 7') || lowerRenderer.includes('rx 6') ||
+      lowerRenderer.includes('apple m') || lowerRenderer.includes('radeon pro')) {
+    tier = 3; // high
+  } else if (lowerRenderer.includes('gtx 1') || lowerRenderer.includes('gtx 9') || lowerRenderer.includes('rx 5') ||
+             lowerRenderer.includes('intel iris') || lowerRenderer.includes('intel uhd') ||
+             maxTextureSize >= 8192) {
+    tier = 2; // medium
+  } else if (lowerRenderer.includes('mali') || lowerRenderer.includes('adreno') || lowerRenderer.includes('powervr') ||
+             maxTextureSize <= 4096) {
+    tier = 0; // mobile
+  }
+
+  const config = [
+    { tier: 0, name: 'Mobile',  ssrSteps: 16, volSamples: 12, halfRes: true,  bloomPasses: 1, mipLevels: 3, dpr: 1.0 },
+    { tier: 1, name: 'Low',     ssrSteps: 24, volSamples: 20, halfRes: true,  bloomPasses: 2, mipLevels: 4, dpr: 1.0 },
+    { tier: 2, name: 'Medium',  ssrSteps: 40, volSamples: 32, halfRes: false, bloomPasses: 3, mipLevels: 5, dpr: Math.min(window.devicePixelRatio, 1.5) },
+    { tier: 3, name: 'High',    ssrSteps: 64, volSamples: 48, halfRes: false, bloomPasses: 5, mipLevels: 6, dpr: Math.min(window.devicePixelRatio, 2.0) },
+  ][tier];
+
+  config.renderer = renderer;
+  config.isWebGL2 = isWebGL2;
+  return config;
+}
+
+const gpuConfig = detectGPUTier();
+document.getElementById('gpu-tier').textContent =
+  `GPU: ${gpuConfig.renderer.substring(0, 40)}\nTier: ${gpuConfig.tier} (${gpuConfig.name}) | WebGL${gpuConfig.isWebGL2 ? '2' : '1'}\nSSR Steps: ${gpuConfig.ssrSteps} | Vol Samples: ${gpuConfig.volSamples}\nDPR: ${gpuConfig.dpr} | Half-Res Vol: ${gpuConfig.halfRes}`;
+
+// ===== SCENE SETUP =====
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0.5, 4);
+
+const renderer = new THREE.WebGLRenderer({ antialias: gpuConfig.tier >= 2, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(gpuConfig.dpr);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+document.body.appendChild(renderer.domElement);
+
+// ===== HI-Z DEPTH PYRAMID (Variation 1 core) =====
+// Multi-pass mip chain generation for accelerated SSR
+const depthMipLevels = gpuConfig.mipLevels;
+const depthPyramidTargets = [];
+let w = Math.floor(window.innerWidth * gpuConfig.dpr);
+let h = Math.floor(window.innerHeight * gpuConfig.dpr);
+
+for (let i = 0; i < depthMipLevels; i++) {
+  w = Math.max(1, Math.floor(w / 2));
+  h = Math.max(1, Math.floor(h / 2));
+  depthPyramidTargets.push(new THREE.WebGLRenderTarget(w, h, {
+    minFilter: THREE.NearestFilter,
+    magFilter: THREE.NearestFilter,
+    format: THREE.RedFormat,
+    type: THREE.HalfFloatType,
+  }));
+}
+
+// Depth downscale shader - takes max of 2x2 block for conservative hierarchy
+const depthDownscaleShader = {
+  uniforms: {
+    tDepth: { value: null },
+    resolution: { value: new THREE.Vector2() },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDepth;
+    uniform vec2 resolution;
+    varying vec2 vUv;
+    void main() {
+      vec2 texel = 1.0 / resolution;
+      float d00 = texture2D(tDepth, vUv).r;
+      float d10 = texture2D(tDepth, vUv + vec2(texel.x, 0.0)).r;
+      float d01 = texture2D(tDepth, vUv + vec2(0.0, texel.y)).r;
+      float d11 = texture2D(tDepth, vUv + texel).r;
+      // Conservative: take MAX depth (farthest) for Hi-Z culling
+      gl_FragColor = vec4(max(max(d00, d10), max(d01, d11)), 0.0, 0.0, 1.0);
+    }
+  `
+};
+
+// Normal buffer for SSR direction
+const normalTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+  minFilter: THREE.NearestFilter,
+  magFilter: THREE.NearestFilter,
+  type: THREE.HalfFloatType,
+});
+
+const normalMaterial = new THREE.ShaderMaterial({
+  vertexShader: `
+    varying vec3 vNormal;
+    void main() {
+      vNormal = normalize(normalMatrix * normal);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vNormal;
+    void main() {
+      gl_FragColor = vec4(vNormal * 0.5 + 0.5, 1.0);
+    }
+  `
+});
+
+// Hi-Z SSR shader with mip-chain traversal
+const hiZSSRShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    tNormal: { value: null },
+    tDepth: { value: null },
+    tDepthMip1: { value: null },
+    tDepthMip2: { value: null },
+    tDepthMip3: { value: null },
+    cameraNear: { value: 0.1 },
+    cameraFar: { value: 100.0 },
+    resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+    projMatrix: { value: new THREE.Matrix4() },
+    invProjMatrix: { value: new THREE.Matrix4() },
+    ssrSteps: { value: gpuConfig.ssrSteps },
+    time: { value: 0.0 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform sampler2D tNormal;
+    uniform sampler2D tDepth;
+    uniform sampler2D tDepthMip1;
+    uniform sampler2D tDepthMip2;
+    uniform sampler2D tDepthMip3;
+    uniform float cameraNear;
+    uniform float cameraFar;
+    uniform vec2 resolution;
+    uniform mat4 projMatrix;
+    uniform mat4 invProjMatrix;
+    uniform float ssrSteps;
+    uniform float time;
+    varying vec2 vUv;
+
+    float linearDepth(float d) {
+      return cameraNear * cameraFar / (cameraFar - d * (cameraFar - cameraNear));
+    }
+
+    vec3 viewPosFromDepth(vec2 uv, float depth) {
+      vec4 clipPos = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+      vec4 viewPos = invProjMatrix * clipPos;
+      return viewPos.xyz / viewPos.w;
+    }
+
+    // Hi-Z traversal: start at coarse mip, refine downward
+    float sampleHiZ(vec2 uv, int level) {
+      if (level >= 3) return texture2D(tDepthMip3, uv).r;
+      if (level >= 2) return texture2D(tDepthMip2, uv).r;
+      if (level >= 1) return texture2D(tDepthMip1, uv).r;
+      return texture2D(tDepth, uv).r;
+    }
+
+    void main() {
+      vec4 color = texture2D(tDiffuse, vUv);
+      float depth = texture2D(tDepth, vUv).r;
+
+      if (depth >= 0.999) { gl_FragColor = color; return; }
+
+      vec3 normal = texture2D(tNormal, vUv).rgb * 2.0 - 1.0;
+      vec3 viewPos = viewPosFromDepth(vUv, depth);
+      vec3 viewDir = normalize(viewPos);
+      vec3 reflDir = reflect(viewDir, normal);
+
+      // Fresnel - Gleb signature: strong at glancing angles
+      float fresnel = pow(1.0 - max(dot(-viewDir, normal), 0.0), 4.0);
+      fresnel = mix(0.04, 1.0, fresnel);
+
+      // Hi-Z accelerated march: start at coarsest mip, step large
+      vec3 rayPos = viewPos + reflDir * 0.05;
+      vec2 hitUV = vec2(-1.0);
+      float stepSize = 0.15;
+      int currentMip = min(3, int(depthMipLevels) - 1);
+
+      for (int i = 0; i < 64; i++) {
+        if (float(i) >= ssrSteps) break;
+        rayPos += reflDir * stepSize;
+
+        // Project ray to screen
+        vec4 projPos = projMatrix * vec4(rayPos, 1.0);
+        projPos.xy /= projPos.w;
+        vec2 screenUV = projPos.xy * 0.5 + 0.5;
+
+        if (screenUV.x < 0.0 || screenUV.x > 1.0 || screenUV.y < 0.0 || screenUV.y > 1.0) break;
+
+        float sceneDepth = sampleHiZ(screenUV, currentMip);
+        float rayDepth = linearDepth(-rayPos.z);
+        float sceneLinear = linearDepth(sceneDepth);
+
+        if (rayDepth > sceneLinear && rayDepth - sceneLinear < 0.5) {
+          if (currentMip > 0) {
+            // Step back and refine at finer mip
+            rayPos -= reflDir * stepSize;
+            stepSize *= 0.5;
+            currentMip--;
+          } else {
+            hitUV = screenUV;
+            break;
+          }
+        } else {
+          // Accelerate step at coarser mips
+          stepSize = 0.15 * float(1 + currentMip);
+        }
+      }
+
+      if (hitUV.x >= 0.0) {
+        vec4 reflColor = texture2D(tDiffuse, hitUV);
+        // Edge fade
+        vec2 edgeFade = smoothstep(0.0, 0.1, hitUV) * (1.0 - smoothstep(0.9, 1.0, hitUV));
+        float fade = edgeFade.x * edgeFade.y;
+        // Gleb: tinted reflections with slight blue shift
+        reflColor.rgb = mix(reflColor.rgb, reflColor.rgb * vec3(0.85, 0.92, 1.1), 0.3);
+        color.rgb = mix(color.rgb, reflColor.rgb, fresnel * fade * 0.6);
+      }
+
+      gl_FragColor = color;
+    }
+  `
+};
+
+// ===== TEMPORAL VOLUMETRIC SHADER (Variation 2 core) =====
+const temporalVolShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    tPrevFrame: { value: null },
+    lightPos: { value: new THREE.Vector2(0.5, 0.3) },
+    time: { value: 0.0 },
+    samples: { value: gpuConfig.volSamples },
+    blendFactor: { value: 0.9 }, // 90% previous, 10% current = temporal stability
+    jitterOffset: { value: 0.0 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform sampler2D tPrevFrame;
+    uniform vec2 lightPos;
+    uniform float time;
+    uniform float samples;
+    uniform float blendFactor;
+    uniform float jitterOffset;
+    varying vec2 vUv;
+
+    // Interleaved gradient noise for per-pixel jitter
+    float interleavedGradientNoise(vec2 pos) {
+      vec3 magic = vec3(0.06711056, 0.00583715, 52.9829189);
+      return fract(magic.z * fract(dot(pos, magic.xy)));
+    }
+
+    void main() {
+      vec4 color = texture2D(tDiffuse, vUv);
+
+      // Animated light position (orbiting)
+      vec2 animLight = lightPos + vec2(sin(time * 0.3) * 0.15, cos(time * 0.4) * 0.08);
+
+      vec2 delta = vUv - animLight;
+      float dist = length(delta);
+
+      // Per-pixel jitter from interleaved gradient noise (halves required samples)
+      float noise = interleavedGradientNoise(gl_FragCoord.xy + jitterOffset * 100.0);
+
+      float illumination = 0.0;
+      vec2 dir = delta / float(int(samples));
+
+      for (int i = 0; i < 48; i++) {
+        if (float(i) >= samples) break;
+        float t = (float(i) + noise) / samples; // jittered sample position
+        vec2 sampleUV = vUv - dir * float(i);
+        float sampleColor = max(texture2D(tDiffuse, sampleUV).r, max(texture2D(tDiffuse, sampleUV).g, texture2D(tDiffuse, sampleUV).b));
+        // Polynomial approximation (faster than exp): 1/(1+t^2)
+        float weight = 1.0 / (1.0 + t * t * 8.0);
+        illumination += sampleColor * weight;
+      }
+      illumination /= samples;
+
+      // Radial falloff with Gleb-style color
+      vec3 godRayColor = mix(
+        vec3(0.165, 0.576, 0.765), // #2a93c1 brand blue
+        vec3(0.945, 0.259, 0.043), // #f1420b brand orange
+        smoothstep(0.0, 1.5, dist)
+      );
+
+      vec3 currentRays = color.rgb + godRayColor * illumination * 0.4 * smoothstep(1.5, 0.0, dist);
+
+      // TEMPORAL REPROJECTION: blend with previous frame
+      // Static camera = simple blend. Moving camera would need motion vectors.
+      vec3 prevFrame = texture2D(tPrevFrame, vUv).rgb;
+
+      // Neighborhood clamping to prevent ghosting
+      vec3 minColor = currentRays - 0.08;
+      vec3 maxColor = currentRays + 0.08;
+      prevFrame = clamp(prevFrame, minColor, maxColor);
+
+      vec3 blended = mix(currentRays, prevFrame, blendFactor);
+
+      gl_FragColor = vec4(blended, 1.0);
+    }
+  `
+};
+
+// ===== SCENE OBJECTS =====
+// Central glass avatar sphere
+const sphereGeo = new THREE.SphereGeometry(1, 64, 64);
+const glassMat = new THREE.MeshPhysicalMaterial({
+  color: 0x2a93c1,
+  metalness: 0.1,
+  roughness: 0.05,
+  transmission: 0.92,
+  thickness: 1.5,
+  ior: 1.8,
+  clearcoat: 1.0,
+  clearcoatRoughness: 0.02,
+  envMapIntensity: 1.5,
+  transparent: true,
+  opacity: 0.85,
+});
+const sphere = new THREE.Mesh(sphereGeo, glassMat);
+scene.add(sphere);
+
+// Inner glowing core
+const coreGeo = new THREE.IcosahedronGeometry(0.35, 3);
+const coreMat = new THREE.MeshStandardMaterial({
+  color: 0xf1420b,
+  emissive: 0xf1420b,
+  emissiveIntensity: 2.5,
+  metalness: 0.9,
+  roughness: 0.1,
+});
+const core = new THREE.Mesh(coreGeo, coreMat);
+scene.add(core);
+
+// Glass UI panels (Gleb structural glass pattern)
+function createGlassPanel(width, height, position, rotation, opacity) {
+  const geo = new THREE.PlaneGeometry(width, height);
+  const mat = new THREE.MeshPhysicalMaterial({
+    color: 0x1a2a3a,
+    metalness: 0.0,
+    roughness: 0.1,
+    transmission: 0.6,
+    thickness: 0.3,
+    transparent: true,
+    opacity: opacity,
+    side: THREE.DoubleSide,
+  });
+  const panel = new THREE.Mesh(geo, mat);
+  panel.position.copy(position);
+  if (rotation) panel.rotation.copy(rotation);
+
+  // Edge highlight (Gleb signature: 1px white edge at low opacity)
+  const edges = new THREE.EdgesGeometry(geo);
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.12 });
+  const lines = new THREE.LineSegments(edges, edgeMat);
+  panel.add(lines);
+
+  return panel;
+}
+
+const panels = [
+  createGlassPanel(1.8, 0.5, new THREE.Vector3(-1.8, 0.8, -0.5), new THREE.Euler(0, 0.3, 0), 0.5),
+  createGlassPanel(1.5, 0.8, new THREE.Vector3(1.9, 0.3, -0.3), new THREE.Euler(0, -0.25, 0), 0.45),
+  createGlassPanel(2.2, 0.35, new THREE.Vector3(0, -1.2, -0.8), new THREE.Euler(-0.1, 0, 0), 0.55),
+  createGlassPanel(0.6, 1.4, new THREE.Vector3(-2.2, -0.3, 0.2), new THREE.Euler(0, 0.15, 0.05), 0.4),
+  createGlassPanel(0.8, 0.6, new THREE.Vector3(2.1, -0.8, 0.1), new THREE.Euler(0, -0.1, -0.03), 0.5),
+];
+panels.forEach(p => scene.add(p));
+
+// Floating accent dots (Gleb: colored indicator elements)
+const dotGeo = new THREE.SphereGeometry(0.03, 16, 16);
+const dots = [];
+const dotColors = [0x2a93c1, 0x2a93c1, 0x2a93c1, 0xf1420b, 0xf1420b, 0xf1420b];
+dotColors.forEach((c, i) => {
+  const mat = new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 3.0 });
+  const dot = new THREE.Mesh(dotGeo, mat);
+  dot.position.set(
+    (Math.random() - 0.5) * 4,
+    (Math.random() - 0.5) * 2.5,
+    (Math.random() - 0.5) * 1.5
+  );
+  dot.userData.phase = Math.random() * Math.PI * 2;
+  dot.userData.speed = 0.5 + Math.random() * 0.5;
+  scene.add(dot);
+  dots.push(dot);
+});
+
+// Lighting
+const ambientLight = new THREE.AmbientLight(0x1a2a4a, 0.4);
+scene.add(ambientLight);
+
+const keyLight = new THREE.PointLight(0x2a93c1, 3, 15);
+keyLight.position.set(3, 2, 4);
+scene.add(keyLight);
+
+const fillLight = new THREE.PointLight(0xf1420b, 1.5, 12);
+fillLight.position.set(-3, -1, 3);
+scene.add(fillLight);
+
+const rimLight = new THREE.PointLight(0x8844cc, 2, 10);
+rimLight.position.set(0, 3, -3);
+scene.add(rimLight);
+
+// ===== POST-PROCESSING =====
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+// Bloom (Gleb essential)
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.8, 0.4, 0.85
+);
+composer.addPass(bloomPass);
+
+// SSR pass
+const ssrPass = new ShaderPass(hiZSSRShader);
+ssrPass.uniforms.projMatrix.value = camera.projectionMatrix;
+ssrPass.uniforms.invProjMatrix.value = camera.projectionMatrixInverse;
+composer.addPass(ssrPass);
+
+// Temporal volumetric pass
+const volPass = new ShaderPass(temporalVolShader);
+composer.addPass(volPass);
+
+// Previous frame buffer for temporal accumulation
+let prevFrameTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+  minFilter: THREE.LinearFilter,
+  magFilter: THREE.LinearFilter,
+});
+let tempTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+  minFilter: THREE.LinearFilter,
+  magFilter: THREE.LinearFilter,
+});
+
+// Vignette + color grade (final)
+const vignetteShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    time: { value: 0.0 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float time;
+    varying vec2 vUv;
+    void main() {
+      vec4 color = texture2D(tDiffuse, vUv);
+      // Vignette
+      float vignette = 1.0 - smoothstep(0.4, 1.4, length(vUv - 0.5) * 1.8);
+      color.rgb *= vignette;
+      // Subtle color grade: lift shadows blue, push highlights warm
+      color.rgb = pow(color.rgb, vec3(0.95, 0.97, 1.03));
+      // Film grain
+      float grain = (fract(sin(dot(vUv * time, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * 0.015;
+      color.rgb += grain;
+      gl_FragColor = color;
+    }
+  `
+};
+composer.addPass(new ShaderPass(vignetteShader));
+
+// ===== VARIATION STATE =====
+let currentVariation = 0;
+let frameCount = 0;
+
+window.switchVariation = function(v) {
+  currentVariation = v;
+  document.querySelectorAll('#nav button').forEach((b, i) => b.classList.toggle('active', i === v));
+  const labels = [
+    'VARIATION 1: HI-Z DEPTH PYRAMID SSR',
+    'VARIATION 2: TEMPORAL VOLUMETRIC GOD RAYS',
+    'VARIATION 3: ADAPTIVE GPU TIER SCALING'
+  ];
+  document.getElementById('variation-label').textContent = labels[v];
+
+  // Toggle pass visibility
+  ssrPass.enabled = (v === 0 || v === 2);
+  volPass.enabled = (v === 1 || v === 2);
+
+  // V3: show all techniques working together with adaptive config
+  if (v === 2) {
+    bloomPass.strength = gpuConfig.tier >= 2 ? 0.8 : 0.5;
+  } else {
+    bloomPass.strength = 0.8;
+  }
+};
+
+// ===== ANIMATION =====
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  frameCount++;
+
+  // Gentle camera orbit
+  camera.position.x = Math.sin(t * 0.15) * 0.3;
+  camera.position.y = 0.5 + Math.cos(t * 0.12) * 0.15;
+  camera.lookAt(0, 0, 0);
+
+  // Sphere breathing
+  const breathe = 1.0 + Math.sin(t * 0.8) * 0.03;
+  sphere.scale.setScalar(breathe);
+
+  // Core rotation + pulse
+  core.rotation.x = t * 0.5;
+  core.rotation.y = t * 0.7;
+  const corePulse = 1.0 + Math.sin(t * 2.0) * 0.1;
+  core.scale.setScalar(0.35 * corePulse);
+  coreMat.emissiveIntensity = 2.5 + Math.sin(t * 3.0) * 0.8;
+
+  // Panel breathing at different rates (Gleb depth perception)
+  panels.forEach((p, i) => {
+    p.position.y += Math.sin(t * (0.3 + i * 0.1) + i) * 0.0003;
+    p.rotation.y += Math.sin(t * 0.2 + i * 1.5) * 0.0001;
+  });
+
+  // Floating dots
+  dots.forEach(d => {
+    d.position.y += Math.sin(t * d.userData.speed + d.userData.phase) * 0.002;
+    d.position.x += Math.cos(t * d.userData.speed * 0.7 + d.userData.phase) * 0.001;
+  });
+
+  // Update shader uniforms
+  ssrPass.uniforms.time.value = t;
+  ssrPass.uniforms.projMatrix.value.copy(camera.projectionMatrix);
+  ssrPass.uniforms.invProjMatrix.value.copy(camera.projectionMatrixInverse);
+
+  // Temporal volumetrics: alternate jitter every frame (halton-like)
+  volPass.uniforms.time.value = t;
+  volPass.uniforms.jitterOffset.value = (frameCount % 8) / 8.0;
+
+  // Light animation for volumetrics
+  const lightScreenX = 0.5 + Math.sin(t * 0.3) * 0.15;
+  const lightScreenY = 0.3 + Math.cos(t * 0.4) * 0.08;
+  volPass.uniforms.lightPos.value.set(lightScreenX, lightScreenY);
+
+  // Temporal blend: pass previous frame
+  volPass.uniforms.tPrevFrame.value = prevFrameTarget.texture;
+
+  // Render
+  composer.render();
+
+  // Swap temporal buffers
+  const temp = prevFrameTarget;
+  prevFrameTarget = tempTarget;
+  tempTarget = temp;
+  renderer.setRenderTarget(prevFrameTarget);
+  renderer.render(scene, camera);
+  renderer.setRenderTarget(null);
+}
+
+animate();
+
+// ===== RESIZE =====
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+  ssrPass.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

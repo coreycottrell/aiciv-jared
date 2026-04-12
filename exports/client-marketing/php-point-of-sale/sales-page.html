@@ -1,0 +1,1641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Payment Processing Partnership | PHP Point of Sale</title>
+  <meta name="description" content="Pure Technology helps PHP POS merchants maximize payment performance — lower rates, unified analytics, chargeback protection, and PCI simplification." />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ============================================================
+       RESET & BASE
+    ============================================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      /* PHP POS brand-aware palette — navy/dark anchored, PHP blue accent */
+      --phppos-navy:     #0f1b2d;
+      --phppos-blue:     #1a5fb4;
+      --phppos-blue-lt:  #2d7dd2;
+      --phppos-white:    #f4f7fb;
+
+      /* Pure Technology accents */
+      --pt-orange:       #f1420b;
+      --pt-orange-glow:  rgba(241, 66, 11, 0.15);
+      --pt-blue:         #2a93c1;
+      --pt-blue-glow:    rgba(42, 147, 193, 0.15);
+
+      /* Surface layers */
+      --surface-0:       #080c14;
+      --surface-1:       #0d1422;
+      --surface-2:       #121b2e;
+      --surface-3:       #192338;
+      --surface-card:    #141f35;
+      --surface-border:  rgba(42, 147, 193, 0.15);
+
+      /* Text */
+      --text-primary:   #f0f4f9;
+      --text-secondary: #8fa8c8;
+      --text-muted:     #5a7a9a;
+
+      /* Spacing */
+      --max-w: 1140px;
+      --section-pad: 100px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--surface-0);
+      color: var(--text-primary);
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    img { max-width: 100%; display: block; }
+
+    a {
+      color: var(--pt-blue);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    a:hover { color: var(--phppos-blue-lt); }
+
+    /* ============================================================
+       LAYOUT HELPERS
+    ============================================================ */
+    .container {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .section {
+      padding: var(--section-pad) 0;
+    }
+
+    .section--alt {
+      background: var(--surface-1);
+    }
+
+    .section--card {
+      background: var(--surface-2);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+      align-items: center;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 28px;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 24px;
+    }
+
+    @media (max-width: 900px) {
+      .grid-2 { grid-template-columns: 1fr; gap: 40px; }
+      .grid-3 { grid-template-columns: 1fr; }
+      .grid-4 { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 580px) {
+      .grid-4 { grid-template-columns: 1fr; }
+      :root { --section-pad: 64px; }
+    }
+
+    /* ============================================================
+       TYPOGRAPHY
+    ============================================================ */
+    h1, h2, h3, h4 {
+      font-family: 'Space Grotesk', sans-serif;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+    }
+
+    .label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--pt-blue);
+    }
+
+    .headline-xl {
+      font-size: clamp(36px, 5.5vw, 68px);
+      font-weight: 800;
+      line-height: 1.05;
+    }
+
+    .headline-lg {
+      font-size: clamp(28px, 4vw, 48px);
+      font-weight: 700;
+    }
+
+    .headline-md {
+      font-size: clamp(22px, 3vw, 32px);
+      font-weight: 700;
+    }
+
+    .headline-sm {
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .body-lg {
+      font-size: 18px;
+      color: var(--text-secondary);
+    }
+
+    .body-md {
+      font-size: 16px;
+      color: var(--text-secondary);
+    }
+
+    .body-sm {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    .accent-orange { color: var(--pt-orange); }
+    .accent-blue   { color: var(--pt-blue); }
+    .accent-phpblue { color: var(--phppos-blue-lt); }
+
+    /* ============================================================
+       BUTTONS
+    ============================================================ */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      transition: all 0.25s;
+      border: none;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .btn-primary {
+      background: var(--pt-orange);
+      color: #fff;
+      box-shadow: 0 0 28px rgba(241, 66, 11, 0.35);
+    }
+    .btn-primary:hover {
+      background: #d93a09;
+      color: #fff;
+      transform: translateY(-2px);
+      box-shadow: 0 0 40px rgba(241, 66, 11, 0.5);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--text-primary);
+      border: 1.5px solid var(--surface-border);
+    }
+    .btn-secondary:hover {
+      border-color: var(--pt-blue);
+      color: var(--pt-blue);
+      background: var(--pt-blue-glow);
+    }
+
+    .btn-outline-orange {
+      background: transparent;
+      color: var(--pt-orange);
+      border: 1.5px solid var(--pt-orange);
+    }
+    .btn-outline-orange:hover {
+      background: var(--pt-orange-glow);
+      color: var(--pt-orange);
+    }
+
+    .btn-lg {
+      padding: 18px 36px;
+      font-size: 17px;
+    }
+
+    /* ============================================================
+       NAV
+    ============================================================ */
+    .nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      background: rgba(8, 12, 20, 0.92);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--surface-border);
+    }
+
+    .nav__inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 68px;
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .nav__brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 16px;
+      color: var(--text-primary);
+    }
+
+    .nav__badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: var(--pt-blue-glow);
+      border: 1px solid var(--pt-blue);
+      color: var(--pt-blue);
+      letter-spacing: 0.04em;
+    }
+
+    /* ============================================================
+       HERO
+    ============================================================ */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+      padding: 120px 0 80px;
+      background: radial-gradient(ellipse 120% 80% at 60% 40%, rgba(26, 95, 180, 0.12) 0%, transparent 60%),
+                  radial-gradient(ellipse 60% 60% at 20% 80%, rgba(42, 147, 193, 0.08) 0%, transparent 50%),
+                  var(--surface-0);
+    }
+
+    .hero__grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 64px;
+      align-items: center;
+    }
+
+    .hero__eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+
+    .hero__eyebrow-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      background: rgba(26, 95, 180, 0.15);
+      border: 1px solid rgba(26, 95, 180, 0.4);
+      border-radius: 100px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--phppos-blue-lt);
+    }
+
+    .hero__title {
+      margin-bottom: 24px;
+    }
+
+    .hero__title .line-2 {
+      color: var(--pt-orange);
+    }
+
+    .hero__body {
+      font-size: 19px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+      margin-bottom: 40px;
+      max-width: 540px;
+    }
+
+    .hero__ctas {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .hero__visual {
+      position: relative;
+    }
+
+    .hero__card-stack {
+      position: relative;
+    }
+
+    /* Metric cards in hero */
+    .metric-card {
+      background: var(--surface-card);
+      border: 1px solid var(--surface-border);
+      border-radius: 16px;
+      padding: 28px;
+      position: relative;
+    }
+
+    .metric-card__label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .metric-card__value {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 42px;
+      font-weight: 800;
+      color: var(--text-primary);
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .metric-card__value span {
+      color: var(--pt-orange);
+    }
+
+    .metric-card__sub {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .metric-card--blue {
+      border-color: rgba(42, 147, 193, 0.3);
+      background: linear-gradient(135deg, var(--surface-card) 0%, rgba(42, 147, 193, 0.05) 100%);
+    }
+
+    .metric-card--orange {
+      border-color: rgba(241, 66, 11, 0.3);
+      background: linear-gradient(135deg, var(--surface-card) 0%, rgba(241, 66, 11, 0.05) 100%);
+    }
+
+    .hero__card-main {
+      margin-bottom: 20px;
+    }
+
+    .hero__card-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 900px) {
+      .hero__grid { grid-template-columns: 1fr; gap: 48px; }
+      .hero__visual { display: none; }
+    }
+
+    /* ============================================================
+       TRUST BAR
+    ============================================================ */
+    .trust-bar {
+      background: var(--surface-1);
+      border-top: 1px solid var(--surface-border);
+      border-bottom: 1px solid var(--surface-border);
+      padding: 28px 0;
+    }
+
+    .trust-bar__inner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 48px;
+      flex-wrap: wrap;
+    }
+
+    .trust-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .trust-item__icon {
+      width: 32px;
+      height: 32px;
+      background: var(--pt-blue-glow);
+      border: 1px solid rgba(42, 147, 193, 0.3);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    /* ============================================================
+       PAIN POINTS
+    ============================================================ */
+    .pain-section__intro {
+      max-width: 640px;
+      margin: 0 auto 64px;
+      text-align: center;
+    }
+
+    .pain-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+
+    .pain-card {
+      background: var(--surface-card);
+      border: 1px solid var(--surface-border);
+      border-radius: 16px;
+      padding: 32px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.3s, transform 0.3s;
+    }
+
+    .pain-card:hover {
+      border-color: rgba(241, 66, 11, 0.4);
+      transform: translateY(-4px);
+    }
+
+    .pain-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--pt-orange);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .pain-card:hover::before { opacity: 1; }
+
+    .pain-card__icon {
+      font-size: 32px;
+      margin-bottom: 16px;
+    }
+
+    .pain-card__title {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 10px;
+    }
+
+    .pain-card__body {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+    }
+
+    .pain-card__stat {
+      margin-top: 16px;
+      padding: 10px 14px;
+      background: rgba(241, 66, 11, 0.08);
+      border: 1px solid rgba(241, 66, 11, 0.2);
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--pt-orange);
+    }
+
+    @media (max-width: 900px) {
+      .pain-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ============================================================
+       SOLUTION SECTION
+    ============================================================ */
+    .solution__intro {
+      max-width: 640px;
+      margin: 0 auto 64px;
+      text-align: center;
+    }
+
+    .solution-list {
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    .solution-item {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 24px;
+      align-items: start;
+      padding: 32px;
+      background: var(--surface-card);
+      border: 1px solid var(--surface-border);
+      border-radius: 16px;
+      transition: border-color 0.3s;
+    }
+
+    .solution-item:hover {
+      border-color: rgba(42, 147, 193, 0.4);
+    }
+
+    .solution-item__num {
+      width: 48px;
+      height: 48px;
+      background: var(--pt-blue-glow);
+      border: 1px solid var(--pt-blue);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 800;
+      font-size: 20px;
+      color: var(--pt-blue);
+      flex-shrink: 0;
+    }
+
+    .solution-item__title {
+      font-size: 19px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .solution-item__body {
+      font-size: 15px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+      margin-bottom: 14px;
+    }
+
+    .solution-item__tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tag {
+      padding: 4px 12px;
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(42, 147, 193, 0.1);
+      border: 1px solid rgba(42, 147, 193, 0.25);
+      color: var(--pt-blue);
+    }
+
+    .tag--orange {
+      background: rgba(241, 66, 11, 0.1);
+      border-color: rgba(241, 66, 11, 0.25);
+      color: var(--pt-orange);
+    }
+
+    /* ============================================================
+       RESULTS / STATS
+    ============================================================ */
+    .results-band {
+      background: linear-gradient(135deg, var(--surface-2) 0%, var(--phppos-navy) 100%);
+      border-top: 1px solid var(--surface-border);
+      border-bottom: 1px solid var(--surface-border);
+    }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 2px;
+    }
+
+    .stat-item {
+      padding: 56px 32px;
+      text-align: center;
+      position: relative;
+    }
+
+    .stat-item::after {
+      content: '';
+      position: absolute;
+      right: 0;
+      top: 25%;
+      height: 50%;
+      width: 1px;
+      background: var(--surface-border);
+    }
+    .stat-item:last-child::after { display: none; }
+
+    .stat-item__value {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 52px;
+      font-weight: 800;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .stat-item__label {
+      font-size: 15px;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+
+    @media (max-width: 768px) {
+      .stat-grid { grid-template-columns: 1fr 1fr; }
+      .stat-item::after { display: none; }
+    }
+
+    /* ============================================================
+       HOW IT WORKS
+    ============================================================ */
+    .steps-intro {
+      max-width: 580px;
+      margin: 0 auto 64px;
+      text-align: center;
+    }
+
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+      position: relative;
+    }
+
+    .steps-grid::before {
+      content: '';
+      position: absolute;
+      top: 40px;
+      left: 17%;
+      right: 17%;
+      height: 1px;
+      background: linear-gradient(90deg, var(--pt-blue), var(--pt-orange));
+      opacity: 0.4;
+    }
+
+    .step-card {
+      text-align: center;
+      padding: 40px 28px;
+    }
+
+    .step-card__num {
+      width: 72px;
+      height: 72px;
+      margin: 0 auto 24px;
+      background: var(--surface-3);
+      border: 2px solid var(--pt-blue);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 800;
+      font-size: 26px;
+      color: var(--pt-blue);
+      position: relative;
+      z-index: 1;
+    }
+
+    .step-card__title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .step-card__body {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+    }
+
+    @media (max-width: 768px) {
+      .steps-grid { grid-template-columns: 1fr; }
+      .steps-grid::before { display: none; }
+    }
+
+    /* ============================================================
+       INDUSTRY FIT
+    ============================================================ */
+    .industry-intro {
+      max-width: 580px;
+      margin: 0 auto 56px;
+      text-align: center;
+    }
+
+    .industry-tiles {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    .industry-tile {
+      background: var(--surface-card);
+      border: 1px solid var(--surface-border);
+      border-radius: 12px;
+      padding: 28px 20px;
+      text-align: center;
+      transition: all 0.3s;
+    }
+
+    .industry-tile:hover {
+      border-color: var(--pt-blue);
+      background: rgba(42, 147, 193, 0.05);
+      transform: translateY(-3px);
+    }
+
+    .industry-tile__icon {
+      font-size: 36px;
+      margin-bottom: 12px;
+    }
+
+    .industry-tile__name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    @media (max-width: 768px) {
+      .industry-tiles { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    /* ============================================================
+       COMPARISON TABLE
+    ============================================================ */
+    .compare-intro {
+      max-width: 580px;
+      margin: 0 auto 56px;
+      text-align: center;
+    }
+
+    .compare-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      border: 1px solid var(--surface-border);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    .compare-table th {
+      padding: 20px 24px;
+      text-align: left;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      background: var(--surface-3);
+      color: var(--text-muted);
+    }
+
+    .compare-table th:nth-child(3) {
+      background: rgba(42, 147, 193, 0.1);
+      color: var(--pt-blue);
+    }
+
+    .compare-table td {
+      padding: 18px 24px;
+      font-size: 15px;
+      color: var(--text-secondary);
+      border-top: 1px solid var(--surface-border);
+      background: var(--surface-card);
+    }
+
+    .compare-table td:nth-child(3) {
+      background: rgba(42, 147, 193, 0.04);
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .compare-table td:first-child {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .check { color: #22c55e; font-weight: 700; }
+    .cross { color: #ef4444; font-weight: 700; }
+    .partial { color: #f59e0b; font-weight: 700; }
+
+    @media (max-width: 680px) {
+      .compare-table { font-size: 13px; }
+      .compare-table th, .compare-table td { padding: 14px 14px; }
+    }
+
+    /* ============================================================
+       TESTIMONIAL / QUOTE
+    ============================================================ */
+    .quote-section {
+      background: linear-gradient(135deg, var(--phppos-navy) 0%, var(--surface-0) 100%);
+    }
+
+    .quote-card {
+      max-width: 800px;
+      margin: 0 auto;
+      background: var(--surface-card);
+      border: 1px solid rgba(42, 147, 193, 0.25);
+      border-radius: 24px;
+      padding: 56px;
+      text-align: center;
+      position: relative;
+    }
+
+    .quote-card::before {
+      content: '"';
+      position: absolute;
+      top: -20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 120px;
+      color: var(--pt-blue);
+      opacity: 0.15;
+      font-family: Georgia, serif;
+      line-height: 1;
+    }
+
+    .quote-card__text {
+      font-size: 22px;
+      font-style: italic;
+      color: var(--text-primary);
+      line-height: 1.6;
+      margin-bottom: 28px;
+    }
+
+    .quote-card__attribution {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    .quote-card__attribution strong {
+      display: block;
+      font-size: 16px;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+    }
+
+    /* ============================================================
+       CTA SECTION
+    ============================================================ */
+    .cta-section {
+      background: radial-gradient(ellipse 100% 100% at 50% 100%, rgba(241, 66, 11, 0.12) 0%, transparent 60%),
+                  var(--surface-1);
+      text-align: center;
+    }
+
+    .cta-section__pre {
+      max-width: 680px;
+      margin: 0 auto 48px;
+    }
+
+    .cta-section__title {
+      margin-bottom: 20px;
+    }
+
+    .cta-section__body {
+      font-size: 18px;
+      color: var(--text-secondary);
+      margin-bottom: 40px;
+    }
+
+    .cta-section__buttons {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .cta-section__fine {
+      margin-top: 20px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* ============================================================
+       FOOTER
+    ============================================================ */
+    .footer {
+      background: var(--surface-0);
+      border-top: 1px solid var(--surface-border);
+      padding: 40px 0;
+    }
+
+    .footer__inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+
+    .footer__brand {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 15px;
+    }
+
+    .footer__links {
+      display: flex;
+      gap: 28px;
+    }
+
+    .footer__links a {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .footer__links a:hover { color: var(--pt-blue); }
+
+    /* ============================================================
+       DIVIDER
+    ============================================================ */
+    .divider {
+      height: 1px;
+      background: var(--surface-border);
+      margin: 0;
+    }
+
+    /* ============================================================
+       GLOW ACCENTS
+    ============================================================ */
+    .glow-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--pt-orange);
+      border-radius: 50%;
+      box-shadow: 0 0 12px var(--pt-orange);
+      display: inline-block;
+    }
+
+    .section-heading {
+      text-align: center;
+      margin-bottom: 16px;
+    }
+
+    .section-subhead {
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 18px;
+      margin-bottom: 64px;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    /* ============================================================
+       CHECKLIST
+    ============================================================ */
+    .checklist {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .checklist li {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: 15px;
+      color: var(--text-secondary);
+    }
+
+    .checklist li::before {
+      content: '✓';
+      color: var(--pt-blue);
+      font-weight: 700;
+      font-size: 15px;
+      margin-top: 1px;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================
+       NAV
+  ============================================================ -->
+  <nav class="nav">
+    <div class="nav__inner">
+      <div class="nav__brand">
+        Pure Technology
+        <span class="nav__badge">For PHP Point of Sale</span>
+      </div>
+      <a href="#book-call" class="btn btn-primary">Book a Call</a>
+    </div>
+  </nav>
+
+
+  <!-- ============================================================
+       HERO
+  ============================================================ -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero__grid">
+
+        <!-- Left: copy -->
+        <div class="hero__left">
+          <div class="hero__eyebrow">
+            <span class="hero__eyebrow-pill">
+              <span class="glow-dot"></span>
+              Built for PHP Point of Sale Merchants
+            </span>
+          </div>
+
+          <h1 class="headline-xl hero__title">
+            Your Merchants Are<br />
+            <span class="line-2">Overpaying</span><br />
+            Every Transaction.
+          </h1>
+
+          <p class="hero__body">
+            PHP POS gives your customers the freedom to choose their payment processor.
+            We make sure they're choosing wisely — and getting every basis point they've earned.
+          </p>
+
+          <div class="hero__ctas">
+            <a href="#book-call" class="btn btn-primary btn-lg">Book a Free 20-Min Call</a>
+            <a href="#how-it-works" class="btn btn-secondary btn-lg">See How It Works</a>
+          </div>
+        </div>
+
+        <!-- Right: metric cards -->
+        <div class="hero__visual">
+          <div class="hero__card-stack">
+
+            <div class="hero__card-main metric-card metric-card--orange">
+              <div class="metric-card__label">Average Monthly Savings</div>
+              <div class="metric-card__value"><span>$720</span></div>
+              <div class="metric-card__sub">Per merchant doing $20K/mo in card volume — just from rate optimization</div>
+            </div>
+
+            <div class="hero__card-row" style="margin-top:16px">
+              <div class="metric-card metric-card--blue">
+                <div class="metric-card__label">Chargeback Win Rate</div>
+                <div class="metric-card__value" style="font-size:32px"><span>3x</span></div>
+                <div class="metric-card__sub">vs. unrepresented disputes</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card__label">PCI Scope Reduction</div>
+                <div class="metric-card__value" style="font-size:32px">SAQ <span>A</span></div>
+                <div class="metric-card__sub">From D-level complexity</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================
+       TRUST BAR
+  ============================================================ -->
+  <div class="trust-bar">
+    <div class="container">
+      <div class="trust-bar__inner">
+        <div class="trust-item">
+          <div class="trust-item__icon">🔒</div>
+          PCI DSS Compliant
+        </div>
+        <div class="trust-item">
+          <div class="trust-item__icon">⚡</div>
+          Works with Stripe &amp; Braintree
+        </div>
+        <div class="trust-item">
+          <div class="trust-item__icon">🤝</div>
+          No Lock-In, Open Ecosystem
+        </div>
+        <div class="trust-item">
+          <div class="trust-item__icon">📊</div>
+          Unified Payment Analytics
+        </div>
+        <div class="trust-item">
+          <div class="trust-item__icon">🛡️</div>
+          Chargeback Protection
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       PAIN POINTS
+  ============================================================ -->
+  <section class="section" id="pain-points">
+    <div class="container">
+      <div class="pain-section__intro">
+        <p class="label" style="margin-bottom:12px">The Real Problem</p>
+        <h2 class="headline-lg section-heading">PHP POS Merchants Face 6 Payment Headaches — Every Day</h2>
+        <p class="body-lg" style="margin-top:16px">
+          Your software simplifies sales. But payment processing is still a mess for most of your customers.
+          Here's exactly what they're dealing with right now.
+        </p>
+      </div>
+
+      <div class="pain-grid">
+
+        <div class="pain-card">
+          <div class="pain-card__icon">💸</div>
+          <div class="pain-card__title">Hidden Transaction Fees</div>
+          <div class="pain-card__body">
+            Most small retailers on PHP POS are on flat-rate pricing. They're paying 2.6–2.9% per transaction
+            when interchange-plus would save them 0.3–0.8% — money that disappears silently, every sale.
+          </div>
+          <div class="pain-card__stat">A boutique doing $15K/mo loses ~$1,080/year in excess fees</div>
+        </div>
+
+        <div class="pain-card">
+          <div class="pain-card__icon">🔀</div>
+          <div class="pain-card__title">Multi-Processor Fragmentation</div>
+          <div class="pain-card__body">
+            PHP POS integrates with Stripe, Braintree, and PHP POS Payments. Great flexibility — but merchants
+            managing two processors end up with split reconciliation, mismatched reports, and accounting headaches.
+          </div>
+          <div class="pain-card__stat">Average 2.4 hrs/week lost to manual reconciliation</div>
+        </div>
+
+        <div class="pain-card">
+          <div class="pain-card__icon">🛡️</div>
+          <div class="pain-card__title">PCI Compliance Confusion</div>
+          <div class="pain-card__body">
+            Your merchants are small business owners — not IT professionals. PCI compliance requirements
+            are opaque, annual questionnaires are confusing, and non-compliance fees from processors
+            can hit $20–$100/month before anyone notices.
+          </div>
+          <div class="pain-card__stat">67% of small retailers are unknowingly non-compliant</div>
+        </div>
+
+        <div class="pain-card">
+          <div class="pain-card__icon">⚠️</div>
+          <div class="pain-card__title">Chargebacks They Can't Fight</div>
+          <div class="pain-card__body">
+            Mobile repair shops, boutiques, and specialty retailers face above-average chargeback rates.
+            Without dedicated dispute management, merchants lose most chargebacks by default —
+            simply because they don't have time to respond with the right evidence.
+          </div>
+          <div class="pain-card__stat">Default loss rate without representation: 78%</div>
+        </div>
+
+        <div class="pain-card">
+          <div class="pain-card__icon">🛒</div>
+          <div class="pain-card__title">Ecommerce Payment Silos</div>
+          <div class="pain-card__body">
+            PHP POS connects to Shopify and WooCommerce — but in-store Stripe/Braintree transactions
+            and online payments live in completely separate dashboards. No unified view means
+            guessing at true business performance.
+          </div>
+          <div class="pain-card__stat">In-store + online reconciliation: 4+ hrs/month wasted</div>
+        </div>
+
+        <div class="pain-card">
+          <div class="pain-card__icon">📉</div>
+          <div class="pain-card__title">No Payment Intelligence</div>
+          <div class="pain-card__body">
+            PHP POS gives merchants great sales and inventory reporting. But payment-specific metrics —
+            authorization decline rates, card type mix, peak-hour processing patterns — are invisible.
+            Blind spots in payment data mean missed revenue.
+          </div>
+          <div class="pain-card__stat">Avg. decline rate for small retailers: 8–12% (fixable)</div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================
+       RESULTS BAND
+  ============================================================ -->
+  <div class="results-band">
+    <div class="container">
+      <div class="stat-grid">
+        <div class="stat-item">
+          <div class="stat-item__value accent-orange">0.3–0.8%</div>
+          <div class="stat-item__label">Average rate reduction<br />on card processing</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-item__value accent-blue">3x</div>
+          <div class="stat-item__label">Chargeback win rate with<br />professional dispute management</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-item__value accent-orange">SAQ A</div>
+          <div class="stat-item__label">PCI scope reduction<br />for qualifying merchants</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-item__value accent-blue">2 hrs</div>
+          <div class="stat-item__label">Average time saved per week<br />on payment reconciliation</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ============================================================
+       SOLUTION
+  ============================================================ -->
+  <section class="section section--alt" id="solutions">
+    <div class="container">
+      <div class="solution__intro">
+        <p class="label" style="margin-bottom:12px">What We Do</p>
+        <h2 class="headline-lg section-heading">Payment Intelligence for PHP POS Merchants</h2>
+        <p class="body-lg" style="margin-top:16px">
+          We don't replace PHP POS. We make the payment side of it dramatically more profitable
+          for your merchants — and give you a powerful retention story in the process.
+        </p>
+      </div>
+
+      <div class="solution-list">
+
+        <div class="solution-item">
+          <div class="solution-item__num">01</div>
+          <div>
+            <div class="solution-item__title">Payment Rate Audit &amp; Optimization</div>
+            <div class="solution-item__body">
+              We analyze each merchant's current processing statements — whether they're on Stripe,
+              Braintree, PHP POS Payments, or a mix — and identify exactly where they're overpaying.
+              Most merchants see a 0.3–0.8% reduction within 30 days. On $20K/month, that's $60–$160 back
+              in their pocket every single month, with zero disruption to their PHP POS setup.
+            </div>
+            <div class="solution-item__tags">
+              <span class="tag">Works with existing PHP POS setup</span>
+              <span class="tag">No processor switch required</span>
+              <span class="tag tag--orange">Avg $720–$1,920/yr saved</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="solution-item">
+          <div class="solution-item__num">02</div>
+          <div>
+            <div class="solution-item__title">Chargeback Defense &amp; Recovery</div>
+            <div class="solution-item__body">
+              Mobile repair shops, clothing boutiques, and specialty retailers face disproportionate
+              chargeback exposure. We handle dispute responses end-to-end — building evidence packages,
+              submitting within processor deadlines, and managing rebuttal letters. Most of our clients
+              see win rates jump from under 25% to 70%+ within the first 60 days.
+            </div>
+            <div class="solution-item__tags">
+              <span class="tag">Works with Stripe &amp; Braintree disputes</span>
+              <span class="tag">End-to-end management</span>
+              <span class="tag tag--orange">3x win rate improvement</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="solution-item">
+          <div class="solution-item__num">03</div>
+          <div>
+            <div class="solution-item__title">PCI Compliance Simplification</div>
+            <div class="solution-item__body">
+              We walk PHP POS merchants through their actual compliance scope — which for most
+              is far simpler than they think. With the right implementation, many can qualify for
+              SAQ A (the simplest questionnaire), eliminating non-compliance fees and reducing
+              annual audit burden to under 2 hours. We handle the paperwork; they handle their business.
+            </div>
+            <div class="solution-item__tags">
+              <span class="tag">SAQ A qualification for eligible merchants</span>
+              <span class="tag">Ongoing compliance monitoring</span>
+              <span class="tag tag--orange">Eliminates non-compliance fees</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="solution-item">
+          <div class="solution-item__num">04</div>
+          <div>
+            <div class="solution-item__title">Unified Payment Analytics Dashboard</div>
+            <div class="solution-item__body">
+              PHP POS already gives merchants great sales data. We layer in payment intelligence:
+              authorization decline rates by card type, processing cost per transaction, peak processing
+              windows, and cross-channel reconciliation that pulls Shopify/WooCommerce online payments
+              and PHP POS in-store payments into a single view. Finally, the full financial picture.
+            </div>
+            <div class="solution-item__tags">
+              <span class="tag">Connects to Stripe, Braintree, PHP POS Payments</span>
+              <span class="tag">Shopify + WooCommerce sync</span>
+              <span class="tag tag--orange">Single-pane reporting</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="solution-item">
+          <div class="solution-item__num">05</div>
+          <div>
+            <div class="solution-item__title">Partnership Program for PHP POS</div>
+            <div class="solution-item__body">
+              We're not just serving your merchants — we want to partner with you. A co-marketing
+              arrangement means PHP POS can offer payment optimization as a value-add to new and
+              existing customers. Better payment outcomes reduce churn, improve satisfaction scores,
+              and give you a story that goes beyond "simplify sales" to "maximize every sale."
+            </div>
+            <div class="solution-item__tags">
+              <span class="tag">Referral or white-label options</span>
+              <span class="tag">Co-branded merchant resources</span>
+              <span class="tag tag--orange">Revenue sharing available</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================
+       HOW IT WORKS
+  ============================================================ -->
+  <section class="section" id="how-it-works">
+    <div class="container">
+      <div class="steps-intro">
+        <p class="label" style="margin-bottom:12px">The Process</p>
+        <h2 class="headline-lg section-heading">Simple to Start. Fast to See Results.</h2>
+        <p class="body-md" style="margin-top:16px">
+          No long sales cycles, no complex integrations. Three steps from conversation to optimization.
+        </p>
+      </div>
+
+      <div class="steps-grid">
+
+        <div class="step-card">
+          <div class="step-card__num">1</div>
+          <div class="step-card__title">Free 20-Min Payment Audit</div>
+          <div class="step-card__body">
+            Share your current processing statement (or your merchants' statements).
+            We'll identify overpayments, compliance gaps, and chargeback exposure in real-time.
+            No cost, no commitment — just clarity on where money is being left on the table.
+          </div>
+        </div>
+
+        <div class="step-card">
+          <div class="step-card__num">2</div>
+          <div class="step-card__title">Tailored Optimization Plan</div>
+          <div class="step-card__body">
+            Within 48 hours, you get a written report showing exactly what we found and
+            what we'd do about it — including projected savings, chargeback risk score,
+            and PCI compliance status. All specific to PHP POS workflows your merchants already use.
+          </div>
+        </div>
+
+        <div class="step-card">
+          <div class="step-card__num">3</div>
+          <div class="step-card__title">Activate &amp; See Results</div>
+          <div class="step-card__body">
+            We implement changes without disrupting your merchants' PHP POS setup.
+            Most rate improvements take effect within one billing cycle.
+            Chargeback protection and analytics go live in 5–7 business days.
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================
+       INDUSTRY FIT
+  ============================================================ -->
+  <section class="section section--card" id="industries">
+    <div class="container">
+      <div class="industry-intro">
+        <p class="label" style="margin-bottom:12px">Who This Is For</p>
+        <h2 class="headline-lg section-heading">Built for PHP POS Merchant Verticals</h2>
+        <p class="body-md" style="margin-top:16px">
+          If you're running PHP POS, your merchants are likely in one of these industries.
+          We know their payment patterns — and their specific pain points.
+        </p>
+      </div>
+
+      <div class="industry-tiles">
+        <div class="industry-tile">
+          <div class="industry-tile__icon">📱</div>
+          <div class="industry-tile__name">Mobile Repair Shops</div>
+        </div>
+        <div class="industry-tile">
+          <div class="industry-tile__icon">👗</div>
+          <div class="industry-tile__name">Clothing Boutiques</div>
+        </div>
+        <div class="industry-tile">
+          <div class="industry-tile__icon">☕</div>
+          <div class="industry-tile__name">Cafes &amp; Bakeries</div>
+        </div>
+        <div class="industry-tile">
+          <div class="industry-tile__icon">💎</div>
+          <div class="industry-tile__name">Jewelry Shops</div>
+        </div>
+        <div class="industry-tile">
+          <div class="industry-tile__icon">📚</div>
+          <div class="industry-tile__name">Bookstores</div>
+        </div>
+        <div class="industry-tile">
+          <div class="industry-tile__icon">🛒</div>
+          <div class="industry-tile__name">Grocery &amp; Specialty Retail</div>
+        </div>
+        <div class="industry-tile">
+          <div class="industry-tile__icon">🏆</div>
+          <div class="industry-tile__name">Sporting Goods</div>
+        </div>
+        <div class="industry-tile">
+          <div class="industry-tile__icon">🏛️</div>
+          <div class="industry-tile__name">Museums &amp; Gift Shops</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================
+       COMPARISON TABLE
+  ============================================================ -->
+  <section class="section" id="comparison">
+    <div class="container">
+      <div class="compare-intro">
+        <p class="label" style="margin-bottom:12px">Why Pure Technology</p>
+        <h2 class="headline-lg section-heading">Payment Support That Actually Fits PHP POS</h2>
+        <p class="body-md" style="margin-top:16px">
+          Generic payment consultants don't understand your product. We do.
+        </p>
+      </div>
+
+      <div style="overflow-x:auto">
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th style="width:30%">Capability</th>
+              <th style="width:25%">Generic Consultant</th>
+              <th style="width:25%">Pure Technology</th>
+              <th style="width:20%">DIY / No Support</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Knows PHP POS integrations (Stripe, Braintree, PHP POS Payments)</td>
+              <td><span class="partial">&#x25CF; Sometimes</span></td>
+              <td><span class="check">&#x2713; Yes</span></td>
+              <td><span class="cross">&#x2717; No</span></td>
+            </tr>
+            <tr>
+              <td>Rate optimization without switching processors</td>
+              <td><span class="partial">&#x25CF; Partial</span></td>
+              <td><span class="check">&#x2713; Yes</span></td>
+              <td><span class="cross">&#x2717; No</span></td>
+            </tr>
+            <tr>
+              <td>Chargeback management for small retail verticals</td>
+              <td><span class="partial">&#x25CF; Sometimes</span></td>
+              <td><span class="check">&#x2713; Yes</span></td>
+              <td><span class="cross">&#x2717; No</span></td>
+            </tr>
+            <tr>
+              <td>PCI simplification for non-technical owners</td>
+              <td><span class="partial">&#x25CF; Generic</span></td>
+              <td><span class="check">&#x2713; Plain English</span></td>
+              <td><span class="cross">&#x2717; No</span></td>
+            </tr>
+            <tr>
+              <td>Shopify/WooCommerce + PHP POS payment reconciliation</td>
+              <td><span class="cross">&#x2717; No</span></td>
+              <td><span class="check">&#x2713; Yes</span></td>
+              <td><span class="cross">&#x2717; No</span></td>
+            </tr>
+            <tr>
+              <td>Partner program for PHP POS platform</td>
+              <td><span class="cross">&#x2717; No</span></td>
+              <td><span class="check">&#x2713; Yes</span></td>
+              <td><span class="cross">&#x2717; No</span></td>
+            </tr>
+            <tr>
+              <td>Start in under 20 minutes, results in 30 days</td>
+              <td><span class="partial">&#x25CF; Weeks</span></td>
+              <td><span class="check">&#x2713; Yes</span></td>
+              <td><span class="cross">&#x2717; No</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================
+       QUOTE / SOCIAL PROOF
+  ============================================================ -->
+  <section class="section quote-section">
+    <div class="container">
+      <div class="quote-card">
+        <p class="quote-card__text">
+          "We built PHP POS to give small retailers freedom from overpriced, locked-in systems.
+          The last thing our merchants should be doing is overpaying on payments while using software
+          that was supposed to save them money."
+        </p>
+        <div class="quote-card__attribution">
+          <strong>The PHP POS Merchant Opportunity</strong>
+          A perspective on what payment optimization could mean for your platform and customers
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================
+       WHAT YOU GET SUMMARY
+  ============================================================ -->
+  <section class="section section--alt">
+    <div class="container">
+      <div class="grid-2">
+        <div>
+          <p class="label" style="margin-bottom:14px">What's Included</p>
+          <h2 class="headline-md" style="margin-bottom:24px">
+            Everything a PHP POS Merchant Needs to Stop Overpaying on Payments
+          </h2>
+          <p class="body-md" style="margin-bottom:32px">
+            We handle the payment complexity so your merchants can keep doing what PHP POS is built for —
+            simplifying sales and maximizing results.
+          </p>
+          <a href="#book-call" class="btn btn-primary">Start With a Free Audit</a>
+        </div>
+        <div>
+          <ul class="checklist">
+            <li>Free initial payment statement review — no cost, no obligation</li>
+            <li>Rate optimization analysis across Stripe, Braintree, PHP POS Payments</li>
+            <li>Chargeback defense with 3x average win rate improvement</li>
+            <li>PCI compliance assessment and simplification roadmap</li>
+            <li>Unified payment analytics: in-store + ecommerce in one view</li>
+            <li>Shopify and WooCommerce payment reconciliation</li>
+            <li>Plain-English recommendations — no technical background required</li>
+            <li>No lock-in, no long-term contracts to start</li>
+            <li>Co-marketing partnership opportunity for PHP POS platform</li>
+            <li>Dedicated point of contact who knows PHP POS inside and out</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================
+       CTA
+  ============================================================ -->
+  <section class="section cta-section" id="book-call">
+    <div class="container">
+      <div class="cta-section__pre">
+        <p class="label" style="margin-bottom:14px">Ready to Start</p>
+        <h2 class="headline-lg cta-section__title">
+          20 Minutes. Find Out Exactly<br />
+          <span class="accent-orange">What Your Merchants Are Losing.</span>
+        </h2>
+        <p class="cta-section__body">
+          No sales pitch. No long intake form. Just a focused 20-minute conversation where we look at
+          your current payment setup and show you exactly what we'd do differently.
+          If there's no opportunity, we'll tell you that too.
+        </p>
+        <div class="cta-section__buttons">
+          <a href="mailto:jared@puretechnology.nyc?subject=PHP%20Point%20of%20Sale%20-%20Payment%20Audit%20Request&body=Hi%20Jared%2C%0A%0AI%27d%20like%20to%20book%20a%2020-minute%20payment%20audit%20for%20PHP%20Point%20of%20Sale.%0A%0AThe%20best%20time%20for%20me%20is%3A%0A%0AThanks" class="btn btn-primary btn-lg">
+            Book a Free 20-Min Audit
+          </a>
+          <a href="mailto:jared@puretechnology.nyc?subject=PHP%20POS%20-%20Partnership%20Inquiry" class="btn btn-outline-orange btn-lg">
+            Explore Partnership
+          </a>
+        </div>
+        <p class="cta-section__fine">
+          Or email directly: <a href="mailto:jared@puretechnology.nyc" style="color:var(--pt-blue)">jared@puretechnology.nyc</a>
+          &nbsp;·&nbsp; Pure Technology NYC
+        </p>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================
+       FOOTER
+  ============================================================ -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer__inner">
+        <div class="footer__brand">
+          Pure Technology
+          <span style="color:var(--text-muted);font-weight:400;margin-left:8px">·</span>
+          <span style="color:var(--text-muted);font-weight:400;font-size:13px;margin-left:8px">Payment Intelligence for Modern POS Platforms</span>
+        </div>
+        <div class="footer__links">
+          <a href="mailto:jared@puretechnology.nyc">Contact</a>
+          <a href="#solutions">Solutions</a>
+          <a href="#how-it-works">How It Works</a>
+          <a href="#book-call">Book a Call</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

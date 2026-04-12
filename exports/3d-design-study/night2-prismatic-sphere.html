@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 2 Study — Prismatic Glass Sphere</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #030306; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #hud {
+    position: fixed; top: 22px; left: 22px;
+    font: 11px/1.8 'SF Mono','Fira Code',monospace;
+    color: rgba(255,255,255,0.22); pointer-events: none;
+    letter-spacing: 0.04em;
+  }
+  #label {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    font: 500 11px/1 -apple-system,'Inter',sans-serif;
+    letter-spacing: 0.24em; text-transform: uppercase;
+    color: rgba(255,255,255,0.15); pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"><div id="fps">-- fps</div><div>night 2 · prismatic dispersion · spectral caustics</div></div>
+<div id="label">PureBrain · Glass Prism Study</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three":          "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+    "three/addons/":  "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer }    from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }        from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass }   from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass }        from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass }        from 'three/addons/postprocessing/OutputPass.js';
+
+// ─── DESIGN TOKENS ──────────────────────────────────────────────────────────
+const PB = {
+  blue:   0x2a93c1, orange: 0xf1420b, blueL: 0x5ad4ff,
+  glass: {
+    roughness: 0.025, ior: 1.52,
+    iridescence: 0.48, iridescenceIOR: 1.40,
+    iridescenceRange: [85, 420],
+    clearcoat: 0.92, clearcoatRoughness: 0.016,
+    envMapIntensity: 5.2,
+    thickness: 1.85, attenuationDist: 3.8,
+  },
+  bloom:  { strength: 0.58, radius: 0.45, threshold: 0.78 },
+  ca:     0.0024,
+  vig:    0.50,
+};
+const FF = [0.55, 0.38, 0.22];  // Prime float frequencies
+const FA = [0.13, 0.08, 0.045]; // Float amplitudes
+
+// ─── RENDERER ───────────────────────────────────────────────────────────────
+const canvas   = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping         = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
+renderer.outputColorSpace    = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled   = true;
+renderer.shadowMap.type      = THREE.VSMShadowMap;
+
+// ─── SCENE + CAMERA ─────────────────────────────────────────────────────────
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.05, 80);
+camera.position.set(0, 0.5, 5.5);
+camera.lookAt(0, 0, 0);
+
+// ─── BACKGROUND SCENE (ortho) ───────────────────────────────────────────────
+const bgScene  = new THREE.Scene();
+const bgCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+const BG_FS = `
+uniform float uTime;
+varying vec2 vUv;
+float h(vec2 p){p=fract(p*vec2(127.1,311.7));p+=dot(p,p+19.19);return fract(p.x*p.y);}
+float n(vec2 p){vec2 i=floor(p),f=fract(p),u=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),u.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),u.x),u.y);}
+float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*n(p);p*=2.2;a*=.45;}return v;}
+void main(){
+  vec2 uv=vUv; float t=uTime*.028;
+  float d=length(uv-.5)*1.35;
+  vec3 bg=mix(vec3(.016,.018,.030),vec3(.004,.005,.009),d);
+  float atmo=fbm(uv*3.+t)*fbm(uv*4.5-t*.6)*.055;
+  float halo=smoothstep(.68,.15,length(uv-vec2(.5,.82)));
+  vec3 top=vec3(.032,.065,.12)*halo;
+  float sh=smoothstep(.40,.0,length(uv-vec2(.5,.44)));
+  vec3 sph=vec3(.01,.025,.055)*sh;
+  gl_FragColor=vec4(clamp(bg+atmo*vec3(.10,.12,.20)+top+sph,0.,1.),1.);
+}`;
+const bgMat = new THREE.ShaderMaterial({
+  vertexShader:   'varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}',
+  fragmentShader: BG_FS,
+  uniforms:       { uTime: { value: 0 } },
+  depthWrite:     false,
+});
+bgScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bgMat));
+
+// ─── ENVIRONMENT MAP (studio PMREM) ──────────────────────────────────────────
+const pmrem    = new THREE.PMREMGenerator(renderer);
+const envScene = new THREE.Scene();
+// Warm key — top right
+{ const l = new THREE.PointLight(0xfff2e0, 7.0, 80); l.position.set( 6, 9,  4); envScene.add(l); }
+// PureBrain blue fill — left
+{ const l = new THREE.PointLight(0x2a93c1, 3.0, 80); l.position.set(-7, 2,  3); envScene.add(l); }
+// Orange rim — behind
+{ const l = new THREE.PointLight(0xf1420b, 2.0, 80); l.position.set( 1,-3, -9); envScene.add(l); }
+// Cool bounce — below
+{ const l = new THREE.PointLight(0x4ab8ff, 1.0, 80); l.position.set( 0,-6,  0); envScene.add(l); }
+// Soft top fill
+{ const l = new THREE.PointLight(0xe0e8ff, 1.5, 80); l.position.set( 0,14,  0); envScene.add(l); }
+
+const envCubeRT = new THREE.WebGLCubeRenderTarget(512, {
+  format: THREE.RGBAFormat, type: THREE.HalfFloatType,
+  generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter,
+});
+const cubeCamera = new THREE.CubeCamera(0.01, 200, envCubeRT);
+envScene.add(cubeCamera);
+cubeCamera.update(renderer, envScene);
+const envMap = pmrem.fromCubemap(envCubeRT.texture);
+scene.environment = envMap.texture;
+pmrem.dispose();
+
+// ─── PRIMARY GLASS SPHERE (192-segment, transmission) ────────────────────────
+const sGeo     = new THREE.SphereGeometry(1.0, 192, 192);
+const glassMat = new THREE.MeshPhysicalMaterial({
+  transmission:    1.0,
+  roughness:       PB.glass.roughness,
+  ior:             PB.glass.ior,
+  iridescence:     PB.glass.iridescence,
+  iridescenceIOR:  PB.glass.iridescenceIOR,
+  iridescenceThicknessRange: PB.glass.iridescenceRange,
+  clearcoat:       PB.glass.clearcoat,
+  clearcoatRoughness: PB.glass.clearcoatRoughness,
+  envMapIntensity: PB.glass.envMapIntensity,
+  specularIntensity: 1.0,
+  specularColor:   new THREE.Color('#C8A84A'),
+  thickness:       PB.glass.thickness,
+  attenuationColor: new THREE.Color(0x2a93c1),
+  attenuationDistance: PB.glass.attenuationDist,
+  depthWrite:      false,
+  side:            THREE.FrontSide,
+});
+
+const sphere = new THREE.Mesh(sGeo, glassMat);
+sphere.position.set(0, 0.08, 0);
+scene.add(sphere);
+
+// Backside for inner surface refraction
+const backMat = new THREE.MeshPhysicalMaterial({
+  transmission: 1.0, roughness: PB.glass.roughness,
+  ior: PB.glass.ior, iridescence: 0.28,
+  iridescenceIOR: 1.38, iridescenceThicknessRange: [60, 250],
+  clearcoat: 0.35, clearcoatRoughness: 0.04,
+  envMapIntensity: PB.glass.envMapIntensity * 0.65,
+  thickness: 1.1, attenuationColor: new THREE.Color(0x5ad4ff),
+  attenuationDistance: 5.5, depthWrite: false,
+  side: THREE.BackSide,
+});
+const sphereBack = new THREE.Mesh(sGeo, backMat);
+sphereBack.position.copy(sphere.position);
+scene.add(sphereBack);
+
+// ─── INNER EMISSIVE CORE ────────────────────────────────────────────────────
+const coreMat = new THREE.MeshStandardMaterial({
+  color: 0x2a93c1, emissive: 0x2a93c1,
+  emissiveIntensity: 2.0, roughness: 1.0,
+});
+const core = new THREE.Mesh(new THREE.SphereGeometry(0.16, 64, 64), coreMat);
+core.position.copy(sphere.position);
+scene.add(core);
+
+// Tiny orange orbit inside glass
+const microCoreMat = new THREE.MeshStandardMaterial({
+  color: 0xf1420b, emissive: 0xf1420b, emissiveIntensity: 1.2, roughness: 1.0,
+});
+const microCore = new THREE.Mesh(new THREE.SphereGeometry(0.055, 32, 32), microCoreMat);
+scene.add(microCore);
+
+// ─── PRISMATIC DISPERSION BEAMS ─────────────────────────────────────────────
+// The signature technique: RYGCBV spectral beams fan from the sphere
+// Each beam is a CylinderGeometry (1-segment, like a god ray) oriented radially
+// They fan in the lower hemisphere, suggesting the sphere bends the key light
+const DISP_VS = `
+varying float vAlpha;
+varying vec2  vUv;
+void main(){
+  vUv = uv;
+  // vUv.y: 0=base (sphere), 1=tip (far end)
+  // Alpha strongest at origin, fades to 0 at tip
+  vAlpha = pow(1.0 - vUv.y, 1.2);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+const DISP_FS = `
+uniform vec3  uColor;
+uniform float uTime;
+uniform float uPhase;
+varying float vAlpha;
+varying vec2  vUv;
+void main(){
+  // Soft edge falloff across width
+  float edge  = smoothstep(0.0, 0.22, vUv.x) * smoothstep(1.0, 0.78, vUv.x);
+  // Breath pulse — per-wavelength timing
+  float pulse = 0.80 + 0.20 * sin(uTime * 1.05 + uPhase);
+  // Shimmer along length
+  float shimmer = 0.88 + 0.12 * sin(vUv.y * 12.0 + uTime * 2.2 + uPhase);
+  float a = vAlpha * edge * pulse * shimmer * 0.45;
+  gl_FragColor = vec4(uColor, clamp(a, 0.0, 1.0));
+}`;
+
+// RYGCBV spectral rays
+const SPECTRAL = [
+  new THREE.Color(1.00, 0.06, 0.06),   // R
+  new THREE.Color(1.00, 0.42, 0.03),   // O (between R and Y)
+  new THREE.Color(0.90, 1.00, 0.00),   // Y
+  new THREE.Color(0.00, 0.88, 0.28),   // G
+  new THREE.Color(0.08, 0.38, 1.00),   // B
+  new THREE.Color(0.52, 0.00, 1.00),   // V
+];
+
+const beamGroup = new THREE.Group();
+
+// Beam geometry: thin cylinder (0-radius base, wide tip variant)
+// Actually use PlaneGeometry rotated — easier UV control
+// The beams arc from just below the sphere outward at varying angles
+
+SPECTRAL.forEach((color, i) => {
+  const spreadAngle = Math.PI * 0.72;        // 130° total spread
+  const startAngle  = Math.PI * 0.65;        // ~117° (points down-left)
+  const angle       = startAngle + (i / (SPECTRAL.length - 1)) * spreadAngle;
+
+  // Each beam: thin elongated plane, pivoting from sphere surface
+  const beamLen  = 2.4 + i * 0.12;  // each wavelength slightly different length
+  const beamWid  = 0.055 + i * 0.005;
+
+  const geo = new THREE.PlaneGeometry(beamWid, beamLen, 1, 12);
+  geo.translate(0, beamLen * 0.5, 0);  // pivot at one end (sphere surface)
+
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: DISP_VS, fragmentShader: DISP_FS,
+    uniforms: {
+      uColor: { value: color },
+      uTime:  { value: 0 },
+      uPhase: { value: i * (Math.PI * 2 / SPECTRAL.length) },
+    },
+    transparent: true, blending: THREE.AdditiveBlending,
+    depthWrite: false, side: THREE.DoubleSide,
+  });
+
+  const beam = new THREE.Mesh(geo, mat);
+  beam.rotation.z = angle;
+  beam.position.z = -0.05;  // just behind sphere plane
+  beamGroup.add(beam);
+});
+
+beamGroup.position.copy(sphere.position);
+beamGroup.rotation.x = 0.12;  // tilt toward viewer slightly
+scene.add(beamGroup);
+
+// ─── SPECTRAL GROUND CAUSTICS ────────────────────────────────────────────────
+// Where the prismatic beams land — colored pools of light on the dark floor
+const CAUST_FS = `
+uniform float uTime;
+varying vec2 vUv;
+
+float h(vec2 p){p=fract(p*vec2(127.1,311.7));p+=dot(p,p+19.19);return fract(p.x*p.y);}
+float n(vec2 p){vec2 i=floor(p),f=fract(p),u=f*f*(3.-2.*f);
+  return mix(mix(h(i),h(i+vec2(1,0)),u.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),u.x),u.y);}
+
+float voronoi(vec2 p){
+  vec2 i=floor(p),f=fract(p);
+  float md=1.;
+  for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
+    vec2 nb=vec2(float(x),float(y));
+    vec2 pt=.5+.5*sin(uTime*.55+6.28*h(i+nb));
+    float d=length(nb+pt-f);
+    md=min(md,d);
+  }
+  return md;
+}
+
+void main(){
+  vec2 uv=vUv;
+  // Center in UV: sphere is at ~(0.5, 0.52) in ground plane
+  vec2 toSphere=uv-vec2(.5,.52);
+  float dist=length(toSphere);
+
+  // Master radial falloff
+  float falloff=smoothstep(.80,.0,dist)*smoothstep(.0,.04,dist);
+
+  // Per-channel caustics with chromatic offset
+  float t=uTime;
+  float cr=voronoi(uv*4.8+vec2(t*.07,0.));
+  float cg=voronoi(uv*4.8+vec2(0.,t*.07)+.25);
+  float cb=voronoi(uv*4.8-vec2(t*.065)+.5);
+
+  // Caustic brightness: thin Voronoi cell edges
+  float br=smoothstep(.30,.04,cr);
+  float bg=smoothstep(.30,.04,cg);
+  float bb=smoothstep(.30,.04,cb);
+
+  // Spectral color based on angle from sphere center
+  float ang=atan(toSphere.y,toSphere.x);
+  float hu=fract(ang/(6.2832)+.5);
+  vec3 rainbow=vec3(
+    .5+.5*cos(6.2832*(hu+0.0  )),
+    .5+.5*cos(6.2832*(hu+.333 )),
+    .5+.5*cos(6.2832*(hu+.667 ))
+  );
+  rainbow=max(rainbow,0.);
+
+  // Central convergence highlight
+  float conv=smoothstep(.20,.0,dist)*.65;
+  vec3 convCol=vec3(.75,.88,1.)*conv;
+
+  // Breathing
+  float pulse=.72+.28*sin(t*.55);
+
+  vec3 caustic=rainbow*(br*.38+bg*.38+bb*.38);
+  vec3 final=(caustic+convCol)*falloff*pulse;
+  float alpha=clamp(length(final)*.85,0.,.68);
+  gl_FragColor=vec4(final,alpha);
+}`;
+
+const groundCaustic = new THREE.Mesh(
+  new THREE.PlaneGeometry(10, 10).rotateX(-Math.PI * 0.5),
+  new THREE.ShaderMaterial({
+    vertexShader:   'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+    fragmentShader: CAUST_FS,
+    uniforms: { uTime: { value: 0 } },
+    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+    side: THREE.DoubleSide,
+  })
+);
+groundCaustic.position.y = -1.04;
+scene.add(groundCaustic);
+
+// Dark mirror ground surface
+const groundSurface = new THREE.Mesh(
+  new THREE.PlaneGeometry(22, 22).rotateX(-Math.PI * 0.5),
+  new THREE.MeshStandardMaterial({
+    color: 0x040507, roughness: 0.06, metalness: 0.92,
+    envMapIntensity: 2.5,
+  })
+);
+groundSurface.position.y = -1.06;
+groundSurface.receiveShadow = true;
+scene.add(groundSurface);
+
+// Soft ground glow ring — blue ambient light pooling under the sphere
+// Creates a sense of the sphere affecting its environment (grounding it)
+const glowCanvas  = document.createElement('canvas');
+glowCanvas.width  = 256;
+glowCanvas.height = 256;
+const gc = glowCanvas.getContext('2d');
+const glowGrd = gc.createRadialGradient(128, 128, 0, 128, 128, 115);
+glowGrd.addColorStop(0,   'rgba(42,147,193,0.22)');   // PureBrain blue center
+glowGrd.addColorStop(0.5, 'rgba(42,147,193,0.08)');
+glowGrd.addColorStop(1,   'rgba(42,147,193,0.0)');
+gc.fillStyle = glowGrd;
+gc.fillRect(0, 0, 256, 256);
+const glowTex     = new THREE.CanvasTexture(glowCanvas);
+const groundGlow  = new THREE.Mesh(
+  new THREE.PlaneGeometry(3.2, 3.2).rotateX(-Math.PI * 0.5),
+  new THREE.MeshBasicMaterial({
+    map: glowTex, transparent: true, opacity: 0.85,
+    depthWrite: false, blending: THREE.AdditiveBlending,
+  })
+);
+groundGlow.position.y = -1.04;
+scene.add(groundGlow);
+
+// ─── ATMOSPHERIC PARTICLES ───────────────────────────────────────────────────
+const N = 2200;
+const pPos   = new Float32Array(N * 3);
+const pSize  = new Float32Array(N);
+const pPhase = new Float32Array(N);
+const pCol   = new Float32Array(N * 3);
+
+for (let i = 0; i < N; i++) {
+  const r   = 2.2 + Math.random() * 2.8;
+  const phi = Math.acos(2 * Math.random() - 1);
+  const th  = Math.random() * Math.PI * 2;
+  pPos[i*3]   = r * Math.sin(phi) * Math.cos(th);
+  pPos[i*3+1] = r * Math.sin(phi) * Math.sin(th) - 0.4;
+  pPos[i*3+2] = r * Math.cos(phi) - 0.3;
+  pSize[i]  = 0.7 + Math.random() * 2.2;
+  pPhase[i] = Math.random() * Math.PI * 2;
+  const c = Math.random();
+  if      (c < 0.10) { pCol[i*3]=0.16; pCol[i*3+1]=0.58; pCol[i*3+2]=0.76; } // blue
+  else if (c < 0.16) { pCol[i*3]=0.95; pCol[i*3+1]=0.26; pCol[i*3+2]=0.04; } // orange
+  else { const b=0.55+Math.random()*.45; pCol[i*3]=b*.88; pCol[i*3+1]=b*.92; pCol[i*3+2]=b; }
+}
+
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos,   3));
+pGeo.setAttribute('aSize',    new THREE.BufferAttribute(pSize,  1));
+pGeo.setAttribute('aPhase',   new THREE.BufferAttribute(pPhase, 1));
+pGeo.setAttribute('aColor',   new THREE.BufferAttribute(pCol,   3));
+
+const PART_MAT = new THREE.ShaderMaterial({
+  vertexShader: `
+    attribute float aSize; attribute float aPhase; attribute vec3 aColor;
+    varying float vAlpha; varying vec3 vColor;
+    uniform float uTime;
+    void main(){
+      vColor=aColor;
+      float drift=sin(uTime*.17+aPhase*3.1)*.09;
+      vec3 p=position+vec3(sin(uTime*.12+aPhase)*.055,drift,cos(uTime*.14+aPhase*1.3)*.045);
+      vAlpha=.22+.18*sin(uTime*.52+aPhase);
+      vec4 mv=modelViewMatrix*vec4(p,1.);
+      gl_PointSize=aSize*(200./-mv.z);
+      gl_Position=projectionMatrix*mv;
+    }`,
+  fragmentShader: `
+    varying float vAlpha; varying vec3 vColor;
+    void main(){
+      float d=length(gl_PointCoord-.5)*2.;
+      gl_FragColor=vec4(vColor,smoothstep(1.,0.,d)*vAlpha);
+    }`,
+  uniforms:     { uTime: { value: 0 } },
+  transparent:  true, blending: THREE.AdditiveBlending, depthWrite: false,
+});
+scene.add(new THREE.Points(pGeo, PART_MAT));
+
+// ─── PRISMATIC HALO RING ─────────────────────────────────────────────────────
+// A thin ring around the sphere at its equator — iridescent, slowly spinning
+// Suggests a light ring that was separated by dispersion
+const haloGeo = new THREE.TorusGeometry(1.22, 0.008, 8, 180);
+const haloMat = new THREE.MeshPhysicalMaterial({
+  color: 0xffffff, emissive: 0x88aaff, emissiveIntensity: 0.6,
+  roughness: 0.0, metalness: 0.95, iridescence: 1.0,
+  iridescenceIOR: 1.52, iridescenceThicknessRange: [200, 600],
+  envMapIntensity: 4.0, depthWrite: false,
+});
+const haloRing = new THREE.Mesh(haloGeo, haloMat);
+haloRing.position.copy(sphere.position);
+haloRing.rotation.x = Math.PI * 0.5;
+scene.add(haloRing);
+
+// Second halo — tilted, slightly larger
+const haloRing2 = new THREE.Mesh(
+  new THREE.TorusGeometry(1.30, 0.005, 8, 180),
+  new THREE.MeshPhysicalMaterial({
+    color: 0xffffff, emissive: 0xffaa44, emissiveIntensity: 0.4,
+    roughness: 0.0, metalness: 0.9, iridescence: 1.0,
+    iridescenceIOR: 1.45, iridescenceThicknessRange: [150, 480],
+    envMapIntensity: 3.5, depthWrite: false,
+  })
+);
+haloRing2.position.copy(sphere.position);
+haloRing2.rotation.x = Math.PI * 0.3;
+haloRing2.rotation.z = Math.PI * 0.15;
+scene.add(haloRing2);
+
+// ─── SCENE LIGHTS ────────────────────────────────────────────────────────────
+const keyDL = new THREE.DirectionalLight(0xfff4e0, 1.3);
+keyDL.position.set(4, 7, 3);
+keyDL.castShadow = true;
+keyDL.shadow.mapSize.set(2048, 2048);
+keyDL.shadow.camera.left = keyDL.shadow.camera.bottom = -5;
+keyDL.shadow.camera.right = keyDL.shadow.camera.top = 5;
+keyDL.shadow.bias = -0.001;
+keyDL.shadow.radius = 8;
+scene.add(keyDL);
+
+scene.add(new THREE.AmbientLight(0x080c1a, 0.5));
+{ const bl = new THREE.PointLight(0x2a93c1, 1.8, 12); bl.position.set(-3, 1, -2); scene.add(bl); }
+
+// ─── POSTPROCESSING ──────────────────────────────────────────────────────────
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloom = new UnrealBloomPass(
+  new THREE.Vector2(innerWidth, innerHeight),
+  PB.bloom.strength, PB.bloom.radius, PB.bloom.threshold,
+);
+composer.addPass(bloom);
+
+const finalPass = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uCA: { value: PB.ca }, uVig: { value: PB.vig } },
+  vertexShader: 'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uTime,uCA,uVig;
+    varying vec2 vUv;
+    void main(){
+      vec2 c=vUv-.5; float d=length(c);
+      float ca=uCA*d;
+      float r=texture2D(tDiffuse,vUv+c*ca*1.0).r;
+      float g=texture2D(tDiffuse,vUv              ).g;
+      float b=texture2D(tDiffuse,vUv-c*ca*.8      ).b;
+      vec3 col=vec3(r,g,b);
+      float grain=fract(sin(dot(vUv,vec2(12.9898,78.233))*1000.+uTime*100.)*43758.5);
+      col+=(grain-.5)*.014;
+      col*=1.-smoothstep(.30,.98,d*uVig);
+      gl_FragColor=vec4(clamp(col,0.,1.),1.);
+    }`,
+});
+composer.addPass(finalPass);
+composer.addPass(new OutputPass());
+
+// ─── MOUSE + SPRING ──────────────────────────────────────────────────────────
+const mouse = { x: 0, y: 0 };
+const sp    = { x: 0, y: 0, vx: 0, vy: 0 };
+const K = 0.042, D = 0.80;
+window.addEventListener('mousemove', e => {
+  mouse.x = (e.clientX / innerWidth  - .5) * 2;
+  mouse.y = (e.clientY / innerHeight - .5) * 2;
+});
+
+// ─── ANIMATION ───────────────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+let frames = 0, fpsAccum = 0;
+const fpsEl = document.getElementById('fps');
+
+// Collect all beam materials
+const beamMats = [];
+beamGroup.children.forEach(b => beamMats.push(b.material));
+
+// Pre-computed ring rotation axes (avoid per-frame allocation)
+const haloAxis1 = new THREE.Vector3(0.3, 1, 0.1).normalize();
+const haloAxis2 = new THREE.Vector3(-0.2, 1, 0.4).normalize();
+
+function tick() {
+  requestAnimationFrame(tick);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t  = clock.elapsedTime;
+
+  // FPS
+  frames++; fpsAccum += dt;
+  if (frames % 30 === 0) { fpsEl.textContent = Math.round(30 / fpsAccum) + ' fps'; fpsAccum = 0; }
+
+  // Spring camera
+  sp.vx += (mouse.x - sp.x) * K; sp.vy += (mouse.y - sp.y) * K;
+  sp.vx *= D; sp.vy *= D; sp.x += sp.vx; sp.y += sp.vy;
+  camera.position.x = sp.x * 0.52;
+  camera.position.y = 0.5  + sp.y * -0.24;
+  camera.lookAt(0, 0, 0);
+
+  // Prime float
+  const fy = FA[0]*Math.sin(FF[0]*t*Math.PI*2)
+           + FA[1]*Math.sin(FF[1]*t*Math.PI*2)
+           + FA[2]*Math.sin(FF[2]*t*Math.PI*2);
+
+  const sy = 0.08 + fy;
+  sphere.position.y     = sy;
+  sphereBack.position.y = sy;
+  core.position.y       = sy;
+  beamGroup.position.y  = sy;
+  haloRing.position.y   = sy;
+  haloRing2.position.y  = sy;
+
+  // Gentle sphere rotation — glass breathes with the world
+  sphere.rotation.y     = t * 0.038;
+  sphereBack.rotation.y = t * 0.038;
+
+  // Halo rings tumble slowly (pre-computed axes)
+  haloRing.rotateOnWorldAxis(haloAxis1, dt * 0.18);
+  haloRing2.rotateOnWorldAxis(haloAxis2, dt * 0.14);
+
+  // Micro core orbit inside glass
+  microCore.position.x = Math.cos(t * 0.65) * 0.10;
+  microCore.position.y = sy + Math.sin(t * 0.50) * 0.06;
+  microCore.position.z = Math.sin(t * 0.65) * 0.10;
+
+  // Core pulse
+  coreMat.emissiveIntensity = 1.8 + 0.5 * Math.sin(t * 0.88);
+
+  // Beam group slight pendulum
+  beamGroup.rotation.z = Math.sin(t * 0.20) * 0.04;
+  beamGroup.rotation.x = 0.12 + Math.sin(t * 0.32) * 0.025;
+
+  // Uniforms
+  bgMat.uniforms.uTime.value            = t;
+  groundCaustic.material.uniforms.uTime.value = t;
+  PART_MAT.uniforms.uTime.value         = t;
+  finalPass.uniforms.uTime.value        = t;
+  beamMats.forEach(m => m.uniforms.uTime.value = t);
+
+  // Render background then main scene
+  renderer.autoClear = false;
+  renderer.clear();
+  renderer.render(bgScene, bgCamera);
+  composer.render(dt);
+}
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+  bloom.setSize(innerWidth, innerHeight);
+});
+
+tick();
+</script>
+</body>
+</html>

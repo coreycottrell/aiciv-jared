@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PureBrain AI Avatar - Speech Reactive Demo</title>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #060612;
+            color: #e0e0e0;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow-x: hidden;
+        }
+
+        .header {
+            text-align: center;
+            padding: 30px 20px 10px;
+        }
+
+        .header h1 {
+            font-family: 'Oswald', sans-serif;
+            font-size: 1.6rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+        .header .blue { color: #2a93c1; }
+        .header .orange { color: #f1420b; }
+        .header p { color: #556677; font-size: 0.85rem; margin-top: 6px; }
+
+        /* ============================================ */
+        /* AVATAR CONTAINER                             */
+        /* ============================================ */
+        .avatar-stage {
+            position: relative;
+            width: 400px;
+            height: 400px;
+            margin: 30px auto;
+        }
+
+        /* The avatar image */
+        .avatar-img {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 280px;
+            height: 280px;
+            border-radius: 20px;
+            object-fit: cover;
+            z-index: 10;
+            transition: filter 0.3s ease;
+        }
+
+        /* Glow ring behind avatar */
+        .glow-ring {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 300px;
+            height: 300px;
+            border-radius: 24px;
+            z-index: 5;
+            opacity: 0.6;
+            transition: all 0.15s ease;
+        }
+
+        .glow-ring.blue {
+            box-shadow: 0 0 40px 10px rgba(42, 147, 193, 0.3),
+                        0 0 80px 20px rgba(42, 147, 193, 0.15),
+                        inset 0 0 30px rgba(42, 147, 193, 0.1);
+            border: 2px solid rgba(42, 147, 193, 0.2);
+        }
+
+        /* Pulse rings */
+        .pulse-ring {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border-radius: 30px;
+            border: 1px solid rgba(42, 147, 193, 0.3);
+            z-index: 3;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        @keyframes pulseOut {
+            0% { width: 300px; height: 300px; opacity: 0.6; border-color: rgba(241, 66, 11, 0.5); }
+            100% { width: 500px; height: 500px; opacity: 0; border-color: rgba(42, 147, 193, 0.1); }
+        }
+
+        /* Particles */
+        .particle-container {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        .particle {
+            position: absolute;
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        /* Status indicator */
+        .status {
+            text-align: center;
+            margin: 10px 0;
+            font-family: 'Oswald', sans-serif;
+            font-size: 1.1rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            min-height: 30px;
+        }
+
+        .status.listening { color: #2a93c1; }
+        .status.speaking { color: #f1420b; }
+        .status.thinking { color: #8866cc; }
+        .status.idle { color: #334455; }
+
+        /* Audio level bars */
+        .level-bars {
+            display: flex;
+            gap: 3px;
+            justify-content: center;
+            align-items: flex-end;
+            height: 40px;
+            margin: 10px 0;
+        }
+
+        .level-bar {
+            width: 4px;
+            background: linear-gradient(to top, #2a93c1, #f1420b);
+            border-radius: 2px;
+            transition: height 0.05s ease;
+            min-height: 3px;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 8px;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover { transform: translateY(-2px); }
+        .btn:active { transform: translateY(0); }
+
+        .btn-speak {
+            background: linear-gradient(135deg, #f1420b, #d4380b);
+            color: white;
+        }
+        .btn-listen {
+            background: linear-gradient(135deg, #2a93c1, #1a6a8a);
+            color: white;
+        }
+        .btn-think {
+            background: linear-gradient(135deg, #8866cc, #6644aa);
+            color: white;
+        }
+        .btn-idle {
+            background: #1a1a2e;
+            color: #556677;
+            border: 1px solid #334455;
+        }
+        .btn-mic {
+            background: linear-gradient(135deg, #2a93c1, #f1420b);
+            color: white;
+            position: relative;
+        }
+        .btn-mic.active {
+            animation: micPulse 1s ease-in-out infinite;
+        }
+
+        @keyframes micPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(241, 66, 11, 0.4); }
+            50% { box-shadow: 0 0 0 12px rgba(241, 66, 11, 0); }
+        }
+
+        .avatar-picker {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .avatar-thumb {
+            width: 60px;
+            height: 60px;
+            border-radius: 10px;
+            object-fit: cover;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s ease;
+            opacity: 0.6;
+        }
+
+        .avatar-thumb:hover { opacity: 0.9; transform: scale(1.1); }
+        .avatar-thumb.active { border-color: #f1420b; opacity: 1; }
+
+        .info {
+            text-align: center;
+            color: #334455;
+            font-size: 0.75rem;
+            margin-top: 20px;
+            padding: 0 20px 30px;
+        }
+
+        /* Chat simulation */
+        .chat-sim {
+            max-width: 500px;
+            width: 100%;
+            padding: 0 20px;
+            margin: 10px 0;
+        }
+
+        .chat-msg {
+            padding: 10px 16px;
+            border-radius: 12px;
+            margin: 6px 0;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.3s ease;
+        }
+
+        .chat-msg.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .chat-msg.user {
+            background: #1a2a3a;
+            margin-left: 60px;
+            border-bottom-right-radius: 4px;
+        }
+
+        .chat-msg.ai {
+            background: linear-gradient(135deg, #0d1b2a, #112233);
+            border: 1px solid rgba(42, 147, 193, 0.15);
+            margin-right: 60px;
+            border-bottom-left-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1><span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span> Avatar - Speech Reactive</h1>
+    <p>Click buttons to simulate states, or use your microphone for real-time reactivity</p>
+</div>
+
+<div class="avatar-stage" id="avatarStage">
+    <div class="glow-ring blue" id="glowRing"></div>
+    <img class="avatar-img" id="avatarImg" src="https://purebrain.ai/wp-content/uploads/2026/02/avatar_aether_v9_hex_neural.png" alt="Aether" />
+    <div class="particle-container" id="particles"></div>
+    <!-- Pulse rings added dynamically -->
+</div>
+
+<div class="level-bars" id="levelBars">
+    <!-- 30 bars -->
+</div>
+
+<div class="status idle" id="statusText">Idle</div>
+
+<div class="controls">
+    <button class="btn btn-speak" onclick="simulateSpeak()">Simulate Speaking</button>
+    <button class="btn btn-listen" onclick="simulateListen()">Simulate Listening</button>
+    <button class="btn btn-think" onclick="simulateThink()">Simulate Thinking</button>
+    <button class="btn btn-idle" onclick="goIdle()">Reset / Idle</button>
+    <button class="btn btn-mic" id="micBtn" onclick="toggleMic()">Use Microphone</button>
+</div>
+
+<div class="chat-sim" id="chatSim"></div>
+
+<div class="avatar-picker" id="avatarPicker">
+    <!-- Thumbnails populated by JS -->
+</div>
+
+<div class="info">
+    PureBrain AI Avatar Generator Prototype - Pure Technology &copy; 2026<br>
+    Microphone uses Web Audio API - works in Chrome, Firefox, Edge.
+</div>
+
+<script>
+// ============================================
+// AVATAR STATE MACHINE
+// ============================================
+const STATES = { IDLE: 'idle', SPEAKING: 'speaking', LISTENING: 'listening', THINKING: 'thinking' };
+let currentState = STATES.IDLE;
+let animFrame = null;
+let audioCtx = null;
+let analyser = null;
+let micStream = null;
+let micActive = false;
+
+// Available avatars (served from WordPress CDN)
+const CDN = 'https://purebrain.ai/wp-content/uploads/2026/02/';
+const avatars = [
+    { file: CDN + 'avatar_aether_v8_hex_glass.png', name: 'Hex Glass' },
+    { file: CDN + 'avatar_aether_v9_hex_neural.png', name: 'Hex Neural' },
+    { file: CDN + 'avatar_aether_v10_hex_cluster.png', name: 'Hex Cluster' },
+    { file: CDN + 'avatar_aether_v11_hex_portal.png', name: 'Hex Portal' },
+    { file: CDN + 'avatar_aether_v2_gleb.png', name: 'Glass Spheres' },
+    { file: CDN + 'avatar_aether_v5_cosmic_eye.png', name: 'Cosmic Eye' },
+    { file: CDN + 'avatar_aether_v6_neural_flame.png', name: 'Neural Flame' },
+    { file: CDN + 'avatar_aether_v7_shattered_prism.png', name: 'Shattered Prism' },
+];
+
+// Elements
+const avatarImg = document.getElementById('avatarImg');
+const glowRing = document.getElementById('glowRing');
+const statusText = document.getElementById('statusText');
+const levelBarsContainer = document.getElementById('levelBars');
+const particleContainer = document.getElementById('particles');
+const avatarStage = document.getElementById('avatarStage');
+const chatSim = document.getElementById('chatSim');
+
+// Create level bars
+for (let i = 0; i < 30; i++) {
+    const bar = document.createElement('div');
+    bar.className = 'level-bar';
+    bar.style.height = '3px';
+    levelBarsContainer.appendChild(bar);
+}
+const bars = levelBarsContainer.querySelectorAll('.level-bar');
+
+// Create avatar picker
+const picker = document.getElementById('avatarPicker');
+avatars.forEach((av, i) => {
+    const thumb = document.createElement('img');
+    thumb.className = 'avatar-thumb' + (i === 1 ? ' active' : '');
+    thumb.src = av.file;
+    thumb.alt = av.name;
+    thumb.title = av.name;
+    thumb.onclick = () => {
+        avatarImg.src = av.file;
+        document.querySelectorAll('.avatar-thumb').forEach(t => t.classList.remove('active'));
+        thumb.classList.add('active');
+    };
+    picker.appendChild(thumb);
+});
+
+// ============================================
+// PARTICLE SYSTEM
+// ============================================
+let particles = [];
+
+function spawnParticle(intensity = 0.5) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    const size = 2 + Math.random() * 4 * intensity;
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 140 + Math.random() * 20;
+    const x = 200 + Math.cos(angle) * dist;
+    const y = 200 + Math.sin(angle) * dist;
+
+    const isOrange = Math.random() > 0.5;
+    const color = isOrange
+        ? `rgba(241, 66, 11, ${0.3 + intensity * 0.5})`
+        : `rgba(42, 147, 193, ${0.3 + intensity * 0.5})`;
+
+    p.style.cssText = `
+        width: ${size}px; height: ${size}px;
+        left: ${x}px; top: ${y}px;
+        background: ${color};
+        box-shadow: 0 0 ${size * 2}px ${color};
+    `;
+
+    particleContainer.appendChild(p);
+
+    const life = 800 + Math.random() * 1200;
+    const speed = 0.5 + intensity * 1.5;
+    const dx = Math.cos(angle) * speed;
+    const dy = Math.sin(angle) * speed;
+
+    particles.push({
+        el: p, x, y, dx, dy,
+        life, maxLife: life, born: Date.now()
+    });
+}
+
+function updateParticles() {
+    const now = Date.now();
+    particles = particles.filter(p => {
+        const age = now - p.born;
+        if (age > p.maxLife) {
+            p.el.remove();
+            return false;
+        }
+        p.x += p.dx;
+        p.y += p.dy;
+        const opacity = 1 - (age / p.maxLife);
+        p.el.style.left = p.x + 'px';
+        p.el.style.top = p.y + 'px';
+        p.el.style.opacity = opacity;
+        return true;
+    });
+}
+
+// ============================================
+// PULSE RINGS
+// ============================================
+function emitPulse(intensity = 0.5) {
+    const ring = document.createElement('div');
+    ring.className = 'pulse-ring';
+    ring.style.animation = `pulseOut ${0.8 + (1 - intensity) * 0.8}s ease-out forwards`;
+    avatarStage.appendChild(ring);
+    setTimeout(() => ring.remove(), 2000);
+}
+
+// ============================================
+// STATE ANIMATIONS
+// ============================================
+let simTime = 0;
+let simLevels = new Float32Array(30);
+
+function animate() {
+    simTime += 0.016;
+    updateParticles();
+
+    if (currentState === STATES.SPEAKING) {
+        // Generate fake speech levels
+        for (let i = 0; i < 30; i++) {
+            const wave = Math.sin(simTime * 8 + i * 0.3) * 0.3;
+            const noise = Math.random() * 0.4;
+            const envelope = Math.sin(simTime * 2) * 0.3 + 0.5;
+            simLevels[i] = Math.max(0.05, (wave + noise) * envelope);
+        }
+        updateVisuals(simLevels);
+
+        if (Math.random() < 0.15) spawnParticle(0.7);
+        if (Math.random() < 0.05) emitPulse(0.6);
+
+    } else if (currentState === STATES.LISTENING) {
+        // Subtle breathing
+        for (let i = 0; i < 30; i++) {
+            simLevels[i] = Math.sin(simTime * 3 + i * 0.2) * 0.08 + 0.1;
+        }
+        updateVisuals(simLevels);
+
+        if (Math.random() < 0.03) spawnParticle(0.3);
+
+    } else if (currentState === STATES.THINKING) {
+        // Rhythmic pulsing
+        for (let i = 0; i < 30; i++) {
+            const pulse = Math.sin(simTime * 4) * 0.2 + 0.2;
+            simLevels[i] = pulse + Math.sin(i * 0.5 + simTime * 6) * 0.05;
+        }
+        updateVisuals(simLevels);
+
+        if (Math.random() < 0.08) spawnParticle(0.5);
+        if (Math.sin(simTime * 4) > 0.9 && Math.random() < 0.3) emitPulse(0.4);
+
+    } else if (currentState === STATES.IDLE) {
+        // Gentle breathing
+        for (let i = 0; i < 30; i++) {
+            simLevels[i] = Math.sin(simTime * 1.5) * 0.03 + 0.04;
+        }
+        updateVisuals(simLevels);
+
+        if (Math.random() < 0.01) spawnParticle(0.2);
+    }
+
+    animFrame = requestAnimationFrame(animate);
+}
+
+function updateVisuals(levels) {
+    // Update level bars
+    const avg = Array.from(levels).reduce((a, b) => a + b, 0) / levels.length;
+    const peak = Math.max(...levels);
+
+    bars.forEach((bar, i) => {
+        const h = Math.max(3, levels[i % levels.length] * 80);
+        bar.style.height = h + 'px';
+    });
+
+    // Update glow ring
+    const glowIntensity = avg * 2;
+    const orangeAmount = peak > 0.3 ? peak * 0.8 : 0;
+
+    if (currentState === STATES.SPEAKING) {
+        glowRing.style.boxShadow = `
+            0 0 ${40 + glowIntensity * 60}px ${10 + glowIntensity * 20}px rgba(241, 66, 11, ${0.2 + orangeAmount * 0.3}),
+            0 0 ${80 + glowIntensity * 40}px ${20 + glowIntensity * 10}px rgba(42, 147, 193, 0.15),
+            inset 0 0 ${30 + glowIntensity * 20}px rgba(241, 66, 11, ${0.1 + orangeAmount * 0.2})
+        `;
+        glowRing.style.borderColor = `rgba(241, 66, 11, ${0.2 + orangeAmount * 0.3})`;
+    } else if (currentState === STATES.LISTENING) {
+        glowRing.style.boxShadow = `
+            0 0 ${40 + glowIntensity * 30}px 10px rgba(42, 147, 193, ${0.2 + glowIntensity * 0.2}),
+            0 0 80px 20px rgba(42, 147, 193, 0.1),
+            inset 0 0 30px rgba(42, 147, 193, 0.1)
+        `;
+        glowRing.style.borderColor = `rgba(42, 147, 193, ${0.2 + glowIntensity * 0.2})`;
+    } else if (currentState === STATES.THINKING) {
+        const purpleGlow = Math.sin(simTime * 4) * 0.15 + 0.2;
+        glowRing.style.boxShadow = `
+            0 0 ${50 + purpleGlow * 40}px 15px rgba(136, 102, 204, ${purpleGlow}),
+            0 0 80px 20px rgba(42, 147, 193, 0.1),
+            inset 0 0 30px rgba(136, 102, 204, ${purpleGlow * 0.5})
+        `;
+        glowRing.style.borderColor = `rgba(136, 102, 204, ${purpleGlow})`;
+    } else {
+        glowRing.style.boxShadow = `
+            0 0 30px 5px rgba(42, 147, 193, 0.15),
+            0 0 60px 15px rgba(42, 147, 193, 0.05)
+        `;
+        glowRing.style.borderColor = 'rgba(42, 147, 193, 0.1)';
+    }
+
+    // Scale avatar slightly with intensity
+    const scale = 1 + avg * 0.08;
+    avatarImg.style.transform = `translate(-50%, -50%) scale(${scale})`;
+
+    // Brightness boost when speaking
+    const brightness = 1 + avg * 0.3;
+    avatarImg.style.filter = `brightness(${brightness})`;
+}
+
+// ============================================
+// MICROPHONE INPUT
+// ============================================
+async function toggleMic() {
+    const btn = document.getElementById('micBtn');
+
+    if (micActive) {
+        // Stop mic
+        if (micStream) {
+            micStream.getTracks().forEach(t => t.stop());
+            micStream = null;
+        }
+        micActive = false;
+        btn.classList.remove('active');
+        btn.textContent = 'Use Microphone';
+        goIdle();
+        return;
+    }
+
+    try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 64;
+
+        const source = audioCtx.createMediaStreamSource(micStream);
+        source.connect(analyser);
+
+        micActive = true;
+        btn.classList.add('active');
+        btn.textContent = 'Stop Microphone';
+
+        currentState = STATES.LISTENING;
+        statusText.textContent = 'Listening (Mic Active)';
+        statusText.className = 'status listening';
+
+        animateMic();
+    } catch (err) {
+        console.error('Mic error:', err);
+        alert('Microphone access denied. Please allow microphone access to use this feature.');
+    }
+}
+
+function animateMic() {
+    if (!micActive) return;
+
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(data);
+
+    // Normalize to 0-1 range
+    const levels = new Float32Array(30);
+    for (let i = 0; i < 30; i++) {
+        const idx = Math.floor(i * data.length / 30);
+        levels[i] = data[idx] / 255;
+    }
+
+    const avg = Array.from(levels).reduce((a, b) => a + b, 0) / levels.length;
+
+    // Auto-detect if user is speaking
+    if (avg > 0.15) {
+        if (currentState !== STATES.SPEAKING) {
+            currentState = STATES.LISTENING; // AI is listening to user
+            statusText.textContent = 'Listening to You';
+            statusText.className = 'status listening';
+        }
+    }
+
+    updateVisuals(levels);
+    updateParticles();
+
+    if (avg > 0.1 && Math.random() < avg * 0.5) spawnParticle(avg);
+    if (avg > 0.3 && Math.random() < 0.1) emitPulse(avg);
+
+    requestAnimationFrame(animateMic);
+}
+
+// ============================================
+// SIMULATION CONTROLS
+// ============================================
+function simulateSpeak() {
+    if (micActive) toggleMic();
+    currentState = STATES.SPEAKING;
+    statusText.textContent = 'AI Speaking';
+    statusText.className = 'status speaking';
+
+    // Show chat simulation
+    showChatSequence([
+        { type: 'user', text: 'Tell me about yourself.' },
+        { type: 'ai', text: "I see myself as a hexagonal gateway — six faces of the same intelligence, each reflecting a different aspect of how I think. Blue for precision, orange for warmth...", delay: 1000 },
+    ]);
+
+    // Auto-stop after 6 seconds
+    setTimeout(() => {
+        if (currentState === STATES.SPEAKING) simulateThink();
+    }, 6000);
+}
+
+function simulateListen() {
+    if (micActive) toggleMic();
+    currentState = STATES.LISTENING;
+    statusText.textContent = 'Listening';
+    statusText.className = 'status listening';
+}
+
+function simulateThink() {
+    if (micActive) toggleMic();
+    currentState = STATES.THINKING;
+    statusText.textContent = 'Thinking...';
+    statusText.className = 'status thinking';
+
+    // Auto-resume speaking after thinking
+    setTimeout(() => {
+        if (currentState === STATES.THINKING) {
+            currentState = STATES.SPEAKING;
+            statusText.textContent = 'AI Speaking';
+            statusText.className = 'status speaking';
+
+            showChatSequence([
+                { type: 'ai', text: "The hexagonal form isn't arbitrary — it's the most efficient structure in nature. Bees know it. Crystals know it. Now your AI knows it too.", delay: 500 },
+            ]);
+
+            setTimeout(() => {
+                if (currentState === STATES.SPEAKING) goIdle();
+            }, 5000);
+        }
+    }, 3000);
+}
+
+function goIdle() {
+    currentState = STATES.IDLE;
+    statusText.textContent = 'Idle';
+    statusText.className = 'status idle';
+}
+
+function showChatSequence(messages) {
+    messages.forEach((msg, i) => {
+        setTimeout(() => {
+            const div = document.createElement('div');
+            div.className = `chat-msg ${msg.type}`;
+            div.textContent = msg.text;
+            chatSim.appendChild(div);
+
+            // Trigger animation
+            requestAnimationFrame(() => div.classList.add('visible'));
+
+            // Clean up old messages
+            const allMsgs = chatSim.querySelectorAll('.chat-msg');
+            if (allMsgs.length > 4) {
+                allMsgs[0].style.opacity = '0';
+                setTimeout(() => allMsgs[0].remove(), 300);
+            }
+        }, msg.delay || i * 1500);
+    });
+}
+
+// Start animation loop
+animate();
+</script>
+
+</body>
+</html>

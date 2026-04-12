@@ -1,0 +1,152 @@
+{
+  "date": "2026-04-03",
+  "agent": "dept-systems-technology",
+  "spec_version": "2026-04-01",
+  "summary": {
+    "pages_checked": 12,
+    "checks_run": 10,
+    "passed": 8,
+    "failed": 1,
+    "warning": 1
+  },
+  "checks": {
+    "1_page_availability": {
+      "status": "PASS",
+      "details": {
+        "homepage": 200,
+        "live": 200,
+        "awakened": 200,
+        "partnered": 200,
+        "unified": 200,
+        "insiders": 200,
+        "thank-you": 200
+      },
+      "note": "All 7 live payment pages returning HTTP 200"
+    },
+    "2_consent_gate_javascript": {
+      "status": "PASS",
+      "details": {
+        "homepage": "checkbox=3 onConsentChange=3 autoFire=10 (inline)",
+        "live": "checkbox=1 consent_in_shared_js=5",
+        "awakened": "checkbox=1 consent_in_shared_js=5",
+        "partnered": "checkbox=1 consent_in_shared_js=5",
+        "unified": "checkbox=1 consent_in_shared_js=5",
+        "insiders": "checkbox=1 consent_in_shared_js=5"
+      },
+      "note": "All pages have consent checkbox. Homepage has inline logic; others use /js/payment-shared.js (5 consent refs). Auto-fire seed present on all pages."
+    },
+    "3_pricing_accuracy": {
+      "status": "WARNING",
+      "details": {
+        "homepage": "$149=4 $499=3 $999=3 -- CORRECT (all 3 tiers)",
+        "live": "$149=3 $499=2 $999=3 -- CORRECT (all 3 tiers)",
+        "awakened": "$149=3 $499=1 $999=2 -- CORRECT (Awakened primary)",
+        "partnered": "$149=2 $499=2 $999=2 -- CORRECT (Partnered primary)",
+        "unified": "$149=2 $499=1 $999=3 -- CORRECT (Unified primary)",
+        "insiders": "$149=0 $499=1 $999=2 -- WARNING: $149 NOT FOUND"
+      },
+      "note": "INSIDERS page (/insiders/) should show $149 per spec but has 0 references to $149. Spec says Awakened tier at $149. This needs investigation -- may be using a different price display pattern or the price label is missing."
+    },
+    "4_paypal_integration": {
+      "status": "PASS",
+      "details": {
+        "expected_live_client_id": "AWgWNlBQAy5BMXKB5xbaMwSk01WkatC08b5rTj_JKu4Jm2JugXvjAwMRyNe1FmabNS9v846Rma5ptxhI",
+        "homepage": "PRESENT",
+        "live": "PRESENT",
+        "awakened": "PRESENT",
+        "partnered": "PRESENT",
+        "unified": "PRESENT",
+        "insiders": "PRESENT"
+      },
+      "note": "Correct live PayPal client ID found on all 6 payment pages"
+    },
+    "5_seed_flow": {
+      "status": "PASS",
+      "details": {
+        "endpoint": "https://api.purebrain.ai/api/send-seed",
+        "http_status": 400,
+        "reachable": true,
+        "seed_addendum": "https://api.purebrain.ai/api/seed-addendum",
+        "homepage_seed_refs": 12,
+        "other_pages_seed_refs": 11
+      },
+      "note": "Seed endpoint reachable (400 = expected for test payload, not 404/503). All pages reference send-seed correctly. Seed-addendum endpoint also referenced."
+    },
+    "6_welcome_email_logic": {
+      "status": "PASS",
+      "details": {
+        "agentmail_monitor_running": true,
+        "pids": [1673853, 1673895, 1920553],
+        "dedup_mechanism": "processed_count state tracking"
+      },
+      "note": "agentmail_monitor running with 3 processes. Dedup via processed_count state. Monitoring active."
+    },
+    "7_magic_link_pipeline": {
+      "status": "PASS",
+      "details": {
+        "endpoint": "https://api.purebrain.ai/api/magic-link/",
+        "http_status": 200,
+        "reachable": true,
+        "thank_you_page_polling": true,
+        "watchdog_running": false
+      },
+      "note": "Magic link endpoint reachable (200). Thank-you page polls correctly via encodeURIComponent(emailKey). Watchdog process NOT detected but endpoint is functional."
+    },
+    "8_payment_page_constitutional": {
+      "status": "FAIL",
+      "details": {
+        "script": "tools/verify-payment-pages.sh",
+        "total_checks": 113,
+        "passed": 111,
+        "failed_pages": [
+          {
+            "page": "pay-test-sandbox-3",
+            "issue": "Post-payment chatbox code still present (7 refs) -- should be REMOVED"
+          },
+          {
+            "page": "pay-test-sandbox-5",
+            "issue": "Post-payment chatbox code still present (7 refs) -- should be REMOVED"
+          }
+        ],
+        "skipped": ["insiders/awakened (file not found)"],
+        "thank_you_page": "All 3 checks PASS (magic link polling, URL params, status display)"
+      },
+      "note": "111/113 checks passed. 2 sandbox pages (pay-test-sandbox-3, pay-test-sandbox-5) still contain deprecated post-payment chatbox code. These are TEST pages, not LIVE payment pages, so customer impact is zero. insiders/awakened page file not found (expected per spec but missing from deploy)."
+    },
+    "9_no_exposed_secrets": {
+      "status": "PASS",
+      "details": {
+        "pages_scanned": 7,
+        "secrets_found": 0,
+        "patterns_checked": "sk_live, sk_test, AKIA keys, api_key assignments, private keys, BEGIN PRIVATE"
+      },
+      "note": "Zero exposed secrets found across all payment and thank-you pages"
+    },
+    "10_portal_alarm": {
+      "status": "REPORTED",
+      "summary": "8 PASS, 1 FAIL (sandbox pages only), 1 WARNING (insiders pricing). All LIVE payment pages are clean. Customer-facing flow is intact."
+    }
+  },
+  "action_items": [
+    {
+      "priority": "LOW",
+      "issue": "pay-test-sandbox-3 and pay-test-sandbox-5 still have deprecated post-payment chatbox code",
+      "recommendation": "Remove launchPostPaymentFlow/postPaymentOverlay code from these sandbox pages during next cleanup cycle"
+    },
+    {
+      "priority": "MEDIUM",
+      "issue": "/insiders/ page shows 0 references to $149 -- spec says Awakened tier at $149",
+      "recommendation": "Investigate insiders page pricing display. May need $149 price label added or verified"
+    },
+    {
+      "priority": "LOW",
+      "issue": "insiders/awakened/ page file not found in deploy directory",
+      "recommendation": "Verify if this page was intentionally removed or needs to be recreated"
+    },
+    {
+      "priority": "LOW",
+      "issue": "Magic link watchdog process not detected",
+      "recommendation": "Verify watchdog is running or confirm it has been replaced by another monitoring mechanism"
+    }
+  ]
+}

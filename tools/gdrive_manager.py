@@ -8,7 +8,11 @@ Full read/write access to Google Drive folders.
 - Download/export files
 - Monitor for new files
 
-This replaces the read-only gdrive_monitor.py with full capabilities.
+AUTHENTICATION PRIORITY:
+1. OAuth2 token (oauth-token.json) - Full access as account owner, no quotas
+2. Service Account (google-drive-service-account.json) - Fallback, has quotas
+
+Run tools/gdrive_oauth_setup.py to set up OAuth2 authentication.
 """
 
 import os
@@ -19,6 +23,8 @@ from typing import Optional, List, Dict
 
 try:
     from google.oauth2 import service_account
+    from google.oauth2.credentials import Credentials as OAuthCredentials
+    from google.auth.transport.requests import Request
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
     import io
@@ -58,33 +64,138 @@ MIME_TYPES = {
     '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 }
 
+# Scopes for full Drive access
+SCOPES = [
+    'https://www.googleapis.com/auth/drive',           # Full Drive access
+    'https://www.googleapis.com/auth/spreadsheets',    # Full Sheets access
+]
+
 
 class GDriveManager:
     """Full-featured Google Drive manager with read/write capabilities."""
 
-    def __init__(self):
+    def __init__(self, verbose: bool = True):
+        self.verbose = verbose
         self.base_path = Path(__file__).parent.parent
-        self.creds_path = self.base_path / ".credentials" / "google-drive-service-account.json"
+        self.creds_dir = self.base_path / ".credentials"
+        self.oauth_token_path = self.creds_dir / "oauth-token.json"
+        self.service_account_path = self.creds_dir / "google-drive-service-account.json"
         self.local_path = self.base_path / "docs" / "gdrive"
         self.state_file = self.base_path / ".gdrive_state.json"
         self.folder_cache = {}  # Cache folder IDs
+        self.auth_type = None  # Track which auth method is being used
 
         # Create local storage if doesn't exist
         self.local_path.mkdir(parents=True, exist_ok=True)
 
-        # Initialize service with FULL access
+        # Initialize service with best available credentials
         self.service = self._authenticate()
 
+    def _log(self, message: str):
+        """Print message if verbose mode is on."""
+        if self.verbose:
+            print(message)
+
+    def _get_oauth_credentials(self) -> Optional[OAuthCredentials]:
+        """Try to load OAuth2 credentials from token file."""
+        if not self.oauth_token_path.exists():
+            return None
+
+        try:
+            creds = OAuthCredentials.from_authorized_user_file(
+                str(self.oauth_token_path), SCOPES
+            )
+
+            # Check if token is valid
+            if creds.valid:
+                return creds
+
+            # Try to refresh expired token
+            if creds.expired and creds.refresh_token:
+                self._log("[AUTH] OAuth token expired, refreshing...")
+                creds.refresh(Request())
+
+                # Save refreshed token
+                self._save_oauth_token(creds)
+                self._log("[AUTH] OAuth token refreshed successfully")
+                return creds
+
+            return None
+
+        except Exception as e:
+            self._log(f"[AUTH] OAuth token error: {e}")
+            return None
+
+    def _save_oauth_token(self, creds: OAuthCredentials):
+        """Save refreshed OAuth credentials."""
+        token_data = {
+            'token': creds.token,
+            'refresh_token': creds.refresh_token,
+            'token_uri': creds.token_uri,
+            'client_id': creds.client_id,
+            'client_secret': creds.client_secret,
+            'scopes': list(creds.scopes) if creds.scopes else SCOPES,
+        }
+
+        with open(self.oauth_token_path, 'w') as f:
+            json.dump(token_data, f, indent=2)
+
+        os.chmod(self.oauth_token_path, 0o600)
+
+    def _get_service_account_credentials(self):
+        """Load service account credentials."""
+        if not self.service_account_path.exists():
+            return None
+
+        try:
+            return service_account.Credentials.from_service_account_file(
+                str(self.service_account_path), scopes=SCOPES
+            )
+        except Exception as e:
+            self._log(f"[AUTH] Service account error: {e}")
+            return None
+
     def _authenticate(self):
-        """Authenticate with Google Drive - FULL ACCESS (read + write)"""
-        SCOPES = [
-            'https://www.googleapis.com/auth/drive',  # Full access
-        ]
+        """
+        Authenticate with Google Drive using best available credentials.
 
-        credentials = service_account.Credentials.from_service_account_file(
-            str(self.creds_path), scopes=SCOPES)
+        Priority:
+        1. OAuth2 token (owner access, no quotas)
+        2. Service Account (has quotas, requires sharing)
+        """
+        # Try OAuth2 first (preferred)
+        oauth_creds = self._get_oauth_credentials()
+        if oauth_creds:
+            self.auth_type = "oauth2"
+            self._log("[AUTH] Using OAuth2 credentials (owner access)")
+            return build('drive', 'v3', credentials=oauth_creds)
 
-        return build('drive', 'v3', credentials=credentials)
+        # Fall back to service account
+        sa_creds = self._get_service_account_credentials()
+        if sa_creds:
+            self.auth_type = "service_account"
+            self._log("[AUTH] Using Service Account credentials (may have quota limits)")
+            self._log("[AUTH] TIP: Run 'python tools/gdrive_oauth_setup.py' for owner access")
+            return build('drive', 'v3', credentials=sa_creds)
+
+        raise Exception(
+            "No valid credentials found!\n"
+            f"  OAuth token: {self.oauth_token_path} (not found)\n"
+            f"  Service account: {self.service_account_path} (not found)\n"
+            "\nRun: python tools/gdrive_oauth_setup.py to set up OAuth authentication"
+        )
+
+    def get_auth_info(self) -> Dict:
+        """Return information about current authentication."""
+        return {
+            'auth_type': self.auth_type,
+            'oauth_token_exists': self.oauth_token_path.exists(),
+            'service_account_exists': self.service_account_path.exists(),
+            'recommendation': (
+                'Using OAuth2 (optimal)' if self.auth_type == 'oauth2'
+                else 'Run gdrive_oauth_setup.py for better access'
+            )
+        }
 
     # ==================== FOLDER OPERATIONS ====================
 
@@ -140,7 +251,7 @@ class GDriveManager:
         cache_key = f"{parent_id or 'root'}:{folder_name}"
         self.folder_cache[cache_key] = folder_id
 
-        print(f"[{datetime.now()}] Created folder: {folder_name} (ID: {folder_id})")
+        self._log(f"[{datetime.now()}] Created folder: {folder_name} (ID: {folder_id})")
         return folder_id
 
     def ensure_folder_path(self, path: str, root_folder_id: Optional[str] = None) -> str:
@@ -164,13 +275,42 @@ class GDriveManager:
         return current_parent
 
     def list_shared_folders(self) -> List[Dict]:
-        """List all folders shared with the service account."""
-        query = "mimeType='application/vnd.google-apps.folder' and trashed=false and sharedWithMe=true"
+        """List all folders shared with the current account.
+
+        Note: With OAuth2, this returns folders shared with the user.
+              With Service Account, this returns folders shared with the SA.
+        """
+        query = "mimeType='application/vnd.google-apps.folder' and trashed=false"
+
+        # Only add sharedWithMe for service account (OAuth user owns their files)
+        if self.auth_type == "service_account":
+            query += " and sharedWithMe=true"
 
         results = self.service.files().list(
             q=query,
             spaces='drive',
-            fields='files(id, name, owners)'
+            fields='files(id, name, owners)',
+            pageSize=100
+        ).execute()
+
+        return results.get('files', [])
+
+    def list_my_drive_root(self) -> List[Dict]:
+        """List files and folders in the root of My Drive.
+
+        Only works with OAuth2 authentication.
+        """
+        if self.auth_type != "oauth2":
+            self._log("[WARN] list_my_drive_root works best with OAuth2 auth")
+
+        query = "'root' in parents and trashed=false"
+
+        results = self.service.files().list(
+            q=query,
+            spaces='drive',
+            fields='files(id, name, mimeType, modifiedTime)',
+            orderBy='name',
+            pageSize=100
         ).execute()
 
         return results.get('files', [])
@@ -209,10 +349,10 @@ class GDriveManager:
             fields='id, name, webViewLink'
         ).execute()
 
-        print(f"[{datetime.now()}] Uploaded: {file_name}")
-        print(f"  → ID: {file.get('id')}")
+        self._log(f"[{datetime.now()}] Uploaded: {file_name}")
+        self._log(f"  -> ID: {file.get('id')}")
         if file.get('webViewLink'):
-            print(f"  → Link: {file.get('webViewLink')}")
+            self._log(f"  -> Link: {file.get('webViewLink')}")
 
         return file.get('id')
 
@@ -222,22 +362,7 @@ class GDriveManager:
 
         Returns the uploaded file's ID.
         """
-        file_metadata = {
-            'name': filename,
-            'parents': [folder_id]
-        }
-
-        # Create in-memory file
-        fh = io.BytesIO(content.encode('utf-8'))
-
-        media = MediaFileUpload(
-            fh,
-            mimetype=mime_type,
-            resumable=True
-        )
-
         # MediaFileUpload doesn't accept BytesIO directly, need temp file approach
-        # Using alternative method
         import tempfile
 
         with tempfile.NamedTemporaryFile(mode='w', suffix=Path(filename).suffix,
@@ -288,7 +413,7 @@ class GDriveManager:
         with open(file_path, 'wb') as f:
             f.write(fh.getvalue())
 
-        print(f"[{datetime.now()}] Downloaded: {file_path}")
+        self._log(f"[{datetime.now()}] Downloaded: {file_path}")
         return file_path
 
     def list_files(self, folder_id: str) -> List[Dict]:
@@ -354,24 +479,45 @@ def main():
     """CLI for Google Drive Manager."""
     import sys
 
-    manager = GDriveManager()
-
     if len(sys.argv) < 2:
         print("Google Drive Manager for Aether")
         print("\nUsage:")
-        print("  python gdrive_manager.py list-shared     # List shared folders")
-        print("  python gdrive_manager.py list <folder>   # List files in folder")
+        print("  python gdrive_manager.py auth-info         # Show authentication status")
+        print("  python gdrive_manager.py list-shared       # List shared folders")
+        print("  python gdrive_manager.py list-root         # List My Drive root (OAuth only)")
+        print("  python gdrive_manager.py list <folder>     # List files in folder")
         print("  python gdrive_manager.py upload <file> <path>  # Upload file")
-        print("  python gdrive_manager.py mkdir <path>    # Create folder path")
+        print("  python gdrive_manager.py mkdir <path>      # Create folder path")
         return
 
     command = sys.argv[1]
 
-    if command == 'list-shared':
-        print("Folders shared with service account:")
+    manager = GDriveManager()
+
+    if command == 'auth-info':
+        info = manager.get_auth_info()
+        print("Authentication Info:")
+        print(f"  Auth type: {info['auth_type']}")
+        print(f"  OAuth token exists: {info['oauth_token_exists']}")
+        print(f"  Service account exists: {info['service_account_exists']}")
+        print(f"  Status: {info['recommendation']}")
+
+    elif command == 'list-shared':
+        print("Folders accessible to current account:")
         folders = manager.list_shared_folders()
         for f in folders:
             print(f"  - {f['name']} (ID: {f['id']})")
+        if not folders:
+            print("  (no folders found)")
+
+    elif command == 'list-root':
+        print("Files in My Drive root:")
+        files = manager.list_my_drive_root()
+        for f in files:
+            file_type = 'folder' if f['mimeType'] == 'application/vnd.google-apps.folder' else 'file'
+            print(f"  - [{file_type}] {f['name']}")
+        if not files:
+            print("  (empty)")
 
     elif command == 'list' and len(sys.argv) >= 3:
         folder_name = sys.argv[2]

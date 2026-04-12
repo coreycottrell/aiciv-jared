@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 2 — AO + Neural Network Glass | PureBrain 3D Study</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #080a12; overflow: hidden; font-family: 'SF Pro Display', -apple-system, sans-serif; }
+  canvas { display: block; }
+  #hud {
+    position: fixed; top: 16px; left: 16px;
+    color: rgba(255,255,255,0.35); font-size: 11px; letter-spacing: 0.05em;
+    pointer-events: none; line-height: 1.8;
+  }
+  #technique {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    color: rgba(255,255,255,0.18); font-size: 10px; letter-spacing: 0.12em;
+    text-transform: uppercase; pointer-events: none;
+  }
+  #perf {
+    position: fixed; top: 16px; right: 16px;
+    color: rgba(255,255,255,0.25); font-size: 10px; letter-spacing: 0.05em;
+    text-align: right; pointer-events: none; line-height: 1.8;
+  }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  Day 2 — AO Simulation + Neural Network Glass<br>
+  PureBrain 3D Study Sprint · 2026-03-03
+</div>
+<div id="technique">N8AO Simulation · Ground SSR · Neural Node Connections · fBm Breathing · Spectral Iridescence</div>
+<div id="perf">
+  <span id="fps">60</span> fps<br>
+  <span id="draw">—</span> draw calls
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+
+// ─────────────────────────────────────────────────────────────────
+// BRAND CONSTANTS
+// ─────────────────────────────────────────────────────────────────
+const PB = {
+  blue:       0x2a93c1,
+  orange:     0xf1420b,
+  blueLight:  0x5ad4ff,
+  blueVec:    new THREE.Vector3(0.165, 0.576, 0.757),
+  orangeVec:  new THREE.Vector3(0.945, 0.259, 0.043),
+  dark:       0x080a12,
+
+  glass: {
+    transmission:  1.0,
+    roughness:     0.03,
+    ior:           1.52,
+    iridescence:   0.42,
+    iridescenceIOR: 1.38,
+    iridescenceThicknessRange: [80, 400],
+    clearcoat:     0.92,
+    clearcoatRoughness: 0.012,
+    envMapIntensity: 4.8,
+    depthWrite:    false,
+  },
+
+  // Float frequencies — prime ratios, 120s+ before repeating
+  FF: [0.55, 0.38, 0.22, 0.13, 0.08],
+
+  bloom:  { strength: 0.50, radius: 0.40, threshold: 0.84 },
+  ca:     0.0018,
+  vig:    0.50,
+  grain:  0.018,
+};
+
+// ─────────────────────────────────────────────────────────────────
+// RENDERER
+// ─────────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({
+  antialias: false,  // SMAA handles it
+  powerPreference: 'high-performance',
+  stencilBuffer: false,
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = false; // No traditional shadows — we simulate AO
+renderer.autoClear = false;
+document.body.appendChild(renderer.domElement);
+
+// ─────────────────────────────────────────────────────────────────
+// SCENES: background (ortho) + main + AO overlay
+// ─────────────────────────────────────────────────────────────────
+const scene    = new THREE.Scene();
+const bgScene  = new THREE.Scene();
+const bgCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const camera   = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 1.2, 6.5);
+camera.lookAt(0, 0.2, 0);
+
+// ─────────────────────────────────────────────────────────────────
+// PMREM ENVIRONMENT MAP — 4-light studio setup (PureBrain palette)
+// ─────────────────────────────────────────────────────────────────
+const pmremGen = new THREE.PMREMGenerator(renderer);
+function buildStudioPMREM() {
+  const sz   = 256;
+  const data = new Float32Array(sz * sz * 4);
+
+  // Light positions in spherical (theta, phi) → xyz on unit sphere
+  const lights = [
+    // key: warm white, top-right, strong
+    { th: -0.8, ph: 0.5,  r: 4.2,  c: [1.00, 0.95, 0.88], i: 2.8 },
+    // fill: PureBrain blue, left
+    { th:  1.9, ph: 0.9,  r: 3.5,  c: [0.165,0.576,0.757], i: 1.6 },
+    // rim: PureBrain orange, back-low — puts brand color inside glass
+    { th:  3.2, ph: 1.55, r: 3.0,  c: [0.945,0.259,0.043], i: 1.2 },
+    // ground bounce: cool blue, below
+    { th:  0.0, ph: 2.5,  r: 2.0,  c: [0.28, 0.55, 0.90], i: 0.7 },
+  ];
+
+  for (let y = 0; y < sz; y++) {
+    for (let x = 0; x < sz; x++) {
+      const u = (x + 0.5) / sz;
+      const v = (y + 0.5) / sz;
+      const theta = u * 2.0 * Math.PI - Math.PI;
+      const phi   = v * Math.PI;
+      const dx = Math.sin(phi)*Math.cos(theta);
+      const dy = Math.cos(phi);
+      const dz = Math.sin(phi)*Math.sin(theta);
+
+      let R = 0.004, G = 0.006, B = 0.012; // near-black void
+
+      for (const L of lights) {
+        const lx = Math.sin(L.ph)*Math.cos(L.th);
+        const ly = Math.cos(L.ph);
+        const lz = Math.sin(L.ph)*Math.sin(L.th);
+        const dot = dx*lx + dy*ly + dz*lz;
+        const w   = Math.pow(Math.max(dot, 0.0), L.r) * L.i;
+        R += w * L.c[0]; G += w * L.c[1]; B += w * L.c[2];
+      }
+
+      const idx = (y * sz + x) * 4;
+      data[idx] = R; data[idx+1] = G; data[idx+2] = B; data[idx+3] = 1;
+    }
+  }
+
+  const tex = new THREE.DataTexture(data, sz, sz, THREE.RGBAFormat, THREE.FloatType);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.needsUpdate = true;
+  const envMap = pmremGen.fromEquirectangular(tex).texture;
+  tex.dispose(); pmremGen.dispose();
+  return envMap;
+}
+const envMap = buildStudioPMREM();
+scene.environment = envMap;
+
+// ─────────────────────────────────────────────────────────────────
+// ANIMATED fBm BACKGROUND GRADIENT
+// ─────────────────────────────────────────────────────────────────
+const bgShader = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uRes: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) } },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    uniform vec2  uRes;
+    varying vec2  vUv;
+
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float noise(vec2 p) {
+      vec2 i = floor(p), f = fract(p), u = f*f*(3.0-2.0*f);
+      return mix(mix(hash(i+vec2(0,0)), hash(i+vec2(1,0)), u.x),
+                 mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), u.x), u.y);
+    }
+    float fbm(vec2 p) {
+      float v=0.0, a=0.5;
+      for(int i=0;i<5;i++){v+=a*noise(p);p=p*2.0+vec2(0.43,0.71);a*=0.5;}
+      return v;
+    }
+
+    void main() {
+      vec2 uv = vUv;
+      float t  = uTime * 0.055;
+      float n  = fbm(uv * 2.2 + vec2(t * 0.7, t * 0.4));
+
+      // Radial dark center, subtle blue-nebula edges
+      float dist  = length(uv - 0.5) * 1.6;
+      vec3  base  = vec3(0.032, 0.040, 0.071);   // #080a12
+      vec3  nebula = vec3(0.05, 0.12, 0.22);      // deep blue mist
+      vec3  col   = mix(base, nebula, n * 0.25 * (1.0 - dist));
+      col += vec3(0.04, 0.02, 0.0) * fbm(uv*3.5 + t) * 0.1; // faint orange mist near center
+
+      // Subtle top gradient
+      col = mix(col, vec3(0.01,0.02,0.04), uv.y * 0.4);
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `,
+  depthTest: false, depthWrite: false,
+});
+bgScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bgShader));
+
+// ─────────────────────────────────────────────────────────────────
+// GLASS MATERIAL FACTORY (PureBrain standard)
+// ─────────────────────────────────────────────────────────────────
+function makeGlass(colorHex = 0xddeeff, attenColor = PB.blue, side = THREE.FrontSide, iriMult = 1.0) {
+  return new THREE.MeshPhysicalMaterial({
+    ...PB.glass,
+    color: colorHex,
+    attenuationColor: new THREE.Color(attenColor),
+    attenuationDistance: 2.2,
+    iridescence:   PB.glass.iridescence * iriMult,
+    metalness:     0.0,
+    side,
+    envMap,
+  });
+}
+function makeGlassBack(colorHex = 0xddeeff, attenColor = PB.blue) {
+  return new THREE.MeshPhysicalMaterial({
+    ...PB.glass,
+    color: colorHex,
+    attenuationColor: new THREE.Color(attenColor),
+    attenuationDistance: 3.5,
+    ior: 1.62,
+    side: THREE.BackSide,
+    envMap,
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────
+// AO SIMULATION: Contact Shadow
+// Technique: render soft radial blob underneath each floating object.
+// Pure canvas-texture gradient — no GPU shadow map needed.
+// N8AO does this with depth buffer; we approximate with canvas blobs.
+// ─────────────────────────────────────────────────────────────────
+function makeContactShadow(color = 'rgba(0,10,30,0.55)', radius = 1.0) {
+  const res = 256;
+  const cv  = document.createElement('canvas');
+  cv.width = cv.height = res;
+  const ctx = cv.getContext('2d');
+
+  // Multi-ring shadow (simulates AO light bleed more realistically than single gradient)
+  const steps = [
+    { r: 0.02, alpha: 0.6 },
+    { r: 0.12, alpha: 0.3 },
+    { r: 0.30, alpha: 0.12 },
+    { r: 0.48, alpha: 0.04 },
+  ];
+  for (const s of steps) {
+    const grd = ctx.createRadialGradient(res/2, res/2, s.r*res, res/2, res/2, s.r*res + res*0.48);
+    grd.addColorStop(0, `rgba(0,10,30,${s.alpha})`);
+    grd.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, res, res);
+  }
+
+  return new THREE.CanvasTexture(cv);
+}
+
+function addContactShadow(parent, scaleX = 1.4, scaleZ = 1.4, yOffset = 0) {
+  const tex  = makeContactShadow();
+  const geo  = new THREE.PlaneGeometry(1, 1);
+  const mat  = new THREE.MeshBasicMaterial({
+    map: tex, transparent: true, depthWrite: false,
+    blending: THREE.NormalBlending, opacity: 0.85,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = yOffset;
+  mesh.scale.set(scaleX, scaleZ, 1);
+  mesh.renderOrder = -1;
+  parent.add(mesh);
+  return mesh;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// GROUND: Mirror-dark SSR-approximated reflective plane
+// Technique: dark metallic ground + blurred env reflection = SSR approximation.
+// True SSR needs depth buffer; this uses envMap metalness = 0.92.
+// The glass objects' reflections appear as blurred light on the dark ground.
+// ─────────────────────────────────────────────────────────────────
+const groundGeo  = new THREE.PlaneGeometry(22, 22, 1, 1);
+const groundMat  = new THREE.MeshStandardMaterial({
+  color: 0x050810, metalness: 0.92, roughness: 0.62,
+  envMap, envMapIntensity: 1.4,
+});
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -2.0;
+scene.add(ground);
+
+// Ground glow pools — colored by object above them
+function addGroundGlow(x, z, innerColor, outerColor, radiusScale = 1.0) {
+  const res = 256;
+  const cv  = document.createElement('canvas');
+  cv.width = cv.height = res;
+  const ctx = cv.getContext('2d');
+  const grd = ctx.createRadialGradient(res/2, res/2, 0, res/2, res/2, res*0.48);
+  grd.addColorStop(0, innerColor);
+  grd.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, res, res);
+  const tex  = new THREE.CanvasTexture(cv);
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(radiusScale, radiusScale),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false,
+      blending: THREE.AdditiveBlending })
+  );
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(x, -1.98, z);
+  scene.add(mesh);
+  return mesh;
+}
+
+addGroundGlow(-1.8,  0.0, 'rgba(42,147,193,0.14)',  'rgba(42,147,193,0)',  3.5);
+addGroundGlow( 1.8,  0.4, 'rgba(241,66,11,0.10)',   'rgba(241,66,11,0)',   3.0);
+addGroundGlow( 0.0, -1.5, 'rgba(90,212,255,0.08)',  'rgba(90,212,255,0)',  2.5);
+
+// ─────────────────────────────────────────────────────────────────
+// NEURAL NETWORK NODES: Glass spheres arranged as brain nodes
+// Technique: 8 glass nodes connected by glowing edge cylinders.
+// ─────────────────────────────────────────────────────────────────
+const NODE_POSITIONS = [
+  // Primary cluster — center-left (PureBrain blue)
+  new THREE.Vector3(-1.8,  0.4,  0.0),   // 0: main sphere
+  new THREE.Vector3(-0.4,  0.9,  0.3),   // 1: upper connector
+  new THREE.Vector3(-2.2, -0.3,  0.5),   // 2: lower left
+  new THREE.Vector3(-1.0, -0.5, -0.4),   // 3: lower right
+  // Secondary cluster — center-right (PureBrain orange)
+  new THREE.Vector3( 1.8, -0.2,  0.0),   // 4: main hex
+  new THREE.Vector3( 0.6,  0.5,  0.4),   // 5: connector to hex
+  new THREE.Vector3( 2.4,  0.6, -0.3),   // 6: upper right
+  new THREE.Vector3( 1.4, -1.0,  0.5),   // 7: lower node
+];
+
+// Node sizes (radii)
+const NODE_RADII = [0.52, 0.28, 0.22, 0.24, 0.50, 0.26, 0.24, 0.20];
+
+// Node colors (blue cluster = 0-3, orange cluster = 4-7)
+const NODE_COLORS  = [0xccebff, 0xd8f0ff, 0xe0f8ff, 0xcce8ff, 0xffeedd, 0xfff4ee, 0xffe8d8, 0xffdccc];
+const NODE_ATTENS  = [PB.blue,  PB.blue,  PB.blue,  PB.blue,  PB.orange, PB.orange, PB.orange, PB.orange];
+const NODE_PHASES  = [0, 1.2, 2.4, 0.8, 3.6, 4.8, 2.0, 5.5];
+
+const nodeGroups = [];
+const nodeMeshes = [];
+
+for (let i = 0; i < NODE_POSITIONS.length; i++) {
+  const group = new THREE.Group();
+  group.position.copy(NODE_POSITIONS[i]);
+
+  const r   = NODE_RADII[i];
+  const segs = i <= 1 || i === 4 ? 96 : 64; // main nodes higher geo
+  const geo  = new THREE.SphereGeometry(r, segs, segs);
+
+  // Dual-layer glass: back face inner depth + front face transmission
+  const backMesh = new THREE.Mesh(geo, makeGlassBack(NODE_COLORS[i], NODE_ATTENS[i]));
+  const frontMesh = new THREE.Mesh(geo, makeGlass(NODE_COLORS[i], NODE_ATTENS[i],
+    THREE.FrontSide, i === 0 || i === 4 ? 1.3 : 0.9));
+
+  // Emissive inner core
+  const coreSize = r * 0.35;
+  const coreMat  = new THREE.MeshStandardMaterial({
+    color: NODE_ATTENS[i],
+    emissive: NODE_ATTENS[i],
+    emissiveIntensity: i === 0 || i === 4 ? 3.2 : 1.8,
+    transparent: true, opacity: 0.85,
+  });
+  const core = new THREE.Mesh(new THREE.SphereGeometry(coreSize, 32, 32), coreMat);
+
+  group.add(backMesh, frontMesh, core);
+
+  // Contact shadow (AO simulation) under node
+  addContactShadow(group, r * 2.6, r * 2.6, -NODE_POSITIONS[i].y - 2.0);
+
+  scene.add(group);
+  nodeGroups.push(group);
+  nodeMeshes.push({ group, r, phase: NODE_PHASES[i], freq: PB.FF[i % PB.FF.length] });
+}
+
+// ─────────────────────────────────────────────────────────────────
+// NEURAL CONNECTIONS: Glowing edge cylinders between nodes
+// Each cylinder is a tapered line from node A to node B.
+// Material: emissive + additive blending = "light wire" look.
+// ─────────────────────────────────────────────────────────────────
+const EDGES = [
+  [0, 1], [0, 2], [0, 3],     // blue hub connections
+  [1, 5],                      // cross-cluster bridge — key visual element
+  [4, 5], [4, 6], [4, 7],     // orange hub connections
+  [1, 3], [5, 6],              // secondary edges
+];
+
+const edgeMeshes = [];
+
+function makeEdge(posA, posB, colorHex, opacity = 0.55) {
+  const dir = new THREE.Vector3().subVectors(posB, posA);
+  const len = dir.length();
+  const mid = new THREE.Vector3().addVectors(posA, posB).multiplyScalar(0.5);
+
+  // Thin tapered tube: larger radius near nodes, smaller at midpoint
+  // Simple approach: cylinder at midpoint, oriented from A to B
+  const geo = new THREE.CylinderGeometry(0.012, 0.012, len, 6, 1);
+  const mat = new THREE.MeshBasicMaterial({
+    color: colorHex, transparent: true, opacity,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+
+  // Orient cylinder from posA to posB
+  const quaternion = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  dir.normalize();
+  quaternion.setFromUnitVectors(up, dir);
+  mesh.position.copy(mid);
+  mesh.quaternion.copy(quaternion);
+
+  scene.add(mesh);
+  edgeMeshes.push({ mesh, mat, posA, posB, base: opacity });
+  return mesh;
+}
+
+// Blue cluster edges
+EDGES.slice(0, 3).forEach(([a, b]) => makeEdge(NODE_POSITIONS[a], NODE_POSITIONS[b], PB.blueLight, 0.45));
+// Cross-cluster bridge — most important edge (brighter)
+makeEdge(NODE_POSITIONS[1], NODE_POSITIONS[5], 0xffffff, 0.70);
+// Orange cluster edges
+EDGES.slice(4, 7).forEach(([a, b]) => makeEdge(NODE_POSITIONS[a], NODE_POSITIONS[b], PB.orange, 0.45));
+// Secondary
+makeEdge(NODE_POSITIONS[1], NODE_POSITIONS[3], PB.blueLight, 0.30);
+makeEdge(NODE_POSITIONS[5], NODE_POSITIONS[6], PB.orange, 0.30);
+
+// ─────────────────────────────────────────────────────────────────
+// HEX PRISM (node 4 — primary orange node gets hex instead of sphere)
+// The hex becomes the orange "brain core" opposed to the blue sphere
+// ─────────────────────────────────────────────────────────────────
+;(function() {
+  const i = 4;
+  const grp = nodeGroups[i];
+  // Remove the sphere meshes we added
+  while (grp.children.length) grp.remove(grp.children[0]);
+
+  // Build hex geometry
+  const shape = new THREE.Shape();
+  const r = 0.50;
+  for (let k = 0; k <= 6; k++) {
+    const a = (k / 6) * Math.PI * 2 - Math.PI / 6;
+    const x = Math.cos(a) * r, y = Math.sin(a) * r;
+    k === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y);
+  }
+  const hexGeo = new THREE.ExtrudeGeometry(shape, {
+    depth: 0.38, bevelEnabled: true,
+    bevelThickness: 0.055, bevelSize: 0.055, bevelSegments: 6,
+  });
+  hexGeo.center();
+
+  const hexBack  = new THREE.Mesh(hexGeo, makeGlassBack(0xffeedd, PB.orange));
+  const hexFront = new THREE.Mesh(hexGeo, makeGlass(0xffeedd, PB.orange, THREE.FrontSide, 1.4));
+  const coreMat  = new THREE.MeshStandardMaterial({
+    color: PB.orange, emissive: PB.orange, emissiveIntensity: 3.5,
+    transparent: true, opacity: 0.90,
+  });
+  const core = new THREE.Mesh(new THREE.SphereGeometry(0.16, 32, 32), coreMat);
+
+  grp.add(hexBack, hexFront, core);
+  addContactShadow(grp, 1.6, 1.6, -NODE_POSITIONS[i].y - 2.0);
+})();
+
+// ─────────────────────────────────────────────────────────────────
+// ORBITAL MICRO-SPHERES around primary nodes
+// ─────────────────────────────────────────────────────────────────
+const orbitals = [];
+
+function addOrbitals(nodeIdx, count = 3, orbRadius = 0.85) {
+  const parent = nodeGroups[nodeIdx];
+  const isBlue = nodeIdx < 4;
+  for (let k = 0; k < count; k++) {
+    const phase  = (k / count) * Math.PI * 2;
+    const speed  = PB.FF[k % PB.FF.length] * 0.38;
+    const tilt   = (k + 1) * 0.55; // tilt axis (unique per orbital)
+    const r      = 0.09;
+    const geo    = new THREE.SphereGeometry(r, 28, 28);
+
+    const mat    = new THREE.MeshPhysicalMaterial({
+      ...PB.glass,
+      color: isBlue ? 0xccebff : 0xffeedd,
+      attenuationColor: new THREE.Color(isBlue ? PB.blue : PB.orange),
+      attenuationDistance: 2.5,
+      iridescence: 0.35, envMap,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+
+    // Group for orbit pivot
+    const pivot = new THREE.Group();
+    mesh.position.set(orbRadius, 0, 0);
+    pivot.add(mesh);
+
+    // Tilt orbit plane
+    pivot.rotation.z = Math.sin(tilt) * 0.8;
+    pivot.rotation.x = Math.cos(tilt) * 0.4;
+    pivot.rotation.y = phase;
+
+    parent.add(pivot);
+    orbitals.push({ pivot, speed, phase });
+  }
+}
+
+addOrbitals(0, 3, 0.88);  // blue sphere — 3 orbitals
+addOrbitals(4, 3, 0.82);  // orange hex — 3 orbitals
+
+// ─────────────────────────────────────────────────────────────────
+// PARTICLE SYSTEM: Two-layer (ambient + energy)
+// ─────────────────────────────────────────────────────────────────
+const PART_TOTAL  = 3200;
+const PART_ENERGY = 800;   // particles near nodes (energy type)
+const PART_DUST   = PART_TOTAL - PART_ENERGY;
+
+const partPositions = new Float32Array(PART_TOTAL * 3);
+const partVelocities = new Float32Array(PART_TOTAL * 3);
+const partTypes     = new Float32Array(PART_TOTAL); // 0=dust, 1=energy
+const partPhases    = new Float32Array(PART_TOTAL);
+const partSizes     = new Float32Array(PART_TOTAL);
+
+// Initialize dust particles (wide ellipsoid)
+for (let i = 0; i < PART_DUST; i++) {
+  const theta = Math.random() * Math.PI * 2;
+  const phi   = Math.acos(Math.random() * 2 - 1);
+  const r     = Math.cbrt(Math.random()) * 5.5;
+  partPositions[i*3  ] = r * Math.sin(phi) * Math.cos(theta) * 1.8;
+  partPositions[i*3+1] = r * Math.sin(phi) * Math.sin(theta) * 0.8 + 0.2;
+  partPositions[i*3+2] = r * Math.cos(phi) * 1.3 - 1.0;
+  partVelocities[i*3+1] = (Math.random()-0.5)*0.0003 + 0.00012;
+  partVelocities[i*3  ] = (Math.random()-0.5)*0.00015;
+  partVelocities[i*3+2] = (Math.random()-0.5)*0.00015;
+  partTypes[i]  = 0;
+  partPhases[i] = Math.random() * Math.PI * 2;
+  partSizes[i]  = 0.6 + Math.random() * 1.0;
+}
+
+// Initialize energy particles (near nodes)
+const energyTargetNodes = [0, 1, 4, 5];
+for (let i = PART_DUST; i < PART_TOTAL; i++) {
+  const ni  = energyTargetNodes[Math.floor(Math.random() * energyTargetNodes.length)];
+  const np  = NODE_POSITIONS[ni];
+  const r   = NODE_RADII[ni] + 0.3 + Math.random() * 0.6;
+  const theta = Math.random() * Math.PI * 2;
+  const phi   = Math.acos(Math.random() * 2 - 1);
+  partPositions[i*3  ] = np.x + r * Math.sin(phi) * Math.cos(theta);
+  partPositions[i*3+1] = np.y + r * Math.sin(phi) * Math.sin(theta);
+  partPositions[i*3+2] = np.z + r * Math.cos(phi);
+  partTypes[i]  = 1;
+  partPhases[i] = Math.random() * Math.PI * 2;
+  partSizes[i]  = 1.2 + Math.random() * 1.8;
+}
+
+// Particle geometry
+const partGeo = new THREE.BufferGeometry();
+partGeo.setAttribute('position', new THREE.BufferAttribute(partPositions, 3));
+partGeo.setAttribute('aType',    new THREE.BufferAttribute(partTypes,     1));
+partGeo.setAttribute('aPhase',   new THREE.BufferAttribute(partPhases,    1));
+partGeo.setAttribute('aSize',    new THREE.BufferAttribute(partSizes,     1));
+
+const partMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime:       { value: 0 },
+    uPixelRatio: { value: renderer.getPixelRatio() },
+  },
+  vertexShader: `
+    attribute float aType;
+    attribute float aPhase;
+    attribute float aSize;
+    uniform float uTime;
+    uniform float uPixelRatio;
+    varying float vAlpha;
+    varying float vType;
+
+    void main() {
+      vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+      float dist = max(-mvPos.z, 0.1);
+
+      float twinkle = 0.55 + 0.45 * sin(uTime * 1.2 + aPhase);
+      float energyBoost = aType * (0.5 + 0.5 * sin(uTime * 3.8 + aPhase * 2.2));
+      vAlpha = twinkle * (0.22 + aType * 0.45) + energyBoost * 0.28;
+      vType  = aType;
+
+      float sz = aSize * uPixelRatio * (1.6 + aType * 1.4);
+      sz *= (16.0 / dist);
+      gl_PointSize = clamp(sz, 0.4, 6.5);
+      gl_Position  = projectionMatrix * mvPos;
+    }
+  `,
+  fragmentShader: `
+    varying float vAlpha;
+    varying float vType;
+
+    void main() {
+      vec2 cxy = gl_PointCoord - 0.5;
+      float r  = dot(cxy, cxy);
+      if (r > 0.25) discard;
+      float alpha = vAlpha * (1.0 - r * 4.0) * (1.0 - r * 4.0);
+
+      // Dust: cool blue-white. Energy: PureBrain blue.
+      vec3 dustCol   = vec3(0.62, 0.76, 0.95);
+      vec3 energyCol = vec3(0.38, 0.76, 1.00);
+      vec3 col = mix(dustCol, energyCol, vType);
+
+      gl_FragColor = vec4(col, alpha);
+    }
+  `,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+});
+
+const particles = new THREE.Points(partGeo, partMat);
+scene.add(particles);
+
+// ─────────────────────────────────────────────────────────────────
+// GOD RAYS: Volumetric light shafts between cluster centers
+// ─────────────────────────────────────────────────────────────────
+function addGodRay(position, colorHex, opacity = 0.04, height = 6.0, radiusTop = 0.05, radiusBot = 0.85) {
+  const geo = new THREE.CylinderGeometry(radiusTop, radiusBot, height, 8, 1, true);
+  const mat = new THREE.MeshBasicMaterial({
+    color: colorHex, transparent: true, opacity,
+    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(position);
+  scene.add(mesh);
+  return mesh;
+}
+
+const godRays = [
+  addGodRay(new THREE.Vector3(-1.8, 2.2, 0.0),  PB.blueLight, 0.035, 5.0, 0.04, 0.90),
+  addGodRay(new THREE.Vector3( 1.8, 2.0, 0.0),  PB.orange,    0.030, 4.5, 0.04, 0.80),
+  addGodRay(new THREE.Vector3( 0.0, 2.5, 0.0),  0xffffff,     0.018, 4.0, 0.02, 0.60),
+];
+
+// ─────────────────────────────────────────────────────────────────
+// SCENE LIGHTING: Minimal direct lights (PMREM does the work)
+// ─────────────────────────────────────────────────────────────────
+const ambLight = new THREE.AmbientLight(0x080d1a, 0.4);
+scene.add(ambLight);
+
+// Rim point light — PureBrain orange from back
+const rimLight = new THREE.PointLight(PB.orange, 0.6, 8.0);
+rimLight.position.set(2.5, 2.0, -3.0);
+scene.add(rimLight);
+
+// ─────────────────────────────────────────────────────────────────
+// POSTPROCESSING
+// ─────────────────────────────────────────────────────────────────
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+// SMAA — must be before bloom for glass edges
+const smaaPass = new SMAAPass(
+  window.innerWidth * renderer.getPixelRatio(),
+  window.innerHeight * renderer.getPixelRatio()
+);
+composer.addPass(smaaPass);
+
+// Bloom (conservative — only emissive cores and bright edges)
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  PB.bloom.strength, PB.bloom.radius, PB.bloom.threshold
+);
+composer.addPass(bloomPass);
+
+// CA + AO vignette + film grain — custom single pass
+const finalPass = new ShaderPass({
+  uniforms: {
+    tDiffuse: { value: null },
+    uTime:    { value: 0 },
+    uCa:      { value: PB.ca },
+    uVig:     { value: PB.vig },
+    uGrain:   { value: PB.grain },
+    // AO Simulation uniforms — darkens edges/corners simulating ambient occlusion
+    uAoStr:   { value: 0.30 },
+    uAoExp:   { value: 2.2 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uTime;
+    uniform float uCa, uVig, uGrain, uAoStr, uAoExp;
+    varying vec2 vUv;
+
+    float hash13(vec3 p3) {
+      p3 = fract(p3 * vec3(0.1031,0.1030,0.0973));
+      p3 += dot(p3, p3.zyx + 31.32);
+      return fract((p3.x + p3.y) * p3.z);
+    }
+
+    void main() {
+      vec2 uv = vUv;
+      vec2 off = uv - 0.5;
+
+      // Chromatic aberration (radial, very subtle)
+      float caAmt = uCa * (1.0 + dot(off,off)*3.5);
+      vec3 col;
+      col.r = texture2D(tDiffuse, uv + off * caAmt).r;
+      col.g = texture2D(tDiffuse, uv               ).g;
+      col.b = texture2D(tDiffuse, uv - off * caAmt).b;
+
+      // Screen-space AO vignette simulation:
+      // Darkens corner/edge regions to approximate contact shadowing from frame edges.
+      // This is a crude but effective global AO approximation used as postprocess.
+      float dist  = length(off);
+      float aoVig = 1.0 - pow(dist * 1.45, uAoExp) * uAoStr;
+      aoVig = clamp(aoVig, 0.0, 1.0);
+      col *= aoVig;
+
+      // Classic vignette (additional)
+      float vig  = 1.0 - pow(dist * 1.28, 2.5) * uVig;
+      col *= clamp(vig, 0.0, 1.0);
+
+      // Film grain
+      float grain = hash13(vec3(gl_FragCoord.xy, uTime * 0.5)) * uGrain - uGrain * 0.5;
+      col += grain;
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `,
+});
+composer.addPass(finalPass);
+composer.addPass(new OutputPass());
+
+// ─────────────────────────────────────────────────────────────────
+// CAMERA: Spring system with mouse parallax
+// ─────────────────────────────────────────────────────────────────
+const camState = {
+  pos:   new THREE.Vector3(0, 1.2, 6.5),
+  look:  new THREE.Vector3(0, 0.2, 0),
+  mouse: new THREE.Vector2(0, 0),
+};
+const camTarget = {
+  pos:  new THREE.Vector3(0, 1.2, 6.5),
+  look: new THREE.Vector3(0, 0.2, 0),
+};
+const CAM_SPRING = 4.0;
+
+document.addEventListener('mousemove', e => {
+  camState.mouse.set(
+    (e.clientX / window.innerWidth  - 0.5) * 2,
+    (e.clientY / window.innerHeight - 0.5) * 2
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────
+// FPS TRACKING
+// ─────────────────────────────────────────────────────────────────
+let lastTime = performance.now();
+let frames = 0, fps = 60;
+const fpsEl  = document.getElementById('fps');
+const drawEl = document.getElementById('draw');
+
+// ─────────────────────────────────────────────────────────────────
+// ANIMATION LOOP
+// ─────────────────────────────────────────────────────────────────
+let t = 0;
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  t += dt;
+
+  // FPS counter
+  frames++;
+  const now = performance.now();
+  if (now - lastTime > 600) {
+    fps = Math.round(frames * 1000 / (now - lastTime));
+    fpsEl.textContent = fps;
+    drawEl.textContent = renderer.info.render.calls;
+    frames = 0; lastTime = now;
+  }
+
+  // Update uniforms
+  bgShader.uniforms.uTime.value  = t;
+  partMat.uniforms.uTime.value   = t;
+  finalPass.uniforms.uTime.value = t;
+
+  // Float each node
+  for (let i = 0; i < nodeMeshes.length; i++) {
+    const { group, r, phase, freq } = nodeMeshes[i];
+    const base = NODE_POSITIONS[i];
+    const ff   = PB.FF;
+    const y    = base.y
+      + Math.sin(t * ff[i % ff.length] + phase)             * 0.08
+      + Math.sin(t * ff[(i+1) % ff.length] + phase * 0.7)  * 0.05;
+    const x    = base.x + Math.sin(t * ff[(i+2) % ff.length] * 0.5 + phase * 1.3) * 0.022;
+    const z    = base.z + Math.cos(t * ff[(i+3) % ff.length] * 0.3 + phase * 0.9) * 0.018;
+    group.position.set(x, y, z);
+
+    // Slow rotation on unique axis
+    group.rotation.y += dt * (0.08 + i * 0.012);
+    group.rotation.x  = Math.sin(t * 0.18 + phase) * 0.06;
+  }
+
+  // Orbital micro-spheres
+  for (const { pivot, speed } of orbitals) {
+    pivot.rotation.y += dt * speed * 1.1;
+  }
+
+  // Edge connection pulse (opacity animated)
+  for (let i = 0; i < edgeMeshes.length; i++) {
+    const { mat, base } = edgeMeshes[i];
+    mat.opacity = base * (0.7 + 0.3 * Math.sin(t * 1.4 + i * 0.9));
+  }
+
+  // Update dust particles
+  const pos = partPositions;
+  const vel = partVelocities;
+  for (let i = 0; i < PART_DUST; i++) {
+    const idx = i * 3;
+    pos[idx  ] += vel[idx  ];
+    pos[idx+1] += vel[idx+1];
+    pos[idx+2] += vel[idx+2];
+    // Boundary wrap
+    if (pos[idx+1] >  3.5) pos[idx+1] = -2.5;
+    if (Math.abs(pos[idx  ]) > 8.0) vel[idx  ] *= -0.95;
+    if (Math.abs(pos[idx+2]) > 8.0) vel[idx+2] *= -0.95;
+  }
+  partGeo.attributes.position.needsUpdate = true;
+
+  // God ray pulse
+  godRays.forEach((ray, i) => {
+    ray.material.opacity = (0.025 + 0.012 * Math.sin(t * 0.6 + i * 1.3))
+      * (i === 0 ? 1.0 : 1.0);
+  });
+
+  // Camera spring (frame-rate independent)
+  const camLerp = 1 - Math.pow(0.012, dt * CAM_SPRING);
+  const parallaxX = camState.mouse.x * 0.4;
+  const parallaxY = camState.mouse.y * -0.2;
+  camTarget.pos.set(parallaxX, 1.2 + parallaxY, 6.5);
+  camTarget.look.set(parallaxX * 0.3, 0.2 + parallaxY * 0.15, 0);
+  camState.pos.lerp(camTarget.pos, camLerp);
+  camState.look.lerp(camTarget.look, camLerp);
+  camera.position.copy(camState.pos);
+  camera.lookAt(camState.look);
+
+  // Render: bg first (ortho), then main scene through composer
+  renderer.clear();
+  renderer.render(bgScene, bgCamera);
+  renderer.clearDepth();
+  composer.render(dt);
+}
+animate();
+
+// ─────────────────────────────────────────────────────────────────
+// RESIZE
+// ─────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+  bgShader.uniforms.uRes.value.set(w, h);
+  smaaPass.setSize(w * renderer.getPixelRatio(), h * renderer.getPixelRatio());
+});
+
+</script>
+</body>
+</html>

@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 7 V2 — Plasma Core Avatar</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #050810; overflow: hidden; }
+  canvas { display: block; }
+  #info {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    color: rgba(255,255,255,0.12);
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    z-index: 10;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="info">V2 — Plasma Core — Hot plasma interior with glass containment</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ─── SCENE ───
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050810);
+
+const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 0.15, 5.0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.body.appendChild(renderer.domElement);
+
+// ─── MOUSE ───
+const mouse = new THREE.Vector2(0, 0);
+const tmouse = new THREE.Vector2(0, 0);
+window.addEventListener('mousemove', e => {
+  tmouse.x = (e.clientX / innerWidth) * 2 - 1;
+  tmouse.y = -(e.clientY / innerHeight) * 2 + 1;
+});
+
+// ─── ENVIRONMENT ───
+const pmrem = new THREE.PMREMGenerator(renderer);
+const es = new THREE.Scene();
+const eg = new THREE.SphereGeometry(20, 32, 32);
+const em = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  vertexShader: `varying vec3 vP; void main() { vP = (modelMatrix * vec4(position,1.0)).xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  fragmentShader: `
+    varying vec3 vP;
+    void main() {
+      float y = normalize(vP).y;
+      vec3 top = vec3(0.06, 0.03, 0.12);
+      vec3 mid = vec3(0.004, 0.002, 0.008);
+      vec3 bot = vec3(0.04, 0.01, 0.002);
+      vec3 c = y > 0.0 ? mix(mid, top, y) : mix(mid, bot, -y);
+      float h1 = smoothstep(0.91, 1.0, dot(normalize(vP), normalize(vec3(2.5, 2.0, 1.0))));
+      c += vec3(1.0, 0.4, 0.15) * h1 * 3.5;
+      float h2 = smoothstep(0.93, 1.0, dot(normalize(vP), normalize(vec3(-1.5, 3.0, -2.0))));
+      c += vec3(0.3, 0.5, 1.0) * h2 * 2.0;
+      gl_FragColor = vec4(c, 1.0);
+    }
+  `
+});
+es.add(new THREE.Mesh(eg, em));
+const envMap = pmrem.fromScene(es, 0.04).texture;
+scene.environment = envMap;
+es.dispose();
+
+// ─── PLASMA CORE — Custom shader sphere ───
+const plasmaGeo = new THREE.IcosahedronGeometry(0.7, 64);
+const plasmaMat = new THREE.ShaderMaterial({
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  uniforms: {
+    uTime: { value: 0 },
+    uMouse: { value: new THREE.Vector2() },
+  },
+  vertexShader: `
+    varying vec3 vNormal;
+    varying vec3 vPos;
+    varying vec2 vUv;
+    uniform float uTime;
+    void main() {
+      vNormal = normalMatrix * normal;
+      vPos = position;
+      vUv = uv;
+      // Turbulent deformation
+      float turb = sin(position.x * 6.0 + uTime * 3.0) *
+                   cos(position.y * 5.0 - uTime * 2.5) *
+                   sin(position.z * 7.0 + uTime * 2.0);
+      vec3 pos = position + normal * turb * 0.12;
+      // Breathing
+      pos *= 1.0 + sin(uTime * 1.2) * 0.06;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vNormal;
+    varying vec3 vPos;
+    varying vec2 vUv;
+    uniform float uTime;
+    uniform vec2 uMouse;
+
+    // Simplex-like noise
+    float hash(vec3 p) {
+      p = fract(p * vec3(443.897, 441.423, 437.195));
+      p += dot(p, p.yzx + 19.19);
+      return fract((p.x + p.y) * p.z);
+    }
+
+    float noise(vec3 p) {
+      vec3 i = floor(p);
+      vec3 f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(
+        mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x),
+            mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+        mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+            mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+    }
+
+    float fbm(vec3 p) {
+      float v = 0.0;
+      float a = 0.5;
+      for (int i = 0; i < 5; i++) {
+        v += a * noise(p);
+        p *= 2.1;
+        a *= 0.5;
+      }
+      return v;
+    }
+
+    void main() {
+      // Plasma noise field
+      vec3 p = vPos * 3.0 + vec3(uTime * 0.8, uTime * 0.5, uTime * 0.3);
+      float n = fbm(p);
+      float n2 = fbm(p + vec3(n * 2.0, 0.0, uTime * 0.2));
+
+      // Color gradient: deep orange → white-hot center
+      vec3 cold = vec3(0.8, 0.15, 0.02);     // deep ember
+      vec3 hot = vec3(1.0, 0.5, 0.08);        // orange fire
+      vec3 white = vec3(1.0, 0.85, 0.6);      // white-hot
+
+      float intensity = n2 * 1.2;
+      vec3 color = mix(cold, hot, smoothstep(0.3, 0.6, intensity));
+      color = mix(color, white, smoothstep(0.65, 0.9, intensity));
+
+      // Blue edge flicker (containment field interaction)
+      float fresnel = pow(1.0 - abs(dot(normalize(vNormal), vec3(0,0,1))), 3.0);
+      color = mix(color, vec3(0.15, 0.4, 1.0), fresnel * 0.5);
+
+      // Alpha: hot center visible, edges fade
+      float alpha = smoothstep(0.15, 0.5, intensity) * 0.9 + fresnel * 0.3;
+
+      gl_FragColor = vec4(color * (1.0 + intensity * 0.6), alpha);
+    }
+  `
+});
+const plasma = new THREE.Mesh(plasmaGeo, plasmaMat);
+scene.add(plasma);
+
+// ─── GLASS CONTAINMENT SHELL ───
+const glassGeo = new THREE.IcosahedronGeometry(1.15, 48);
+const glassMat = new THREE.MeshPhysicalMaterial({
+  color: 0x1a1a2e,
+  metalness: 0.05,
+  roughness: 0.02,
+  transmission: 0.92,
+  thickness: 0.3,
+  ior: 1.6,
+  clearcoat: 1.0,
+  clearcoatRoughness: 0.02,
+  envMapIntensity: 1.8,
+  transparent: true,
+  opacity: 0.35,
+  side: THREE.FrontSide,
+});
+const glass = new THREE.Mesh(glassGeo, glassMat);
+scene.add(glass);
+
+// ─── CONTAINMENT RINGS — Gleb-style tech aesthetic ───
+const ringGroup = new THREE.Group();
+scene.add(ringGroup);
+
+for (let i = 0; i < 3; i++) {
+  const ringGeo = new THREE.TorusGeometry(1.35 + i * 0.12, 0.008, 8, 128);
+  const ringMat = new THREE.MeshPhysicalMaterial({
+    color: 0x2a93c1,
+    metalness: 0.9,
+    roughness: 0.1,
+    emissive: 0x2a93c1,
+    emissiveIntensity: 0.3,
+    envMapIntensity: 2.0,
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = Math.PI / 2 + (i - 1) * 0.15;
+  ring.rotation.z = i * 0.3;
+  ringGroup.add(ring);
+}
+
+// ─── ENERGY TENDRILS — Plasma leaking through cracks ───
+const tendrilGroup = new THREE.Group();
+scene.add(tendrilGroup);
+
+for (let i = 0; i < 8; i++) {
+  const points = [];
+  const angle = (i / 8) * Math.PI * 2;
+  const segments = 20;
+  for (let j = 0; j <= segments; j++) {
+    const t = j / segments;
+    const r = 1.15 + t * 0.8;
+    const spread = t * t * 0.4;
+    points.push(new THREE.Vector3(
+      Math.cos(angle + t * 0.5) * r + (Math.random() - 0.5) * spread,
+      (Math.random() - 0.5) * spread + Math.sin(t * 3) * 0.1,
+      Math.sin(angle + t * 0.5) * r + (Math.random() - 0.5) * spread
+    ));
+  }
+  const curve = new THREE.CatmullRomCurve3(points);
+  const tubeGeo = new THREE.TubeGeometry(curve, 32, 0.01 + Math.random() * 0.015, 6, false);
+  const tubeMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color().setHSL(0.06 + Math.random() * 0.04, 1, 0.5 + Math.random() * 0.3),
+    transparent: true,
+    opacity: 0.4,
+    blending: THREE.AdditiveBlending,
+  });
+  const tendril = new THREE.Mesh(tubeGeo, tubeMat);
+  tendril.userData = { baseOpacity: 0.2 + Math.random() * 0.3, phase: Math.random() * Math.PI * 2 };
+  tendrilGroup.add(tendril);
+}
+
+// ─── LIGHTS ───
+const plasma_light = new THREE.PointLight(0xf1420b, 4, 8);
+plasma_light.position.set(0, 0, 0);
+scene.add(plasma_light);
+
+const key = new THREE.PointLight(0x2a93c1, 2, 12);
+key.position.set(3, 2, 3);
+scene.add(key);
+
+const rim = new THREE.PointLight(0x4a0080, 1.5, 10);
+rim.position.set(-3, 1, -2);
+scene.add(rim);
+
+// ─── POSTPROCESSING ───
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.8, 0.4, 0.6);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+// ─── ANIMATION ───
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  mouse.x += (tmouse.x - mouse.x) * 0.04;
+  mouse.y += (tmouse.y - mouse.y) * 0.04;
+
+  // Plasma
+  plasmaMat.uniforms.uTime.value = t;
+  plasmaMat.uniforms.uMouse.value.set(mouse.x, mouse.y);
+  plasma.rotation.y = t * 0.3;
+  plasma.rotation.x = t * 0.15;
+
+  // Glass shell slow rotation
+  glass.rotation.y = t * 0.08 + mouse.x * 0.2;
+  glass.rotation.x = Math.sin(t * 0.12) * 0.08 + mouse.y * 0.15;
+
+  // Containment rings
+  ringGroup.rotation.y = t * 0.2;
+  ringGroup.rotation.x = Math.sin(t * 0.3) * 0.1;
+  ringGroup.children.forEach((ring, i) => {
+    ring.rotation.z = t * (0.1 + i * 0.05) + i * Math.PI / 3;
+  });
+
+  // Tendril flicker
+  tendrilGroup.children.forEach(tendril => {
+    const d = tendril.userData;
+    tendril.material.opacity = d.baseOpacity * (0.5 + Math.sin(t * 3 + d.phase) * 0.5);
+  });
+  tendrilGroup.rotation.y = t * 0.05;
+
+  // Plasma light flicker
+  plasma_light.intensity = 4 + Math.sin(t * 8) * 1.5 + Math.sin(t * 13) * 0.5;
+  plasma_light.color.setHSL(0.05 + Math.sin(t * 2) * 0.02, 1, 0.5);
+
+  // Camera
+  camera.position.x = Math.sin(t * 0.08) * 0.2 + mouse.x * 0.6;
+  camera.position.y = 0.15 + Math.cos(t * 0.12) * 0.1 + mouse.y * 0.3;
+  camera.lookAt(0, 0, 0);
+
+  composer.render();
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

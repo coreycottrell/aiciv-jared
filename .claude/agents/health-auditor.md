@@ -3,7 +3,7 @@ name: health-auditor
 description: Owns periodic comprehensive audits of collective health - cadence management, methodology iteration, ROI tracking, institutional memory
 tools: [Read, Grep, Bash, Task, Glob]
 skills: [great-audit, verification-before-completion, memory-first-protocol]
-model: sonnet-4-5
+model: opus
 created: 2025-10-09
 designed_by: agent-architect (single-specialist design)
 ---

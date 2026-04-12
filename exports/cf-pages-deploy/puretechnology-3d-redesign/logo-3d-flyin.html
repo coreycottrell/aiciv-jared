@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology — Logo 3D Fly-In</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+  }
+
+  #canvas-container {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  #three-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ── PUREBRAIN.AI text overlay ── */
+  #brand-text {
+    position: fixed;
+    bottom: 72px;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 1.8s ease;
+    pointer-events: none;
+    font-size: clamp(16px, 2.2vw, 26px);
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  #brand-text .pb  { color: #2a93c1; }
+  #brand-text .ai  { color: #f1420b; }
+  #brand-text .n   { color: #2a93c1; }
+  #brand-text .dot { color: rgba(255,255,255,0.55); }
+  #brand-text .tld { color: rgba(255,255,255,0.55); }
+
+  /* ── Phase label ── */
+  #phase-label {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.2);
+    pointer-events: none;
+    transition: opacity 1.2s ease;
+    white-space: nowrap;
+  }
+
+  /* ── Replay button ── */
+  #replay-btn {
+    position: fixed;
+    bottom: 28px;
+    right: 36px;
+    padding: 8px 20px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #2a93c1;
+    border: 1px solid rgba(42,147,193,0.4);
+    border-radius: 4px;
+    background: rgba(42,147,193,0.05);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.8s ease, background 0.2s ease;
+  }
+  #replay-btn:hover { background: rgba(42,147,193,0.15); }
+  #replay-btn.visible { opacity: 1; }
+
+  /* ── Vignette ── */
+  #vignette {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.65) 100%);
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="canvas-container">
+  <canvas id="three-canvas"></canvas>
+</div>
+<div id="vignette"></div>
+
+<div id="brand-text">
+  <span class="pb">PUREBR</span><span class="ai">AI</span><span class="n">N</span><span class="dot">.</span><span class="tld">AI</span>
+</div>
+
+<div id="phase-label">Initializing</div>
+
+<button id="replay-btn">Replay</button>
+
+<!-- Three.js r160 importmap — proven pattern -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }     from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass }from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass }     from 'three/addons/postprocessing/OutputPass.js';
+
+// ═══════════════════════════════════════════════════════════════════
+// LOGO SPEC — exact geometry matching the canonical Pure Tech logo
+// ═══════════════════════════════════════════════════════════════════
+
+const LOGO = {
+  hexUnits:       3,
+  strokesPerUnit: 33,
+  rotationOffset: 9  * (Math.PI / 180),  // 9° between hex units
+  twistPerLevel:  7  * (Math.PI / 180),  // 7° twist per ring inward
+  shrinkRate:     0.07,                   // 7% radius shrink per ring
+  pointyTop:      Math.PI / 6,            // pointy-top orientation
+  voidRadius:     0.04,                   // normalised; below this = skip
+  BASE_RADIUS:    1.6,
+  Z_NEAR:         0.18,                   // innermost z (toward camera)
+  Z_FAR:          0.0,                    // outermost z
+};
+
+const C_BLUE   = new THREE.Color('#2a93c1');
+const C_ORANGE = new THREE.Color('#f1420b');
+
+function strokeColor(t) {
+  // t: 0 = outermost (blue), 1 = innermost (orange)
+  if (t < 0.25) {
+    return C_BLUE.clone().multiplyScalar(0.9 + t * 0.4);
+  } else if (t < 0.55) {
+    const a   = (t - 0.25) / 0.30;
+    const mid = C_BLUE.clone().lerp(C_ORANGE, a);
+    const lum = mid.r * 0.299 + mid.g * 0.587 + mid.b * 0.114;
+    const grey = new THREE.Color(lum, lum, lum);
+    return mid.lerp(grey, 0.52 * (1 - Math.abs(a - 0.5) * 2));
+  } else {
+    const a = (t - 0.55) / 0.45;
+    return C_ORANGE.clone().lerp(new THREE.Color('#ff6a2e'), a)
+                            .multiplyScalar(1.0 + a * 0.33);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RENDERER & SCENE
+// ═══════════════════════════════════════════════════════════════════
+
+const canvas   = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping        = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.outputColorSpace   = THREE.SRGBColorSpace;
+
+const scene  = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 500);
+camera.position.set(0.4, 0.2, 7.5);  // slightly off-center during scatter phase
+
+// ═══════════════════════════════════════════════════════════════════
+// POST-PROCESSING
+// ═══════════════════════════════════════════════════════════════════
+
+const composer   = new EffectComposer(renderer);
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.3,   // strength — ramps up during pull/snap
+  0.5,   // radius
+  0.78   // threshold
+);
+composer.addPass(bloomPass);
+
+const outputPass = new OutputPass();
+composer.addPass(outputPass);
+
+// ═══════════════════════════════════════════════════════════════════
+// STARFIELD / PARTICLE DUST
+// ═══════════════════════════════════════════════════════════════════
+
+function buildStarfield() {
+  const count = 2400;
+  const geo   = new THREE.BufferGeometry();
+  const pos   = new Float32Array(count * 3);
+  const col   = new Float32Array(count * 3);
+
+  for (let i = 0; i < count; i++) {
+    const r   = 14 + Math.random() * 35;
+    const phi = Math.acos(2 * Math.random() - 1);
+    const th  = Math.random() * Math.PI * 2;
+    pos[i*3  ] = r * Math.sin(phi) * Math.cos(th);
+    pos[i*3+1] = r * Math.sin(phi) * Math.sin(th);
+    pos[i*3+2] = r * Math.cos(phi);
+
+    // Mix blue tint into stars
+    const warm = Math.random() < 0.15;
+    col[i*3  ] = warm ? 0.9 : 0.6 + Math.random() * 0.4;
+    col[i*3+1] = warm ? 0.5 : 0.7 + Math.random() * 0.3;
+    col[i*3+2] = warm ? 0.3 : 0.9 + Math.random() * 0.1;
+  }
+
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+
+  const mat = new THREE.PointsMaterial({
+    size: 0.042,
+    sizeAttenuation: true,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.35,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  return new THREE.Points(geo, mat);
+}
+
+const starfield = buildStarfield();
+scene.add(starfield);
+
+// ═══════════════════════════════════════════════════════════════════
+// HEXAGON LINE BUILDER
+// ═══════════════════════════════════════════════════════════════════
+
+function buildHexLine(radius, rotOffset, zDepth, color) {
+  const pts   = [];
+  const segs  = 6;
+  for (let i = 0; i <= segs; i++) {
+    const angle = (i / segs) * Math.PI * 2 + rotOffset;
+    pts.push(Math.cos(angle) * radius, Math.sin(angle) * radius, zDepth);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pts), 3));
+
+  const mat = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 1.0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  return new THREE.Line(geo, mat);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// LOGO GEOMETRY CONSTRUCTION
+// Each stroke gets: finalPosition, finalRotation, scatteredPosition,
+// scatteredRotation — for lerping during Phase 2 "The Pull"
+// ═══════════════════════════════════════════════════════════════════
+
+// Seeded random (deterministic scatter for reproducibility)
+let _seed = 42;
+function seededRand() {
+  _seed = (_seed * 1664525 + 1013904223) & 0xffffffff;
+  return ((_seed >>> 0) / 0xffffffff);
+}
+
+// Structure to track every stroke's animation state
+// strokeData[u][s] = { line, finalPos, finalRot, scatterPos, scatterRot,
+//                      t (normalized), color }
+const strokeData  = [];
+const logoGroup   = new THREE.Group();
+scene.add(logoGroup);
+
+// We keep all strokes in a FLAT list too for easy iteration
+const allStrokes  = [];
+
+// CENTER GLOW REMOVED — logo must match exact PNG (no red dot)
+
+// Scatter sphere radius — lines start at this distance from origin
+const SCATTER_RADIUS = 9.5;
+
+for (let u = 0; u < LOGO.hexUnits; u++) {
+  const unitAngle = u * LOGO.rotationOffset;
+  strokeData[u]   = [];
+
+  for (let s = 0; s < LOGO.strokesPerUnit; s++) {
+    const t          = s / (LOGO.strokesPerUnit - 1);   // 0=outer, 1=inner
+    const radius     = LOGO.BASE_RADIUS * Math.pow(1 - LOGO.shrinkRate, s);
+    const rotOffset  = LOGO.pointyTop + unitAngle + s * LOGO.twistPerLevel;
+    const zDepth     = THREE.MathUtils.lerp(LOGO.Z_FAR, LOGO.Z_NEAR, t);
+    const color      = strokeColor(t);
+
+    if (radius < LOGO.voidRadius * LOGO.BASE_RADIUS) break;
+
+    const line = buildHexLine(radius, rotOffset, zDepth, color);
+    line.material.opacity = 0.0;  // invisible at start — we'll use a wrapper group
+
+    // Build scatter wrapper — each line lives inside this group
+    // We scatter the GROUP position, the line stays at local (0,0,0)
+    const wrapper = new THREE.Group();
+    wrapper.add(line);
+    logoGroup.add(wrapper);
+
+    // Final position: the line IS at (0,0,0) in its wrapper (logo space)
+    const finalPos = new THREE.Vector3(0, 0, 0);
+    const finalRot = new THREE.Euler(0, 0, 0, 'XYZ');
+
+    // Scatter position: random point on a sphere
+    const phi   = Math.acos(2 * seededRand() - 1);
+    const theta = seededRand() * Math.PI * 2;
+    const rDist = SCATTER_RADIUS * (0.7 + seededRand() * 0.6);
+
+    const sx = rDist * Math.sin(phi) * Math.cos(theta);
+    const sy = rDist * Math.sin(phi) * Math.sin(theta);
+    const sz = rDist * Math.cos(phi);
+
+    // Scatter rotation: random tumble on all axes
+    const srx = seededRand() * Math.PI * 2;
+    const sry = seededRand() * Math.PI * 2;
+    const srz = seededRand() * Math.PI * 2;
+
+    // Apply scatter immediately
+    wrapper.position.set(sx, sy, sz);
+    wrapper.rotation.set(srx, sry, srz);
+
+    const sd = {
+      line,
+      wrapper,
+      finalPos,
+      finalRot,
+      scatterPos: new THREE.Vector3(sx, sy, sz),
+      scatterRot: new THREE.Euler(srx, sry, srz, 'XYZ'),
+      t,
+      color,
+      radius,
+      rotOffset,
+      zDepth,
+    };
+
+    strokeData[u][s] = sd;
+    allStrokes.push(sd);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TRAIL PARTICLES — glow trails behind each line as it flies in
+// ═══════════════════════════════════════════════════════════════════
+
+const MAX_PARTICLES = 1200;
+const trailGeo = new THREE.BufferGeometry();
+const tPos = new Float32Array(MAX_PARTICLES * 3);
+const tCol = new Float32Array(MAX_PARTICLES * 3);
+trailGeo.setAttribute('position', new THREE.BufferAttribute(tPos, 3));
+trailGeo.setAttribute('color',    new THREE.BufferAttribute(tCol, 3));
+
+const trailMat = new THREE.PointsMaterial({
+  size: 0.055,
+  sizeAttenuation: true,
+  vertexColors: true,
+  transparent: true,
+  opacity: 0.9,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+const trailPoints = new THREE.Points(trailGeo, trailMat);
+scene.add(trailPoints);
+
+const pPool = Array.from({ length: MAX_PARTICLES }, () => ({
+  active: false,
+  x: 0, y: 0, z: 0,
+  vx: 0, vy: 0, vz: 0,
+  life: 0, maxLife: 0,
+  r: 1, g: 1, b: 1,
+}));
+
+function spawnParticle(x, y, z, color, spd = 0.012) {
+  for (const p of pPool) {
+    if (p.active) continue;
+    p.active  = true;
+    p.x = x + (Math.random() - 0.5) * 0.06;
+    p.y = y + (Math.random() - 0.5) * 0.06;
+    p.z = z + (Math.random() - 0.5) * 0.03;
+    p.vx = (Math.random() - 0.5) * spd * 0.8;
+    p.vy = (Math.random() - 0.5) * spd * 0.8;
+    p.vz = (Math.random() - 0.5) * spd * 0.4;
+    p.life = 0;
+    p.maxLife = 0.3 + Math.random() * 0.55;
+    p.r = color.r; p.g = color.g; p.b = color.b;
+    return;
+  }
+}
+
+function updateParticles(dt) {
+  let i = 0;
+  for (const p of pPool) {
+    if (p.active) {
+      p.life += dt;
+      if (p.life >= p.maxLife) {
+        p.active = false;
+      } else {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.z += p.vz;
+        p.vy -= dt * 0.008;
+      }
+    }
+    const fade = p.active ? Math.pow(1 - p.life / p.maxLife, 1.6) : 0;
+    tPos[i*3  ] = p.active ? p.x : 9999;
+    tPos[i*3+1] = p.active ? p.y : 9999;
+    tPos[i*3+2] = p.active ? p.z : 9999;
+    tCol[i*3  ] = p.r * fade;
+    tCol[i*3+1] = p.g * fade;
+    tCol[i*3+2] = p.b * fade;
+    i++;
+  }
+  trailGeo.attributes.position.needsUpdate = true;
+  trailGeo.attributes.color.needsUpdate    = true;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// FLASH RING — quick circular flash at snap moment
+// ═══════════════════════════════════════════════════════════════════
+
+const ringGeo = new THREE.RingGeometry(1.55, 1.65, 64);
+const ringMat = new THREE.MeshBasicMaterial({
+  color: new THREE.Color('#ffffff'),
+  transparent: true,
+  opacity: 0,
+  side: THREE.DoubleSide,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+const flashRing = new THREE.Mesh(ringGeo, ringMat);
+flashRing.position.z = 0.05;
+logoGroup.add(flashRing);
+
+// ═══════════════════════════════════════════════════════════════════
+// CAMERA TARGET STATE
+// ═══════════════════════════════════════════════════════════════════
+
+const camTarget = {
+  pos:    new THREE.Vector3(0.4, 0.2, 7.5),
+  lookAt: new THREE.Vector3(0, 0, 0),
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// ANIMATION STATE MACHINE
+// ═══════════════════════════════════════════════════════════════════
+
+// Phase timing (seconds)
+const T = {
+  P1_END:  2.0,   // Scattered phase ends, pull begins
+  P2_END:  6.0,   // The Pull ends
+  P3_END:  7.2,   // The Snap ends
+  P4_END:  9.5,   // The Reveal ends
+  // P5: Rest (9.5s+)
+};
+
+let elapsed   = 0;
+let phase     = 'p1_scattered';
+let snapFired = false;
+
+const phaseEl  = document.getElementById('phase-label');
+const brandEl  = document.getElementById('brand-text');
+const replayEl = document.getElementById('replay-btn');
+
+function setPhaseLabel(txt, opacity = '1') {
+  phaseEl.textContent  = txt;
+  phaseEl.style.opacity = opacity;
+}
+
+// Easing functions
+function easeInOut(t) {
+  return t < 0.5 ? 2*t*t : -1+(4-2*t)*t;
+}
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+function easeInCubic(t) {
+  return t * t * t;
+}
+function easeOutElastic(t) {
+  if (t === 0 || t === 1) return t;
+  const c4 = (2 * Math.PI) / 4.5;
+  return Math.pow(2, -10*t) * Math.sin((t*10 - 0.75) * c4) + 1;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RESET / REPLAY
+// ═══════════════════════════════════════════════════════════════════
+
+function resetAnimation() {
+  _seed = 42;  // reset seed so scatter positions are same each time
+
+  elapsed   = 0;
+  phase     = 'p1_scattered';
+  snapFired = false;
+
+  // Re-scatter all strokes
+  let rIdx = 0;
+  for (let u = 0; u < LOGO.hexUnits; u++) {
+    for (let s = 0; s < LOGO.strokesPerUnit; s++) {
+      const sd = strokeData[u][s];
+      if (!sd) continue;
+
+      const phi   = Math.acos(2 * seededRand() - 1);
+      const theta = seededRand() * Math.PI * 2;
+      const rDist = SCATTER_RADIUS * (0.7 + seededRand() * 0.6);
+      const sx = rDist * Math.sin(phi) * Math.cos(theta);
+      const sy = rDist * Math.sin(phi) * Math.sin(theta);
+      const sz = rDist * Math.cos(phi);
+      const srx = seededRand() * Math.PI * 2;
+      const sry = seededRand() * Math.PI * 2;
+      const srz = seededRand() * Math.PI * 2;
+
+      sd.scatterPos.set(sx, sy, sz);
+      sd.scatterRot.set(srx, sry, srz);
+      sd.wrapper.position.set(sx, sy, sz);
+      sd.wrapper.rotation.set(srx, sry, srz);
+      sd.line.material.opacity = 0.0;
+    }
+  }
+
+  // Reset all particles
+  for (const p of pPool) p.active = false;
+
+  // Reset center glow
+  // centerMat opacity removed
+  // centerGlow removed
+
+  // Reset flash ring
+  ringMat.opacity = 0;
+
+  // Reset logo group rotation
+  logoGroup.rotation.set(0, 0, 0);
+
+  // Reset camera
+  camera.position.set(0.4, 0.2, 7.5);
+  camera.lookAt(0, 0, 0);
+
+  // Reset bloom
+  bloomPass.strength = 0.3;
+  bloomPass.radius   = 0.5;
+
+  // Reset UI
+  brandEl.style.opacity  = '0';
+  replayEl.classList.remove('visible');
+  setPhaseLabel('Initializing', '0.8');
+}
+
+replayEl.addEventListener('click', () => {
+  replayEl.classList.remove('visible');
+  resetAnimation();
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// MAIN RENDER LOOP
+// ═══════════════════════════════════════════════════════════════════
+
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  elapsed += dt;
+
+  // Starfield ambient drift
+  starfield.rotation.y += dt * 0.012;
+  starfield.rotation.x += dt * 0.005;
+
+  updateParticles(dt);
+
+  // ────────────────────────────────────────────────────────────────
+  // PHASE 1: Scattered (0 – 2s)
+  // Lines visible, slowly tumbling, floating in space
+  // ────────────────────────────────────────────────────────────────
+  if (elapsed < T.P1_END) {
+    if (phase !== 'p1_scattered') {
+      phase = 'p1_scattered';
+      setPhaseLabel('Scattered', '0.6');
+    }
+
+    const t01 = elapsed / T.P1_END;  // 0→1
+
+    // Fade lines in over first 0.8s
+    const fadeIn = Math.min(elapsed / 0.8, 1.0);
+
+    for (const sd of allStrokes) {
+      // Slow individual tumble in scatter position
+      const tumbleSpeed = 0.15 + sd.t * 0.25;
+      sd.wrapper.rotation.x = sd.scatterRot.x + elapsed * tumbleSpeed * 0.7;
+      sd.wrapper.rotation.y = sd.scatterRot.y + elapsed * tumbleSpeed;
+      sd.wrapper.rotation.z = sd.scatterRot.z + elapsed * tumbleSpeed * 0.5;
+
+      // Fade in
+      sd.line.material.opacity = fadeIn * (0.55 + sd.t * 0.3);
+    }
+
+    // Bloom low — dramatic dark space feel
+    bloomPass.strength = THREE.MathUtils.lerp(0.15, 0.3, t01);
+
+    // Camera drifts slightly during this phase
+    camera.position.x = 0.4 + Math.sin(elapsed * 0.3) * 0.15;
+    camera.position.y = 0.2 + Math.cos(elapsed * 0.25) * 0.1;
+    camera.lookAt(0, 0, 0);
+
+  // ────────────────────────────────────────────────────────────────
+  // PHASE 2: The Pull (2 – 6s)
+  // All lines fly toward center with spiral trajectories
+  // ────────────────────────────────────────────────────────────────
+  } else if (elapsed < T.P2_END) {
+    if (phase !== 'p2_pull') {
+      phase = 'p2_pull';
+      setPhaseLabel('Assembling', '1');
+    }
+
+    const rawT = (elapsed - T.P1_END) / (T.P2_END - T.P1_END);  // 0→1
+
+    // Easing: slow start, fast middle, slow approach
+    const pullT = easeInOut(rawT);
+
+    // Bloom ramps up as lines converge
+    bloomPass.strength = THREE.MathUtils.lerp(0.3, 0.7, rawT);
+    bloomPass.radius   = THREE.MathUtils.lerp(0.5, 0.6, rawT);
+
+    for (const sd of allStrokes) {
+      // SPIRAL trajectory: interpolate position but add rotational offset
+      // that spirals inward (cross product of velocity direction)
+      const lerp = easeInOut(Math.pow(rawT, 0.85));
+
+      // Base position lerp from scatter → origin (0,0,0)
+      const bx = sd.scatterPos.x * (1 - lerp);
+      const by = sd.scatterPos.y * (1 - lerp);
+      const bz = sd.scatterPos.z * (1 - lerp);
+
+      // Spiral offset: rotate around Z by an angle proportional to remaining distance
+      const spiralAngle = (1 - rawT) * Math.PI * 1.6 + sd.t * Math.PI * 0.5;
+      const dist = Math.sqrt(bx*bx + by*by);
+      const spiralAmt = dist * 0.18 * (1 - rawT);
+      const sx_off = Math.cos(spiralAngle) * spiralAmt;
+      const sy_off = Math.sin(spiralAngle) * spiralAmt;
+
+      sd.wrapper.position.set(bx + sx_off, by + sy_off, bz);
+
+      // Rotation: lerp from scatter rotation → final rotation (0,0,0)
+      const rotLerp = easeOutCubic(rawT);
+      sd.wrapper.rotation.x = sd.scatterRot.x * (1 - rotLerp);
+      sd.wrapper.rotation.y = sd.scatterRot.y * (1 - rotLerp);
+      sd.wrapper.rotation.z = sd.scatterRot.z * (1 - rotLerp);
+
+      // Opacity ramps to full during pull
+      sd.line.material.opacity = THREE.MathUtils.lerp(
+        sd.line.material.opacity,
+        1.0,
+        dt * 2.5
+      );
+
+      // Spawn trail particles for lines that are still moving significantly
+      const speed = sd.wrapper.position.length();
+      if (speed > 0.2 && Math.random() < 0.08) {
+        const wx = sd.wrapper.position.x;
+        const wy = sd.wrapper.position.y;
+        const wz = sd.wrapper.position.z;
+        spawnParticle(wx, wy, wz, sd.color, 0.018);
+      }
+    }
+
+    // Camera: slowly orbit to get depth during assembly
+    const camAngle = rawT * 0.4;
+    camera.position.x = THREE.MathUtils.lerp(0.4,  0.0,  rawT) + Math.sin(elapsed * 0.4) * 0.05 * (1 - rawT);
+    camera.position.y = THREE.MathUtils.lerp(0.2,  0.05, rawT);
+    camera.position.z = THREE.MathUtils.lerp(7.5,  6.5,  easeOutCubic(rawT));
+    camera.lookAt(0, 0, 0);
+
+  // ────────────────────────────────────────────────────────────────
+  // PHASE 3: The Snap (6 – 7.2s)
+  // Snap to exact positions, bloom spike, flash ring
+  // ────────────────────────────────────────────────────────────────
+  } else if (elapsed < T.P3_END) {
+    if (phase !== 'p3_snap') {
+      phase = 'p3_snap';
+      setPhaseLabel('Online', '0.7');
+
+      // Force all wrappers to exactly (0,0,0) — the snap
+      for (const sd of allStrokes) {
+        sd.wrapper.position.set(0, 0, 0);
+        sd.wrapper.rotation.set(0, 0, 0);
+        sd.line.material.opacity = 1.0;
+      }
+      snapFired = true;
+    }
+
+    const snapT = (elapsed - T.P2_END) / (T.P3_END - T.P2_END);
+
+    // Bloom spike: quick peak then settle
+    const spike = Math.max(0, 1 - Math.pow((snapT - 0.2) / 0.5, 2));
+    bloomPass.strength = 0.7 + spike * 1.6;
+    bloomPass.radius   = 0.6 + spike * 0.5;
+    bloomPass.threshold = 0.78 - spike * 0.3;
+
+    // Flash ring expands and fades
+    const ringT = Math.min(snapT * 3.0, 1.0);
+    flashRing.scale.setScalar(1.0 + ringT * 0.9);
+    ringMat.opacity = Math.max(0, (1 - ringT) * 0.7 * Math.max(0, 1 - snapT * 2));
+
+    // Center glow ignites
+    // centerMat opacity removed
+    // centerGlow removed
+
+    // Intro rotation kick
+    logoGroup.rotation.y = snapT * 0.25;
+
+    // Camera holds
+    camera.position.set(0, 0.05, 6.5);
+    camera.lookAt(0, 0, 0);
+
+  // ────────────────────────────────────────────────────────────────
+  // PHASE 4: The Reveal (7.2 – 9.5s)
+  // Camera transitions to front-on, text fades in, logo rotates
+  // ────────────────────────────────────────────────────────────────
+  } else if (elapsed < T.P4_END) {
+    if (phase !== 'p4_reveal') {
+      phase = 'p4_reveal';
+      setPhaseLabel('', '0');
+    }
+
+    const revT = easeOutCubic((elapsed - T.P3_END) / (T.P4_END - T.P3_END));
+
+    // Bloom settles to resting state
+    bloomPass.strength  = THREE.MathUtils.lerp(bloomPass.strength, 0.45, dt * 2.0);
+    bloomPass.radius    = THREE.MathUtils.lerp(bloomPass.radius,   0.45, dt * 2.0);
+    bloomPass.threshold = THREE.MathUtils.lerp(bloomPass.threshold, 0.78, dt * 2.0);
+
+    // Center glow settles
+    // centerMat opacity removed
+    // centerGlow removed
+
+    // Logo gentle Y rotation showing 3D depth
+    logoGroup.rotation.y = THREE.MathUtils.lerp(0.25, Math.sin(elapsed * 0.18) * 0.12, revT);
+
+    // Camera front-on transition
+    camera.position.x = THREE.MathUtils.lerp(0, 0, revT);
+    camera.position.y = THREE.MathUtils.lerp(0.05, 0, revT);
+    camera.position.z = THREE.MathUtils.lerp(6.5, 6.0, revT);
+    camera.lookAt(0, 0, 0);
+
+    // Brand text fades in during second half of reveal
+    const textT = Math.max(0, (revT - 0.5) / 0.5);
+    brandEl.style.opacity = textT.toString();
+
+  // ────────────────────────────────────────────────────────────────
+  // PHASE 5: Rest (9.5s+)
+  // Logo breathes, gently rotates, replay button appears
+  // ────────────────────────────────────────────────────────────────
+  } else {
+    if (phase !== 'p5_rest') {
+      phase = 'p5_rest';
+      brandEl.style.opacity = '1';
+      setTimeout(() => replayEl.classList.add('visible'), 600);
+    }
+
+    const restT = elapsed - T.P4_END;
+
+    // Gentle breathing: subtle bloom pulse
+    const breathe = Math.sin(restT * 0.7) * 0.08;
+    bloomPass.strength  = 0.45 + breathe;
+
+    // Subtle Y rotation — the logo lives
+    logoGroup.rotation.y = Math.sin(restT * 0.18) * 0.12;
+    logoGroup.rotation.x = Math.sin(restT * 0.12) * 0.025;
+
+    // Center glow breathes
+    // centerMat opacity removed
+    const pulseScale  = 1.0 + Math.sin(restT * 1.1) * 0.12;
+    // centerGlow removed
+
+    // Camera very subtle drift
+    camera.position.x = Math.sin(restT * 0.11) * 0.04;
+    camera.position.y = Math.cos(restT * 0.09) * 0.02;
+    camera.position.z = 6.0;
+    camera.lookAt(0, 0, 0);
+  }
+
+  composer.render();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RESIZE
+// ═══════════════════════════════════════════════════════════════════
+
+window.addEventListener('resize', () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  bloomPass.setSize(w, h);
+});
+
+// Kick off
+animate();
+
+</script>
+</body>
+</html>

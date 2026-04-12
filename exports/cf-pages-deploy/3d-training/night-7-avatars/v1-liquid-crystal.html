@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 7 V1 — Liquid Crystal Avatar</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #050810; overflow: hidden; }
+  canvas { display: block; }
+  #info {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    color: rgba(255,255,255,0.12);
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    z-index: 10;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="info">V1 — Liquid Crystal — Frosted glass with internal light caustics</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ─── SCENE ───
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050810);
+scene.fog = new THREE.FogExp2(0x050810, 0.06);
+
+const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 0.2, 4.8);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+document.body.appendChild(renderer.domElement);
+
+// ─── MOUSE ───
+const mouse = new THREE.Vector2(0, 0);
+const targetMouse = new THREE.Vector2(0, 0);
+window.addEventListener('mousemove', (e) => {
+  targetMouse.x = (e.clientX / innerWidth) * 2 - 1;
+  targetMouse.y = -(e.clientY / innerHeight) * 2 + 1;
+});
+
+// ─── ENVIRONMENT ───
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envScene = new THREE.Scene();
+const envGeo = new THREE.SphereGeometry(20, 32, 32);
+const envMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  vertexShader: `
+    varying vec3 vPos;
+    void main() {
+      vPos = (modelMatrix * vec4(position, 1.0)).xyz;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vPos;
+    void main() {
+      float y = normalize(vPos).y;
+      vec3 top = vec3(0.05, 0.1, 0.2);
+      vec3 mid = vec3(0.003, 0.003, 0.008);
+      vec3 bot = vec3(0.02, 0.008, 0.003);
+      vec3 col = y > 0.0 ? mix(mid, top, y * y) : mix(mid, bot, y * y);
+      // Soft key light
+      float h1 = smoothstep(0.9, 1.0, dot(normalize(vPos), normalize(vec3(2.0, 3.0, 1.5))));
+      col += vec3(0.5, 0.7, 1.0) * h1 * 4.0;
+      // Warm rim
+      float h2 = smoothstep(0.94, 1.0, dot(normalize(vPos), normalize(vec3(-2.0, 1.0, -1.5))));
+      col += vec3(1.0, 0.35, 0.1) * h2 * 2.5;
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `
+});
+envScene.add(new THREE.Mesh(envGeo, envMat));
+const envMap = pmrem.fromScene(envScene, 0.04).texture;
+scene.environment = envMap;
+envScene.dispose();
+
+// ─── NOISE ───
+function hash(n) { return Math.sin(n) * 43758.5453 % 1; }
+
+// ─── OUTER SHELL — Frosted crystal glass ───
+const shellGeo = new THREE.IcosahedronGeometry(1.2, 64);
+const shellMat = new THREE.MeshPhysicalMaterial({
+  color: 0x8eb8d4,
+  metalness: 0.0,
+  roughness: 0.12,
+  transmission: 0.85,
+  thickness: 0.6,
+  ior: 1.8,
+  clearcoat: 1.0,
+  clearcoatRoughness: 0.04,
+  envMapIntensity: 1.5,
+  transparent: true,
+  opacity: 0.7,
+  side: THREE.DoubleSide,
+});
+const shell = new THREE.Mesh(shellGeo, shellMat);
+scene.add(shell);
+
+// Deform shell into organic crystal facets
+const shellPos = shellGeo.attributes.position;
+const shellOriginal = new Float32Array(shellPos.array);
+for (let i = 0; i < shellPos.count; i++) {
+  const x = shellPos.getX(i);
+  const y = shellPos.getY(i);
+  const z = shellPos.getZ(i);
+  const r = Math.sqrt(x*x + y*y + z*z);
+  // Faceted crystal distortion
+  const facet = Math.sin(x * 5.0) * Math.cos(y * 7.0) * Math.sin(z * 6.0) * 0.06;
+  const scale = 1.0 + facet;
+  shellOriginal[i * 3] = x * scale;
+  shellOriginal[i * 3 + 1] = y * scale;
+  shellOriginal[i * 3 + 2] = z * scale;
+}
+shellPos.array.set(shellOriginal);
+shellPos.needsUpdate = true;
+shellGeo.computeVertexNormals();
+
+// ─── INNER CORE — Glowing caustic light source ───
+const coreGeo = new THREE.IcosahedronGeometry(0.45, 32);
+const coreMat = new THREE.ShaderMaterial({
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  uniforms: {
+    uTime: { value: 0 },
+    uColor1: { value: new THREE.Color(0x2a93c1) },
+    uColor2: { value: new THREE.Color(0x4fc3f7) },
+  },
+  vertexShader: `
+    varying vec3 vNormal;
+    varying vec3 vPosition;
+    uniform float uTime;
+    void main() {
+      vNormal = normalMatrix * normal;
+      vPosition = position;
+      // Breathing pulse
+      float pulse = 1.0 + sin(uTime * 1.5) * 0.08;
+      vec3 pos = position * pulse;
+      // Organic wobble
+      pos += normal * sin(pos.x * 4.0 + uTime * 2.0) * cos(pos.y * 3.0 + uTime * 1.5) * 0.05;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vNormal;
+    varying vec3 vPosition;
+    uniform float uTime;
+    uniform vec3 uColor1;
+    uniform vec3 uColor2;
+    void main() {
+      float fresnel = pow(1.0 - abs(dot(normalize(vNormal), vec3(0.0, 0.0, 1.0))), 2.5);
+      // Caustic-like pattern
+      float caustic = sin(vPosition.x * 12.0 + uTime * 3.0) *
+                      cos(vPosition.y * 10.0 - uTime * 2.0) *
+                      sin(vPosition.z * 8.0 + uTime * 1.5);
+      caustic = caustic * 0.5 + 0.5;
+      vec3 color = mix(uColor1, uColor2, caustic);
+      float alpha = fresnel * 0.7 + caustic * 0.25 + 0.15;
+      gl_FragColor = vec4(color * (1.0 + caustic * 0.8), alpha);
+    }
+  `
+});
+const core = new THREE.Mesh(coreGeo, coreMat);
+scene.add(core);
+
+// ─── FLOATING SHARDS — crystal fragments orbiting ───
+const shardGroup = new THREE.Group();
+scene.add(shardGroup);
+
+for (let i = 0; i < 18; i++) {
+  const size = 0.03 + Math.random() * 0.06;
+  const geo = new THREE.OctahedronGeometry(size, 0);
+  const mat = new THREE.MeshPhysicalMaterial({
+    color: Math.random() > 0.5 ? 0x2a93c1 : 0x8eb8d4,
+    metalness: 0.1,
+    roughness: 0.05,
+    transmission: 0.9,
+    thickness: 0.2,
+    ior: 2.0,
+    envMapIntensity: 2.0,
+  });
+  const shard = new THREE.Mesh(geo, mat);
+  const angle = (i / 18) * Math.PI * 2;
+  const radius = 1.6 + Math.random() * 0.6;
+  const yOff = (Math.random() - 0.5) * 1.2;
+  shard.position.set(
+    Math.cos(angle) * radius,
+    yOff,
+    Math.sin(angle) * radius
+  );
+  shard.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+  shard.userData = { angle, radius, yOff, speed: 0.2 + Math.random() * 0.3, rotSpeed: 0.5 + Math.random() };
+  shardGroup.add(shard);
+}
+
+// ─── LIGHTS ───
+const keyLight = new THREE.PointLight(0x2a93c1, 3, 12);
+keyLight.position.set(3, 3, 2);
+scene.add(keyLight);
+
+const rimLight = new THREE.PointLight(0xf1420b, 1.5, 10);
+rimLight.position.set(-3, 1, -2);
+scene.add(rimLight);
+
+const fillLight = new THREE.PointLight(0x4fc3f7, 0.8, 8);
+fillLight.position.set(0, -2, 3);
+scene.add(fillLight);
+
+// Inner glow light
+const innerLight = new THREE.PointLight(0x2a93c1, 2, 3);
+innerLight.position.set(0, 0, 0);
+scene.add(innerLight);
+
+// ─── POSTPROCESSING ───
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.6, 0.5, 0.7);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+// ─── ANIMATION ───
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  const dt = clock.getDelta();
+
+  // Smooth mouse
+  mouse.x += (targetMouse.x - mouse.x) * 0.04;
+  mouse.y += (targetMouse.y - mouse.y) * 0.04;
+
+  // Shell rotation — slow, elegant
+  shell.rotation.y = t * 0.15 + mouse.x * 0.3;
+  shell.rotation.x = Math.sin(t * 0.2) * 0.1 + mouse.y * 0.2;
+
+  // Shell breathing
+  const breathe = 1.0 + Math.sin(t * 0.8) * 0.02;
+  shell.scale.setScalar(breathe);
+
+  // Animate shell vertices for liquid crystal effect
+  const pos = shellGeo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const ox = shellOriginal[i * 3];
+    const oy = shellOriginal[i * 3 + 1];
+    const oz = shellOriginal[i * 3 + 2];
+    const wave = Math.sin(ox * 4.0 + t * 1.2) * Math.cos(oy * 3.0 + t * 0.8) * 0.015;
+    pos.setXYZ(i, ox + ox * wave, oy + oy * wave, oz + oz * wave);
+  }
+  pos.needsUpdate = true;
+  shellGeo.computeVertexNormals();
+
+  // Core animation
+  coreMat.uniforms.uTime.value = t;
+  core.rotation.y = -t * 0.3;
+  core.rotation.x = t * 0.2;
+
+  // Shards orbit
+  shardGroup.children.forEach(s => {
+    const d = s.userData;
+    const a = d.angle + t * d.speed * 0.3;
+    s.position.x = Math.cos(a) * d.radius;
+    s.position.z = Math.sin(a) * d.radius;
+    s.position.y = d.yOff + Math.sin(t * d.speed + d.angle) * 0.15;
+    s.rotation.x += 0.01 * d.rotSpeed;
+    s.rotation.y += 0.015 * d.rotSpeed;
+  });
+
+  // Inner light pulse
+  innerLight.intensity = 2.0 + Math.sin(t * 2.0) * 0.8;
+
+  // Camera sway
+  camera.position.x = Math.sin(t * 0.1) * 0.15 + mouse.x * 0.5;
+  camera.position.y = 0.2 + Math.cos(t * 0.15) * 0.1 + mouse.y * 0.3;
+  camera.lookAt(0, 0, 0);
+
+  composer.render();
+}
+animate();
+
+// ─── RESIZE ───
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

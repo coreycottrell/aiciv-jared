@@ -1,0 +1,32 @@
+[Unit]
+Description=Aether Portal Server - per-CIV portal UI on port 8097
+After=network.target
+# Restart limit: if it crashes more than 10 times in 5 minutes, stop retrying
+# (prevents runaway crash loops from filling logs and hammering the port)
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=jared
+WorkingDirectory=/home/jared/purebrain_portal
+
+# Kill any stale process holding port 8097 before starting.
+# Uses SO_REUSEPORT on uvicorn (see portal_server.py) as primary fix.
+# fuser -k is a belt-and-suspenders backup for edge cases.
+ExecStartPre=/bin/bash -c "fuser -k 8097/tcp 2>/dev/null || true"
+ExecStartPre=/bin/sleep 2
+
+ExecStart=/usr/bin/python3 /home/jared/purebrain_portal/portal_server.py
+Restart=always
+# 5s restart delay is fast enough for users, long enough to clear TIME_WAIT
+RestartSec=5
+
+# Graceful shutdown: give uvicorn 30s to finish open connections before SIGKILL
+TimeoutStopSec=30
+
+StandardOutput=append:/home/jared/projects/AI-CIV/aether/logs/portal_server.log
+StandardError=append:/home/jared/projects/AI-CIV/aether/logs/portal_server.log
+
+[Install]
+WantedBy=multi-user.target

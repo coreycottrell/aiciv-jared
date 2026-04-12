@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AETHER Night 20 — BSSRDF Dipole SSS</title>
+<style>
+  :root { --navy: #080a12; --blue: #2a93c1; --orange: #f1420b; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--navy); }
+  canvas { display: block; width: 100%; height: 100%; }
+  #info {
+    position: fixed; top: 16px; left: 16px; color: rgba(255,255,255,0.5);
+    font: 11px/1.4 'SF Mono', monospace; pointer-events: none; z-index: 10;
+  }
+  #info h3 { color: rgba(255,255,255,0.8); font-size: 13px; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div id="info">
+  <h3>Night 20 / Variation 2</h3>
+  BSSRDF Dipole Subsurface Scattering<br>
+  Jensen et al. dipole diffusion approximation<br>
+  Per-channel sigma_a/sigma_s + thickness estimation
+</div>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+if (!gl) document.body.innerHTML = '<p style="color:white;padding:2em">WebGL2 required</p>';
+
+function resize() {
+  const dpr = Math.min(devicePixelRatio, 2);
+  canvas.width = canvas.clientWidth * dpr;
+  canvas.height = canvas.clientHeight * dpr;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+resize();
+window.addEventListener('resize', resize);
+
+const vs = `#version 300 es
+in vec2 p;
+void main(){ gl_Position = vec4(p, 0, 1); }`;
+
+const fs = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform vec2 uRes;
+uniform float uTime;
+uniform vec2 uMouse;
+
+#define PI 3.14159265
+
+// --- SDF ---
+float sdSphere(vec3 p, float r) { return length(p) - r; }
+
+float fbm3(vec3 p) {
+  float v = 0.0, a = 0.5;
+  for (int i = 0; i < 5; i++) {
+    v += a * sin(dot(p, vec3(1.7, 2.3, 1.1)) + float(i) * 1.13);
+    p = p * 2.1 + vec3(0.3);
+    a *= 0.5;
+  }
+  return v;
+}
+
+float scene(vec3 p) {
+  float angle = uTime * 0.25;
+  mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
+  p.xz *= rot;
+
+  // Organic brain-like shape
+  float r = 1.3 + fbm3(p * 2.0 + uTime * 0.05) * 0.12;
+  return sdSphere(p, r);
+}
+
+vec3 getNormal(vec3 p) {
+  vec2 e = vec2(0.001, 0);
+  return normalize(vec3(
+    scene(p + e.xyy) - scene(p - e.xyy),
+    scene(p + e.yxy) - scene(p - e.yxy),
+    scene(p + e.yyx) - scene(p - e.yyx)
+  ));
+}
+
+// Estimate thickness by marching inward along -normal
+float estimateThickness(vec3 p, vec3 n) {
+  float thickness = 0.0;
+  float t = 0.01;
+  for (int i = 0; i < 24; i++) {
+    vec3 sp = p - n * t;
+    float d = scene(sp);
+    if (d > 0.0) { // exited the object
+      thickness = t;
+      break;
+    }
+    t += 0.04 + t * 0.1; // accelerating steps
+  }
+  return thickness == 0.0 ? t : thickness;
+}
+
+// --- BSSRDF Dipole Model (Jensen 2001) ---
+// Rd(r) = (alpha_prime / 4*PI) * [
+//   z_r * (sigma_tr * d_r + 1) * exp(-sigma_tr * d_r) / d_r^3
+//   + z_v * (sigma_tr * d_v + 1) * exp(-sigma_tr * d_v) / d_v^3
+// ]
+//
+// Where:
+//   sigma_t' = sigma_a + sigma_s' (reduced extinction)
+//   sigma_tr = sqrt(3 * sigma_a * sigma_t') (effective transport)
+//   alpha' = sigma_s' / sigma_t' (reduced albedo)
+//   z_r = 1/sigma_t' (real source depth)
+//   z_v = z_r + 4*A*D (virtual source depth, A from Fresnel)
+//   D = 1/(3*sigma_t') (diffusion coefficient)
+//   d_r = sqrt(r^2 + z_r^2), d_v = sqrt(r^2 + z_v^2)
+
+struct SSSParams {
+  vec3 sigma_a;  // absorption coefficient per channel
+  vec3 sigma_s;  // reduced scattering coefficient per channel
+};
+
+vec3 dipoleRd(float r, SSSParams params) {
+  vec3 sigma_t = params.sigma_a + params.sigma_s;
+  vec3 alpha = params.sigma_s / sigma_t;
+  vec3 sigma_tr = sqrt(3.0 * params.sigma_a * sigma_t);
+  vec3 z_r = 1.0 / sigma_t;
+  vec3 D = 1.0 / (3.0 * sigma_t);
+
+  // Fresnel boundary condition (eta = 1.3 for skin-like)
+  float eta = 1.3;
+  float Fdr = -1.440/(eta*eta) + 0.710/eta + 0.668 + 0.0636*eta;
+  float A = (1.0 + Fdr) / (1.0 - Fdr);
+  vec3 z_v = z_r + 4.0 * A * D;
+
+  vec3 d_r = sqrt(vec3(r*r) + z_r*z_r);
+  vec3 d_v = sqrt(vec3(r*r) + z_v*z_v);
+
+  vec3 term1 = z_r * (sigma_tr * d_r + 1.0) * exp(-sigma_tr * d_r) / (d_r * d_r * d_r);
+  vec3 term2 = z_v * (sigma_tr * d_v + 1.0) * exp(-sigma_tr * d_v) / (d_v * d_v * d_v);
+
+  return alpha / (4.0 * PI) * (term1 + term2);
+}
+
+// Integrate BSSRDF over a small neighborhood (approximation via thickness)
+vec3 evaluateSSS(vec3 p, vec3 n, vec3 lightDir, SSSParams params) {
+  float thickness = estimateThickness(p, n);
+
+  // Wrap lighting (extends diffuse past terminator)
+  float NdotL = dot(n, lightDir);
+  float wrapDiffuse = pow((NdotL + 0.5) / 1.5, 2.0);
+
+  // Back-lighting translucency
+  vec3 distortedLight = lightDir + n * 0.3;
+  float backLight = pow(clamp(dot(normalize(-p + vec3(0,0,3.5)), normalize(distortedLight)), 0.0, 1.0), 3.0);
+
+  // Use dipole Rd at r = thickness (light enters, travels thickness, exits)
+  vec3 Rd = dipoleRd(thickness, params);
+
+  // Transmission based on thickness
+  vec3 transmission = exp(-thickness * params.sigma_a * 2.0);
+
+  // Combine: diffuse + back translucency + dipole diffusion
+  vec3 sss = Rd * 3.0 + transmission * backLight * 2.0 + wrapDiffuse * 0.3;
+
+  return sss;
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5*uRes) / min(uRes.x, uRes.y);
+  vec2 mouse = (uMouse - 0.5*uRes) / min(uRes.x, uRes.y);
+
+  vec3 ro = vec3(0, 0, 3.5);
+  vec3 rd = normalize(vec3(uv, -1.5));
+
+  float mx = mouse.x * 0.5;
+  float my = mouse.y * 0.3;
+  mat2 rotY = mat2(cos(mx), -sin(mx), sin(mx), cos(mx));
+  mat2 rotX = mat2(cos(my), -sin(my), sin(my), cos(my));
+  ro.xz *= rotY; rd.xz *= rotY;
+  ro.yz *= rotX; rd.yz *= rotX;
+
+  float t = 0.0;
+  bool hit = false;
+  for (int i = 0; i < 120; i++) {
+    vec3 p = ro + rd * t;
+    float d = scene(p);
+    if (d < 0.001) { hit = true; break; }
+    if (t > 20.0) break;
+    t += d;
+  }
+
+  vec3 col = vec3(0.02, 0.03, 0.06);
+
+  if (hit) {
+    vec3 p = ro + rd * t;
+    vec3 n = getNormal(p);
+
+    // Animated light
+    vec3 lightDir = normalize(vec3(
+      sin(uTime * 0.4) * 1.5,
+      1.0 + 0.5 * sin(uTime * 0.3),
+      cos(uTime * 0.4) * 1.5
+    ));
+
+    // Mode: blend between brain tissue and brand-colored abstract
+    float modeBlend = 0.5 + 0.5 * sin(uTime * 0.15);
+
+    // Brain tissue params (skin-like: red scatters far, blue absorbed)
+    SSSParams brainParams;
+    brainParams.sigma_a = vec3(0.02, 0.07, 0.15); // absorb: low red, mid green, high blue
+    brainParams.sigma_s = vec3(1.2, 0.9, 0.6);    // scatter: high red, low blue
+
+    // Brand abstract params (blue/orange themed)
+    SSSParams brandParams;
+    brandParams.sigma_a = vec3(0.08, 0.04, 0.02); // absorb more red, less blue (blue shows)
+    brandParams.sigma_s = vec3(0.6, 0.8, 1.4);    // scatter more blue
+
+    // Blend params
+    SSSParams params;
+    params.sigma_a = mix(brainParams.sigma_a, brandParams.sigma_a, modeBlend);
+    params.sigma_s = mix(brainParams.sigma_s, brandParams.sigma_s, modeBlend);
+
+    vec3 sss = evaluateSSS(p, n, lightDir, params);
+
+    // Surface color
+    float cosTheta = abs(dot(n, -rd));
+
+    // Fresnel glass reflection
+    float fresnel = pow(1.0 - cosTheta, 4.0);
+    vec3 reflColor = mix(
+      vec3(0.165, 0.576, 0.757), // blue
+      vec3(0.945, 0.259, 0.043), // orange
+      fresnel
+    );
+
+    // Specular
+    vec3 h = normalize(lightDir - rd);
+    float spec = pow(max(dot(n, h), 0.0), 80.0);
+
+    // Internal pulsing light (heartbeat)
+    float pulse = 0.6 + 0.4 * pow(sin(uTime * 1.2), 2.0);
+    sss *= pulse;
+
+    // Composite
+    col = sss * 0.7 + reflColor * fresnel * 0.4 + vec3(1.0) * spec * 0.3;
+
+    // Internal glow through thin areas
+    float thickness = estimateThickness(p, n);
+    float thinGlow = exp(-thickness * 3.0);
+    vec3 internalColor = mix(
+      vec3(0.945, 0.259, 0.043), // orange in thin
+      vec3(0.165, 0.576, 0.757), // blue in thick
+      smoothstep(0.1, 0.8, thickness)
+    );
+    col += internalColor * thinGlow * 0.5 * pulse;
+  }
+
+  // Atmospheric depth fog
+  if (hit) {
+    float fogDist = t;
+    float fog = 1.0 - exp(-fogDist * 0.02);
+    col = mix(col, vec3(0.02, 0.04, 0.08), fog);
+  }
+
+  // Vignette
+  vec2 vUv = gl_FragCoord.xy / uRes;
+  col *= 1.0 - 0.4 * length(vUv - 0.5);
+
+  // Tone map + gamma
+  col = col / (1.0 + col);
+  col = pow(col, vec3(0.85));
+
+  fragColor = vec4(col, 1.0);
+}`;
+
+function createShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(s));
+    return null;
+  }
+  return s;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, createShader(gl.VERTEX_SHADER, vs));
+gl.attachShader(prog, createShader(gl.FRAGMENT_SHADER, fs));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+const pLoc = gl.getAttribLocation(prog, 'p');
+gl.enableVertexAttribArray(pLoc);
+gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
+
+const uRes = gl.getUniformLocation(prog, 'uRes');
+const uTime = gl.getUniformLocation(prog, 'uTime');
+const uMouse = gl.getUniformLocation(prog, 'uMouse');
+
+let mouseX = canvas.width/2, mouseY = canvas.height/2;
+canvas.addEventListener('mousemove', e => {
+  mouseX = e.clientX * devicePixelRatio;
+  mouseY = (canvas.clientHeight - e.clientY) * devicePixelRatio;
+});
+
+function frame(t) {
+  gl.uniform2f(uRes, canvas.width, canvas.height);
+  gl.uniform1f(uTime, t * 0.001);
+  gl.uniform2f(uMouse, mouseX, mouseY);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

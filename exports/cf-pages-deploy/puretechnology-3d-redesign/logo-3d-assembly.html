@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology — Logo Assembly</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000000;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+  }
+
+  #canvas-container {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  #three-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Phase label — subtle, bottom center */
+  #phase-label {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.18);
+    pointer-events: none;
+    transition: opacity 1.5s ease;
+    white-space: nowrap;
+  }
+
+  /* Top-right brand tag */
+  #brand-tag {
+    position: fixed;
+    top: 28px;
+    right: 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 2s ease;
+  }
+  #brand-tag .name {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.75);
+  }
+  #brand-tag .sub {
+    font-size: 9px;
+    font-weight: 400;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: rgba(45,134,193,0.65);
+    margin-top: 3px;
+  }
+</style>
+</head>
+<body>
+
+<div id="canvas-container">
+  <canvas id="three-canvas"></canvas>
+</div>
+
+<div id="phase-label">Assembling</div>
+<div id="brand-tag">
+  <div class="name">Pure Technology</div>
+  <div class="sub">AI Partnership</div>
+</div>
+
+<!-- Three.js r160 via CDN importmap -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer }    from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }        from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass }   from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass }        from 'three/addons/postprocessing/OutputPass.js';
+
+// ─────────────────────────────────────────────────────────────────────────
+// CONSTANTS & LOGO SPEC
+// ─────────────────────────────────────────────────────────────────────────
+
+const LOGO = {
+  hexUnits:        3,
+  strokesPerUnit:  33,
+  rotationOffset:  9  * (Math.PI / 180),  // 9° between hex units
+  twistPerLevel:   7  * (Math.PI / 180),  // 7° per ring inward
+  shrinkRate:      0.07,                  // 7% per ring
+  colorOuter:      new THREE.Color('#2d86c1'),
+  colorInner:      new THREE.Color('#f1420b'),
+  innerBoost:      1.33,                  // 33% inner colour boost
+  desaturation:    0.52,                  // grey mid-zone
+  voidRadius:      0.04,                  // normalised; actual size set per unit
+  pointyTop:       Math.PI / 6,           // hexagon orientation offset
+};
+
+// Transition logic: 0 = outer blue, 1 = inner orange
+// Blue dominant until ~25% inward, desaturated middle, vivid orange center
+function strokeColor(t) {
+  // t: 0 = outermost, 1 = innermost
+  const blue   = LOGO.colorOuter.clone();
+  const orange = LOGO.colorInner.clone();
+
+  if (t < 0.25) {
+    // Pure blue zone
+    return blue.clone().multiplyScalar(0.9 + t * 0.4);
+  } else if (t < 0.55) {
+    // Desaturation zone (grey-ish transition)
+    const alpha = (t - 0.25) / 0.30;
+    const mid   = blue.clone().lerp(orange, alpha);
+    // Desaturate: blend toward luminance grey
+    const lum = mid.r * 0.299 + mid.g * 0.587 + mid.b * 0.114;
+    const grey = new THREE.Color(lum, lum, lum);
+    return mid.lerp(grey, LOGO.desaturation * (1 - Math.abs(alpha - 0.5) * 2));
+  } else {
+    // Orange zone — vivid
+    const alpha = (t - 0.55) / 0.45;
+    const c = orange.clone().lerp(new THREE.Color('#ff6a2e'), alpha);
+    return c.multiplyScalar(1.0 + alpha * (LOGO.innerBoost - 1));
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SCENE & RENDERER
+// ─────────────────────────────────────────────────────────────────────────
+
+const canvas    = document.getElementById('three-canvas');
+const renderer  = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene  = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 1000);
+camera.position.set(0, 0, 6);
+
+// ─────────────────────────────────────────────────────────────────────────
+// POST-PROCESSING
+// ─────────────────────────────────────────────────────────────────────────
+
+const composer    = new EffectComposer(renderer);
+const renderPass  = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.4,   // initial intensity (low — ramps up during assembly)
+  0.4,   // radius
+  0.82   // threshold
+);
+composer.addPass(bloomPass);
+
+const outputPass = new OutputPass();
+composer.addPass(outputPass);
+
+// ─────────────────────────────────────────────────────────────────────────
+// STARFIELD
+// ─────────────────────────────────────────────────────────────────────────
+
+function buildStarfield() {
+  const count = 1800;
+  const geo   = new THREE.BufferGeometry();
+  const pos   = new Float32Array(count * 3);
+
+  for (let i = 0; i < count; i++) {
+    const r   = 12 + Math.random() * 30;
+    const phi = Math.acos(2 * Math.random() - 1);
+    const th  = Math.random() * Math.PI * 2;
+    pos[i * 3    ] = r * Math.sin(phi) * Math.cos(th);
+    pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(th);
+    pos[i * 3 + 2] = r * Math.cos(phi);
+  }
+
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+
+  const mat = new THREE.PointsMaterial({
+    color: 0xaaddff,
+    size: 0.045,
+    sizeAttenuation: true,
+    transparent: true,
+    opacity: 0.4,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+
+  return new THREE.Points(geo, mat);
+}
+
+const starfield = buildStarfield();
+scene.add(starfield);
+
+// ─────────────────────────────────────────────────────────────────────────
+// HEXAGON HELPERS
+// ─────────────────────────────────────────────────────────────────────────
+
+// Returns flat array of {x,y} points for a hexagon of given radius, rotated by offsetAngle
+function hexPoints(radius, offsetAngle, segments = 6) {
+  const pts = [];
+  for (let i = 0; i <= segments; i++) {
+    const angle = (i / segments) * Math.PI * 2 + offsetAngle;
+    pts.push({ x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
+  }
+  return pts;
+}
+
+// Build a THREE.Line object from hex points with a given z depth
+function buildHexLine(radius, rotOffset, zDepth, color) {
+  const pts   = hexPoints(radius, rotOffset);
+  const verts = [];
+  for (const p of pts) verts.push(p.x, p.y, zDepth);
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
+
+  const mat = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0,
+    linewidth: 1,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+
+  return new THREE.Line(geo, mat);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LOGO GEOMETRY — 3 hex units × 33 strokes each
+// ─────────────────────────────────────────────────────────────────────────
+
+// Outer ring radius (world units)
+const BASE_RADIUS  = 1.6;
+// Z range: outer strokes at z=0, innermost slightly forward
+const Z_NEAR       = 0.18;
+const Z_FAR        = 0.0;
+
+const logoGroup  = new THREE.Group();
+scene.add(logoGroup);
+
+// Center ignition — a glowing orange point mesh at the void
+const centerGeo = new THREE.SphereGeometry(0.06, 32, 32);
+const centerMat = new THREE.MeshBasicMaterial({
+  color: new THREE.Color('#f1420b'),
+  transparent: true,
+  opacity: 0,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+const centerGlow = new THREE.Mesh(centerGeo, centerMat);
+centerGlow.position.set(0, 0, Z_NEAR + 0.02);
+logoGroup.add(centerGlow);
+
+// strokeData[unitIdx][strokeIdx] = { line, color, targetOpacity }
+const strokeData = [];
+
+for (let u = 0; u < LOGO.hexUnits; u++) {
+  const unitAngle = u * LOGO.rotationOffset;  // 9° per unit
+  strokeData[u]   = [];
+
+  for (let s = 0; s < LOGO.strokesPerUnit; s++) {
+    const t          = s / (LOGO.strokesPerUnit - 1);   // 0=outer, 1=inner
+    const radius     = BASE_RADIUS * Math.pow(1 - LOGO.shrinkRate, s);
+    const rotOffset  = LOGO.pointyTop + unitAngle + s * LOGO.twistPerLevel;
+    const zDepth     = THREE.MathUtils.lerp(Z_FAR, Z_NEAR, t);
+    const color      = strokeColor(t);
+
+    if (radius < LOGO.voidRadius * BASE_RADIUS) break;  // void at center
+
+    const line = buildHexLine(radius, rotOffset, zDepth, color);
+    logoGroup.add(line);
+
+    strokeData[u][s] = { line, color, t };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// PARTICLE TRAIL SYSTEM
+// ─────────────────────────────────────────────────────────────────────────
+
+const MAX_TRAIL_PARTICLES = 600;
+const trailGeo = new THREE.BufferGeometry();
+const trailPos = new Float32Array(MAX_TRAIL_PARTICLES * 3);
+// We encode alpha into vertex color intensity directly (no separate alpha attr needed)
+const trailCol = new Float32Array(MAX_TRAIL_PARTICLES * 3);
+
+trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPos, 3));
+trailGeo.setAttribute('color',    new THREE.BufferAttribute(trailCol, 3));
+
+const trailMat = new THREE.PointsMaterial({
+  size: 0.038,
+  sizeAttenuation: true,
+  transparent: true,
+  opacity: 0.88,
+  vertexColors: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+
+const trailPoints = new THREE.Points(trailGeo, trailMat);
+scene.add(trailPoints);
+
+// Trail particle pool
+const particles = Array.from({ length: MAX_TRAIL_PARTICLES }, () => ({
+  active: false,
+  x: 0, y: 0, z: 0,
+  vx: 0, vy: 0, vz: 0,
+  life: 0, maxLife: 0,
+  r: 1, g: 1, b: 1,
+}));
+
+function spawnTrailParticle(x, y, z, color, speed = 0.008) {
+  for (const p of particles) {
+    if (!p.active) {
+      p.active  = true;
+      p.x = x + (Math.random() - 0.5) * 0.04;
+      p.y = y + (Math.random() - 0.5) * 0.04;
+      p.z = z + (Math.random() - 0.5) * 0.02;
+      const spread = 0.6;
+      p.vx = (Math.random() - 0.5) * spread * speed;
+      p.vy = (Math.random() - 0.5) * spread * speed;
+      p.vz = (Math.random() * 0.5) * speed;
+      p.life    = 0;
+      p.maxLife = 0.4 + Math.random() * 0.6;  // seconds
+      p.r = color.r;
+      p.g = color.g;
+      p.b = color.b;
+      return;
+    }
+  }
+}
+
+function updateParticles(dt) {
+  let idx = 0;
+  for (const p of particles) {
+    if (p.active) {
+      p.life += dt;
+      if (p.life >= p.maxLife) {
+        p.active = false;
+      } else {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.z += p.vz;
+        p.vy -= dt * 0.015;  // very slight gravity
+      }
+    }
+    // Encode fade-out into the vertex color brightness (additive blending = luminance IS alpha)
+    const fade = p.active ? Math.pow(1 - p.life / p.maxLife, 1.4) : 0;
+    trailPos[idx * 3    ] = p.active ? p.x : 9999;
+    trailPos[idx * 3 + 1] = p.active ? p.y : 9999;
+    trailPos[idx * 3 + 2] = p.active ? p.z : 9999;
+    trailCol[idx * 3    ] = p.r * fade;
+    trailCol[idx * 3 + 1] = p.g * fade;
+    trailCol[idx * 3 + 2] = p.b * fade;
+    idx++;
+  }
+  trailGeo.attributes.position.needsUpdate = true;
+  trailGeo.attributes.color.needsUpdate    = true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// ANIMATION STATE
+// ─────────────────────────────────────────────────────────────────────────
+
+// Total strokes to animate: LOGO.hexUnits × LOGO.strokesPerUnit
+// But all 3 units animate together (same index simultaneously)
+const TOTAL_STROKES    = LOGO.strokesPerUnit;         // 33 passes
+const PHASE_DRAW_END   = 5.0;                         // seconds
+const PHASE_FLASH_END  = 8.0;
+// After PHASE_FLASH_END: continuous rotation + breathing
+
+let elapsed    = 0;
+let phase      = 'draw';  // 'draw' | 'flash' | 'idle'
+
+// Per-stroke draw progress: 0 = not started, 1 = fully drawn
+// We animate strokes sequentially, outer → inner
+const strokeProgress = new Float32Array(TOTAL_STROKES).fill(0);
+
+// Stroke draw timing: stagger so each starts after previous is ~60% done
+function strokeStartTime(sIdx) {
+  return (sIdx / TOTAL_STROKES) * PHASE_DRAW_END * 0.92;
+}
+function strokeDuration() {
+  return PHASE_DRAW_END * 0.22;  // each stroke takes ~22% of total draw time
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// UI refs
+// ─────────────────────────────────────────────────────────────────────────
+
+const phaseLabel = document.getElementById('phase-label');
+const brandTag   = document.getElementById('brand-tag');
+
+// ─────────────────────────────────────────────────────────────────────────
+// RENDER LOOP
+// ─────────────────────────────────────────────────────────────────────────
+
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const dt = Math.min(clock.getDelta(), 0.05);
+  elapsed += dt;
+
+  // ── STARFIELD slow rotation ──
+  starfield.rotation.y += dt * 0.015;
+  starfield.rotation.x += dt * 0.006;
+
+  // ─────────────────────────────────────────
+  // PHASE 1: DRAW (0 – 5s)
+  // ─────────────────────────────────────────
+  if (elapsed < PHASE_DRAW_END) {
+    phase = 'draw';
+    phaseLabel.style.opacity = '1';
+
+    for (let s = 0; s < TOTAL_STROKES; s++) {
+      const startT = strokeStartTime(s);
+      const dur    = strokeDuration();
+
+      if (elapsed < startT) continue;
+
+      const prevProg = strokeProgress[s];
+      const newProg  = Math.min((elapsed - startT) / dur, 1);
+      strokeProgress[s] = newProg;
+
+      // Animate all 3 hex units for this stroke index simultaneously
+      for (let u = 0; u < LOGO.hexUnits; u++) {
+        const sd   = strokeData[u][s];
+        if (!sd) continue;
+
+        // Fade in opacity as the stroke draws
+        const opacity = Math.min(newProg * 1.8, 1.0);
+        sd.line.material.opacity = opacity;
+
+        // Clip geometry to show only swept portion via drawRange
+        const fullVerts    = 7;   // 6 sides + close = 7 points
+        const visibleVerts = Math.max(2, Math.round(newProg * fullVerts));
+        sd.line.geometry.setDrawRange(0, visibleVerts);
+      }
+
+      // Spawn trail particles at the draw tip
+      if (newProg > prevProg && newProg < 1.0) {
+        const s0 = strokeData[0][s];
+        if (s0) {
+          const fullVerts     = 7;
+          const tipIdx        = Math.round(newProg * fullVerts);
+          const r0            = BASE_RADIUS * Math.pow(1 - LOGO.shrinkRate, s);
+          const tNorm         = s / (TOTAL_STROKES - 1);
+          const rot0          = LOGO.pointyTop + s * LOGO.twistPerLevel;
+          const angle         = (tipIdx / fullVerts) * Math.PI * 2 + rot0;
+          const tx = Math.cos(angle) * r0;
+          const ty = Math.sin(angle) * r0;
+          const tz = THREE.MathUtils.lerp(Z_FAR, Z_NEAR, tNorm);
+          const col           = strokeColor(tNorm);
+
+          // Spawn particles for each unit at its own position
+          for (let u = 0; u < LOGO.hexUnits; u++) {
+            const unitAngle = u * LOGO.rotationOffset;
+            const ua = angle + unitAngle;
+            const ux = Math.cos(ua) * r0;
+            const uy = Math.sin(ua) * r0;
+            spawnTrailParticle(ux, uy, tz, col);
+            if (Math.random() < 0.4) spawnTrailParticle(ux + (Math.random()-0.5)*0.08, uy + (Math.random()-0.5)*0.08, tz, col);
+          }
+        }
+      }
+    }
+
+    // Bloom ramps up gently during draw
+    bloomPass.strength = THREE.MathUtils.lerp(0.25, 0.55, elapsed / PHASE_DRAW_END);
+
+  // ─────────────────────────────────────────
+  // PHASE 2: FLASH (5s – 8s)
+  // ─────────────────────────────────────────
+  } else if (elapsed < PHASE_FLASH_END) {
+    if (phase !== 'flash') {
+      phase = 'flash';
+      phaseLabel.textContent = 'Online';
+      phaseLabel.style.opacity = '0.5';
+
+      // Ensure all strokes fully visible
+      for (let u = 0; u < LOGO.hexUnits; u++) {
+        for (let s = 0; s < TOTAL_STROKES; s++) {
+          const sd = strokeData[u][s];
+          if (!sd) continue;
+          sd.line.material.opacity = 1.0;
+          sd.line.geometry.setDrawRange(0, Infinity);
+        }
+      }
+    }
+
+    const t = (elapsed - PHASE_DRAW_END) / (PHASE_FLASH_END - PHASE_DRAW_END);
+    // Bloom spike then settle
+    const bloomPeak = Math.sin(t * Math.PI);
+    bloomPass.strength = 0.55 + bloomPeak * 1.2;
+    bloomPass.radius   = 0.4 + bloomPeak * 0.35;
+
+    // Center glow ignites then settles
+    centerMat.opacity = Math.min(t * 2.5, 1.0) * (0.6 + bloomPeak * 0.4);
+    const glowScale = 1.0 + bloomPeak * 2.2;
+    centerGlow.scale.setScalar(glowScale);
+
+    // Show brand tag during flash
+    brandTag.style.opacity = Math.min(t * 3, 1).toString();
+
+    // Gentle intro rotation during flash
+    logoGroup.rotation.y = t * 0.3;
+
+  // ─────────────────────────────────────────
+  // PHASE 3: IDLE (8s+)
+  // ─────────────────────────────────────────
+  } else {
+    if (phase !== 'idle') {
+      phase = 'idle';
+      phaseLabel.style.opacity = '0';
+      bloomPass.strength = 0.4;
+      bloomPass.radius   = 0.42;
+    }
+
+    const t = elapsed - PHASE_FLASH_END;
+
+    // Continuous Y rotation
+    logoGroup.rotation.y = 0.3 + t * 0.2;
+
+    // Subtle X wobble
+    logoGroup.rotation.x = Math.sin(t * 0.4) * 0.06;
+
+    // Breathing scale pulse
+    const breathe = 1.0 + Math.sin(t * 0.9) * 0.018;
+    logoGroup.scale.setScalar(breathe);
+
+    // Subtle bloom pulse
+    bloomPass.strength = 0.38 + Math.sin(t * 0.7) * 0.06;
+
+    // Center glow breathes gently in idle
+    centerMat.opacity = 0.45 + Math.sin(t * 1.1 + 1.0) * 0.15;
+    centerGlow.scale.setScalar(1.0 + Math.sin(t * 0.9) * 0.12);
+  }
+
+  // ── Update particles every frame ──
+  updateParticles(dt);
+
+  // ── Render ──
+  composer.render();
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// RESIZE
+// ─────────────────────────────────────────────────────────────────────────
+
+window.addEventListener('resize', () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// START
+// ─────────────────────────────────────────────────────────────────────────
+
+// Initialize: all strokes invisible, draw range = 0
+for (let u = 0; u < LOGO.hexUnits; u++) {
+  for (let s = 0; s < TOTAL_STROKES; s++) {
+    const sd = strokeData[u][s];
+    if (!sd) continue;
+    sd.line.material.opacity = 0;
+    sd.line.geometry.setDrawRange(0, 0);
+  }
+}
+
+// Tiny initial camera drift to feel alive before logo appears
+camera.position.set(0, 0.05, 6.2);
+
+animate();
+
+</script>
+</body>
+</html>

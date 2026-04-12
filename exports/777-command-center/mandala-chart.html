@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mandala Chart — 777 Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #080a12;
+      --bg2: #0d1121;
+      --bg3: #111729;
+      --blue: #2a93c1;
+      --blue-dim: rgba(42,147,193,0.15);
+      --blue-glow: rgba(42,147,193,0.4);
+      --orange: #f1420b;
+      --orange-dim: rgba(241,66,11,0.12);
+      --orange-glow: rgba(241,66,11,0.35);
+      --gold: #f59e0b;
+      --gold-dim: rgba(245,158,11,0.18);
+      --gold-glow: rgba(245,158,11,0.5);
+      --teal: #14b8a6;
+      --teal-dim: rgba(20,184,166,0.18);
+      --teal-glow: rgba(20,184,166,0.4);
+      --text: #e8eaf6;
+      --text-dim: #7a8aaa;
+      --text-muted: #4a5570;
+      --border: rgba(42,147,193,0.18);
+      --border-bright: rgba(42,147,193,0.4);
+      --green: #22c55e;
+      --red: #ef4444;
+      --card-bg: rgba(13,17,33,0.85);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    body.locked { overflow: hidden; }
+
+    /* ===== PASSWORD GATE ===== */
+    #password-gate {
+      position: fixed; inset: 0; background: var(--bg);
+      z-index: 9999; display: flex; align-items: center;
+      justify-content: center; flex-direction: column;
+    }
+    .gate-inner { text-align: center; max-width: 420px; width: 90%; }
+    .gate-logo {
+      font-family: 'Oswald', sans-serif; font-size: 72px; font-weight: 700;
+      letter-spacing: 4px; color: var(--orange); margin-bottom: 4px;
+      text-shadow: 0 0 40px var(--orange-glow); line-height: 1;
+    }
+    .gate-tagline {
+      font-family: 'Oswald', sans-serif; font-size: 13px; letter-spacing: 4px;
+      color: var(--text-dim); text-transform: uppercase; margin-bottom: 48px;
+    }
+    .gate-label { font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 12px; }
+    .gate-input {
+      width: 100%; padding: 16px 20px; background: var(--bg2);
+      border: 1px solid var(--border); border-radius: 12px; color: var(--text);
+      font-size: 18px; text-align: center; letter-spacing: 6px; outline: none;
+      font-family: inherit; margin-bottom: 16px;
+    }
+    .gate-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-dim); }
+    .gate-input.shake { animation: shake 0.4s ease; }
+    @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
+    .gate-btn {
+      width: 100%; padding: 16px; background: var(--orange); border: none;
+      border-radius: 12px; color: white; font-size: 15px; font-weight: 700;
+      letter-spacing: 2px; text-transform: uppercase; cursor: pointer;
+      font-family: inherit; transition: all 0.2s;
+    }
+    .gate-btn:hover { background: #ff5520; box-shadow: 0 0 20px var(--orange-glow); }
+    .gate-error { color: var(--red); font-size: 13px; margin-top: 12px; min-height: 20px; }
+
+    /* ===== NAV ===== */
+    .top-nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(8,10,18,0.95); backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px; display: flex; align-items: center;
+      height: 56px; gap: 16px;
+    }
+    .nav-back {
+      display: flex; align-items: center; gap: 8px; color: var(--text-dim);
+      text-decoration: none; font-size: 13px; font-weight: 600;
+      letter-spacing: 1px; text-transform: uppercase;
+      padding: 8px 16px 8px 0; border-right: 1px solid var(--border);
+      margin-right: 4px; transition: color 0.2s; white-space: nowrap;
+    }
+    .nav-back:hover { color: var(--blue); }
+    .nav-title {
+      font-family: 'Oswald', sans-serif; font-size: 18px; font-weight: 600;
+      letter-spacing: 2px; color: var(--gold);
+    }
+    .nav-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    .nav-btn {
+      padding: 7px 16px; border-radius: 8px; border: 1px solid var(--border);
+      background: transparent; color: var(--text-dim); font-size: 12px; font-weight: 600;
+      letter-spacing: 1px; text-transform: uppercase; cursor: pointer;
+      font-family: inherit; transition: all 0.2s; white-space: nowrap;
+    }
+    .nav-btn:hover { border-color: var(--blue); color: var(--blue); }
+    .nav-btn.primary { background: var(--gold-dim); border-color: var(--gold); color: var(--gold); }
+    .nav-btn.primary:hover { background: rgba(245,158,11,0.3); }
+    .nav-btn.danger { border-color: rgba(239,68,68,0.4); color: var(--red); }
+    .nav-btn.danger:hover { background: rgba(239,68,68,0.1); }
+
+    /* ===== MAIN LAYOUT ===== */
+    .main-wrap { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+    /* ===== PAGE HEADER ===== */
+    .page-header { margin-bottom: 24px; }
+    .page-title {
+      font-family: 'Oswald', sans-serif; font-size: 32px; font-weight: 700;
+      letter-spacing: 2px; color: var(--gold);
+      text-shadow: 0 0 30px var(--gold-glow);
+    }
+    .page-subtitle { color: var(--text-dim); font-size: 14px; line-height: 1.6; margin-top: 6px; max-width: 640px; }
+
+    /* ===== CONTROLS BAR ===== */
+    .controls-bar {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .ctrl-label { font-size: 12px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); }
+    .chart-select {
+      padding: 8px 14px; background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-family: inherit; font-size: 13px;
+      outline: none; cursor: pointer; min-width: 200px;
+    }
+    .chart-select:focus { border-color: var(--blue); }
+    .ctrl-sep { width: 1px; height: 24px; background: var(--border); }
+    .progress-badge {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 16px; background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .progress-count { font-family: 'Oswald', sans-serif; font-size: 18px; font-weight: 700; color: var(--teal); }
+    .progress-label { font-size: 12px; color: var(--text-dim); }
+    .progress-bar-wrap { flex: 1; min-width: 120px; max-width: 200px; height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+    .progress-bar-fill { height: 100%; background: var(--teal); border-radius: 3px; transition: width 0.3s ease; }
+
+    /* ===== LEGEND ===== */
+    .legend {
+      display: flex; gap: 20px; margin-bottom: 20px; flex-wrap: wrap;
+      padding: 12px 16px; background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); }
+    .legend-dot { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+    .legend-dot.goal { background: var(--gold); }
+    .legend-dot.quality { background: var(--teal); }
+    .legend-dot.task { background: var(--bg3); border: 1px solid var(--border); }
+
+    /* ===== MANDALA GRID ===== */
+    .mandala-scroll { overflow: auto; -webkit-overflow-scrolling: touch; }
+    .mandala-container {
+      display: grid;
+      grid-template-columns: repeat(9, 1fr);
+      grid-template-rows: repeat(9, 1fr);
+      gap: 3px;
+      min-width: 540px;
+      width: 100%;
+      aspect-ratio: 1;
+    }
+
+    /* Each cell occupies 1x1 grid position */
+    .m-cell {
+      position: relative;
+      border-radius: 6px;
+      transition: box-shadow 0.2s, border-color 0.2s;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* TASK cells (outer ring) */
+    .m-cell.task {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+    }
+    .m-cell.task:hover { border-color: var(--blue); box-shadow: 0 0 8px var(--blue-dim); }
+    .m-cell.task.done { background: rgba(20,184,166,0.06); border-color: rgba(20,184,166,0.3); }
+
+    /* QUALITY cells (surrounding center) */
+    .m-cell.quality {
+      background: var(--teal-dim);
+      border: 1.5px solid var(--teal);
+      box-shadow: 0 0 8px rgba(20,184,166,0.15);
+    }
+    .m-cell.quality:hover { box-shadow: 0 0 14px var(--teal-glow); }
+
+    /* CENTER GOAL cell */
+    .m-cell.goal {
+      background: var(--gold-dim);
+      border: 2px solid var(--gold);
+      box-shadow: 0 0 16px rgba(245,158,11,0.25);
+      z-index: 2;
+    }
+    .m-cell.goal:hover { box-shadow: 0 0 24px var(--gold-glow); }
+
+    /* QUALITY-MIRROR cells (center of each outer 3x3) */
+    .m-cell.quality-mirror {
+      background: rgba(20,184,166,0.12);
+      border: 1.5px solid rgba(20,184,166,0.6);
+      pointer-events: none;
+    }
+
+    /* SEPARATOR lines between the 9 sub-grids */
+    .m-cell.sep-right { border-right-width: 2px; border-right-color: rgba(42,147,193,0.35); }
+    .m-cell.sep-bottom { border-bottom-width: 2px; border-bottom-color: rgba(42,147,193,0.35); }
+
+    /* Cell textarea/content */
+    .cell-textarea {
+      width: 100%; height: 100%; padding: 5px 6px;
+      background: transparent; border: none; outline: none;
+      color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 11px; font-weight: 500; line-height: 1.3;
+      resize: none; cursor: text;
+      overflow: hidden;
+    }
+    .m-cell.goal .cell-textarea {
+      color: var(--gold); font-size: 11px; font-weight: 700; text-align: center;
+    }
+    .m-cell.quality .cell-textarea {
+      color: var(--teal); font-size: 11px; font-weight: 700; text-align: center;
+    }
+    .m-cell.quality-mirror .cell-textarea {
+      color: rgba(20,184,166,0.7); font-size: 10px; font-weight: 600; text-align: center;
+      pointer-events: none; cursor: default;
+    }
+    .cell-textarea::placeholder { color: var(--text-muted); }
+
+    /* Checkbox overlay on task cells */
+    .cell-check {
+      position: absolute; top: 4px; right: 4px;
+      width: 14px; height: 14px; cursor: pointer;
+      border-radius: 3px; border: 1.5px solid var(--text-muted);
+      background: transparent; display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: all 0.15s;
+      z-index: 2;
+    }
+    .cell-check:hover { border-color: var(--teal); }
+    .cell-check.checked { background: var(--teal); border-color: var(--teal); }
+    .cell-check.checked::after { content: ''; width: 5px; height: 8px; border: 1.5px solid #fff; border-top: none; border-left: none; transform: rotate(42deg) translate(-1px,-1px); display: block; }
+
+    .task .cell-textarea { padding-right: 22px; }
+    .task.done .cell-textarea { color: var(--text-muted); }
+
+    /* Cell number label (small) */
+    .cell-num {
+      position: absolute; bottom: 2px; right: 4px;
+      font-size: 9px; color: var(--text-muted); pointer-events: none; line-height: 1;
+    }
+    .quality .cell-num, .goal .cell-num, .quality-mirror .cell-num { display: none; }
+
+    /* ===== CHART SAVE/MANAGE PANEL ===== */
+    .panel-section { margin-bottom: 28px; }
+    .panel-title {
+      font-family: 'Oswald', sans-serif; font-size: 15px; font-weight: 600;
+      letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-dim);
+      margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 8px;
+    }
+    .charts-list { display: flex; flex-direction: column; gap: 8px; }
+    .chart-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 16px; background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 10px; cursor: pointer; transition: border-color 0.2s;
+    }
+    .chart-item:hover { border-color: var(--blue); }
+    .chart-item.active { border-color: var(--gold); background: var(--gold-dim); }
+    .chart-item-name { font-weight: 600; font-size: 14px; color: var(--text); flex: 1; }
+    .chart-item-meta { font-size: 11px; color: var(--text-muted); }
+    .chart-item-del {
+      padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(239,68,68,0.3);
+      background: transparent; color: var(--red); font-size: 11px; cursor: pointer;
+      font-family: inherit; transition: background 0.2s;
+    }
+    .chart-item-del:hover { background: rgba(239,68,68,0.1); }
+
+    .new-chart-form {
+      display: flex; gap: 10px; margin-top: 12px;
+    }
+    .new-chart-input {
+      flex: 1; padding: 10px 14px; background: var(--bg2);
+      border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); font-family: inherit; font-size: 13px; outline: none;
+    }
+    .new-chart-input:focus { border-color: var(--blue); }
+
+    /* ===== TOAST ===== */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: var(--bg3); border: 1px solid var(--border); border-radius: 10px;
+      padding: 12px 24px; font-size: 13px; font-weight: 600; color: var(--text);
+      opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 9000;
+      white-space: nowrap;
+    }
+    #toast.show { opacity: 1; }
+
+    /* ===== EXPORT PANEL ===== */
+    .export-section { margin-top: 20px; }
+    .export-textarea {
+      width: 100%; height: 280px; padding: 14px;
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+      color: var(--text-dim); font-family: 'Plus Jakarta Sans', monospace; font-size: 12px;
+      line-height: 1.5; resize: vertical; outline: none;
+    }
+
+    /* ===== TABS (sidebar) ===== */
+    .page-layout { display: flex; gap: 24px; align-items: flex-start; }
+    .mandala-side { flex: 1; min-width: 0; }
+    .sidebar { width: 280px; flex-shrink: 0; }
+
+    @media (max-width: 900px) {
+      .page-layout { flex-direction: column; }
+      .sidebar { width: 100%; }
+      .nav-right { gap: 6px; }
+      .nav-btn { padding: 6px 10px; font-size: 11px; }
+    }
+
+    .sidebar-card {
+      background: var(--card-bg); border: 1px solid var(--border);
+      border-radius: 14px; padding: 18px; margin-bottom: 16px;
+    }
+    .sidebar-title {
+      font-family: 'Oswald', sans-serif; font-size: 13px; font-weight: 600;
+      letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-dim);
+      margin-bottom: 14px;
+    }
+
+    /* ===== OHTANI REFERENCE ===== */
+    .ref-btn {
+      width: 100%; padding: 10px; background: transparent;
+      border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text-dim); font-family: inherit; font-size: 12px;
+      cursor: pointer; transition: all 0.2s; text-align: left;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .ref-btn:hover { border-color: var(--gold); color: var(--gold); }
+    .ref-content { display: none; margin-top: 12px; }
+    .ref-content.open { display: block; }
+    .ref-item { font-size: 11px; color: var(--text-dim); line-height: 1.6; margin-bottom: 6px; }
+    .ref-item strong { color: var(--gold); }
+    .ref-quality { font-size: 11px; color: var(--teal); margin: 4px 0; }
+    .ref-tasks { font-size: 10px; color: var(--text-muted); padding-left: 10px; line-height: 1.8; }
+  </style>
+</head>
+<body class="locked">
+
+<!-- PASSWORD GATE -->
+<div id="password-gate">
+  <div class="gate-inner">
+    <div class="gate-logo">777</div>
+    <div class="gate-tagline">Command Center</div>
+    <div class="gate-label">Access Code</div>
+    <input type="password" class="gate-input" id="gate-input" placeholder="&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;" autocomplete="off">
+    <button class="gate-btn" onclick="tryUnlock()">Unlock</button>
+    <div class="gate-error" id="gate-error"></div>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav class="top-nav">
+  <a href="index.html" class="nav-back">&#8592; Dashboard</a>
+  <div class="nav-title">MANDALA CHART</div>
+  <div class="nav-right">
+    <button class="nav-btn" onclick="showExport()">Export Text</button>
+    <button class="nav-btn primary" onclick="saveCurrentChart()">Save</button>
+    <button class="nav-btn danger" onclick="clearCurrentChart()">Clear</button>
+  </div>
+</nav>
+
+<div class="main-wrap">
+  <!-- HEADER -->
+  <div class="page-header">
+    <div class="page-title">Mandala Chart</div>
+    <div class="page-subtitle">Ohtani's 9x9 goal matrix. One big goal. 8 qualities to achieve it. 64 specific actions to make it real. Fill in every cell — watch your future take shape.</div>
+  </div>
+
+  <!-- CONTROLS -->
+  <div class="controls-bar">
+    <span class="ctrl-label">Chart:</span>
+    <select class="chart-select" id="chart-select" onchange="loadSelectedChart()">
+      <option value="">Loading...</option>
+    </select>
+    <div class="ctrl-sep"></div>
+    <div class="progress-badge">
+      <span class="progress-count" id="prog-count">0</span>
+      <span class="progress-label">/ 64 tasks done</span>
+    </div>
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-fill" id="prog-bar" style="width:0%"></div>
+    </div>
+  </div>
+
+  <!-- LEGEND -->
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot goal"></div> <span>Center Goal</span></div>
+    <div class="legend-item"><div class="legend-dot quality"></div> <span>8 Key Qualities (auto-mirror to outer grids)</span></div>
+    <div class="legend-item"><div class="legend-dot task"></div> <span>64 Action Tasks (checkable)</span></div>
+  </div>
+
+  <!-- MAIN LAYOUT -->
+  <div class="page-layout">
+    <!-- MANDALA GRID -->
+    <div class="mandala-side">
+      <div class="mandala-scroll">
+        <div class="mandala-container" id="mandala-grid">
+          <!-- Cells injected by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <!-- Manage Charts -->
+      <div class="sidebar-card">
+        <div class="sidebar-title">My Charts</div>
+        <div class="charts-list" id="charts-list"></div>
+        <div class="new-chart-form">
+          <input type="text" class="new-chart-input" id="new-chart-name" placeholder="New chart name..." maxlength="60">
+          <button class="nav-btn primary" onclick="createNewChart()" style="flex-shrink:0">+ New</button>
+        </div>
+      </div>
+
+      <!-- Ohtani Reference -->
+      <div class="sidebar-card">
+        <div class="sidebar-title">Ohtani Example</div>
+        <button class="ref-btn" onclick="toggleRef()">&#9656; View Shohei Ohtani's original chart</button>
+        <div class="ref-content" id="ref-content">
+          <div class="ref-item"><strong>Center Goal:</strong> Draft #1 by 8 teams</div>
+          <div style="margin-top:10px">
+            <div class="ref-quality">&#9670; Physical Strength</div>
+            <div class="ref-tasks">Flexibility training, Core strength, Stamina runs, Weight training, Diet control, Rest, Recovery, RSP training</div>
+          </div>
+          <div style="margin-top:8px">
+            <div class="ref-quality">&#9670; Mental Toughness</div>
+            <div class="ref-tasks">Willpower, Focus, Composure, Mental reset, Visualization, Routine, Grit, Controlled breathing</div>
+          </div>
+          <div style="margin-top:8px">
+            <div class="ref-quality">&#9670; Pitch Control</div>
+            <div class="ref-tasks">Release point, Wrist snap, Balance, Video review, Grip variations, Target practice, Follow-through, Spin rate</div>
+          </div>
+          <div style="margin-top:8px">
+            <div class="ref-quality">&#9670; Luck</div>
+            <div class="ref-tasks">Greetings, Pick up trash, Clean room, Positive attitude, Help others, Keep promises, Read daily, Stay grateful</div>
+          </div>
+          <div style="margin-top:8px">
+            <div class="ref-quality">&#9670; Character</div>
+            <div class="ref-tasks">Respect refs, Respect opponents, Gratitude, Think team-first, No complaints, Punctuality, Effort daily, Never give up</div>
+          </div>
+          <div style="margin-top:8px">
+            <div class="ref-quality">&#9670; 160 km/h Fastball</div>
+            <div class="ref-tasks">Hip rotation, Drive off leg, Arm extension, Body mechanics, Pitching drills, Radar tracking, Deceleration, Load phase</div>
+          </div>
+          <div style="margin-top:8px">
+            <div class="ref-quality">&#9670; Precision</div>
+            <div class="ref-tasks">Control drills, Catcher signals, Corner targeting, Consistent release, Slow motion review, Focus cues, Zone work, Count management</div>
+          </div>
+          <div style="margin-top:8px">
+            <div class="ref-quality">&#9670; Curve Balls</div>
+            <div class="ref-tasks">Grip pressure, Wrist angle, Break direction, Tunnel effect, Deception, Spin axis, Release timing, Bail point</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- How to Use -->
+      <div class="sidebar-card">
+        <div class="sidebar-title">How To Use</div>
+        <div style="font-size:12px;color:var(--text-dim);line-height:1.7">
+          <div style="margin-bottom:8px"><strong style="color:var(--gold)">1. Center cell</strong> — Type your ONE big goal.</div>
+          <div style="margin-bottom:8px"><strong style="color:var(--teal)">2. 8 surrounding cells</strong> — The 8 qualities or areas needed to achieve it. They auto-mirror to the center of each outer 3x3.</div>
+          <div style="margin-bottom:8px"><strong style="color:var(--text)">3. 64 outer cells</strong> — Specific habits, tasks, or actions for each quality. Check them off as you complete them.</div>
+          <div style="color:var(--text-muted)">All data saves automatically to your browser. Create multiple charts for different goals.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXPORT PANEL (hidden by default) -->
+  <div id="export-panel" style="display:none;margin-top:24px">
+    <div class="sidebar-card" style="max-width:800px">
+      <div class="sidebar-title">Text Export</div>
+      <textarea class="export-textarea" id="export-textarea" readonly></textarea>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button class="nav-btn primary" onclick="copyExport()">Copy to Clipboard</button>
+        <button class="nav-btn" onclick="closeExport()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* =============================================
+   MANDALA CHART — 777 Command Center
+   9x9 grid = 81 cells
+   Center (4,4) = GOAL
+   Surrounding (3,3)-(5,5) excluding center = 8 QUALITIES
+   Everything else = TASKS (8 per quality outer 3x3)
+============================================= */
+
+const PASS = '777grind';
+const LS_PREFIX = '777_mandala_';
+
+// ---- Password Gate ----
+function tryUnlock() {
+  const v = document.getElementById('gate-input').value.trim().toLowerCase();
+  if (v === PASS) {
+    localStorage.setItem('777_unlocked', '1');
+    document.getElementById('password-gate').style.display = 'none';
+    document.body.classList.remove('locked');
+    initApp();
+  } else {
+    const inp = document.getElementById('gate-input');
+    document.getElementById('gate-error').textContent = 'Wrong code. Try again.';
+    inp.classList.remove('shake');
+    void inp.offsetWidth;
+    inp.classList.add('shake');
+    inp.value = '';
+    setTimeout(() => inp.classList.remove('shake'), 500);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const inp = document.getElementById('gate-input');
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock(); });
+  if (localStorage.getItem('777_unlocked') === '1') {
+    document.getElementById('password-gate').style.display = 'none';
+    document.body.classList.remove('locked');
+    setTimeout(initApp, 0);
+  }
+});
+
+// ---- Storage helpers ----
+const S = {
+  get: (k, def=null) => { try { const v = localStorage.getItem(LS_PREFIX+k); return v ? JSON.parse(v) : def; } catch { return def; } },
+  set: (k, v) => { try { localStorage.setItem(LS_PREFIX+k, JSON.stringify(v)); } catch {} },
+  del: (k) => { try { localStorage.removeItem(LS_PREFIX+k); } catch {} }
+};
+
+function ts() { return new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+function esc(s) {
+  const d = document.createElement('div');
+  d.appendChild(document.createTextNode(String(s)));
+  return d.innerHTML;
+}
+
+// ---- Grid structure ----
+/*
+  The 9x9 grid is made of nine 3x3 sub-grids arranged as:
+    Q0  Q1  Q2
+    Q7  G   Q3
+    Q6  Q5  Q4
+
+  Quality positions in the CENTER 3x3 (grid cols/rows 3-5, 0-indexed):
+    [3,3]=Q7  [4,3]=Q0(↑?  No, let's use clockwise from top)
+
+  Let me define quality indices 0-7 clockwise from top-center:
+    Q0 = top-center      sub-grid col=1, row=0 → actual grid col=4, row=1
+    Q1 = top-right       sub-grid col=2, row=0 → actual grid col=7, row=1  [outer grid center = (7,1)]
+    Q2 = right           sub-grid col=2, row=1 → outer grid center = (7,4)
+    Q3 = bottom-right    sub-grid col=2, row=2 → outer grid center = (7,7)
+    Q4 = bottom-center   sub-grid col=1, row=2 → outer grid center = (4,7)
+    Q5 = bottom-left     sub-grid col=0, row=2 → outer grid center = (1,7)
+    Q6 = left            sub-grid col=0, row=1 → outer grid center = (1,4)
+    Q7 = top-left        sub-grid col=0, row=0 → outer grid center = (1,1)
+
+  Center of center 3x3 = quality cells:
+    (3,3)=Q7  (4,3)=Q0  (5,3)=Q1
+    (3,4)=Q6  (4,4)=GOAL (5,4)=Q2
+    (3,5)=Q5  (4,5)=Q4  (5,5)=Q3
+
+  Each outer 3x3 quality mirror position:
+    Q7 sub-grid covers cols 0-2, rows 0-2 → mirror at (1,1)
+    Q0 sub-grid covers cols 3-5, rows 0-2 → mirror at (4,1)
+    Q1 sub-grid covers cols 6-8, rows 0-2 → mirror at (7,1)
+    Q2 sub-grid covers cols 6-8, rows 3-5 → mirror at (7,4)
+    Q3 sub-grid covers cols 6-8, rows 6-8 → mirror at (7,7)
+    Q4 sub-grid covers cols 3-5, rows 6-8 → mirror at (4,7)
+    Q5 sub-grid covers cols 0-2, rows 6-8 → mirror at (1,7)
+    Q6 sub-grid covers cols 0-2, rows 3-5 → mirror at (1,4)
+*/
+
+// Quality positions inside the center 3x3 (col, row in full 9x9 grid):
+const QUALITY_POSITIONS = [
+  {col:4,row:3,qi:0}, // top-center (Q0)
+  {col:5,row:3,qi:1}, // top-right (Q1)
+  {col:5,row:4,qi:2}, // right (Q2)
+  {col:5,row:5,qi:3}, // bottom-right (Q3)
+  {col:4,row:5,qi:4}, // bottom-center (Q4)
+  {col:3,row:5,qi:5}, // bottom-left (Q5)
+  {col:3,row:4,qi:6}, // left (Q6)
+  {col:3,row:3,qi:7}, // top-left (Q7)
+];
+
+// Mirror positions (center of each outer 3x3):
+const MIRROR_POSITIONS = [
+  {col:4,row:1,qi:0}, // Q0 mirror (top-center sub-grid)
+  {col:7,row:1,qi:1}, // Q1 mirror (top-right sub-grid)
+  {col:7,row:4,qi:2}, // Q2 mirror (right sub-grid)
+  {col:7,row:7,qi:3}, // Q3 mirror (bottom-right sub-grid)
+  {col:4,row:7,qi:4}, // Q4 mirror (bottom-center sub-grid)
+  {col:1,row:7,qi:5}, // Q5 mirror (bottom-left sub-grid)
+  {col:1,row:4,qi:6}, // Q6 mirror (left sub-grid)
+  {col:1,row:1,qi:7}, // Q7 mirror (top-left sub-grid)
+];
+
+// Goal position
+const GOAL_POS = {col:4, row:4};
+
+// Build task -> quality index map
+// For each outer sub-grid, we know its col range and row range
+// Task cells are all cells in outer sub-grids EXCEPT the mirror center
+const SUB_GRIDS = [
+  {qi:7, colStart:0, rowStart:0},
+  {qi:0, colStart:3, rowStart:0},
+  {qi:1, colStart:6, rowStart:0},
+  {qi:6, colStart:0, rowStart:3},
+  // center (3-5, 3-5) is not a sub-grid for tasks
+  {qi:2, colStart:6, rowStart:3},
+  {qi:5, colStart:0, rowStart:6},
+  {qi:4, colStart:3, rowStart:6},
+  {qi:3, colStart:6, rowStart:6},
+];
+
+function getCellType(col, row) {
+  if (col === GOAL_POS.col && row === GOAL_POS.row) return 'goal';
+  for (const q of QUALITY_POSITIONS) {
+    if (q.col === col && q.row === row) return {type:'quality', qi:q.qi};
+  }
+  for (const m of MIRROR_POSITIONS) {
+    if (m.col === col && m.row === row) return {type:'quality-mirror', qi:m.qi};
+  }
+  // Find which outer sub-grid this cell belongs to
+  for (const sg of SUB_GRIDS) {
+    if (col >= sg.colStart && col < sg.colStart+3 &&
+        row >= sg.rowStart && row < sg.rowStart+3) {
+      // It's a task cell — assign task index within this quality
+      // Flatten the 3x3 into 8 tasks (skip mirror center)
+      const localCol = col - sg.colStart;
+      const localRow = row - sg.rowStart;
+      const localIdx = localRow * 3 + localCol;
+      // Mirror is always at local (1,1) = index 4
+      if (localIdx === 4) return {type:'quality-mirror', qi:sg.qi};
+      // Map to task index 0-7 (skip 4)
+      const ti = localIdx < 4 ? localIdx : localIdx - 1;
+      return {type:'task', qi:sg.qi, ti};
+    }
+  }
+  // Center 3x3 cells that are not GOAL or QUALITY -> shouldn't happen
+  return {type:'task', qi:-1, ti:-1};
+}
+
+// ---- State ----
+let currentChartId = null;
+let chartData = {
+  name: '',
+  goal: '',
+  qualities: Array(8).fill(''),
+  tasks: Array(8).fill(null).map(() => Array(8).fill({text:'',done:false}))
+};
+
+function freshData(name) {
+  return {
+    id: Date.now().toString(),
+    name,
+    goal: '',
+    qualities: Array(8).fill(''),
+    tasks: Array(8).fill(null).map(() => Array(8).fill(null).map(()=>({text:'',done:false})))
+  };
+}
+
+function getChartList() {
+  return S.get('chart_list', []);
+}
+function saveChartList(list) {
+  S.set('chart_list', list);
+}
+
+function getChartData(id) {
+  return S.get('chart_'+id, null);
+}
+function saveChartData(data) {
+  S.set('chart_'+data.id, data);
+}
+
+// ---- Build Grid ----
+function buildGrid() {
+  const container = document.getElementById('mandala-grid');
+  container.innerHTML = '';
+
+  for (let row = 0; row < 9; row++) {
+    for (let col = 0; col < 9; col++) {
+      const info = getCellType(col, row);
+      const cell = document.createElement('div');
+      cell.className = 'm-cell';
+      cell.dataset.col = col;
+      cell.dataset.row = row;
+
+      // Add separator classes for 3x3 boundaries
+      if (col === 2 || col === 5) cell.classList.add('sep-right');
+      if (row === 2 || row === 5) cell.classList.add('sep-bottom');
+
+      if (info === 'goal') {
+        cell.classList.add('goal');
+        cell.dataset.field = 'goal';
+        const ta = makeTextarea('Your ONE big goal...', 'goal');
+        ta.dataset.field = 'goal';
+        cell.appendChild(ta);
+      } else if (info.type === 'quality') {
+        cell.classList.add('quality');
+        cell.dataset.field = 'quality';
+        cell.dataset.qi = info.qi;
+        const ta = makeTextarea('Quality '+(info.qi+1)+'...', 'quality');
+        ta.dataset.field = 'quality';
+        ta.dataset.qi = info.qi;
+        cell.appendChild(ta);
+      } else if (info.type === 'quality-mirror') {
+        cell.classList.add('quality-mirror');
+        cell.dataset.field = 'mirror';
+        cell.dataset.qi = info.qi;
+        const ta = makeTextarea('', 'mirror');
+        ta.dataset.field = 'mirror';
+        ta.dataset.qi = info.qi;
+        ta.setAttribute('readonly', '');
+        ta.setAttribute('tabindex', '-1');
+        cell.appendChild(ta);
+      } else if (info.type === 'task') {
+        cell.classList.add('task');
+        cell.dataset.field = 'task';
+        cell.dataset.qi = info.qi;
+        cell.dataset.ti = info.ti;
+        // Checkbox
+        const chk = document.createElement('div');
+        chk.className = 'cell-check';
+        chk.onclick = (e) => { e.stopPropagation(); toggleTask(info.qi, info.ti); };
+        cell.appendChild(chk);
+        // Textarea
+        const ta = makeTextarea('Action...', 'task');
+        ta.dataset.field = 'task';
+        ta.dataset.qi = info.qi;
+        ta.dataset.ti = info.ti;
+        cell.appendChild(ta);
+        // Number label
+        const num = document.createElement('div');
+        num.className = 'cell-num';
+        num.textContent = info.qi * 8 + info.ti + 1;
+        cell.appendChild(num);
+      }
+
+      container.appendChild(cell);
+    }
+  }
+}
+
+function makeTextarea(placeholder, cls) {
+  const ta = document.createElement('textarea');
+  ta.className = 'cell-textarea';
+  ta.placeholder = placeholder;
+  ta.rows = 1;
+  ta.spellcheck = false;
+  ta.addEventListener('input', onCellInput);
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      focusNext(ta);
+    }
+  });
+  return ta;
+}
+
+// ---- Data -> DOM ----
+function renderGrid() {
+  const d = chartData;
+  // Goal
+  const goalCell = document.querySelector('.m-cell.goal textarea');
+  if (goalCell) goalCell.value = d.goal || '';
+  // Qualities
+  for (let qi = 0; qi < 8; qi++) {
+    const qCell = document.querySelector(`.m-cell.quality[data-qi="${qi}"] textarea`);
+    if (qCell) qCell.value = d.qualities[qi] || '';
+    const mCell = document.querySelector(`.m-cell.quality-mirror[data-qi="${qi}"] textarea`);
+    if (mCell) mCell.value = d.qualities[qi] || '';
+    // Tasks
+    for (let ti = 0; ti < 8; ti++) {
+      const t = d.tasks[qi][ti];
+      const tCell = document.querySelector(`.m-cell.task[data-qi="${qi}"][data-ti="${ti}"]`);
+      if (tCell) {
+        const ta = tCell.querySelector('textarea');
+        const chk = tCell.querySelector('.cell-check');
+        if (ta) ta.value = t ? t.text : '';
+        if (chk) {
+          chk.classList.toggle('checked', !!(t && t.done));
+        }
+        tCell.classList.toggle('done', !!(t && t.done));
+      }
+    }
+  }
+  updateProgress();
+}
+
+// ---- DOM -> Data ----
+function onCellInput(e) {
+  const ta = e.target;
+  const field = ta.dataset.field;
+  if (field === 'goal') {
+    chartData.goal = ta.value;
+  } else if (field === 'quality') {
+    const qi = parseInt(ta.dataset.qi);
+    chartData.qualities[qi] = ta.value;
+    // Mirror update
+    const mirrors = document.querySelectorAll(`.m-cell.quality-mirror[data-qi="${qi}"] textarea`);
+    mirrors.forEach(m => m.value = ta.value);
+  } else if (field === 'task') {
+    const qi = parseInt(ta.dataset.qi);
+    const ti = parseInt(ta.dataset.ti);
+    if (!chartData.tasks[qi][ti]) chartData.tasks[qi][ti] = {text:'',done:false};
+    chartData.tasks[qi][ti].text = ta.value;
+  }
+  autosave();
+}
+
+function toggleTask(qi, ti) {
+  if (!chartData.tasks[qi][ti]) chartData.tasks[qi][ti] = {text:'',done:false};
+  chartData.tasks[qi][ti].done = !chartData.tasks[qi][ti].done;
+  const tCell = document.querySelector(`.m-cell.task[data-qi="${qi}"][data-ti="${ti}"]`);
+  if (tCell) {
+    const chk = tCell.querySelector('.cell-check');
+    const done = chartData.tasks[qi][ti].done;
+    if (chk) chk.classList.toggle('checked', done);
+    tCell.classList.toggle('done', done);
+  }
+  updateProgress();
+  autosave();
+}
+
+function updateProgress() {
+  let done = 0;
+  for (let qi = 0; qi < 8; qi++) {
+    for (let ti = 0; ti < 8; ti++) {
+      if (chartData.tasks[qi][ti] && chartData.tasks[qi][ti].done) done++;
+    }
+  }
+  document.getElementById('prog-count').textContent = done;
+  document.getElementById('prog-bar').style.width = (done/64*100).toFixed(1)+'%';
+}
+
+// ---- Tab navigation ----
+function focusNext(ta) {
+  const allInputs = Array.from(document.querySelectorAll('.m-cell:not(.quality-mirror) textarea'));
+  const idx = allInputs.indexOf(ta);
+  if (idx >= 0 && idx < allInputs.length - 1) {
+    allInputs[idx+1].focus();
+  }
+}
+
+// ---- Chart management ----
+function initApp() {
+  buildGrid();
+  let list = getChartList();
+  if (list.length === 0) {
+    // Create default chart
+    const def = freshData('My First Goal');
+    list = [def.id];
+    saveChartList(list);
+    saveChartData(def);
+  }
+  currentChartId = S.get('last_chart_id', list[0]);
+  if (!list.includes(currentChartId)) currentChartId = list[0];
+  renderChartList();
+  loadChart(currentChartId);
+}
+
+function renderChartList() {
+  const list = getChartList();
+  const container = document.getElementById('charts-list');
+  const sel = document.getElementById('chart-select');
+  container.innerHTML = '';
+  sel.innerHTML = '';
+  list.forEach(id => {
+    const d = getChartData(id);
+    if (!d) return;
+    // Sidebar item
+    const item = document.createElement('div');
+    item.className = 'chart-item' + (id === currentChartId ? ' active' : '');
+    item.innerHTML = `
+      <div class="chart-item-name">${esc(d.name)}</div>
+      <div class="chart-item-meta">${esc(d.goal ? d.goal.slice(0,30)+(d.goal.length>30?'...':'') : 'No goal set')}</div>
+      ${list.length > 1 ? `<button class="chart-item-del" onclick="deleteChart('${esc(id)}',event)">Delete</button>` : ''}
+    `;
+    item.onclick = (e) => { if (!e.target.classList.contains('chart-item-del')) loadChart(id); };
+    container.appendChild(item);
+    // Select option
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = d.name;
+    if (id === currentChartId) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function loadSelectedChart() {
+  const sel = document.getElementById('chart-select');
+  if (sel.value) loadChart(sel.value);
+}
+
+function loadChart(id) {
+  const d = getChartData(id);
+  if (!d) return;
+  currentChartId = id;
+  chartData = JSON.parse(JSON.stringify(d)); // deep clone
+  // Ensure tasks array is properly sized
+  for (let qi = 0; qi < 8; qi++) {
+    if (!chartData.tasks[qi]) chartData.tasks[qi] = [];
+    for (let ti = 0; ti < 8; ti++) {
+      if (!chartData.tasks[qi][ti]) chartData.tasks[qi][ti] = {text:'',done:false};
+    }
+  }
+  renderGrid();
+  renderChartList();
+  S.set('last_chart_id', id);
+}
+
+function saveCurrentChart() {
+  chartData.id = currentChartId;
+  saveChartData(chartData);
+  // Update name from first quality or goal
+  const list = getChartList();
+  const idx = list.indexOf(currentChartId);
+  if (idx >= 0) {
+    renderChartList();
+  }
+  showToast('Chart saved');
+}
+
+function autosave() {
+  if (currentChartId) {
+    const copy = JSON.parse(JSON.stringify(chartData));
+    copy.id = currentChartId;
+    saveChartData(copy);
+  }
+}
+
+function clearCurrentChart() {
+  if (!confirm('Clear all cells in this chart? This cannot be undone.')) return;
+  const name = chartData.name;
+  const id = currentChartId;
+  chartData = {
+    id, name,
+    goal: '',
+    qualities: Array(8).fill(''),
+    tasks: Array(8).fill(null).map(()=>Array(8).fill(null).map(()=>({text:'',done:false})))
+  };
+  saveChartData(chartData);
+  renderGrid();
+  showToast('Chart cleared');
+}
+
+function createNewChart() {
+  const inp = document.getElementById('new-chart-name');
+  const name = inp.value.trim() || 'New Chart';
+  inp.value = '';
+  const d = freshData(name);
+  const list = getChartList();
+  list.push(d.id);
+  saveChartList(list);
+  saveChartData(d);
+  loadChart(d.id);
+  showToast('New chart created: ' + name);
+}
+
+function deleteChart(id, e) {
+  e.stopPropagation();
+  const d = getChartData(id);
+  if (!confirm('Delete "' + (d ? d.name : 'this chart') + '"?')) return;
+  let list = getChartList();
+  list = list.filter(x => x !== id);
+  saveChartList(list);
+  S.del('chart_'+id);
+  if (currentChartId === id) {
+    currentChartId = list[0];
+  }
+  renderChartList();
+  if (currentChartId) loadChart(currentChartId);
+  showToast('Chart deleted');
+}
+
+// ---- Export ----
+function showExport() {
+  const panel = document.getElementById('export-panel');
+  panel.style.display = 'block';
+  generateExportText();
+  panel.scrollIntoView({behavior:'smooth'});
+}
+function closeExport() {
+  document.getElementById('export-panel').style.display = 'none';
+}
+
+function generateExportText() {
+  const qNames = ['Top-Center','Top-Right','Right','Bottom-Right','Bottom-Center','Bottom-Left','Left','Top-Left'];
+  let out = '';
+  out += '='.repeat(60) + '\n';
+  out += 'MANDALA CHART: ' + (chartData.name || 'Untitled') + '\n';
+  out += '='.repeat(60) + '\n\n';
+  out += 'BIG GOAL: ' + (chartData.goal || '(not set)') + '\n\n';
+
+  let totalDone = 0;
+  for (let qi = 0; qi < 8; qi++) {
+    out += '-'.repeat(50) + '\n';
+    out += 'QUALITY ' + (qi+1) + ' ['+qNames[qi]+']: ' + (chartData.qualities[qi] || '(not set)') + '\n';
+    for (let ti = 0; ti < 8; ti++) {
+      const t = chartData.tasks[qi][ti];
+      const done = t && t.done;
+      const text = t ? t.text : '';
+      if (done) totalDone++;
+      out += '  [' + (done ? 'x' : ' ') + '] Task '+(ti+1)+': ' + (text || '(empty)') + '\n';
+    }
+    out += '\n';
+  }
+  out += '='.repeat(60) + '\n';
+  out += 'PROGRESS: '+totalDone+'/64 tasks completed ('+(totalDone/64*100).toFixed(0)+'%)\n';
+  out += 'Exported: ' + new Date().toLocaleString() + '\n';
+  document.getElementById('export-textarea').value = out;
+}
+
+function copyExport() {
+  const ta = document.getElementById('export-textarea');
+  ta.select();
+  try {
+    document.execCommand('copy');
+    showToast('Copied to clipboard');
+  } catch {
+    try {
+      navigator.clipboard.writeText(ta.value).then(() => showToast('Copied to clipboard'));
+    } catch {
+      showToast('Select the text and copy manually');
+    }
+  }
+}
+
+// ---- Ref toggle ----
+function toggleRef() {
+  const c = document.getElementById('ref-content');
+  c.classList.toggle('open');
+}
+
+// ---- Toast ----
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+}
+</script>
+</body>
+</html>

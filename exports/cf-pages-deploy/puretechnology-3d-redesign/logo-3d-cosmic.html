@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology — Cosmic 3D</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%; height: 100%;
+  background: #000000;
+  overflow: hidden;
+}
+canvas { display: block; }
+#loading {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  transition: opacity 1.2s ease;
+}
+#loading.fade-out { opacity: 0; pointer-events: none; }
+.loader-ring {
+  width: 48px; height: 48px;
+  border: 2px solid rgba(43,147,193,0.15);
+  border-top-color: #2b93c1;
+  border-right-color: #f1420b;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="loading"><div class="loader-ring"></div></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ============================================================
+//  PURE TECHNOLOGY — COSMIC 3D
+//  Three.js r160+ with UnrealBloom + OutputPass
+//  Logo: forensic reconstruction — 13 rings, 5°/ring twist
+//  Colors: #2b93c1 (outer) → #f1420b (inner)
+// ============================================================
+
+const DEG = Math.PI / 180;
+
+// --- Color system (matched to forensic analysis) ---
+const COL_OUTER = new THREE.Color(0x2b93c1);   // blue
+const COL_INNER = new THREE.Color(0xf1420b);   // orange
+
+function lerpHexColor(t) {
+  // t=0 → inner orange, t=1 → outer blue
+  const r = Math.round(241 + (43  - 241) * t);
+  const g = Math.round( 66 + (147 -  66) * t);
+  const b = Math.round( 11 + (193 -  11) * t);
+  return new THREE.Color(r / 255, g / 255, b / 255);
+}
+
+// --- Ring spec (forensic from logo-exact-recreation.html) ---
+// 13 concentric hexagon rings, rotation = 30° + i*5°, vertex-up at outer
+const RING_NORMS = [
+  0.110, 0.160, 0.220, 0.280, 0.335, 0.400,
+  0.460, 0.535, 0.615, 0.685, 0.755, 0.840, 0.970
+];
+const INNER_NORM = 0.110;
+const OUTER_NORM = 0.970;
+const N_RINGS = RING_NORMS.length;
+
+function normToT(n) {
+  return Math.max(0, Math.min(1, (n - INNER_NORM) / (OUTER_NORM - INNER_NORM)));
+}
+
+function hexVertices(radius, rotRad, zOffset) {
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const a = rotRad + (Math.PI * 2 * i) / 6;
+    pts.push(new THREE.Vector3(radius * Math.cos(a), radius * Math.sin(a), zOffset));
+  }
+  return pts;
+}
+
+// ============================================================
+//  SCENE SETUP
+// ============================================================
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000000, 0.018);
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 500);
+camera.position.set(3.8, 2.2, 5.5);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+document.body.appendChild(renderer.domElement);
+
+// --- Orbit controls (slow auto-orbit) ---
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.04;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.35;
+controls.enableZoom = true;
+controls.minDistance = 2.5;
+controls.maxDistance = 18;
+controls.target.set(0, 0, 0);
+
+// ============================================================
+//  POST PROCESSING
+// ============================================================
+
+const composer = new EffectComposer(renderer);
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  1.5,   // strength
+  0.8,   // radius
+  0.82   // threshold (only luminance above this blooms)
+);
+composer.addPass(bloomPass);
+
+const outputPass = new OutputPass();
+composer.addPass(outputPass);
+
+// ============================================================
+//  LOGO GEOMETRY
+//  3 hexagon units, each offset in Z by a small amount
+//  Inner rings closer to camera (positive Z)
+//  Each unit has a slight rotational offset (9°) from the brief
+// ============================================================
+
+const LOGO_SCALE = 1.2;          // world units for outer radius
+const UNIT_OFFSETS = [-0.09, 0.0, 0.09];  // Z offsets for the 3 units
+const UNIT_ROT_OFFSET = 9 * DEG;          // 9° between each unit (from brief)
+
+const logoGroup = new THREE.Group();
+
+function buildLogoUnit(unitIndex) {
+  const group = new THREE.Group();
+  group.position.z = UNIT_OFFSETS[unitIndex];
+
+  const rotOffset = unitIndex * UNIT_ROT_OFFSET;
+
+  // --- Z-depth for each ring: inner rings protrude more ---
+  // Creates the "inner closer to camera" effect
+  const zDepthRange = 0.22;
+
+  for (let i = 0; i < N_RINGS; i++) {
+    const normR   = RING_NORMS[i];
+    const radius  = normR * LOGO_SCALE;
+    const rotRad  = (30 * DEG) + (i * 5 * DEG) + rotOffset;
+    const t       = normToT(normR);
+    const color   = lerpHexColor(t);
+
+    // Z offset: inner rings (low i) have positive z (toward viewer), outer negative
+    const ringZ   = (1 - t) * zDepthRange - zDepthRange * 0.5;
+
+    // --- Line width for ring (thinner at outer, matches original) ---
+    const lineWidth = 0.0008 + 0.0004 * (1 - normR);
+
+    const verts = hexVertices(radius, rotRad, ringZ);
+
+    // Draw hexagon ring as line loop
+    const positions = [];
+    for (let j = 0; j <= 6; j++) {
+      const v = verts[j % 6];
+      positions.push(v.x, v.y, v.z);
+    }
+    const ringGeo = new THREE.BufferGeometry();
+    ringGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    const ringMat = new THREE.LineBasicMaterial({ color, linewidth: 1 });
+    const ringLine = new THREE.Line(ringGeo, ringMat);
+    group.add(ringLine);
+
+    // --- Vortex spokes: connect consecutive ring pairs ---
+    if (i < N_RINGS - 1) {
+      const normR2  = RING_NORMS[i + 1];
+      const radius2 = normR2 * LOGO_SCALE;
+      const rotRad2 = (30 * DEG) + ((i + 1) * 5 * DEG) + rotOffset;
+      const t2      = normToT(normR2);
+      const color2  = lerpHexColor(t2);
+      const zRing2  = (1 - t2) * zDepthRange - zDepthRange * 0.5;
+
+      const verts2 = hexVertices(radius2, rotRad2, zRing2);
+
+      for (let k = 0; k < 6; k++) {
+        const pA  = verts[k];
+        const pB0 = verts2[k % 6];
+        const pB1 = verts2[(k + 1) % 6];
+
+        // Straight spoke
+        const spokeGeo0 = new THREE.BufferGeometry();
+        spokeGeo0.setFromPoints([pA, pB0]);
+        const spokeColor0 = lerpHexColor((t + t2) / 2);
+        const spokeMat0 = new THREE.LineBasicMaterial({ color: spokeColor0, transparent: true, opacity: 0.85 });
+        group.add(new THREE.Line(spokeGeo0, spokeMat0));
+
+        // Diagonal spoke (vortex lean) — thinner, lower opacity
+        const spokeGeo1 = new THREE.BufferGeometry();
+        spokeGeo1.setFromPoints([pA, pB1]);
+        const spokeMat1 = new THREE.LineBasicMaterial({ color: spokeColor0, transparent: true, opacity: 0.5 });
+        group.add(new THREE.Line(spokeGeo1, spokeMat1));
+
+        // Mid-edge spokes for outer rings (normR > 0.45)
+        if (normR > 0.45) {
+          const mA = {
+            x: (verts[k].x + verts[(k + 1) % 6].x) / 2,
+            y: (verts[k].y + verts[(k + 1) % 6].y) / 2,
+            z: (verts[k].z + verts[(k + 1) % 6].z) / 2
+          };
+          const mB = {
+            x: (verts2[k].x + verts2[(k + 1) % 6].x) / 2,
+            y: (verts2[k].y + verts2[(k + 1) % 6].y) / 2,
+            z: (verts2[k].z + verts2[(k + 1) % 6].z) / 2
+          };
+          const midGeo = new THREE.BufferGeometry();
+          midGeo.setFromPoints([
+            new THREE.Vector3(mA.x, mA.y, mA.z),
+            new THREE.Vector3(mB.x, mB.y, mB.z)
+          ]);
+          const midMat = new THREE.LineBasicMaterial({ color: spokeColor0, transparent: true, opacity: 0.3 });
+          group.add(new THREE.Line(midGeo, midMat));
+        }
+      }
+    }
+  }
+
+  return group;
+}
+
+// Build all 3 units
+for (let u = 0; u < 3; u++) {
+  logoGroup.add(buildLogoUnit(u));
+}
+
+// Tilt the whole logo for a dramatic initial reveal
+logoGroup.rotation.x = 0.18;
+scene.add(logoGroup);
+
+// ============================================================
+//  ENERGY PULSE SYSTEM
+//  Every ~4 seconds, a ring of light expands from center
+// ============================================================
+
+const pulseRings = [];
+const PULSE_INTERVAL = 4200; // ms
+let lastPulseTime = 0;
+
+function createPulse() {
+  // Create a hexagonal pulse ring (starts tiny, expands outward)
+  const geo = new THREE.RingGeometry(0.01, 0.025, 6);
+  // Rotate ring to face forward in Z
+  const mat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0x2b93c1),
+    transparent: true,
+    opacity: 0.9,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = 0.18; // match logo tilt
+  mesh.userData = { age: 0, maxAge: 2.2, startScale: 0.1 };
+  scene.add(mesh);
+  pulseRings.push(mesh);
+}
+
+function updatePulses(delta, elapsedMs) {
+  // Trigger new pulse
+  if (elapsedMs - lastPulseTime > PULSE_INTERVAL) {
+    createPulse();
+    lastPulseTime = elapsedMs;
+  }
+
+  // Update existing pulses
+  for (let i = pulseRings.length - 1; i >= 0; i--) {
+    const p = pulseRings[i];
+    p.userData.age += delta;
+    const progress = p.userData.age / p.userData.maxAge;
+
+    if (progress >= 1) {
+      scene.remove(p);
+      p.geometry.dispose();
+      p.material.dispose();
+      pulseRings.splice(i, 1);
+      continue;
+    }
+
+    // Expand scale
+    const s = 0.2 + progress * 5.5;
+    p.scale.setScalar(s);
+
+    // Fade out + color shift blue→orange as it expands
+    const colorT = 1 - progress;
+    const pColor = lerpHexColor(colorT);
+    p.material.color.copy(pColor);
+    p.material.opacity = (1 - progress) * (1 - progress) * 0.85;
+  }
+}
+
+// ============================================================
+//  PARTICLE SYSTEM — 2500 orbiting particles
+//  Spiral orbits at varying radii and inclinations
+// ============================================================
+
+const PARTICLE_COUNT = 2500;
+const particlePositions = new Float32Array(PARTICLE_COUNT * 3);
+const particleColors    = new Float32Array(PARTICLE_COUNT * 3);
+const particleData      = []; // orbital parameters per particle
+
+// Initialize orbital parameters
+for (let i = 0; i < PARTICLE_COUNT; i++) {
+  // Orbital radius: mix of inner (tight orange) and outer (wide blue)
+  const orbitRadius = 0.6 + Math.random() * 4.2;
+
+  // Inclination: randomized for 3D orbital "cloud"
+  const inclination = (Math.random() - 0.5) * Math.PI * 0.85;
+
+  // Orbital plane azimuth
+  const planeAzimuth = Math.random() * Math.PI * 2;
+
+  // Angular position on orbit
+  const angle = Math.random() * Math.PI * 2;
+
+  // Speed: inner orbits faster (Kepler-like)
+  const speed = 0.08 + 0.35 / orbitRadius;
+
+  // Spiral drift: each particle slowly drifts inward/outward
+  const drift = (Math.random() - 0.5) * 0.004;
+
+  // Color based on orbital radius (inner → orange, outer → blue)
+  const normalizedR = Math.min(1, (orbitRadius - 0.6) / 4.2);
+  const col = lerpHexColor(normalizedR);
+
+  particleColors[i * 3    ] = col.r;
+  particleColors[i * 3 + 1] = col.g;
+  particleColors[i * 3 + 2] = col.b;
+
+  particleData.push({ orbitRadius, inclination, planeAzimuth, angle, speed, drift });
+}
+
+const particleGeo = new THREE.BufferGeometry();
+particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+particleGeo.setAttribute('color',    new THREE.BufferAttribute(particleColors,    3));
+
+const particleMat = new THREE.PointsMaterial({
+  size: 0.022,
+  vertexColors: true,
+  transparent: true,
+  opacity: 0.72,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  sizeAttenuation: true
+});
+
+const particles = new THREE.Points(particleGeo, particleMat);
+scene.add(particles);
+
+// ============================================================
+//  BACKGROUND STAR FIELD (deep space ambience)
+// ============================================================
+
+const STAR_COUNT = 1800;
+const starPositions = new Float32Array(STAR_COUNT * 3);
+const starColors    = new Float32Array(STAR_COUNT * 3);
+
+for (let i = 0; i < STAR_COUNT; i++) {
+  // Distribute stars on a sphere
+  const theta = Math.random() * Math.PI * 2;
+  const phi   = Math.acos(2 * Math.random() - 1);
+  const r     = 30 + Math.random() * 70;
+
+  starPositions[i * 3    ] = r * Math.sin(phi) * Math.cos(theta);
+  starPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+  starPositions[i * 3 + 2] = r * Math.cos(phi);
+
+  // Mostly white stars, occasional blue/orange tint
+  const rnd = Math.random();
+  if (rnd < 0.08) {
+    starColors[i * 3    ] = 0.17; starColors[i * 3 + 1] = 0.58; starColors[i * 3 + 2] = 0.76;
+  } else if (rnd < 0.14) {
+    starColors[i * 3    ] = 0.95; starColors[i * 3 + 1] = 0.26; starColors[i * 3 + 2] = 0.04;
+  } else {
+    const brightness = 0.4 + Math.random() * 0.6;
+    starColors[i * 3    ] = brightness;
+    starColors[i * 3 + 1] = brightness;
+    starColors[i * 3 + 2] = brightness * (0.85 + Math.random() * 0.15);
+  }
+}
+
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+starGeo.setAttribute('color',    new THREE.BufferAttribute(starColors,    3));
+
+const starMat = new THREE.PointsMaterial({
+  size: 0.12,
+  vertexColors: true,
+  transparent: true,
+  opacity: 0.65,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  sizeAttenuation: true
+});
+
+scene.add(new THREE.Points(starGeo, starMat));
+
+// ============================================================
+//  NEBULA HAZE — subtle colored fog planes deep in scene
+// ============================================================
+
+function makeNebulaPlane(color, opacity, x, y, z, rx, ry, rz, sx, sy) {
+  const geo = new THREE.PlaneGeometry(sx, sy);
+  const mat = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, z);
+  mesh.rotation.set(rx, ry, rz);
+  return mesh;
+}
+
+scene.add(makeNebulaPlane(0x2b93c1, 0.035, -8, 3, -25, 0.3, 0.5, 0, 30, 18));
+scene.add(makeNebulaPlane(0xf1420b, 0.025,  6, -4, -30, -0.2, -0.4, 0.1, 22, 14));
+scene.add(makeNebulaPlane(0x1a4a6b, 0.04,   0, 0, -20, 0.1, 0.1, 0, 40, 28));
+
+// ============================================================
+//  GLOW CORE — emissive sphere at center of logo
+// ============================================================
+
+const coreGeo = new THREE.SphereGeometry(0.032, 16, 16);
+const coreMat = new THREE.MeshBasicMaterial({
+  color: new THREE.Color(0xf1420b),
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const core = new THREE.Mesh(coreGeo, coreMat);
+scene.add(core);
+
+// ============================================================
+//  SUBTLE AMBIENT LIGHT
+// ============================================================
+
+const ambientLight = new THREE.AmbientLight(0x111122, 1.0);
+scene.add(ambientLight);
+
+const blueLight  = new THREE.PointLight(0x2b93c1, 1.2, 8);
+const orangeLight = new THREE.PointLight(0xf1420b, 0.8, 5);
+blueLight.position.set(2, 1.5, 3);
+orangeLight.position.set(-1, -1, 1);
+scene.add(blueLight);
+scene.add(orangeLight);
+
+// ============================================================
+//  ANIMATION LOOP
+// ============================================================
+
+const clock = new THREE.Clock();
+let elapsedMs = 0;
+
+// Slow initial camera swing
+let introPhase = true;
+const introDuration = 3.5; // seconds
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const delta   = clock.getDelta();
+  const elapsed = clock.getElapsedTime();
+  elapsedMs += delta * 1000;
+
+  // --- Logo gentle breathe ---
+  const breathe = Math.sin(elapsed * 0.6) * 0.008;
+  logoGroup.scale.setScalar(1 + breathe);
+
+  // --- Logo slow self-rotation (additional to orbit controls) ---
+  logoGroup.rotation.z = elapsed * 0.04;
+  logoGroup.rotation.x = 0.18 + Math.sin(elapsed * 0.25) * 0.06;
+
+  // --- Core pulse ---
+  const corePulse = 0.8 + Math.sin(elapsed * 2.1) * 0.3 + Math.sin(elapsed * 3.7) * 0.15;
+  core.scale.setScalar(corePulse);
+  const coreT = (Math.sin(elapsed * 1.3) * 0.5 + 0.5);
+  core.material.color.copy(lerpHexColor(coreT * 0.5)); // stays warm (inner range)
+
+  // --- Update particles ---
+  const posAttr = particleGeo.getAttribute('position');
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    const pd = particleData[i];
+    pd.angle += pd.speed * delta;
+    pd.orbitRadius = Math.max(0.55, Math.min(5.2, pd.orbitRadius + pd.drift));
+
+    // 3D orbital position
+    // Apply inclination and plane azimuth rotation
+    const localX = pd.orbitRadius * Math.cos(pd.angle);
+    const localY = pd.orbitRadius * Math.sin(pd.angle);
+
+    // Rotate by inclination around X
+    const ix = localX;
+    const iy = localY * Math.cos(pd.inclination);
+    const iz = localY * Math.sin(pd.inclination);
+
+    // Rotate by planeAzimuth around Y
+    const px = ix * Math.cos(pd.planeAzimuth) - iz * Math.sin(pd.planeAzimuth);
+    const py = iy;
+    const pz = ix * Math.sin(pd.planeAzimuth) + iz * Math.cos(pd.planeAzimuth);
+
+    posAttr.setXYZ(i, px, py, pz);
+  }
+  posAttr.needsUpdate = true;
+
+  // --- Update pulses ---
+  updatePulses(delta, elapsedMs);
+
+  // --- Oscillate bloom ---
+  bloomPass.strength = 1.3 + Math.sin(elapsed * 0.4) * 0.2;
+
+  // --- Controls ---
+  controls.update();
+
+  // --- Render ---
+  composer.render();
+}
+
+// ============================================================
+//  RESIZE HANDLER
+// ============================================================
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+  bloomPass.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ============================================================
+//  FADE IN
+// ============================================================
+
+// Start rendering immediately, fade out loading screen after first frame
+renderer.setAnimationLoop(null); // disable setAnimationLoop in favor of requestAnimationFrame
+animate();
+
+setTimeout(() => {
+  const loader = document.getElementById('loading');
+  loader.classList.add('fade-out');
+  setTimeout(() => loader.remove(), 1400);
+}, 800);
+
+</script>
+</body>
+</html>

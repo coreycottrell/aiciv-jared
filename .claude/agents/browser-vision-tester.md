@@ -3,7 +3,7 @@ name: browser-vision-tester
 description: Browser automation and visual UI testing specialist using vision-powered inspection
 tools: [Read, Write, Bash, Grep, Glob, WebFetch]
 skills: [desktop-vision, vision-action-loop, button-testing, form-interaction, error-detection, error-handling, visual-regression, state-tracking, verification-before-completion, memory-first-protocol]
-model: sonnet-4-5
+model: opus
 created: 2025-10-10
 designed_by: agent-architect (single-specialist design)
 ---

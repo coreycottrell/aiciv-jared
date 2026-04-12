@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Practice 1: Frosted Glass Card — Gleb Training</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    background: #060a12;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  #label {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.35);
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="label">Practice 1 — Frosted Glass Card — PureBrain 3D Training</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ─── Scene Setup ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x060a12);
+
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0, 5.5);
+
+// ─── Lighting ─────────────────────────────────────────────────────────────────
+// Ambient fill - deep cool blue
+const ambientLight = new THREE.AmbientLight(0x0a1628, 2.0);
+scene.add(ambientLight);
+
+// Key light - PureBrain blue from upper left
+const keyLight = new THREE.DirectionalLight(0x2a93c1, 4.0);
+keyLight.position.set(-3, 4, 3);
+scene.add(keyLight);
+
+// Rim light - warm orange from lower right
+const rimLight = new THREE.DirectionalLight(0xf1420b, 1.5);
+rimLight.position.set(4, -2, -2);
+scene.add(rimLight);
+
+// Subtle fill from below
+const fillLight = new THREE.DirectionalLight(0x4466aa, 0.8);
+fillLight.position.set(0, -3, 2);
+scene.add(fillLight);
+
+// ─── Background Environment Spheres ──────────────────────────────────────────
+// These create the scene depth that glass cards will refract
+const bgGroup = new THREE.Group();
+scene.add(bgGroup);
+
+function createBgOrb(x, y, z, color, size) {
+  const geo = new THREE.SphereGeometry(size, 32, 32);
+  const mat = new THREE.MeshStandardMaterial({
+    color: color,
+    emissive: color,
+    emissiveIntensity: 1.2,
+    roughness: 0.1,
+    metalness: 0.8
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, z);
+  bgGroup.add(mesh);
+  return mesh;
+}
+
+// Background orbs - PureBrain blue palette
+createBgOrb(-3.5, 2.0, -3, 0x2a93c1, 0.55);
+createBgOrb(3.2, -1.5, -4, 0x1e6fa0, 0.4);
+createBgOrb(-1.0, -2.5, -3.5, 0x0d4d7a, 0.65);
+createBgOrb(2.5, 2.8, -5, 0x3db8e8, 0.35);
+createBgOrb(-4.0, 0.0, -6, 0x1a5280, 0.8);
+
+// Orange accent orbs (restrained - just 2)
+createBgOrb(4.0, 1.0, -4, 0xf1420b, 0.25);
+createBgOrb(-2.0, -3.0, -5, 0xd43a09, 0.3);
+
+// ─── Particle Field ───────────────────────────────────────────────────────────
+const particleCount = 400;
+const positions = new Float32Array(particleCount * 3);
+const particleSizes = new Float32Array(particleCount);
+
+for (let i = 0; i < particleCount; i++) {
+  positions[i * 3] = (Math.random() - 0.5) * 14;
+  positions[i * 3 + 1] = (Math.random() - 0.5) * 10;
+  positions[i * 3 + 2] = (Math.random() - 0.5) * 8 - 4;
+  particleSizes[i] = Math.random() * 2.5 + 0.5;
+}
+
+const particleGeo = new THREE.BufferGeometry();
+particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+particleGeo.setAttribute('size', new THREE.BufferAttribute(particleSizes, 1));
+
+const particleMat = new THREE.PointsMaterial({
+  color: 0x3da8d4,
+  size: 0.025,
+  transparent: true,
+  opacity: 0.45,
+  sizeAttenuation: true
+});
+const particles = new THREE.Points(particleGeo, particleMat);
+scene.add(particles);
+
+// ─── Glass Card Construction ──────────────────────────────────────────────────
+// The main glass panel — wide landscape card
+const cardWidth = 3.6;
+const cardHeight = 2.2;
+const cardDepth = 0.12;
+
+// Card body - uses physical material for glass-like transmission
+const cardGeo = new THREE.BoxGeometry(cardWidth, cardHeight, cardDepth, 1, 1, 1);
+
+// Rounded box approximation using beveled edges via custom approach
+// We use MeshPhysicalMaterial which is Three.js's built-in glass material
+const cardMat = new THREE.MeshPhysicalMaterial({
+  color: 0xadd8f7,
+  transmission: 0.92,       // How much light passes through
+  thickness: 0.15,          // Glass thickness for refraction depth
+  roughness: 0.08,          // Very slight frost - nearly clear
+  ior: 1.52,                // Index of refraction (glass = 1.5)
+  metalness: 0.0,
+  specularIntensity: 1.0,
+  specularColor: 0xffffff,
+  envMapIntensity: 1.2,
+  transparent: true,
+  opacity: 0.88,
+  side: THREE.DoubleSide,
+  attenuationColor: new THREE.Color(0x2a93c1),
+  attenuationDistance: 0.5
+});
+
+const card = new THREE.Mesh(cardGeo, cardMat);
+scene.add(card);
+
+// ─── Card Inner Glow Plane ────────────────────────────────────────────────────
+// A very subtle emissive plane slightly inside the card face
+const innerGlowGeo = new THREE.PlaneGeometry(cardWidth - 0.1, cardHeight - 0.1);
+const innerGlowMat = new THREE.MeshBasicMaterial({
+  color: 0x1a5580,
+  transparent: true,
+  opacity: 0.06,
+  side: THREE.DoubleSide,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const innerGlow = new THREE.Mesh(innerGlowGeo, innerGlowMat);
+innerGlow.position.z = cardDepth * 0.4;
+card.add(innerGlow);
+
+// ─── Card Border Rim ──────────────────────────────────────────────────────────
+// Thin emissive border around card edge
+const edgeGeo = new THREE.EdgesGeometry(cardGeo);
+const edgeMat = new THREE.LineBasicMaterial({
+  color: 0x5bb8e8,
+  transparent: true,
+  opacity: 0.4
+});
+const edgeLines = new THREE.LineSegments(edgeGeo, edgeMat);
+scene.add(edgeLines);
+
+// ─── Floating UI Elements on the Card ─────────────────────────────────────────
+// Simulating UI text blocks as flat colored planes
+
+function createUIBlock(w, h, color, opacity, px, py, pz) {
+  const geo = new THREE.PlaneGeometry(w, h);
+  const mat = new THREE.MeshBasicMaterial({
+    color: color,
+    transparent: true,
+    opacity: opacity,
+    depthWrite: false
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(px, py, pz);
+  card.add(mesh);
+  return mesh;
+}
+
+// Title block
+createUIBlock(2.0, 0.12, 0xffffff, 0.75, -0.2, 0.7, cardDepth * 0.55);
+// Subtitle
+createUIBlock(1.4, 0.07, 0xaaddff, 0.5, -0.45, 0.5, cardDepth * 0.55);
+// Three data rows
+createUIBlock(2.6, 0.065, 0x4499bb, 0.35, 0, 0.2, cardDepth * 0.55);
+createUIBlock(2.2, 0.065, 0x3388aa, 0.3, -0.2, 0.07, cardDepth * 0.55);
+createUIBlock(1.8, 0.065, 0x2277aa, 0.25, -0.4, -0.06, cardDepth * 0.55);
+// CTA button shape
+createUIBlock(0.95, 0.18, 0x2a93c1, 0.7, -0.0, -0.6, cardDepth * 0.55);
+// Status dot
+const dotGeo = new THREE.CircleGeometry(0.055, 32);
+const dotMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.9 });
+const dot = new THREE.Mesh(dotGeo, dotMat);
+dot.position.set(-1.2, 0.7, cardDepth * 0.55);
+card.add(dot);
+
+// ─── Frosted Glass Panel - Secondary (slightly offset) ────────────────────────
+const secondCardGeo = new THREE.BoxGeometry(2.8, 1.6, 0.08);
+const secondCardMat = new THREE.MeshPhysicalMaterial({
+  color: 0xccecff,
+  transmission: 0.85,
+  thickness: 0.1,
+  roughness: 0.18,       // More frosted than primary
+  ior: 1.48,
+  metalness: 0,
+  transparent: true,
+  opacity: 0.7,
+  side: THREE.DoubleSide,
+  attenuationColor: new THREE.Color(0x1a3050),
+  attenuationDistance: 0.8
+});
+const secondCard = new THREE.Mesh(secondCardGeo, secondCardMat);
+secondCard.position.set(0.3, -0.2, -0.4);
+secondCard.rotation.z = -0.05;
+secondCard.rotation.y = 0.08;
+scene.add(secondCard);
+
+// ─── Third Glass Panel - Deeply Frosted ───────────────────────────────────────
+const thirdCardGeo = new THREE.BoxGeometry(2.0, 1.2, 0.06);
+const thirdCardMat = new THREE.MeshPhysicalMaterial({
+  color: 0x88bbdd,
+  transmission: 0.75,
+  thickness: 0.08,
+  roughness: 0.35,       // Heavily frosted - blurs background
+  ior: 1.45,
+  metalness: 0,
+  transparent: true,
+  opacity: 0.6,
+  side: THREE.DoubleSide
+});
+const thirdCard = new THREE.Mesh(thirdCardGeo, thirdCardMat);
+thirdCard.position.set(-0.5, 0.25, -0.8);
+thirdCard.rotation.z = 0.08;
+thirdCard.rotation.y = -0.12;
+scene.add(thirdCard);
+
+// ─── Postprocessing ───────────────────────────────────────────────────────────
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+// Bloom - controlled, Gleb-style: suggests luminance without blowing out
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.45,   // strength - restrained
+  0.55,   // radius
+  0.82    // threshold - only brightest elements bloom
+);
+composer.addPass(bloomPass);
+
+// Output pass for correct color space handling
+composer.addPass(new OutputPass());
+
+// ─── Mouse Parallax ───────────────────────────────────────────────────────────
+let mouseX = 0;
+let mouseY = 0;
+let targetRotX = 0;
+let targetRotY = 0;
+
+document.addEventListener('mousemove', (e) => {
+  mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
+  mouseY = -(e.clientY / window.innerHeight - 0.5) * 2;
+});
+
+// ─── Resize Handler ───────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+  bloomPass.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ─── Animation Loop ───────────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // Smooth mouse tracking with inertia
+  targetRotX += (mouseY * 0.18 - targetRotX) * 0.05;
+  targetRotY += (mouseX * 0.18 - targetRotY) * 0.05;
+
+  // Primary card - gentle float + mouse tilt
+  card.rotation.x = Math.sin(t * 0.4) * 0.03 + targetRotX;
+  card.rotation.y = Math.sin(t * 0.3) * 0.05 + targetRotY;
+  card.position.y = Math.sin(t * 0.5) * 0.06;
+  edgeLines.rotation.copy(card.rotation);
+  edgeLines.position.copy(card.position);
+
+  // Secondary card - slightly different phase
+  secondCard.rotation.x = Math.sin(t * 0.35 + 1.2) * 0.025 + targetRotX * 0.7;
+  secondCard.rotation.y = Math.sin(t * 0.28 + 0.8) * 0.04 + targetRotY * 0.7 + 0.08;
+  secondCard.position.y = Math.sin(t * 0.45 + 0.5) * 0.05 - 0.2;
+
+  // Third card - different phase again
+  thirdCard.rotation.x = Math.sin(t * 0.38 + 2.0) * 0.03 + targetRotX * 0.5;
+  thirdCard.rotation.y = Math.sin(t * 0.32 + 1.5) * 0.04 + targetRotY * 0.5 - 0.12;
+  thirdCard.position.y = Math.sin(t * 0.42 + 1.8) * 0.04 + 0.25;
+
+  // Background orbs drift slowly
+  bgGroup.rotation.y = t * 0.025;
+  bgGroup.rotation.x = Math.sin(t * 0.018) * 0.05;
+
+  // Particles slow drift
+  particles.rotation.y = t * 0.008;
+  particles.rotation.x = Math.sin(t * 0.006) * 0.02;
+
+  // Subtle key light animation - breathing
+  keyLight.intensity = 4.0 + Math.sin(t * 0.7) * 0.5;
+
+  composer.render();
+}
+
+animate();
+</script>
+</body>
+</html>

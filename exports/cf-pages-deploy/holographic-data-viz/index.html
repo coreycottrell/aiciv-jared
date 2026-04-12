@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-WTDXL4VJ');</script>
+<!-- End Google Tag Manager -->
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+(function(c,l,a,r,i,t,y){
+    c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+    t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+    y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+})(window, document, "clarity", "script", "viy9bnc56x");
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 5 — Variation C: Holographic Data Visualization</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #080a12; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; }
+  canvas { display: block; position: fixed; top: 0; left: 0; }
+  #hud {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  /* Corner brackets — holographic frame */
+  .bracket {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    border-color: rgba(42, 147, 193, 0.4);
+    border-style: solid;
+  }
+  .bracket.tl { top: 20px; left: 20px; border-width: 1.5px 0 0 1.5px; }
+  .bracket.tr { top: 20px; right: 20px; border-width: 1.5px 1.5px 0 0; }
+  .bracket.bl { bottom: 20px; left: 20px; border-width: 0 0 1.5px 1.5px; }
+  .bracket.br { bottom: 20px; right: 20px; border-width: 0 1.5px 1.5px 0; }
+
+  /* Top status bar */
+  #status-bar {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .status-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+  .status-label {
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(42, 147, 193, 0.5);
+  }
+  .status-value {
+    font-size: 14px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.85);
+    letter-spacing: -0.5px;
+  }
+  .divider {
+    width: 1px;
+    height: 30px;
+    background: rgba(42, 147, 193, 0.2);
+  }
+
+  /* Side panels */
+  #left-panel {
+    position: absolute;
+    left: 28px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .side-metric {
+    padding: 12px 14px;
+    border: 1px solid rgba(42, 147, 193, 0.15);
+    border-radius: 10px;
+    background: rgba(8, 10, 18, 0.6);
+    backdrop-filter: blur(8px);
+    min-width: 110px;
+  }
+  .side-label {
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: rgba(42, 147, 193, 0.5);
+    margin-bottom: 5px;
+  }
+  .side-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -0.5px;
+    line-height: 1;
+  }
+  .side-sub {
+    font-size: 8px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.3);
+    margin-top: 3px;
+  }
+
+  #right-panel {
+    position: absolute;
+    right: 28px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    align-items: flex-end;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid rgba(42, 147, 193, 0.1);
+    border-radius: 8px;
+    background: rgba(8, 10, 18, 0.5);
+    backdrop-filter: blur(6px);
+  }
+  .legend-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .legend-text {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.45);
+  }
+
+  /* Bottom bar */
+  #bottom-bar {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.15);
+  }
+
+  /* Scanline effect */
+  #scanline {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(42, 147, 193, 0.3), transparent);
+    animation: scan 4s linear infinite;
+  }
+  @keyframes scan {
+    0% { top: 0; opacity: 0; }
+    5% { opacity: 1; }
+    95% { opacity: 1; }
+    100% { top: 100%; opacity: 0; }
+  }
+</style>
+
+<!-- UNIVERSAL REFERRAL CODE CAPTURE — 90-day cookie + localStorage -->
+<script>
+(function() {
+  // Read ?ref= or ?code= from URL
+  var params = new URLSearchParams(window.location.search);
+  var ref = params.get('ref') || params.get('code');
+  
+  if (ref && /^[A-Za-z0-9-]{4,16}$/.test(ref)) {
+    // Store in localStorage
+    try { localStorage.setItem('pb_ref', ref); } catch(e) {}
+    // Store in cookie (90-day expiry, all paths, SameSite=Lax)
+    var expires = new Date();
+    expires.setDate(expires.getDate() + 90);
+    document.cookie = 'pb_ref=' + encodeURIComponent(ref) + '; expires=' + expires.toUTCString() + '; path=/; SameSite=Lax';
+    // Fire click tracking (non-blocking)
+    try {
+      fetch('https://app.purebrain.ai/api/referral/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referral_code: ref.toUpperCase() }),
+        keepalive: true
+      }).catch(function(){});
+    } catch(e) {}
+  }
+  
+  // Global helper: read stored referral code at payment time
+  // Checks URL first, then localStorage, then cookie
+  window.getPbRef = function() {
+    // 1. Check current URL
+    var p = new URLSearchParams(window.location.search);
+    var urlRef = p.get('ref') || p.get('code');
+    if (urlRef && /^[A-Za-z0-9-]{4,16}$/.test(urlRef)) return urlRef;
+    // 2. Check localStorage
+    try {
+      var ls = localStorage.getItem('pb_ref');
+      if (ls && /^[A-Za-z0-9-]{4,16}$/.test(ls)) return ls;
+    } catch(e) {}
+    // 3. Check cookie
+    var match = document.cookie.match(/(?:^|;)\s*pb_ref=([^;]+)/);
+    if (match) {
+      var decoded = decodeURIComponent(match[1]);
+      if (/^[A-Za-z0-9-]{4,16}$/.test(decoded)) return decoded;
+    }
+    return null;
+  };
+})();
+</script>
+
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-WTDXL4VJ"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div class="bracket tl"></div>
+  <div class="bracket tr"></div>
+  <div class="bracket bl"></div>
+  <div class="bracket br"></div>
+  <div id="scanline"></div>
+
+  <div id="status-bar">
+    <div class="status-item">
+      <div class="status-label">Revenue</div>
+      <div class="status-value" id="h-rev">$84.2K</div>
+    </div>
+    <div class="divider"></div>
+    <div class="status-item">
+      <div class="status-label">Partners</div>
+      <div class="status-value" id="h-part">1,247</div>
+    </div>
+    <div class="divider"></div>
+    <div class="status-item">
+      <div class="status-label">AI Score</div>
+      <div class="status-value" id="h-score">94.7</div>
+    </div>
+    <div class="divider"></div>
+    <div class="status-item">
+      <div class="status-label">Uptime</div>
+      <div class="status-value">99.9%</div>
+    </div>
+  </div>
+
+  <div id="left-panel">
+    <div class="side-metric">
+      <div class="side-label">Q1 Pipeline</div>
+      <div class="side-value">$312K</div>
+      <div class="side-sub">+24% vs Q4</div>
+    </div>
+    <div class="side-metric">
+      <div class="side-label">Active Agents</div>
+      <div class="side-value" id="l-agents">47</div>
+      <div class="side-sub">Running now</div>
+    </div>
+    <div class="side-metric">
+      <div class="side-label">Memory</div>
+      <div class="side-value">8.3K</div>
+      <div class="side-sub">Context entries</div>
+    </div>
+  </div>
+
+  <div id="right-panel">
+    <div class="legend-item">
+      <div class="legend-dot" style="background: #2a93c1;"></div>
+      <div class="legend-text">Awakened</div>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background: #f1420b;"></div>
+      <div class="legend-text">Partnered</div>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background: rgba(255,255,255,0.5);"></div>
+      <div class="legend-text">Unified</div>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background: rgba(42,147,193,0.3); border: 1px solid #2a93c1;"></div>
+      <div class="legend-text">Enterprise</div>
+    </div>
+  </div>
+
+  <div id="bottom-bar">
+    <span>Drag to rotate</span>
+    <span style="opacity:0.5">|</span>
+    <span>Scroll to zoom</span>
+    <span style="opacity:0.5">|</span>
+    <span>Hover bars to inspect</span>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ============================================================
+// SETUP
+// ============================================================
+const W = window.innerWidth, H = window.innerHeight;
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true });
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.setClearColor(0x080a12);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x080a12, 0.05);
+
+const camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 100);
+camera.position.set(0, 4, 10);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance = 4;
+controls.maxDistance = 20;
+controls.maxPolarAngle = Math.PI * 0.6;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.5;
+
+// ============================================================
+// DATA
+// ============================================================
+const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const plans = [
+  { name: 'Awakened', color: 0x2a93c1, data: [12,18,22,19,28,35,31,40,44,38,52,58] },
+  { name: 'Partnered', color: 0xf1420b, data: [5,8,11,9,15,18,20,22,27,25,32,38] },
+  { name: 'Unified',   color: 0xaaaaaa, data: [2,4,5,4,7,9,10,11,14,13,17,21] },
+  { name: 'Enterprise',color: 0x2a93c1, data: [1,1,2,2,3,4,4,5,6,6,8,10] },
+];
+
+const MAX_VAL = 65;
+const BAR_W = 0.16;
+const BAR_GAP = 0.06;
+const GROUP_GAP = 0.5;
+const CLUSTER = plans.length * BAR_W + (plans.length - 1) * BAR_GAP;
+const MONTH_STEP = CLUSTER + GROUP_GAP;
+const TOTAL_W = months.length * MONTH_STEP;
+const START_X = -TOTAL_W / 2 + MONTH_STEP / 2;
+
+// ============================================================
+// BASE GRID PLANE
+// ============================================================
+const floorGeo = new THREE.PlaneGeometry(24, 18, 24, 18);
+const floorMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 },
+    uColor: { value: new THREE.Color(0x2a93c1) },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    uniform vec3 uColor;
+    varying vec2 vUv;
+    void main() {
+      // Grid lines
+      vec2 grid = fract(vUv * 12.0);
+      float lineX = step(0.96, grid.x);
+      float lineY = step(0.96, grid.y);
+      float line = max(lineX, lineY);
+
+      // Center fade
+      vec2 center = vUv - 0.5;
+      float dist = length(center);
+      float fade = 1.0 - smoothstep(0.2, 0.7, dist);
+
+      // Pulse
+      float pulse = sin(dist * 10.0 - uTime * 1.2) * 0.5 + 0.5;
+      pulse = pow(pulse, 4.0) * 0.15;
+
+      float alpha = line * fade * 0.25 + pulse * fade;
+      gl_FragColor = vec4(uColor, alpha);
+    }
+  `,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  side: THREE.DoubleSide,
+});
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = -0.01;
+scene.add(floor);
+
+// ============================================================
+// 3D BAR CHART
+// ============================================================
+const barGroup = new THREE.Group();
+scene.add(barGroup);
+
+const bars = [];
+const barGeo = new THREE.BoxGeometry(1, 1, 1); // will scale
+
+months.forEach((month, mi) => {
+  const cx = START_X + mi * MONTH_STEP;
+
+  plans.forEach((plan, pi) => {
+    const rawH = (plan.data[mi] / MAX_VAL) * 5.5;
+    const x = cx + (pi - (plans.length - 1) / 2) * (BAR_W + BAR_GAP);
+
+    const mat = new THREE.MeshPhysicalMaterial({
+      color: plan.color,
+      emissive: plan.color,
+      emissiveIntensity: 0.3,
+      metalness: 0.0,
+      roughness: 0.15,
+      transmission: 0.3,
+      thickness: 0.5,
+      ior: 1.4,
+      transparent: true,
+      opacity: 0.75,
+    });
+
+    const bar = new THREE.Mesh(barGeo, mat);
+    bar.position.x = x;
+    bar.position.y = rawH / 2; // sits on floor
+    bar.scale.set(BAR_W, 0.001, BAR_W); // start flat
+    bar.userData = { targetH: rawH, phase: mi * 0.15 + pi * 0.05, mat, plan: plan.name, value: plan.data[mi] };
+    barGroup.add(bar);
+    bars.push(bar);
+
+    // Glow cap on top
+    const capGeo = new THREE.BoxGeometry(BAR_W + 0.02, 0.04, BAR_W + 0.02);
+    const capMat = new THREE.MeshBasicMaterial({
+      color: plan.color,
+      transparent: true,
+      opacity: 0.8,
+      blending: THREE.AdditiveBlending,
+    });
+    const cap = new THREE.Mesh(capGeo, capMat);
+    cap.position.x = x;
+    cap.position.y = rawH + 0.02;
+    cap.userData = { targetH: rawH + 0.02, barRef: bar };
+    barGroup.add(cap);
+  });
+});
+
+// ============================================================
+// FLOATING MONTH LABELS — sprites
+// ============================================================
+months.forEach((month, mi) => {
+  const cx = START_X + mi * MONTH_STEP;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 128; canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'rgba(0,0,0,0)';
+  ctx.fillRect(0, 0, 128, 64);
+  ctx.font = 'bold 28px Inter, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.textAlign = 'center';
+  ctx.fillText(month, 64, 40);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  const spriteMat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+  const sprite = new THREE.Sprite(spriteMat);
+  sprite.position.set(cx, -0.6, 0);
+  sprite.scale.set(1.2, 0.6, 1);
+  barGroup.add(sprite);
+});
+
+// ============================================================
+// HOLOGRAPHIC RINGS — decorative
+// ============================================================
+const ringGroup = new THREE.Group();
+scene.add(ringGroup);
+
+[3, 5, 7.5].forEach((r, i) => {
+  const geo = new THREE.RingGeometry(r - 0.02, r, 80);
+  const mat = new THREE.MeshBasicMaterial({
+    color: i === 1 ? 0xf1420b : 0x2a93c1,
+    transparent: true,
+    opacity: 0.08 + i * 0.03,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+  });
+  const ring = new THREE.Mesh(geo, mat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = -0.02;
+  ring.userData = { baseOpacity: 0.08 + i * 0.03 };
+  ringGroup.add(ring);
+});
+
+// ============================================================
+// VERTICAL AMBIENT LIGHT COLUMNS
+// ============================================================
+const colGeo = new THREE.CylinderGeometry(0.02, 0.02, 8, 8);
+const colMat = new THREE.MeshBasicMaterial({
+  color: 0x2a93c1,
+  transparent: true,
+  opacity: 0.12,
+  blending: THREE.AdditiveBlending,
+});
+[-6, 0, 6].forEach((x) => {
+  const col = new THREE.Mesh(colGeo, colMat.clone());
+  col.position.set(x, 4, -4);
+  scene.add(col);
+});
+
+// ============================================================
+// PARTICLE FIELD
+// ============================================================
+const pCount = 1200;
+const pGeo = new THREE.BufferGeometry();
+const pPos = new Float32Array(pCount * 3);
+for (let i = 0; i < pCount; i++) {
+  pPos[i*3] = (Math.random() - 0.5) * 26;
+  pPos[i*3+1] = Math.random() * 10;
+  pPos[i*3+2] = (Math.random() - 0.5) * 20;
+}
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+const pMat = new THREE.PointsMaterial({
+  color: 0x2a93c1,
+  size: 0.05,
+  transparent: true,
+  opacity: 0.35,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+scene.add(new THREE.Points(pGeo, pMat));
+
+// ============================================================
+// LIGHTING
+// ============================================================
+const ambient = new THREE.AmbientLight(0x0d1520, 1.5);
+scene.add(ambient);
+const top = new THREE.PointLight(0x2a93c1, 4, 20);
+top.position.set(0, 8, 0);
+scene.add(top);
+const side = new THREE.PointLight(0xf1420b, 3, 15);
+side.position.set(8, 4, 2);
+scene.add(side);
+
+// ============================================================
+// RAYCASTER FOR HOVER
+// ============================================================
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+window.addEventListener('mousemove', (e) => {
+  pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+  pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+});
+
+// ============================================================
+// RESIZE
+// ============================================================
+window.addEventListener('resize', () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+});
+
+// ============================================================
+// LIVE UI TICKING
+// ============================================================
+let partners = 1247;
+setInterval(() => {
+  if (Math.random() < 0.4) partners += Math.floor(Math.random() * 2) + 1;
+  document.getElementById('h-part').textContent = partners.toLocaleString();
+  document.getElementById('h-score').textContent = (94.2 + Math.random() * 1.0).toFixed(1);
+  document.getElementById('l-agents').textContent = 44 + Math.floor(Math.random() * 8);
+}, 3000);
+
+// ============================================================
+// ANIMATE
+// ============================================================
+const clock = new THREE.Clock();
+let animProgress = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  const delta = clock.getDelta ? 0.016 : 0.016;
+
+  // Animate bars rising on load
+  animProgress = Math.min(1, animProgress + 0.008);
+  const eased = animProgress < 1 ? 1 - Math.pow(1 - animProgress, 3) : 1;
+
+  bars.forEach((bar) => {
+    if (!bar.userData.targetH) return;
+    const { targetH, phase } = bar.userData;
+    const delay = phase * 1.2;
+    const localP = Math.max(0, Math.min(1, (animProgress - delay * 0.05) * (1 / 0.7)));
+    const localE = 1 - Math.pow(1 - localP, 3);
+    const h = localE * targetH;
+    bar.scale.y = Math.max(0.001, h);
+    bar.position.y = h / 2;
+
+    // Pulsing glow on bars
+    bar.userData.mat.emissiveIntensity = 0.25 + Math.sin(t * 1.2 + phase * 3) * 0.12;
+  });
+
+  // Grid pulse
+  floorMat.uniforms.uTime.value = t;
+
+  // Rings pulse
+  ringGroup.children.forEach((ring, i) => {
+    ring.material.opacity = ring.userData.baseOpacity * (0.6 + 0.4 * Math.sin(t * 0.5 + i * 1.2));
+  });
+
+  // Hover highlight
+  raycaster.setFromCamera(pointer, camera);
+  const meshBars = bars;
+  const intersects = raycaster.intersectObjects(meshBars);
+  meshBars.forEach((b) => { b.userData.mat.emissiveIntensity = 0.25 + Math.sin(t * 1.2 + b.userData.phase * 3) * 0.12; });
+  if (intersects.length > 0) {
+    intersects[0].object.userData.mat.emissiveIntensity = 1.5;
+    controls.autoRotate = false;
+  } else {
+    controls.autoRotate = true;
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"fa8f8d578113499a99c62cddb8f5ba89","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>

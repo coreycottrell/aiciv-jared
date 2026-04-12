@@ -1,0 +1,4104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>777 Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" defer></script>
+  <style>
+    :root {
+      --bg: #080a12;
+      --bg2: #0d1121;
+      --bg3: #111729;
+      --blue: #2a93c1;
+      --blue-dim: rgba(42,147,193,0.15);
+      --blue-glow: rgba(42,147,193,0.4);
+      --orange: #f1420b;
+      --orange-dim: rgba(241,66,11,0.12);
+      --orange-glow: rgba(241,66,11,0.35);
+      --text: #e8eaf6;
+      --text-dim: #7a8aaa;
+      --text-muted: #4a5570;
+      --border: rgba(42,147,193,0.18);
+      --border-bright: rgba(42,147,193,0.4);
+      --green: #22c55e;
+      --yellow: #eab308;
+      --red: #ef4444;
+      --card-bg: rgba(13,17,33,0.85);
+      --glass: rgba(255,255,255,0.03);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body.locked { overflow: hidden; }
+
+    /* ===================== PASSWORD GATE ===================== */
+    #password-gate {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .gate-inner {
+      text-align: center;
+      max-width: 420px;
+      width: 90%;
+    }
+
+    .gate-logo {
+      font-family: 'Oswald', sans-serif;
+      font-size: 72px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      color: var(--orange);
+      margin-bottom: 4px;
+      text-shadow: 0 0 40px var(--orange-glow);
+      line-height: 1;
+    }
+
+    .gate-tagline {
+      font-family: 'Oswald', sans-serif;
+      font-size: 13px;
+      letter-spacing: 4px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      margin-bottom: 48px;
+    }
+
+    .gate-label {
+      font-size: 11px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+    }
+
+    .gate-input-wrap {
+      position: relative;
+      margin-bottom: 16px;
+    }
+
+    .gate-input {
+      width: 100%;
+      padding: 16px 20px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: 'Oswald', sans-serif;
+      font-size: 22px;
+      letter-spacing: 6px;
+      text-align: center;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .gate-input:focus { border-color: var(--blue); }
+    .gate-input.shake { animation: shake 0.4s ease; }
+    .gate-input.error { border-color: var(--red); }
+
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      25% { transform: translateX(-8px); }
+      75% { transform: translateX(8px); }
+    }
+
+    .gate-btn {
+      width: 100%;
+      padding: 14px;
+      background: var(--orange);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-family: 'Oswald', sans-serif;
+      font-size: 16px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background-color 0.2s, transform 0.2s;
+    }
+
+    .gate-btn:hover { background: #d93a09; transform: translateY(-1px); }
+
+    .gate-error {
+      color: var(--red);
+      font-size: 12px;
+      margin-top: 12px;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .gate-error.show { opacity: 1; }
+
+    /* ===================== DASHBOARD ===================== */
+    #dashboard {
+      display: none;
+      opacity: 0;
+      transition: opacity 0.6s ease;
+    }
+
+    #dashboard.visible {
+      display: block;
+      opacity: 1;
+    }
+
+    /* Header */
+    .site-header {
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      background: rgba(8,10,18,0.9);
+      backdrop-filter: blur(10px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-brand {
+      font-family: 'Oswald', sans-serif;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 2px;
+    }
+
+    .brand-num { color: var(--orange); }
+    .brand-text { color: var(--text); }
+
+    .header-date {
+      font-size: 12px;
+      color: var(--text-dim);
+      letter-spacing: 1px;
+    }
+
+    .header-score {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .today-score-chip {
+      background: var(--orange-dim);
+      border: 1px solid var(--orange);
+      border-radius: 20px;
+      padding: 6px 16px;
+      font-family: 'Oswald', sans-serif;
+      font-size: 14px;
+      color: var(--orange);
+      letter-spacing: 1px;
+    }
+
+    /* Grid */
+    .dashboard-grid {
+      padding: 28px 24px;
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 20px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+
+    /* Card */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      position: relative;
+      overflow: hidden;
+      backdrop-filter: blur(8px);
+      transition: border-color 0.2s, transform 0.2s;
+    }
+
+    .card:hover {
+      border-color: var(--border-bright);
+      transform: translateY(-2px);
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--blue-glow), transparent);
+      opacity: 0.6;
+    }
+
+    .card-orange::before {
+      background: linear-gradient(90deg, transparent, var(--orange-glow), transparent);
+    }
+
+    .card-title {
+      font-family: 'Oswald', sans-serif;
+      font-size: 11px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-title-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--blue);
+      flex-shrink: 0;
+    }
+
+    .card-title-dot.orange { background: var(--orange); }
+
+    /* Span helpers */
+    .col-12 { grid-column: span 12; }
+    .col-8 { grid-column: span 8; }
+    .col-7 { grid-column: span 7; }
+    .col-6 { grid-column: span 6; }
+    .col-5 { grid-column: span 5; }
+    .col-4 { grid-column: span 4; }
+    .col-3 { grid-column: span 3; }
+
+    @media (max-width: 1200px) {
+      .col-8, .col-7 { grid-column: span 12; }
+      .col-5, .col-4 { grid-column: span 6; }
+      .col-3 { grid-column: span 4; }
+    }
+
+    @media (max-width: 768px) {
+      .dashboard-grid { padding: 16px 12px; gap: 14px; }
+      .col-12, .col-8, .col-7, .col-6, .col-5, .col-4, .col-3 { grid-column: span 12; }
+      .site-header { padding: 14px 16px; }
+    }
+
+    /* ===================== SECTION 1: DAILY PULSE ===================== */
+    .pulse-row {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .pulse-heatmap-wrap { flex: 1; min-width: 280px; }
+
+    .heatmap-months {
+      display: flex;
+      gap: 2px;
+      margin-bottom: 4px;
+      font-size: 10px;
+      color: var(--text-muted);
+      padding-left: 20px;
+    }
+
+    .heatmap-month-label { flex: 1; text-align: center; font-family: 'Oswald', sans-serif; letter-spacing: 1px; }
+
+    .heatmap-grid {
+      display: flex;
+      gap: 3px;
+    }
+
+    .heatmap-days-col {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      font-size: 9px;
+      color: var(--text-muted);
+      font-family: 'Oswald', sans-serif;
+      padding-top: 1px;
+      width: 18px;
+    }
+
+    .heatmap-days-col span { height: 12px; display: flex; align-items: center; }
+
+    .heatmap-weeks {
+      display: flex;
+      gap: 3px;
+      flex: 1;
+    }
+
+    .heatmap-week {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      flex: 1;
+    }
+
+    .heatmap-cell {
+      aspect-ratio: 1;
+      border-radius: 2px;
+      cursor: pointer;
+      transition: transform 0.1s;
+      position: relative;
+    }
+
+    .heatmap-cell:hover { transform: scale(1.4); z-index: 10; }
+
+    .heat-0  { background: #1a1f2e; }
+    .heat-1  { background: #0e3a2a; }
+    .heat-2  { background: #0a5c3c; }
+    .heat-3  { background: #0d7a4a; }
+    .heat-4  { background: #1a9958; }
+    .heat-5  { background: #f1420b; }
+
+    .heatmap-legend {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 8px;
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .legend-cell {
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+    }
+
+    /* Today score */
+    .today-ring-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      min-width: 140px;
+    }
+
+    .ring-container {
+      position: relative;
+      width: 110px;
+      height: 110px;
+    }
+
+    .ring-container canvas { position: absolute; top: 0; left: 0; }
+
+    .ring-label {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+    }
+
+    .ring-score {
+      font-family: 'Oswald', sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--orange);
+      line-height: 1;
+    }
+
+    .ring-max {
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    .ring-sublabel {
+      font-size: 11px;
+      color: var(--text-dim);
+      letter-spacing: 1px;
+      font-family: 'Oswald', sans-serif;
+      text-transform: uppercase;
+    }
+
+    /* Streaks */
+    .streaks-wrap { flex: 1; min-width: 200px; }
+
+    .streak-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+
+    .streak-item:last-child { border-bottom: none; }
+
+    .streak-icon { font-size: 18px; width: 28px; text-align: center; }
+
+    .streak-info { flex: 1; }
+    .streak-name { font-size: 12px; color: var(--text); font-weight: 600; }
+    .streak-days { font-size: 11px; color: var(--text-dim); }
+
+    .streak-badge {
+      font-family: 'Oswald', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--orange);
+    }
+
+    /* Sparklines */
+    .sparklines-row {
+      display: flex;
+      gap: 16px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+
+    .sparkline-item { flex: 1; min-width: 80px; }
+    .sparkline-label { font-size: 10px; color: var(--text-muted); margin-bottom: 4px; font-family: 'Oswald', sans-serif; letter-spacing: 1px; text-transform: uppercase; }
+    .sparkline-svg { width: 100%; height: 32px; }
+
+    /* ===================== SECTION 2: 7 F'S ===================== */
+    .radar-wrap {
+      display: flex;
+      gap: 24px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .radar-chart-container {
+      flex: 1;
+      min-width: 220px;
+      max-width: 320px;
+      aspect-ratio: 1;
+    }
+
+    .seven-f-details { flex: 1; min-width: 180px; }
+
+    .f-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      margin-bottom: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .f-item:hover { background: var(--glass); }
+    .f-item.active { background: var(--blue-dim); }
+
+    .f-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .f-label { font-size: 13px; color: var(--text); flex: 1; font-weight: 600; }
+    .f-score { font-family: 'Oswald', sans-serif; font-size: 20px; font-weight: 700; color: var(--blue); }
+    .f-max { font-size: 11px; color: var(--text-dim); align-self: flex-end; margin-bottom: 2px; }
+
+    .f-bar-track {
+      flex: 2;
+      height: 6px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .f-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 1s ease;
+    }
+
+    .f-detail-card {
+      background: var(--blue-dim);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      margin-top: 12px;
+      display: none;
+    }
+
+    .f-detail-card.show { display: block; }
+
+    /* ===================== SECTION 3: GOAL MOUNTAIN ===================== */
+    .mountain-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .tier-block {
+      display: flex;
+      align-items: stretch;
+      gap: 14px;
+    }
+
+    .tier-label-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding-top: 4px;
+    }
+
+    .tier-icon {
+      font-size: 18px;
+      margin-bottom: 4px;
+    }
+
+    .tier-connector {
+      flex: 1;
+      width: 2px;
+      background: linear-gradient(to bottom, var(--border), transparent);
+      margin: 0 auto;
+    }
+
+    .tier-content { flex: 1; }
+
+    .tier-header {
+      font-family: 'Oswald', sans-serif;
+      font-size: 11px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+    }
+
+    .goal-item {
+      background: var(--bg3);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 6px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .goal-item-text {
+      font-size: 13px;
+      color: var(--text);
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+
+    .goal-progress-track {
+      height: 4px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .goal-progress-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 1.2s ease;
+    }
+
+    .goal-progress-label {
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+
+    .vision-peak {
+      background: linear-gradient(135deg, rgba(241,66,11,0.15), rgba(42,147,193,0.15));
+      border: 1px solid var(--orange);
+      border-radius: 12px;
+      padding: 16px 20px;
+      text-align: center;
+    }
+
+    .vision-peak-label {
+      font-family: 'Oswald', sans-serif;
+      font-size: 10px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--orange);
+      margin-bottom: 8px;
+    }
+
+    .vision-peak-text {
+      font-size: 14px;
+      color: var(--text);
+      line-height: 1.5;
+      font-style: italic;
+    }
+
+    /* ===================== SECTION 4: PROOF WALL ===================== */
+    .counter-display {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .counter-number {
+      font-family: 'Oswald', sans-serif;
+      font-size: 56px;
+      font-weight: 700;
+      color: var(--orange);
+      line-height: 1;
+      text-shadow: 0 0 40px var(--orange-glow);
+      letter-spacing: -1px;
+    }
+
+    .counter-label {
+      font-size: 12px;
+      color: var(--text-dim);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    .achievement-badges {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .badge {
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-family: 'Oswald', sans-serif;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .badge-blue { background: var(--blue-dim); border: 1px solid var(--blue); color: var(--blue); }
+    .badge-orange { background: var(--orange-dim); border: 1px solid var(--orange); color: var(--orange); }
+    .badge-green { background: rgba(34,197,94,0.1); border: 1px solid var(--green); color: var(--green); }
+
+    .task-feed { display: flex; flex-direction: column; gap: 6px; }
+
+    .task-feed-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      background: var(--bg3);
+      border-radius: 8px;
+      font-size: 12px;
+    }
+
+    .task-feed-check { color: var(--green); font-size: 14px; }
+    .task-feed-text { flex: 1; color: var(--text); }
+    .task-feed-date { color: var(--text-muted); font-size: 11px; }
+
+    /* ===================== SECTION 5: MONEY MAP ===================== */
+    .money-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .money-cell {
+      background: var(--bg3);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 10px;
+      padding: 14px;
+      text-align: center;
+    }
+
+    .money-label {
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+      font-family: 'Oswald', sans-serif;
+    }
+
+    .money-value {
+      font-family: 'Oswald', sans-serif;
+      font-size: 26px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .money-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .the-number-section { margin-top: 14px; }
+
+    .the-number-label {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .number-track {
+      height: 8px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+
+    .number-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--blue), var(--orange));
+      border-radius: 4px;
+      transition: width 1.5s ease;
+    }
+
+    .number-milestones {
+      display: flex;
+      justify-content: space-between;
+      font-size: 9px;
+      color: var(--text-muted);
+    }
+
+    .gauge-container {
+      position: relative;
+      width: 100%;
+      height: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ===================== SECTION 6: RELATIONSHIP RING ===================== */
+    .ring-viz {
+      position: relative;
+      width: 100%;
+      padding-bottom: 100%;
+      max-width: 320px;
+      margin: 0 auto;
+    }
+
+    .ring-viz svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .contact-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+
+    .contact-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Oswald', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .contact-info { flex: 1; }
+    .contact-name { font-size: 12px; color: var(--text); font-weight: 600; }
+    .contact-role { font-size: 11px; color: var(--text-dim); }
+
+    .contact-days {
+      font-family: 'Oswald', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .days-green { color: var(--green); }
+    .days-yellow { color: var(--yellow); }
+    .days-red { color: var(--red); }
+
+    /* ===================== SECTION 7: LEGACY LENS ===================== */
+    .legacy-vision {
+      background: linear-gradient(135deg, rgba(42,147,193,0.1), rgba(241,66,11,0.05));
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .legacy-vision-label {
+      font-family: 'Oswald', sans-serif;
+      font-size: 10px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 8px;
+    }
+
+    .legacy-vision-text {
+      font-size: 14px;
+      color: var(--text);
+      line-height: 1.6;
+      font-style: italic;
+    }
+
+    .epitaph-card {
+      background: var(--orange-dim);
+      border: 1px solid rgba(241,66,11,0.3);
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+
+    .epitaph-label {
+      font-family: 'Oswald', sans-serif;
+      font-size: 10px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--orange);
+      margin-bottom: 8px;
+    }
+
+    .epitaph-text {
+      font-size: 15px;
+      color: var(--text);
+      line-height: 1.5;
+      font-weight: 600;
+    }
+
+    .eulogy-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .eulogy-item {
+      background: var(--bg3);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+
+    .eulogy-who {
+      font-size: 10px;
+      color: var(--text-dim);
+      font-family: 'Oswald', sans-serif;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .eulogy-text {
+      font-size: 12px;
+      color: var(--text);
+      line-height: 1.4;
+    }
+
+    .legacy-footer {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .legacy-item {
+      flex: 1;
+      min-width: 120px;
+      background: var(--bg3);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+    }
+
+    .legacy-item-label {
+      font-size: 10px;
+      color: var(--text-dim);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      font-family: 'Oswald', sans-serif;
+      margin-bottom: 6px;
+    }
+
+    .legacy-item-value {
+      font-family: 'Oswald', sans-serif;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--blue);
+    }
+
+    .legacy-item-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+    /* Countdown */
+    .countdown-display {
+      font-family: 'Oswald', sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--orange);
+      text-align: center;
+      letter-spacing: 2px;
+    }
+
+    .countdown-label {
+      font-size: 10px;
+      color: var(--text-dim);
+      text-align: center;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    /* Grid areas for the bar chart in proof wall */
+    .bar-chart-container {
+      height: 120px;
+      margin-top: 8px;
+    }
+
+    /* Micro laws */
+    .micro-laws {
+      margin-top: 16px;
+    }
+
+    .law-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 7px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    .law-num {
+      font-family: 'Oswald', sans-serif;
+      font-size: 14px;
+      color: var(--orange);
+      font-weight: 700;
+      width: 20px;
+      flex-shrink: 0;
+    }
+
+    /* Quote stripe */
+    .quote-stripe {
+      grid-column: span 12;
+      background: linear-gradient(90deg, transparent, var(--blue-dim), transparent);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 32px;
+      text-align: center;
+      font-style: italic;
+      color: var(--text-dim);
+      font-size: 13px;
+    }
+
+    .quote-stripe strong { color: var(--blue); font-style: normal; }
+
+    /* Animation entrance */
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .card-animate {
+      animation: cardIn 0.5s ease forwards;
+      opacity: 0;
+    }
+
+    /* Tooltip */
+    .tooltip {
+      position: fixed;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 11px;
+      color: var(--text);
+      pointer-events: none;
+      z-index: 1000;
+      display: none;
+      max-width: 160px;
+      text-align: center;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ===================== QUICK STATS BANNER ===================== */
+    .quick-stats-banner {
+      display: flex;
+      gap: 12px;
+      padding: 16px 24px;
+      max-width: 1600px;
+      margin: 0 auto;
+      flex-wrap: wrap;
+    }
+
+    .qs-card {
+      flex: 1;
+      min-width: 140px;
+      background: rgba(13,17,33,0.9);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      backdrop-filter: blur(8px);
+      transition: border-color 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .qs-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--blue-glow), transparent);
+      opacity: 0.5;
+    }
+
+    .qs-card:hover { border-color: var(--border-bright); }
+
+    .qs-icon {
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    .qs-info { flex: 1; }
+
+    .qs-value {
+      font-family: 'Oswald', sans-serif;
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--orange);
+    }
+
+    .qs-label {
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-top: 3px;
+      font-family: 'Oswald', sans-serif;
+    }
+
+    @media (max-width: 768px) {
+      .quick-stats-banner {
+        padding: 12px;
+        gap: 8px;
+      }
+      .qs-card {
+        min-width: calc(50% - 8px);
+        flex: 0 0 calc(50% - 4px);
+      }
+      .qs-value { font-size: 20px; }
+    }
+
+    /* ===================== DAILY CHECKLIST ===================== */
+    .checklist-wrap {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .checklist-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .checklist-title {
+      font-family: 'Oswald', sans-serif;
+      font-size: 11px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .checklist-count {
+      font-family: 'Oswald', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--blue);
+      letter-spacing: 1px;
+    }
+
+    .checklist-items {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    @media (max-width: 600px) {
+      .checklist-items { grid-template-columns: 1fr; }
+    }
+
+    .check-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: var(--bg3);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      min-height: 44px;
+      user-select: none;
+    }
+
+    .check-item:hover { border-color: var(--border); background: rgba(17,23,41,0.9); }
+    .check-item.checked { border-color: rgba(34,197,94,0.3); background: rgba(34,197,94,0.06); }
+
+    .check-box {
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--text-muted);
+      border-radius: 4px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      font-size: 13px;
+    }
+
+    .check-item.checked .check-box {
+      background: var(--green);
+      border-color: var(--green);
+      color: #fff;
+    }
+
+    .check-label {
+      font-size: 12px;
+      color: var(--text-dim);
+      flex: 1;
+      transition: color 0.2s;
+    }
+
+    .check-item.checked .check-label {
+      color: var(--text);
+      text-decoration: line-through;
+      text-decoration-color: rgba(34,197,94,0.4);
+    }
+
+    /* ===================== DATA FRESHNESS CHIP ===================== */
+    .freshness-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 10px;
+      font-family: 'Oswald', sans-serif;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      border: 1px solid transparent;
+      transition: all 0.4s ease;
+    }
+    .freshness-chip.fresh {
+      background: rgba(34,197,94,0.08);
+      border-color: rgba(34,197,94,0.3);
+      color: #22c55e;
+    }
+    .freshness-chip.stale {
+      background: rgba(234,179,8,0.08);
+      border-color: rgba(234,179,8,0.3);
+      color: #eab308;
+    }
+    .freshness-chip.offline {
+      background: rgba(239,68,68,0.08);
+      border-color: rgba(239,68,68,0.3);
+      color: #ef4444;
+    }
+    .freshness-dot {
+      width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+    }
+    .freshness-chip.fresh .freshness-dot { background: #22c55e; animation: dotBlink 2s ease infinite; }
+    .freshness-chip.stale .freshness-dot { background: #eab308; }
+    .freshness-chip.offline .freshness-dot { background: #ef4444; }
+    @keyframes dotBlink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* Score question toggle flash */
+    @keyframes scoreFlash {
+      0% { background: rgba(34,197,94,0.25); }
+      100% { background: inherit; }
+    }
+    .check-item.flash-green {
+      animation: scoreFlash 0.5s ease forwards;
+    }
+
+    .checklist-glow {
+      display: none;
+      text-align: center;
+      padding: 10px;
+      margin-top: 10px;
+      background: rgba(34,197,94,0.1);
+      border: 1px solid rgba(34,197,94,0.3);
+      border-radius: 8px;
+      color: var(--green);
+      font-family: 'Oswald', sans-serif;
+      font-size: 12px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      animation: glowPulse 2s ease-in-out infinite;
+    }
+
+    @keyframes glowPulse {
+      0%, 100% { box-shadow: 0 0 8px rgba(34,197,94,0.2); }
+      50% { box-shadow: 0 0 20px rgba(34,197,94,0.4); }
+    }
+
+    /* Mobile pulse-row stacking */
+    @media (max-width: 768px) {
+      .pulse-row { flex-direction: column; }
+      .pulse-heatmap-wrap { min-width: unset; overflow-x: auto; }
+      .today-ring-wrap { flex-direction: row; align-items: center; gap: 20px; min-width: unset; }
+      .streaks-wrap { min-width: unset; }
+    }
+
+    /* ===================== MANDALA MINI PREVIEW ===================== */
+    .mandala-mini-wrap {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .mandala-mini-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .mandala-mini-title {
+      font-family: 'Oswald', sans-serif;
+      font-size: 11px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+
+    .mandala-sync-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    .mandala-sync-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-muted);
+    }
+
+    .mandala-sync-dot.live { background: var(--green); animation: dotPulse 2s ease infinite; }
+
+    @keyframes dotPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .mandala-mini-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      overflow-x: auto;
+      min-width: 0;
+    }
+
+    .mandala-mini-cell {
+      background: var(--bg3);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 8px;
+      padding: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      min-height: 56px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      position: relative;
+    }
+
+    .mandala-mini-cell:hover {
+      border-color: rgba(245,158,11,0.5);
+      background: rgba(245,158,11,0.06);
+    }
+
+    .mandala-mini-cell.center-cell {
+      background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(241,66,11,0.08));
+      border-color: rgba(245,158,11,0.4);
+      cursor: default;
+    }
+
+    .mandala-mini-cell.active {
+      border-color: rgba(245,158,11,0.7);
+      background: rgba(245,158,11,0.1);
+    }
+
+    .mandala-mini-cell-label {
+      font-size: 9px;
+      font-family: 'Oswald', sans-serif;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      line-height: 1.3;
+    }
+
+    .mandala-mini-cell.center-cell .mandala-mini-cell-label {
+      color: #f59e0b;
+      font-size: 8px;
+    }
+
+    .mandala-mini-cell-num {
+      font-size: 8px;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+
+    /* Drill-down panel */
+    .mandala-drilldown {
+      display: none;
+      margin-top: 8px;
+      background: rgba(245,158,11,0.06);
+      border: 1px solid rgba(245,158,11,0.3);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .mandala-drilldown.open {
+      display: block;
+      animation: slideDown 0.25s ease forwards;
+    }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .mandala-dd-header {
+      padding: 10px 14px;
+      background: rgba(245,158,11,0.1);
+      border-bottom: 1px solid rgba(245,158,11,0.2);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .mandala-dd-title {
+      font-family: 'Oswald', sans-serif;
+      font-size: 12px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #f59e0b;
+    }
+
+    .mandala-dd-close {
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--text-dim);
+      font-size: 14px;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+
+    .mandala-dd-close:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+
+    .mandala-dd-tasks {
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .mandala-dd-task {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--text-dim);
+      padding: 4px 0;
+      line-height: 1.4;
+    }
+
+    .mandala-dd-task-num {
+      font-family: 'Oswald', sans-serif;
+      font-size: 11px;
+      color: #f59e0b;
+      flex-shrink: 0;
+      width: 16px;
+    }
+
+    .mandala-progress-ring {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 12px;
+      padding: 10px 14px;
+      background: var(--bg3);
+      border-radius: 8px;
+    }
+
+    .mandala-progress-bar-wrap {
+      flex: 1;
+      height: 6px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .mandala-progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #f59e0b, #f1420b);
+      border-radius: 3px;
+      transition: width 1s ease;
+    }
+
+    .mandala-progress-pct {
+      font-family: 'Oswald', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      color: #f59e0b;
+      white-space: nowrap;
+    }
+
+    .mandala-progress-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    /* ===================== HEATMAP WAVE ANIMATION ===================== */
+    @keyframes heatWave {
+      from { opacity: 0; transform: scaleY(0.6); }
+      to { opacity: 1; transform: scaleY(1); }
+    }
+
+    .heatmap-cell.wave-animate {
+      animation: heatWave 0.3s ease forwards;
+      opacity: 0;
+    }
+
+    /* ===================== STAGGERED CARD ANIMATION ===================== */
+    .card-animate {
+      animation: cardIn 0.5s ease forwards;
+      opacity: 0;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .card-animate { animation: none; opacity: 1; }
+      .heatmap-cell.wave-animate { animation: none; opacity: 1; }
+      .checklist-glow { animation: none; }
+      .mandala-sync-dot.live { animation: none; }
+      .freshness-chip.fresh .freshness-dot { animation: none; }
+    }
+
+    /* ===================== MOBILE HEADER FONT ===================== */
+    @media (max-width: 480px) {
+      .header-brand { font-size: 18px; }
+      .header-date { display: none; }
+    }
+
+    /* ===================== HEADER ACTIONS ===================== */
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-action-btn {
+      padding: 6px 14px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-dim);
+      font-family: 'Oswald', sans-serif;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .header-action-btn:hover {
+      border-color: var(--blue);
+      color: var(--text);
+    }
+
+    /* ===================== AI COACHING PANEL ===================== */
+    .coach-fab {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #f1420b, #ff6b35);
+      border: none;
+      color: #fff;
+      font-size: 24px;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(241,66,11,0.4);
+      z-index: 500;
+      transition: all 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .coach-fab:hover {
+      transform: scale(1.1);
+      box-shadow: 0 6px 28px rgba(241,66,11,0.6);
+    }
+
+    .coach-fab.open {
+      background: var(--bg3);
+      box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+    }
+
+    .coach-panel {
+      position: fixed;
+      bottom: 96px;
+      right: 28px;
+      width: 400px;
+      max-height: 560px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      z-index: 499;
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+      animation: coachSlideUp 0.3s ease;
+    }
+
+    .coach-panel.visible { display: flex; }
+
+    @keyframes coachSlideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .coach-header {
+      padding: 16px 20px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .coach-title {
+      font-family: 'Oswald', sans-serif;
+      font-size: 14px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--orange);
+    }
+
+    .coach-module-select {
+      padding: 4px 8px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 12px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .coach-module-select:focus { border-color: var(--blue); }
+
+    .coach-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 200px;
+      max-height: 360px;
+    }
+
+    .coach-msg {
+      max-width: 85%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 13px;
+      line-height: 1.55;
+      word-wrap: break-word;
+    }
+
+    .coach-msg.user {
+      align-self: flex-end;
+      background: rgba(42,147,193,0.2);
+      border: 1px solid rgba(42,147,193,0.3);
+      color: var(--text);
+    }
+
+    .coach-msg.assistant {
+      align-self: flex-start;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .coach-msg.system {
+      align-self: center;
+      font-size: 11px;
+      color: var(--text-dim);
+      font-style: italic;
+    }
+
+    .coach-msg.loading {
+      align-self: flex-start;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+    }
+
+    .coach-msg.loading .dots::after {
+      content: '';
+      animation: loadingDots 1.2s infinite;
+    }
+
+    @keyframes loadingDots {
+      0% { content: '.'; }
+      33% { content: '..'; }
+      66% { content: '...'; }
+    }
+
+    .coach-input-row {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+    }
+
+    .coach-input {
+      flex: 1;
+      padding: 10px 14px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 13px;
+      outline: none;
+      resize: none;
+    }
+
+    .coach-input:focus { border-color: var(--blue); }
+
+    .coach-send-btn {
+      padding: 10px 16px;
+      background: var(--orange);
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-family: 'Oswald', sans-serif;
+      font-size: 12px;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+
+    .coach-send-btn:hover { background: #d93a09; }
+    .coach-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .coach-msg ul { margin: 6px 0 6px 16px; padding: 0; }
+    .coach-msg li { margin-bottom: 4px; list-style: disc; }
+    .coach-msg strong { color: var(--orange); }
+
+    @media (max-width: 480px) {
+      .coach-panel {
+        right: 8px;
+        left: 8px;
+        bottom: 88px;
+        width: auto;
+        max-height: 70vh;
+      }
+      .coach-fab {
+        bottom: 16px;
+        right: 16px;
+        width: 48px;
+        height: 48px;
+        font-size: 20px;
+      }
+    }
+
+    /* ===================== PRINT / PDF EXPORT ===================== */
+    @media print {
+      body { background: #080a12 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      #password-gate, .tooltip, .coach-fab, .coach-panel, .header-actions { display: none !important; }
+      .site-header { position: static; }
+      .card { break-inside: avoid; page-break-inside: avoid; }
+      .card:hover { transform: none; }
+      .dashboard-grid { padding: 12px; gap: 12px; }
+      .heatmap-cell { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    }
+  </style>
+
+<script>window.__LIVE_DATA__ = {"last_updated": "2026-03-16T01:24:55Z", "source": "live", "daily_pulse": {"heatmap": [{"date": "2025-12-17", "score": 0}, {"date": "2025-12-18", "score": 0}, {"date": "2025-12-19", "score": 0}, {"date": "2025-12-20", "score": 0}, {"date": "2025-12-21", "score": 0}, {"date": "2025-12-22", "score": 0}, {"date": "2025-12-23", "score": 0}, {"date": "2025-12-24", "score": 0}, {"date": "2025-12-25", "score": 0}, {"date": "2025-12-26", "score": 0}, {"date": "2025-12-27", "score": 0}, {"date": "2025-12-28", "score": 0}, {"date": "2025-12-29", "score": 0}, {"date": "2025-12-30", "score": 0}, {"date": "2025-12-31", "score": 0}, {"date": "2026-01-01", "score": 0}, {"date": "2026-01-02", "score": 0}, {"date": "2026-01-03", "score": 0}, {"date": "2026-01-04", "score": 14}, {"date": "2026-01-05", "score": 12}, {"date": "2026-01-06", "score": 12}, {"date": "2026-01-07", "score": 12}, {"date": "2026-01-08", "score": 12}, {"date": "2026-01-09", "score": 13}, {"date": "2026-01-10", "score": 27}, {"date": "2026-01-11", "score": 28}, {"date": "2026-01-12", "score": 12}, {"date": "2026-01-13", "score": 14}, {"date": "2026-01-14", "score": 9}, {"date": "2026-01-15", "score": 10}, {"date": "2026-01-16", "score": 16}, {"date": "2026-01-17", "score": 20}, {"date": "2026-01-18", "score": 21}, {"date": "2026-01-19", "score": 15}, {"date": "2026-01-20", "score": 8}, {"date": "2026-01-21", "score": 10}, {"date": "2026-01-22", "score": 8}, {"date": "2026-01-23", "score": 16}, {"date": "2026-01-24", "score": 26}, {"date": "2026-01-25", "score": 27}, {"date": "2026-01-26", "score": 17}, {"date": "2026-01-27", "score": 14}, {"date": "2026-01-28", "score": 12}, {"date": "2026-01-29", "score": 10}, {"date": "2026-01-30", "score": 11}, {"date": "2026-01-31", "score": 10}, {"date": "2026-02-01", "score": 11}, {"date": "2026-02-02", "score": 10}, {"date": "2026-02-03", "score": 11}, {"date": "2026-02-04", "score": 12}, {"date": "2026-02-05", "score": 12}, {"date": "2026-02-06", "score": 16}, {"date": "2026-02-07", "score": 21}, {"date": "2026-02-08", "score": 23}, {"date": "2026-02-09", "score": 17}, {"date": "2026-02-10", "score": 12}, {"date": "2026-02-11", "score": 12}, {"date": "2026-02-12", "score": 12}, {"date": "2026-02-13", "score": 18}, {"date": "2026-02-14", "score": 25}, {"date": "2026-02-15", "score": 20}, {"date": "2026-02-16", "score": 17}, {"date": "2026-02-17", "score": 18}, {"date": "2026-02-18", "score": 16}, {"date": "2026-02-19", "score": 17}, {"date": "2026-02-20", "score": 12}, {"date": "2026-02-21", "score": 13}, {"date": "2026-02-22", "score": 12}, {"date": "2026-02-23", "score": 12}, {"date": "2026-02-24", "score": 14}, {"date": "2026-02-25", "score": 13}, {"date": "2026-02-26", "score": 12}, {"date": "2026-02-27", "score": 16}, {"date": "2026-02-28", "score": 16}, {"date": "2026-03-01", "score": 14}, {"date": "2026-03-02", "score": 14}, {"date": "2026-03-03", "score": 12}, {"date": "2026-03-04", "score": 12}, {"date": "2026-03-05", "score": 12}, {"date": "2026-03-06", "score": 17}, {"date": "2026-03-07", "score": 18}, {"date": "2026-03-08", "score": 17}, {"date": "2026-03-09", "score": 12}, {"date": "2026-03-10", "score": 12}, {"date": "2026-03-11", "score": 12}, {"date": "2026-03-12", "score": 13}, {"date": "2026-03-13", "score": 14}, {"date": "2026-03-14", "score": 23}, {"date": "2026-03-15", "score": 0}, {"date": "2026-03-16", "score": 0}], "today": {"score": 0, "max": 20, "questions": [{"label": "Did I do my best to wake up at 4:20 am today? (at least M-F, & Sunday) (5 am sat", "score": 0, "max": 1}, {"label": "Did I do my best to study/read/watch/listen something for education for at least", "score": 0, "max": 1}, {"label": "Did I do my best to exercise for at least 30 minutes today? (at least M-F, & Sun", "score": 0, "max": 1}, {"label": "Did I do my best to read the Bible for 20 minutes today?", "score": 0, "max": 1}, {"label": "Did I do my best to read, write, & visualize my goals today?", "score": 0, "max": 1}, {"label": "Did I do my best to spend at least 15 minutes planning my daily routine/schedule", "score": 0, "max": 1}, {"label": "Did I do my best to set clear daily & weekly goals which align with my monthly, ", "score": 0, "max": 1}, {"label": "Did I do my best to spend at least 30 Minutes focusing on our businesses & basic", "score": 0, "max": 1}, {"label": "Did I do my best to spend 61 minutes talking with my wife while giving her my un", "score": 0, "max": 1}, {"label": "Did I do my best to say or do something nice for my wife?", "score": 0, "max": 1}, {"label": "Did I do my best to spend 61 minutes talking with my daughter while giving her m", "score": 0, "max": 1}, {"label": "Did I do my best to say or do something nice for my daughter?", "score": 0, "max": 1}, {"label": "Did I do my best to plan today for tomorrow?", "score": 0, "max": 1}, {"label": "Did I do my best to build positive relationships?", "score": 0, "max": 1}, {"label": "Did I do my best to give more than is expected of me? Did I go the extra mile?", "score": 0, "max": 1}, {"label": "Did I do my best to practice LETTING GO instead of trying to prove I was right t", "score": 0, "max": 1}, {"label": "Did I do my best to refrain from making any angry or destructive comments about ", "score": 0, "max": 1}, {"label": "Did I do my best to find meaning and happiness?", "score": 0, "max": 1}, {"label": "Did I do my best to listen to others before I speak?", "score": 0, "max": 1}, {"label": "Did I do my best to practice true self control today? 3 out of 4 Pomodoro Techni", "score": 0, "max": 1}]}, "streaks": {}}, "seven_fs": {"current": {"family": 4, "career": 4, "fitness": 2, "faith": 2, "finance": 2, "fellowship": 4, "fun": 3}, "previous": {"family": 2, "career": 4, "fitness": 2, "faith": 2, "finance": 2, "fellowship": 4, "fun": 3}, "last_date": "7/25/21"}, "proof_wall": {"total_tasks": 31807, "by_year": {"2026": 1482, "2025": 3830, "2024": 4197, "2023": 4236, "2022": 4109, "2021": 5427, "2020": 4320, "2019": 4206}, "monthly_2026": [{"month": "Jan", "count": 344}, {"month": "Feb", "count": 458}, {"month": "Mar", "count": 354}], "recent": [{"task": "Mark Important Emails for Later - 8:00-8:10am", "date": "Today"}, {"task": "End of Day Wrap Up (daily review) - 4:30pm", "date": "Yesterday"}, {"task": "Plan for Tomorrow - Future Focus - 4:15pm", "date": "Yesterday"}, {"task": "Aether end of day protocol - master prompt", "date": "Yesterday"}, {"task": "get admin dashboard done for portal", "date": "Yesterday"}, {"task": "pull these portal features from nathan's lyra documents - https://drive.google.c", "date": "Yesterday"}, {"task": "work on voice AI", "date": "Yesterday"}, {"task": "meeting with pierre and alex", "date": "Yesterday"}, {"task": "get referral clone up on all main pages - https://purebrain.ai/referral-program-", "date": "Yesterday"}, {"task": "get password protected version of dashboard in place..", "date": "Yesterday"}]}, "goals": {"vision": "\u201cI am the Founder & CEO of Pure Technology and other companies. A Billionaire Philanthropist who loves my family and spends ample time with them, and focuses the rest of my efforts on impacting others to #Grind!\u201d", "yearly": [{"text": "My relationship with my Family is more caring and loving because I schedule at least one full hour e", "progress": 0}, {"text": "I read at least 61 minutes a day to continue my growth in all 7 Fields of IQ (Mental, Emotional, Soc", "progress": 0}, {"text": "I work out at least 30 minutes a day to get back to being healthy", "progress": 0}, {"text": "We land our first major Experiential Giveaway by early February 2026", "progress": 0}, {"text": "We close full $25+ Million Series-A Investment with MAKR Venture Fund by end of February 2026", "progress": 0}, {"text": "We begin Dashboard, Launcher/Application & Phone MVP by mid March 2026", "progress": 0}, {"text": "I read at least 34 minutes a day to continue my growth in all 7 Fields of IQ (Mental, Emotional, Soc", "progress": 0}], "top77": [{"text": "I read the Bible and Pray for 25 minutes in the morning each day", "year": "8"}, {"text": "My relationship with my Family is more caring and loving because I schedule at least one full hour e", "year": "8"}, {"text": "I read at least 61 minutes a day to continue my growth in all 7 Fields of IQ (Mental, Emotional, Soc", "year": "8"}, {"text": "I work out at least 30 minutes a day to get back to being healthy", "year": "8"}, {"text": "We land our first major Experiential Giveaway by early February 2026", "year": "8"}, {"text": "We close full $25+ Million Series-A Investment with MAKR Venture Fund by end of February 2026", "year": "8"}, {"text": "We acquire LiveCast, rebrand it to PureCast and tie it to PI early March 2026", "year": "8"}, {"text": "I earn a $5,000 USD salary per month (The rest goes in an expense account with a debit/credit card t", "year": "8"}, {"text": "We begin Dashboard, Launcher/Application & Phone MVP by mid March 2026", "year": "8"}, {"text": "We finish Pure Influence - Giveaways beta version and launch it by early mid April 2026", "year": "8"}, {"text": "We add 5-7 MAKR companies & clients = $250k per month by mid April 2026", "year": "8"}, {"text": "We launch The B Hive (rebrand in process) with MVP functionality by early May 2026", "year": "8"}, {"text": "We rebrand, and prepare to relaunch Pure Shopping in July, by mid-May 2026", "year": "8"}, {"text": "We finish Pure Influence - Giveaways MVP version and launch it by mid May 2026", "year": "8"}, {"text": "We relaunched LiveCast as PureCast as a standalone app by end of May 2026", "year": "8"}, {"text": "We enroll 10-16 new Pure Influence clients at $2.5k - $16k in spend by end of June 2026", "year": "8"}, {"text": "We invest $500k with Glen Woo at 20% dividends by mid August 2026", "year": "8"}, {"text": "We generate a total of $340,000+/monthly revenue by end of August 2026", "year": "8"}, {"text": "We reach $250k in contribution margin by end of August 2026", "year": "8"}, {"text": "We launch Pure Shopping standalone application by end of August 2026", "year": "8"}, {"text": "We finish Pure Influence - Full Model and launch it by end of August 2026", "year": "8"}, {"text": "We generate $520,000+/monthly revenue by end of October 2026", "year": "8"}, {"text": "We reach $430k in contribution margin by end of November 2026", "year": "8"}, {"text": "I marry Melanie in Miami in December 2026", "year": "8"}, {"text": "We finish initial MVP PHONE Final Product by early February 2027", "year": "9"}, {"text": "We set FY1 Marketing KPI\u2019s & plan Kickstarter for 1st orders by start of March 2027", "year": "9"}, {"text": "We soft launched PT core model with phone in the market by start of March 2027", "year": "9"}, {"text": "I paid off my student loans and am free of all bad debt by end of March 2027", "year": "9"}, {"text": "We launch crowdfunding campaign with our Smartphones by start of April 2027", "year": "9"}, {"text": "We raise a Series-B of $43M+ by end of April 2027", "year": "9"}, {"text": "We attain a $52 Million Dollar Line of Credit for Expansion Purposes by end of May 2027", "year": "9"}, {"text": "We hard launch PT core model in Times Square NYC on 7 July 2027", "year": "9"}, {"text": "We initiate the Pure Cloud for an Additional Revenue Stream \ud83d\udca1by October 2027", "year": "9"}, {"text": "We complete FY1 with ($520+ Million in Revenue) by end of December 2027", "year": "9"}, {"text": "We add \"Influencer Suggestion\" to core model via Pure Influence by February 2028", "year": "10"}, {"text": "We complete $100 Million+ Series-C by end of March 2028", "year": "10"}, {"text": "We attain a $250 Million Dollar Line of Credit for Expansion Purposes by end of April 2028", "year": "10"}, {"text": "We launch Fame Feed as a JV with Pure Influence & Pure Marketing \ud83d\udca1May 2028", "year": "10"}, {"text": "We finish next phone edition by May 2028 and release it in August 2028", "year": "10"}, {"text": "We achieve profitability for Pure Tech (either Q3 Y2 or prior!) by end of August 2028", "year": "10"}, {"text": "We launch Pure Music Idea to get into the music sector \ud83d\udca1 by end of September 2028", "year": "10"}, {"text": "We complete FY2 with more revenue streams ($2.5+ Billion in Revenue) by end of December 2028", "year": "10"}, {"text": "We launch Pure Service / Restaurant concept under Pure Technology Inc. \ud83d\udca1February 2029", "year": "11"}, {"text": "We complete $500 Million+ Series-D via Tokens/Coins by end of March 2029", "year": "11"}, {"text": "We attain a $1 Billion Dollar Line of Credit for Expansion Purposes by end of April 2029", "year": "11"}, {"text": "I give my daughter more opportunities than I ever had but do not spoil her. Afterall, I want her to ", "year": "11"}, {"text": "My wife and I are only increasing our cost of living by 50% compared to our income increases. This p", "year": "11"}, {"text": "I proved everyone wrong who doubted me! Acquaintances, Friends, Family, Extended Family. I proved to", "year": "11"}, {"text": "My relationship with the rest of my family and friends is honestly one where they can look up to me ", "year": "11"}, {"text": "I have integrity and professional acumen in most situations.", "year": "11"}, {"text": "I have four nice cars / SUVs. Three cars - Lexus LC 500 (Limited Edition), Audi S8 Plus, & Hyundai S", "year": "11 (Hyundai 1st, Audi 2nd, Lexus 3rd, SUV 4th)"}, {"text": "I am an exceptional Founder, CEO, Leader, and Salesman regarding Pure Technology, My Family, and My ", "year": "11"}, {"text": "I support the following charities: Pure Love, #Grind, whichever church I am involved with, Heart Cry", "year": "11"}, {"text": "I have 1,000+ people working for me.", "year": "11"}, {"text": "I take my family on at least 1 international vacation like Italy, Tuvalu, Monaco, San Marino, Costa ", "year": "11"}, {"text": "I take my family on at least 1 national vacation like Florida, Grand Canyon, National parks etc", "year": "11"}, {"text": "We complete FY3 and achieve $4.3+ Billion in Revenue by end of December 2029", "year": "11"}, {"text": "I Officially Launch #Grind - Get Going Goal Setting, Growing & Go Getting!", "year": "12"}, {"text": "I take family on a vacation to Tahiti, and also back to Monaco & Italy!", "year": "12"}, {"text": "My house has an enclosed pool OR a pool with a covering which can be opened and closed depending on ", "year": "12"}, {"text": "My house has a full library that can hold approx 5,200 books (plus space for a safe which contains h", "year": "12"}, {"text": "We have a cleaning person / maid to keep the house clean and a gardner to keep the outside of the ho", "year": "12"}, {"text": "I met my online mentors. Specifically Patrick Bet David, Grant Cardone, Evan Carmichael (already met", "year": "12"}, {"text": "We complete FY4 and reach $8.8+ Billion in Revenue by end of December 2030", "year": "12"}, {"text": "We own our dream home ($2,500,000 cost or above) in a nice neighborhood. My house is situated on 1-1", "year": "13"}, {"text": "I introduce 3 different Pure Technology subsidiaries.", "year": "13"}, {"text": "I have a diversified portfolio worth MORE THAN 1 Billion dollars.", "year": "13"}, {"text": "I have a plane for productivity & vacation purposes", "year": "13"}, {"text": "We complete FY5 with at least $11.5+ Billion in Revenue by end of December 2031", "year": "13"}, {"text": "We ramp up other Investments (Tri-State Real Estate, Venture Capital, Stock Portfolio etc)", "year": "14"}, {"text": "I made Pure Technology a successful & highly profitable company.", "year": "14"}, {"text": "I have Pure Properties investing into some further national real estate for myself and my family.", "year": "14"}, {"text": "I took my family on a vacation to somewhere far in the world and we went on our own plane!", "year": "14"}, {"text": "I have a yacht for leisure & business - a reward for our hard work", "year": "14"}, {"text": "We complete FY6 with $16+ Billion in Revenue by end of December 2032", "year": "14"}, {"text": "I purchase some properties in the Port/Matty Tri-State area (partner with DJ Martinez?).", "year": "15"}, {"text": "I am an advisor / mentor to start up entrepreneurs, but more importantly aspiring young people and r", "year": "15"}, {"text": "I ensure that my mother and father never have to work again and that their house and/or any remainin", "year": "15"}, {"text": "I released 2-5 products / services which have been well received and bought a 2-5 smaller companies ", "year": "15"}, {"text": "I expand my charities: #Grind - Get Going Goal Setting, Growing & Go Getting! Pure Love, etc. Which ", "year": "15"}, {"text": "I open a hotel (preferably one of the top grossing chains, like a Hampton etc) in either scranton, e", "year": "15"}, {"text": "I expand Pure Technology's company and offices to every continent.", "year": "15"}, {"text": "I have a fully functioning professional recording studio.", "year": "15"}, {"text": "I purchase 3-5 other properties in New Jersey and/or Pennsylvania maybe in the paramus area!", "year": "15"}, {"text": "I have a hotel. (10-15 acres, 60-100 rooms). My hotel has waterfront access, a pool, & other ameniti", "year": "15"}, {"text": "We complete FY7 with $25+ Billion in Revenue by end of December 2033", "year": "15"}, {"text": "We ramp up other Investments (Tri-State Real Estate, Venture Capital, Stock Portfolio etc)", "year": "16"}, {"text": "I wrote a best selling book about my life (from the corner cell to the corner office)", "year": "16"}, {"text": "I took my family on a vacation to the Caribbean and we went on our own Yacht!", "year": "16"}, {"text": "I turned the best selling book about my life into a movie by 2034", "year": "17"}, {"text": "I own an island (small one, maybe $16,000,000 or less to purchase, this would be part of Pure Proper", "year": "17"}, {"text": "I wrote another best selling book - Topic: Working on a Job vs Working on Yourself (To Make a Living", "year": "17"}, {"text": "I have an AI record summaries of the best books I\u2019ve read over the years into songs for my children\u2019", "year": "17"}, {"text": "We own multiple Islands & Resorts and achieved $100+ Billion in Revenue by FY10 2036", "year": "18,19,20"}, {"text": "I step down as CEO of Pure Technology after grooming my successor by years 8-10 & I focus on my fami", "year": "18,19,20"}]}, "money_map": {"net_worth": 0, "the_number": {"monthly_spend": 250000, "annual_spend": 3000000, "total_target": 60000000}}, "legacy": {"vision": "Jared Sanborn's Epitaph (February 8th 1985 -", "eulogies": {"family": "A (husband, father, brother, nephew, cousin, etc) who always took the time to ensure that if I truly needed help and was willing to put in the effort he would match my effort and point me in the right direction or to the person who could help me. A man who knew the value of family and built all of h", "friend": "My friend Jared cared more about my success than his. He continually sacrificed his own agenda to ensure all our agenda's and goals were accomplished. He didnt waste time but if you put forth effort and needed help, he was the first to lend a helping hand. My friend Jared cared more about humanity t", "business_partner": "Jared Sanborn's Epitaph (February 8th 1985 -", "client": ""}, "micro_laws": ["Wake Up 5 Days a Week at 4:30AM", "Read/Learn for 1 Hour Per Day - 5 Days a Week", "No Phones After 7pm EST - unless a business meeting around the world is a must", "No Meetings at the Mansion after 7pm - unless a dinner meeting / event", "Invest 1 Hour Per Day with Melanie", "Invest 1 Hour Per Day with Lily (when I can.. if only weekends, invest multiple hours!)", "Delegate Everything I Don't Need to Do", "Always Seek to Learn from Everyone you Come Across No Matter Who They Are or What They Do", "NEVER Give a Friend an Opportunity in any of My Companies UNLESS they have proven they can handle it", "Be Adamant about the End Result/Goal but FLEXIBLE on How You Get There"]}, "gratitude": [{"text": "Thank you God that no matter what happens, I am ALIVE! Will I ever get Lily. I don't know. You know. You know Best. You ", "date": "3/13"}, {"text": "Thank you God for the brain power and determination to be able to prepare in detail before this CSE meeting today with L", "date": "2/3"}, {"text": "Thank you God for the ability to perservere through a fast and the knowledge of what this can do to increase my health. ", "date": "1/28"}, {"text": "Thank you God for the resiliancy to continue perservering inspite of all the challenges. Thank you that you have given m", "date": "1/17"}, {"text": "Thank you God for another day of life. Even when I feel like maybe it's not worth going on, you give me another day. I p", "date": "1/8"}], "achievements": {"total": 378, "latest": [{"text": "I have been under unbearable stress the last few weeks and yet somehow I haven't fallen into a full on complete depresse", "date": "3/13"}, {"text": "I have prepared more for this meeting with Yonkers Public Schools for Lily's CSE than maybe anything else in my life. an", "date": "2/3"}, {"text": "I have kept the pressure on Yonkers Public Schools to force them to do whats best for Lily and while they havent respond", "date": "1/28"}, {"text": "We finally finished the Pure Influence Giveaway Alpha. As of a few days ago we could run a giveaway on platform. We have", "date": "1/17"}, {"text": "I completed my image of me in 10 years. I do it yearly but this years was difficult and more in depth. I also am still p", "date": "1/8"}]}};</script>
+</head>
+<body class="locked">
+
+<!-- PASSWORD GATE -->
+<div id="password-gate">
+  <div class="gate-inner">
+    <div class="gate-logo">#777</div>
+    <div class="gate-tagline">Command Center</div>
+    <div class="gate-label">Access Code</div>
+    <div class="gate-input-wrap">
+      <input
+        type="password"
+        class="gate-input"
+        id="pw-input"
+        placeholder="••••••••••"
+        maxlength="20"
+        autofocus
+        autocomplete="off"
+      />
+    </div>
+    <button class="gate-btn" id="pw-btn">ENTER</button>
+    <div class="gate-error" id="pw-error">Incorrect code. Try again.</div>
+  </div>
+</div>
+
+<!-- TOOLTIP -->
+<div class="tooltip" id="tooltip"></div>
+
+<!-- DASHBOARD -->
+<div id="dashboard">
+
+  <header class="site-header">
+    <div class="header-brand">
+      <span class="brand-num">#777</span>
+      <span class="brand-text"> COMMAND CENTER</span>
+    </div>
+    <div class="header-date" id="header-date"></div>
+    <div class="header-score">
+      <div class="today-score-chip" id="header-score-chip">TODAY: --/--</div>
+      <div id="data-source-chip" style="font-size:10px;letter-spacing:1px;color:var(--text-muted);margin-left:8px;display:none;"></div>
+      <div id="freshness-chip-wrap" style="margin-left:8px;display:none;">
+        <div class="freshness-chip fresh" id="freshness-chip">
+          <div class="freshness-dot"></div>
+          <span id="freshness-chip-text">LIVE</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="header-action-btn" onclick="exportPDF()" title="Export dashboard as PDF">PDF</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- QUICK STATS BANNER -->
+  <div class="quick-stats-banner" id="quick-stats-banner">
+    <div class="qs-card">
+      <div class="qs-icon">📅</div>
+      <div class="qs-info">
+        <div class="qs-value" id="qs-days-since">0</div>
+        <div class="qs-label">Days Since Jan 1</div>
+      </div>
+    </div>
+    <div class="qs-card">
+      <div class="qs-icon">🔥</div>
+      <div class="qs-info">
+        <div class="qs-value" id="qs-streak">45</div>
+        <div class="qs-label">Best Streak</div>
+      </div>
+    </div>
+    <div class="qs-card">
+      <div class="qs-icon">🧩</div>
+      <div class="qs-info">
+        <div class="qs-value" id="qs-mandala-pct">—</div>
+        <div class="qs-label">Mandala Progress</div>
+      </div>
+    </div>
+    <div class="qs-card">
+      <div class="qs-icon">✅</div>
+      <div class="qs-info">
+        <div class="qs-value" id="qs-tasks-today">0/7</div>
+        <div class="qs-label">Non-Negotiables</div>
+      </div>
+    </div>
+    <div class="qs-card">
+      <div class="qs-icon">🗽</div>
+      <div class="qs-info">
+        <div class="qs-value" id="qs-times-square">0</div>
+        <div class="qs-label">Days to 7/7/26</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dashboard-grid">
+
+    <!-- QUOTE -->
+    <div class="quote-stripe">
+      "I am given <strong>1,440 minutes</strong> each day. What I choose is what I get. I take care of my most valuable resource — not my money, not even my time, but my <strong>energy</strong>."
+    </div>
+
+    <!-- ===== EXERCISE MODULES ENTRY CARD ===== -->
+    <div class="card col-8 card-animate" style="animation-delay:0.02s;background:linear-gradient(135deg,rgba(241,66,11,0.10) 0%,rgba(13,17,33,0.85) 60%);border-color:rgba(241,66,11,0.35);">
+      <div class="card-title"><span class="card-title-dot orange"></span>Exercise Modules</div>
+      <div style="color:var(--text-dim);font-size:14px;margin-bottom:20px;line-height:1.6">
+        Interactive tools to drive the work. Daily check-ins, fear setting, goal tracking, CEO reviews, morning ritual timer, and gratitude journal.
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">
+        <a href="exercises.html#reflection" style="text-decoration:none">
+          <div style="padding:16px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;text-align:center;cursor:pointer;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:28px;margin-bottom:8px">&#x1F4CB;</div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);letter-spacing:0.5px">Daily Check-in</div>
+          </div>
+        </a>
+        <a href="exercises.html#fear" style="text-decoration:none">
+          <div style="padding:16px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;text-align:center;cursor:pointer;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:28px;margin-bottom:8px">&#x1F9E0;</div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);letter-spacing:0.5px">Fear Setting</div>
+          </div>
+        </a>
+        <a href="exercises.html#goals" style="text-decoration:none">
+          <div style="padding:16px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;text-align:center;cursor:pointer;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:28px;margin-bottom:8px">&#x1F3D4;</div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);letter-spacing:0.5px">Goal Mountain</div>
+          </div>
+        </a>
+        <a href="exercises.html#ceo" style="text-decoration:none">
+          <div style="padding:16px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;text-align:center;cursor:pointer;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:28px;margin-bottom:8px">&#x1F4CA;</div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);letter-spacing:0.5px">CEO Review</div>
+          </div>
+        </a>
+        <a href="exercises.html#ritual" style="text-decoration:none">
+          <div style="padding:16px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;text-align:center;cursor:pointer;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:28px;margin-bottom:8px">&#x23F0;</div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);letter-spacing:0.5px">Morning Ritual</div>
+          </div>
+        </a>
+        <a href="exercises.html#gratitude" style="text-decoration:none">
+          <div style="padding:16px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;text-align:center;cursor:pointer;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:28px;margin-bottom:8px">&#x2728;</div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);letter-spacing:0.5px">Gratitude</div>
+          </div>
+        </a>
+      </div>
+    </div>
+
+    <!-- ===== MANDALA CHART CARD ===== -->
+    <div class="card col-8 card-animate" style="animation-delay:0.025s;background:linear-gradient(135deg,rgba(245,158,11,0.10) 0%,rgba(13,17,33,0.85) 60%);border-color:rgba(245,158,11,0.35);">
+      <div class="card-title"><span class="card-title-dot" style="background:#f59e0b"></span>Mandala Chart &mdash; 9x9 Goal Matrix</div>
+      <div style="color:var(--text-dim);font-size:14px;margin-bottom:20px;line-height:1.6">
+        Ohtani's legendary goal-setting system. One big goal. 8 key qualities to achieve it. 64 specific actions that make it real. The most powerful goal matrix ever built.
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <a href="mandala-chart.html" style="text-decoration:none;display:inline-block;flex:1;min-width:200px">
+          <div style="padding:14px 20px;background:rgba(245,158,11,0.12);border:1.5px solid rgba(245,158,11,0.5);border-radius:12px;text-align:center;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;gap:12px" onmouseover="this.style.background='rgba(245,158,11,0.22)';this.style.boxShadow='0 0 16px rgba(245,158,11,0.3)'" onmouseout="this.style.background='rgba(245,158,11,0.12)';this.style.boxShadow='none'">
+            <div style="font-size:24px">&#11088;</div>
+            <div style="text-align:left">
+              <div style="font-size:13px;font-weight:700;color:#f59e0b;letter-spacing:1px">Personal Mandala</div>
+              <div style="font-size:11px;color:var(--text-dim);margin-top:2px">Your custom goal matrix</div>
+            </div>
+          </div>
+        </a>
+        <a href="mandala-business.html" style="text-decoration:none;display:inline-block;flex:1;min-width:200px">
+          <div style="padding:14px 20px;background:rgba(241,66,11,0.10);border:1.5px solid rgba(241,66,11,0.5);border-radius:12px;text-align:center;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;gap:12px" onmouseover="this.style.background='rgba(241,66,11,0.22)';this.style.boxShadow='0 0 16px rgba(241,66,11,0.3)'" onmouseout="this.style.background='rgba(241,66,11,0.10)';this.style.boxShadow='none'">
+            <div style="font-size:24px">&#128200;</div>
+            <div style="text-align:left">
+              <div style="font-size:13px;font-weight:700;color:#f1420b;letter-spacing:1px">Business Mandala</div>
+              <div style="font-size:11px;color:var(--text-dim);margin-top:2px">$72B by 2031 &mdash; 8 pillars &rarr; 64 actions</div>
+            </div>
+          </div>
+        </a>
+      </div>
+
+      <!-- MANDALA MINI PREVIEW -->
+      <div class="mandala-mini-wrap">
+        <div class="mandala-mini-header">
+          <div class="mandala-mini-title">Business Mandala Preview</div>
+          <div class="mandala-sync-badge">
+            <div class="mandala-sync-dot" id="mandala-sync-dot"></div>
+            <span id="mandala-sync-label">No data</span>
+          </div>
+        </div>
+        <div class="mandala-mini-grid" id="mandala-mini-grid"></div>
+        <div class="mandala-drilldown" id="mandala-drilldown">
+          <div class="mandala-dd-header">
+            <div class="mandala-dd-title" id="mandala-dd-title">Quality</div>
+            <div class="mandala-dd-close" id="mandala-dd-close">&#x2715;</div>
+          </div>
+          <div class="mandala-dd-tasks" id="mandala-dd-tasks"></div>
+        </div>
+        <div class="mandala-progress-ring">
+          <div class="mandala-progress-label">Overall</div>
+          <div class="mandala-progress-bar-wrap">
+            <div class="mandala-progress-bar-fill" id="mandala-progress-fill" style="width:0%"></div>
+          </div>
+          <div class="mandala-progress-pct" id="mandala-progress-pct">0%</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== THINKING EXERCISES ENTRY CARD ===== -->
+    <div class="card col-8 card-animate" style="animation-delay:0.03s;background:linear-gradient(135deg,rgba(42,147,193,0.10) 0%,rgba(13,17,33,0.85) 60%);border-color:rgba(42,147,193,0.35);">
+      <div class="card-title"><span class="card-title-dot"></span>Thinking Exercises</div>
+      <div style="color:var(--text-dim);font-size:14px;margin-bottom:20px;line-height:1.6">
+        8 frameworks for sharper decisions and clearer thinking. Eisenhower Matrix, 7 Layers Why, ABCDE, Decision Matrix, 10-10-10, Pareto 80/20, SWOT, and Pre-Mortem.
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
+        <a href="thinking-exercises.html#eisenhower" style="text-decoration:none">
+          <div style="padding:14px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;text-align:center;cursor:pointer;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:24px;margin-bottom:6px">&#9783;</div>
+            <div style="font-size:12px;font-weight:700;color:var(--text);letter-spacing:0.5px">Eisenhower</div>
+          </div>
+        </a>
+        <a href="thinking-exercises.html#sevenwhy" style="text-decoration:none">
+          <div style="padding:14px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;text-align:center;cursor:pointer;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:24px;margin-bottom:6px">&#128270;</div>
+            <div style="font-size:12px;font-weight:700;color:var(--text);letter-spacing:0.5px">7 Layers Why</div>
+          </div>
+        </a>
+        <a href="thinking-exercises.html#abcde" style="text-decoration:none">
+          <div style="padding:14px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;text-align:center;cursor:pointer;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:24px;margin-bottom:6px">&#128203;</div>
+            <div style="font-size:12px;font-weight:700;color:var(--text);letter-spacing:0.5px">ABCDE</div>
+          </div>
+        </a>
+        <a href="thinking-exercises.html#decisionmatrix" style="text-decoration:none">
+          <div style="padding:14px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;text-align:center;cursor:pointer;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:24px;margin-bottom:6px">&#9878;</div>
+            <div style="font-size:12px;font-weight:700;color:var(--text);letter-spacing:0.5px">Decision Matrix</div>
+          </div>
+        </a>
+        <a href="thinking-exercises.html#tentensten" style="text-decoration:none">
+          <div style="padding:14px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;text-align:center;cursor:pointer;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:24px;margin-bottom:6px">&#9200;</div>
+            <div style="font-size:12px;font-weight:700;color:var(--text);letter-spacing:0.5px">10-10-10</div>
+          </div>
+        </a>
+        <a href="thinking-exercises.html#pareto" style="text-decoration:none">
+          <div style="padding:14px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;text-align:center;cursor:pointer;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:24px;margin-bottom:6px">&#128200;</div>
+            <div style="font-size:12px;font-weight:700;color:var(--text);letter-spacing:0.5px">Pareto 80/20</div>
+          </div>
+        </a>
+        <a href="thinking-exercises.html#swot" style="text-decoration:none">
+          <div style="padding:14px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;text-align:center;cursor:pointer;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:24px;margin-bottom:6px">&#128506;</div>
+            <div style="font-size:12px;font-weight:700;color:var(--text);letter-spacing:0.5px">SWOT</div>
+          </div>
+        </a>
+        <a href="thinking-exercises.html#premortem" style="text-decoration:none">
+          <div style="padding:14px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;text-align:center;cursor:pointer;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="font-size:24px;margin-bottom:6px">&#128300;</div>
+            <div style="font-size:12px;font-weight:700;color:var(--text);letter-spacing:0.5px">Pre-Mortem</div>
+          </div>
+        </a>
+      </div>
+    </div>
+
+    <!-- ===== SECTION 1: DAILY PULSE ===== -->
+    <div class="card col-8 card-animate" style="animation-delay:0.05s">
+      <div class="card-title"><span class="card-title-dot orange"></span>The Daily Pulse</div>
+      <div class="pulse-row">
+        <div class="pulse-heatmap-wrap">
+          <div class="heatmap-months" id="heatmap-months"></div>
+          <div class="heatmap-grid">
+            <div class="heatmap-days-col">
+              <span></span>
+              <span>M</span>
+              <span></span>
+              <span>W</span>
+              <span></span>
+              <span>F</span>
+              <span></span>
+            </div>
+            <div class="heatmap-weeks" id="heatmap-weeks"></div>
+          </div>
+          <div class="heatmap-legend">
+            <span>Less</span>
+            <div class="legend-cell heat-0"></div>
+            <div class="legend-cell heat-1"></div>
+            <div class="legend-cell heat-2"></div>
+            <div class="legend-cell heat-3"></div>
+            <div class="legend-cell heat-4"></div>
+            <div class="legend-cell heat-5"></div>
+            <span>More</span>
+            <span style="margin-left:auto;color:var(--orange)">🔥 = Today</span>
+          </div>
+          <div class="sparklines-row" id="sparklines-row"></div>
+        </div>
+        <div class="today-ring-wrap">
+          <div class="ring-container">
+            <canvas id="today-ring" width="110" height="110"></canvas>
+            <div class="ring-label">
+              <div class="ring-score" id="ring-score-text">--</div>
+              <div class="ring-max">/--</div>
+            </div>
+          </div>
+          <div class="ring-sublabel">Today's Score</div>
+        </div>
+        <div class="streaks-wrap">
+          <div class="streak-item">
+            <div class="streak-icon">⏰</div>
+            <div class="streak-info">
+              <div class="streak-name">5AM Club</div>
+              <div class="streak-days">day streak</div>
+            </div>
+            <div class="streak-badge">14</div>
+          </div>
+          <div class="streak-item">
+            <div class="streak-icon">📖</div>
+            <div class="streak-info">
+              <div class="streak-name">Daily Reading</div>
+              <div class="streak-days">day streak</div>
+            </div>
+            <div class="streak-badge">21</div>
+          </div>
+          <div class="streak-item">
+            <div class="streak-icon">🙏</div>
+            <div class="streak-info">
+              <div class="streak-name">Prayer & Bible</div>
+              <div class="streak-days">day streak</div>
+            </div>
+            <div class="streak-badge">30</div>
+          </div>
+          <div class="streak-item">
+            <div class="streak-icon">💪</div>
+            <div class="streak-info">
+              <div class="streak-name">Exercise</div>
+              <div class="streak-days">day streak</div>
+            </div>
+            <div class="streak-badge">7</div>
+          </div>
+          <div class="streak-item">
+            <div class="streak-icon">✍️</div>
+            <div class="streak-info">
+              <div class="streak-name">Gratitude Log</div>
+              <div class="streak-days">day streak</div>
+            </div>
+            <div class="streak-badge">45</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DAILY CHECKLIST -->
+      <div class="checklist-wrap">
+        <div class="checklist-header">
+          <div class="checklist-title">
+            <span class="card-title-dot orange"></span>
+            Today's Non-Negotiables
+          </div>
+          <div class="checklist-count" id="checklist-count">0/7</div>
+        </div>
+        <div class="checklist-items" id="checklist-items"></div>
+        <div class="checklist-glow" id="checklist-glow">All Complete — Legendary Day!</div>
+      </div>
+    </div>
+
+    <!-- ===== SECTION 2: 7 F'S COMPASS ===== -->
+    <div class="card col-4 card-animate" style="animation-delay:0.1s">
+      <div class="card-title"><span class="card-title-dot"></span>The 7 F's Compass</div>
+      <div class="radar-wrap">
+        <div class="radar-chart-container">
+          <canvas id="radar-chart"></canvas>
+        </div>
+        <div class="seven-f-details" id="seven-f-details"></div>
+      </div>
+      <div class="f-detail-card" id="f-detail-card">
+        <div class="f-detail-content"></div>
+      </div>
+    </div>
+
+    <!-- ===== SECTION 3: GOAL MOUNTAIN ===== -->
+    <div class="card col-5 card-animate" style="animation-delay:0.15s">
+      <div class="card-title"><span class="card-title-dot orange"></span>The Goal Mountain</div>
+      <div class="mountain-wrap" id="mountain-wrap"></div>
+    </div>
+
+    <!-- ===== SECTION 4: PROOF WALL ===== -->
+    <div class="card col-4 card-animate" style="animation-delay:0.2s">
+      <div class="card-title"><span class="card-title-dot"></span>The Proof Wall</div>
+      <div class="counter-display">
+        <div class="counter-number" id="counter-number">0</div>
+        <div class="counter-label">Tasks Completed Since 2019</div>
+      </div>
+      <div class="achievement-badges">
+        <span class="badge badge-orange">7 Yrs #Grind</span>
+        <span class="badge badge-blue">69 Sheets</span>
+        <span class="badge badge-green">5AM Club</span>
+        <span class="badge badge-orange">Pure Tech CEO</span>
+        <span class="badge badge-blue">Father + Founder</span>
+      </div>
+      <div class="bar-chart-container">
+        <canvas id="proof-bar-chart"></canvas>
+      </div>
+      <div class="task-feed" id="task-feed" style="margin-top:14px;"></div>
+    </div>
+
+    <!-- ===== SECTION 5: MONEY MAP ===== -->
+    <div class="card col-3 card-animate" style="animation-delay:0.25s">
+      <div class="card-title"><span class="card-title-dot orange"></span>The Money Map</div>
+      <div class="money-grid">
+        <div class="money-cell">
+          <div class="money-label">Net Worth</div>
+          <div class="money-value" style="color:var(--blue)">$XXX<span style="font-size:16px">K</span></div>
+          <div class="money-sub">Updated monthly</div>
+        </div>
+        <div class="money-cell">
+          <div class="money-label">Savings Rate</div>
+          <div class="money-value" style="color:var(--green)">3<span style="font-size:16px">%</span></div>
+          <div class="money-sub">Goal: 10%</div>
+        </div>
+      </div>
+      <div class="the-number-section">
+        <div class="the-number-label">
+          <span>The Number: $X / <strong>$60,000,000</strong></span>
+          <span style="color:var(--orange)">0.1%</span>
+        </div>
+        <div class="number-track">
+          <div class="number-fill" id="number-fill" style="width:0%"></div>
+        </div>
+        <div class="number-milestones">
+          <span>$0</span><span>$15M</span><span>$30M</span><span>$45M</span><span>$60M</span>
+        </div>
+        <div style="margin-top:14px;">
+          <canvas id="income-expense-chart" height="90"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== SECTION 6: RELATIONSHIP RING ===== -->
+    <div class="card col-4 card-animate" style="animation-delay:0.3s">
+      <div class="card-title"><span class="card-title-dot"></span>The Relationship Ring</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
+        <div class="ring-viz">
+          <svg id="relationship-svg" viewBox="0 0 300 300"></svg>
+        </div>
+        <div style="flex:1;min-width:160px;" id="contact-list"></div>
+      </div>
+    </div>
+
+    <!-- ===== SECTION 7: LEGACY LENS ===== -->
+    <div class="card col-8 card-animate" style="animation-delay:0.35s">
+      <div class="card-title"><span class="card-title-dot orange"></span>The Legacy Lens</div>
+      <div class="legacy-vision">
+        <div class="legacy-vision-label">Vision Statement</div>
+        <div class="legacy-vision-text">"I am the Founder &amp; CEO of Pure Technology and other companies. A Billionaire Philanthropist who loves my family and spends ample time with them, and focuses the rest of my efforts on impacting others to #Grind!"</div>
+      </div>
+      <div class="epitaph-card">
+        <div class="epitaph-label">Epitaph</div>
+        <div class="epitaph-text">"He left the world a brighter place by helping others actualize their brilliance."</div>
+      </div>
+      <div class="eulogy-grid" id="eulogy-grid"></div>
+      <div class="legacy-footer">
+        <div class="legacy-item">
+          <div class="legacy-item-label">Book Progress</div>
+          <div class="legacy-item-value">Ch.3</div>
+          <div class="legacy-item-sub">"The Pure Truth"</div>
+        </div>
+        <div class="legacy-item">
+          <div class="legacy-item-label">Years #Grinding</div>
+          <div class="legacy-item-value" id="years-grinding">7</div>
+          <div class="legacy-item-sub">Since 2019</div>
+        </div>
+        <div class="legacy-item">
+          <div class="legacy-item-label">#Grind Charity</div>
+          <div class="countdown-display" id="charity-countdown">TBD</div>
+          <div class="countdown-label">Days Until Launch</div>
+        </div>
+        <div class="legacy-item">
+          <div class="legacy-item-label">Times Square</div>
+          <div class="countdown-display" id="times-square-countdown">TBD</div>
+          <div class="countdown-label">Days Until 7/7/26</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 10 MICRO LAWS -->
+    <div class="card col-4 card-animate" style="animation-delay:0.4s">
+      <div class="card-title"><span class="card-title-dot orange"></span>10 Micro Laws — Non-Negotiable</div>
+      <div class="micro-laws" id="micro-laws"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- AI COACHING FAB -->
+<button class="coach-fab" id="coach-fab" title="Ask your AI Coach" aria-label="Open AI Coach">&#x1F3AF;</button>
+
+<!-- AI COACHING PANEL -->
+<div class="coach-panel" id="coach-panel" role="dialog" aria-label="AI Coach">
+  <div class="coach-header">
+    <div class="coach-title">AI Coach</div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <select class="coach-module-select" id="coach-module" aria-label="Select coaching module">
+        <option value="reflection">Daily Reflection</option>
+        <option value="goals">Goal Advisor</option>
+        <option value="ceo">CEO Review</option>
+        <option value="fear">Fear Setting</option>
+        <option value="ritual">Ritual Optimizer</option>
+        <option value="gratitude">Gratitude Coach</option>
+      </select>
+      <button id="coach-export" class="coach-send-btn" style="padding:4px 8px;font-size:10px;" title="Export conversation">SAVE</button>
+    </div>
+  </div>
+  <div class="coach-messages" id="coach-messages">
+    <div class="coach-msg system">Select a module and ask your coach anything about your progress, goals, or daily scores.</div>
+  </div>
+  <div class="coach-input-row">
+    <input class="coach-input" id="coach-input" type="text" placeholder="Ask your coach..." aria-label="Type a message" maxlength="2000">
+    <button class="coach-send-btn" id="coach-send" aria-label="Send message">SEND</button>
+  </div>
+</div>
+
+<script>
+/* ======================== HTML ESCAPE (XSS prevention) ======================== */
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+/* ======================== PASSWORD ======================== */
+const PASSWORD = '777grind';
+const gate = document.getElementById('password-gate');
+const dashboard = document.getElementById('dashboard');
+const pwInput = document.getElementById('pw-input');
+const pwBtn = document.getElementById('pw-btn');
+const pwError = document.getElementById('pw-error');
+
+function tryPassword() {
+  const val = pwInput.value.trim();
+  if (val === PASSWORD) {
+    localStorage.setItem('777_unlocked', JSON.stringify({ v: 1, exp: Date.now() + 8 * 3600 * 1000 }));
+    gate.style.opacity = '0';
+    gate.style.transition = 'opacity 0.5s';
+    setTimeout(() => {
+      gate.style.display = 'none';
+      document.body.classList.remove('locked');
+      dashboard.style.display = 'block';
+      setTimeout(() => {
+        dashboard.classList.add('visible');
+        loadDataAndInit();
+      }, 50);
+    }, 500);
+  } else {
+    pwInput.classList.add('shake', 'error');
+    pwError.classList.add('show');
+    setTimeout(() => {
+      pwInput.classList.remove('shake', 'error');
+      pwInput.value = '';
+    }, 500);
+  }
+}
+
+/* ======================== DATA LOADER ======================== */
+function loadDataAndInit() {
+  // Always try to fetch live data.json first; fall back to embedded __LIVE_DATA__ then sample data
+  fetch('data.json?v=' + Date.now())
+    .then(res => {
+      if (!res.ok) throw new Error('data.json not found (status ' + res.status + ')');
+      return res.json();
+    })
+    .then(data => {
+      applyLiveData(data);
+      showDataSourceChip(data.last_updated, data._note);
+    })
+    .catch(err => {
+      console.warn('[777] data.json fetch failed, using built-in sample data:', err.message);
+      showDataSourceChip(null, 'sample');
+    })
+    .finally(() => {
+      initDashboard();
+    });
+}
+
+// Track the last fetched data timestamp
+window.__lastDataTimestamp = null;
+window.__lastDataStr = null;
+
+/* ======================== AUTO-REFRESH (60s) ======================== */
+var _refreshTimer = null;
+function startAutoRefresh() {
+  if (_refreshTimer) clearInterval(_refreshTimer);
+  _refreshTimer = setInterval(function() {
+    fetch('data.json?v=' + Date.now())
+      .then(function(r) {
+        if (!r.ok) throw new Error('data.json ' + r.status);
+        return r.json();
+      })
+      .then(function(data) {
+        // Fast-path: check timestamp before expensive JSON.stringify
+        if (data.last_updated === window.__lastDataTimestamp) {
+          updateFreshnessChip(data.last_updated, data._note);
+          return;
+        }
+        window.__lastDataTimestamp = data.last_updated;
+        applyLiveData(data);
+        showDataSourceChip(data.last_updated, data._note);
+        if (window.__pendingScoreQuestions) {
+          buildScoreQuestions(window.__pendingScoreQuestions);
+          window.__pendingScoreQuestions = null;
+        }
+      })
+      .catch(function() {
+        setFreshnessOffline();
+      });
+  }, 60000);
+}
+// Pause refresh when tab is hidden
+document.addEventListener('visibilitychange', function() {
+  if (document.hidden) {
+    if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
+  } else {
+    startAutoRefresh();
+  }
+});
+
+function showDataSourceChip(lastUpdated, note) {
+  const chip = document.getElementById('data-source-chip');
+  if (!chip) return;
+  chip.style.display = 'block';
+  if (note && note.includes('SAMPLE')) {
+    chip.textContent = 'SAMPLE DATA';
+    chip.style.color = '#eab308';
+  } else if (lastUpdated) {
+    const d = new Date(lastUpdated);
+    const rel = timeSince(d);
+    chip.textContent = 'LIVE · Updated ' + rel;
+    chip.style.color = '#22c55e';
+  } else {
+    chip.textContent = 'BUILT-IN DATA';
+    chip.style.color = 'var(--text-muted)';
+  }
+
+  // Update freshness chip
+  updateFreshnessChip(lastUpdated, note);
+}
+
+function updateFreshnessChip(lastUpdated, note) {
+  const wrap = document.getElementById('freshness-chip-wrap');
+  const chip = document.getElementById('freshness-chip');
+  const txt = document.getElementById('freshness-chip-text');
+  if (!wrap || !chip || !txt) return;
+  wrap.style.display = 'block';
+
+  if (!lastUpdated || (note && note.includes('SAMPLE'))) {
+    chip.className = 'freshness-chip stale';
+    txt.textContent = note && note.includes('SAMPLE') ? 'SAMPLE' : 'BUILT-IN';
+    return;
+  }
+
+  const d = new Date(lastUpdated);
+  window.__lastDataTimestamp = d;
+  const ageSeconds = (Date.now() - d.getTime()) / 1000;
+  const rel = timeSince(d);
+
+  if (ageSeconds < 120) {
+    chip.className = 'freshness-chip fresh';
+    txt.textContent = 'LIVE · ' + rel;
+  } else {
+    chip.className = 'freshness-chip stale';
+    txt.textContent = 'Stale · ' + rel;
+  }
+}
+
+function setFreshnessOffline() {
+  const wrap = document.getElementById('freshness-chip-wrap');
+  const chip = document.getElementById('freshness-chip');
+  const txt = document.getElementById('freshness-chip-text');
+  if (!wrap || !chip || !txt) return;
+  wrap.style.display = 'block';
+  chip.className = 'freshness-chip offline';
+  txt.textContent = 'Offline';
+}
+
+function timeSince(date) {
+  const seconds = Math.floor((new Date() - date) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return minutes + 'm ago';
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours + 'h ago';
+  const days = Math.floor(hours / 24);
+  return days + 'd ago';
+}
+
+function applyLiveData(data) {
+  // ── Daily Pulse ──────────────────────────────────────────────────────────
+  if (data.daily_pulse) {
+    const dp = data.daily_pulse;
+
+    // Rebuild dailyScores array from heatmap (last 91 days → array of ints)
+    if (dp.heatmap && dp.heatmap.length > 0) {
+      // heatmap is sorted oldest→newest already
+      const scores = dp.heatmap.slice(-91).map(h => h.score || 0);
+      // Pad to 91 if needed
+      while (scores.length < 91) scores.unshift(0);
+      dailyScores = scores;
+    }
+
+    // Update today's score chip in header
+    if (dp.today) {
+      const score = dp.today.score || 0;
+      const max = dp.today.max || 15;
+      dailyMax = max;
+      document.getElementById('header-score-chip').textContent =
+        'TODAY: ' + score + '/' + max;
+      // Update ring markup
+      const ringScoreEl = document.getElementById('ring-score-text');
+      const ringMaxEl = document.querySelector('.ring-max');
+      if (ringScoreEl) ringScoreEl.textContent = score;
+      if (ringMaxEl) ringMaxEl.textContent = '/' + max;
+
+      // Populate interactive score questions if present
+      if (dp.today.questions && dp.today.questions.length) {
+        // Defer until after initDashboard builds the checklist container
+        window.__pendingScoreQuestions = dp.today.questions;
+      }
+    }
+  }
+
+  // ── 7 F's ─────────────────────────────────────────────────────────────────
+  if (data.seven_fs && data.seven_fs.current) {
+    const curr = data.seven_fs.current;
+    const prev = data.seven_fs.previous || {};
+    const fColors = {
+      faith: '#a78bfa', family: '#f472b6', career: '#60a5fa', friends: '#60a5fa',
+      fellowship: '#34d399', fun: '#fbbf24', fitness: '#f1420b', finance: '#2a93c1'
+    };
+    const fDetails = {
+      faith: 'Prayer and spiritual growth.',
+      family: 'Time with Melanie, Lily, and family.',
+      career: 'Pure Tech growth, business development, leadership.',
+      friends: 'Quality time with inner circle.',
+      fellowship: 'Church, community, mentorship.',
+      fun: 'Vacations, experiences, joy.',
+      fitness: 'Exercise, health, energy.',
+      finance: 'Pure Tech growth and wealth building.'
+    };
+    // Determine which 7 keys the live data uses (career vs friends)
+    const fKeys = curr.career !== undefined
+      ? ['faith', 'family', 'career', 'fellowship', 'fun', 'fitness', 'finance']
+      : ['faith', 'family', 'friends', 'fellowship', 'fun', 'fitness', 'finance'];
+    sevenFs = fKeys.map(k => ({
+      label: k.charAt(0).toUpperCase() + k.slice(1),
+      score: curr[k] !== undefined ? curr[k] : 5,
+      lastWeek: prev[k] !== undefined ? prev[k] : 5,
+      color: fColors[k],
+      detail: fDetails[k]
+    }));
+  }
+
+  // ── Goals ─────────────────────────────────────────────────────────────────
+  if (data.goals) {
+    const g = data.goals;
+    if (g.infinite) goals.infinite = g.infinite;
+    if (g.yearly && g.yearly.length) goals.yearly = g.yearly;
+    if (g.monthly && g.monthly.length) goals.monthly = g.monthly;
+    if (g.weekly && g.weekly.length) goals.weekly = g.weekly;
+    if (g.daily && g.daily.length) goals.daily = g.daily;
+  }
+
+  // ── Proof Wall ────────────────────────────────────────────────────────────
+  if (data.proof_wall) {
+    const pw = data.proof_wall;
+    if (pw.monthly_2026 && pw.monthly_2026.length) {
+      monthlyCounts = pw.monthly_2026;
+    } else if (pw.monthly && pw.monthly.length) {
+      monthlyCounts = pw.monthly;
+    }
+    if (pw.recent && pw.recent.length) {
+      recentTasks = pw.recent.map(r => ({
+        text: r.task || r.text || '',
+        date: r.date || ''
+      }));
+    }
+    // Total task counter — patch the animation target
+    if (pw.total_tasks > 0) {
+      window._liveTaskCount = pw.total_tasks;
+    }
+  }
+
+  // ── Money Map ─────────────────────────────────────────────────────────────
+  if (data.money_map) {
+    const mm = data.money_map;
+    if (mm.net_worth) window._liveNetWorth = mm.net_worth;
+    if (mm.savings_rate !== undefined) window._liveSavingsRate = mm.savings_rate;
+    if (mm.the_number) {
+      window._liveTheNumber = mm.the_number;
+    }
+    if (mm.monthly_income_expense && mm.monthly_income_expense.length) {
+      window._liveMonthlyFinance = mm.monthly_income_expense;
+    }
+  }
+
+  // ── Legacy ────────────────────────────────────────────────────────────────
+  if (data.legacy) {
+    if (data.legacy.vision) {
+      // Append actual epitaph text if vision ends with a dash
+      var visionText = data.legacy.vision;
+      if (visionText.indexOf('1985 -') !== -1 || visionText.indexOf('1985 \u2013') !== -1) {
+        visionText = 'Jared Sanborn\'s Epitaph (February 8th 1985 \u2013 ) "He left the world a brighter place by helping others actualize their brilliance."';
+      }
+      goals.infinite = visionText;
+    }
+    // Apply live eulogies
+    if (data.legacy.eulogies) {
+      var le = data.legacy.eulogies;
+      var mapped = [];
+      if (le.family) mapped.push({ who: 'Family', text: le.family });
+      if (le.friend) mapped.push({ who: 'Friend', text: le.friend });
+      if (le.business_partner) mapped.push({ who: 'Business Partner', text: le.business_partner });
+      if (le.client) mapped.push({ who: 'Client', text: le.client });
+      if (mapped.length > 0) eulogies = mapped;
+    }
+    // Apply live micro laws
+    if (data.legacy.micro_laws && data.legacy.micro_laws.length) {
+      microLaws = data.legacy.micro_laws;
+    }
+  }
+}
+
+pwBtn.addEventListener('click', tryPassword);
+pwInput.addEventListener('keydown', e => { if (e.key === 'Enter') tryPassword(); });
+
+// Auto-unlock if already authenticated and not expired (8hr session)
+(function() {
+  try {
+    var stored = JSON.parse(localStorage.getItem('777_unlocked'));
+    if (stored && stored.v === 1 && stored.exp > Date.now()) {
+      gate.style.display = 'none';
+      document.body.classList.remove('locked');
+      dashboard.style.display = 'block';
+      setTimeout(() => {
+        dashboard.classList.add('visible');
+        loadDataAndInit();
+      }, 50);
+    } else {
+      localStorage.removeItem('777_unlocked');
+    }
+  } catch(e) {
+    // Legacy '1' string or corrupt data — clear it
+    localStorage.removeItem('777_unlocked');
+  }
+})();
+
+/* ======================== SAMPLE DATA ======================== */
+
+// Generate 91 days of daily scores (0-15)
+function generateScores(days) {
+  const scores = [];
+  const today = new Date();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const dow = d.getDay();
+    // Sundays slightly lower, Fridays slightly higher
+    const base = dow === 0 ? 6 : dow === 6 ? 8 : 9;
+    const rand = Math.floor(Math.random() * 7) - 1;
+    scores.push(Math.min(15, Math.max(0, base + rand)));
+  }
+  // Today = 11
+  scores[scores.length - 1] = 11;
+  return scores;
+}
+
+let dailyScores = generateScores(91);
+let dailyMax = 15; // Updated by applyLiveData when dp.today.max exists
+
+let sevenFs = [
+  { label: 'Faith', score: 7, lastWeek: 6, color: '#a78bfa', detail: 'Prayer daily, Bible 3x/week. Goal: 25 min Bible study every morning.' },
+  { label: 'Family', score: 8, lastWeek: 7, color: '#f472b6', detail: '1 hour daily with Melanie, quality time with Lily. Marriage: Dec 2025.' },
+  { label: 'Friends', score: 6, lastWeek: 8, color: '#60a5fa', detail: 'Reconnect with core circle. Last bro hangout: 2 weeks ago.' },
+  { label: 'Fellowship', score: 5, lastWeek: 5, color: '#34d399', detail: 'Church & community. Building mentorship relationships.' },
+  { label: 'Fun', score: 7, lastWeek: 6, color: '#fbbf24', detail: '3 family vacations/year goal. Nicaragua trip planning.' },
+  { label: 'Fitness', score: 4, lastWeek: 5, color: '#f1420b', detail: '30 min exercise/day. Current streak: 7 days. Room to grow.' },
+  { label: 'Finance', score: 8, lastWeek: 7, color: '#2a93c1', detail: 'Pure Tech growth. Savings rate 3% (goal 10%). The Number: $60M.' },
+];
+
+let goals = {
+  daily: [
+    { text: '5AM Club — Wake at 4:30AM', progress: 90 },
+    { text: 'Read/Learn for 1 Hour', progress: 80 },
+    { text: 'Gratitude Log (3 entries)', progress: 95 },
+  ],
+  weekly: [
+    { text: 'Scale PureBrain AI — User Growth', progress: 65 },
+    { text: 'Delegate 3 major tasks to team', progress: 70 },
+    { text: 'Business development outreach', progress: 50 },
+  ],
+  monthly: [
+    { text: 'Pure Technology Revenue Target', progress: 42 },
+    { text: 'Series-A preparation ($25M+)', progress: 30 },
+    { text: 'Times Square launch prep (7/7/26)', progress: 22 },
+  ],
+  yearly: [
+    { text: 'Launch crowdfunding campaign', progress: 15 },
+    { text: 'Pay off student loans', progress: 60 },
+    { text: 'Marry Melanie', progress: 85 },
+  ],
+  infinite: 'I am the Founder & CEO of Pure Technology — a Billionaire Philanthropist who loves his family and impacts others to #Grind.',
+};
+
+let contacts = [
+  { name: 'Melanie', role: 'Life Partner', ring: 'inner', days: 0, initials: 'ME' },
+  { name: 'Lily', role: 'Daughter', ring: 'inner', days: 1, initials: 'LI' },
+  { name: 'Dad', role: 'Father', ring: 'inner', days: 3, initials: 'DA' },
+  { name: 'Mom', role: 'Mother', ring: 'inner', days: 3, initials: 'MO' },
+  { name: 'Arran', role: 'Brother', ring: 'mid', days: 5, initials: 'AR' },
+  { name: 'Tristan', role: 'Nephew', ring: 'mid', days: 8, initials: 'TR' },
+  { name: 'Nicole', role: 'Sister in Law', ring: 'mid', days: 12, initials: 'NI' },
+  { name: 'Best Friend', role: 'Inner Circle', ring: 'mid', days: 4, initials: 'BF' },
+  { name: 'Business Partner', role: 'PT Team', ring: 'outer', days: 2, initials: 'BP' },
+  { name: 'Mentor #1', role: 'Advisory', ring: 'outer', days: 14, initials: 'M1' },
+  { name: 'Mentor #2', role: 'Advisory', ring: 'outer', days: 22, initials: 'M2' },
+  { name: 'Investor', role: 'PT Capital', ring: 'outer', days: 35, initials: 'IN' },
+  { name: 'Client A', role: 'Business', ring: 'outer', days: 6, initials: 'CA' },
+  { name: 'Client B', role: 'Business', ring: 'outer', days: 18, initials: 'CB' },
+  { name: 'Old Friend', role: 'Personal', ring: 'outer', days: 45, initials: 'OF' },
+  { name: 'Colleague', role: 'Network', ring: 'outer', days: 9, initials: 'CO' },
+];
+
+let eulogies = [
+  { who: 'Daughter — Lily', text: 'My dad showed me that with faith and grind, anything is possible. He never gave up on me or himself.' },
+  { who: 'Partner — Melanie', text: 'He loved completely, built with purpose, and every morning chose family first no matter what.' },
+  { who: 'Business Partner', text: 'He delegated with trust, led with vision, and always gave more than he received.' },
+  { who: 'Mentee', text: 'He took someone others gave up on and showed them how to #Grind — and then build a legacy.' },
+];
+
+let microLaws = [
+  'Wake Up 5 Days a Week at 4:30AM',
+  'Read/Learn for 1 Hour Per Day — 5 Days a Week',
+  'No Phones After 7pm EST',
+  'No Meetings at the Mansion after 7pm',
+  'Invest 1 Hour Per Day with Melanie',
+  'Invest 1 Hour Per Day with Lily',
+  'Delegate Everything I Don\'t Need to Do',
+  'Always Seek to Learn from Everyone',
+  'NEVER Give a Friend an Opportunity Unless Proven',
+  'Be Adamant about the End Result but FLEXIBLE on How',
+];
+
+let monthlyCounts = [
+  { month: 'Oct', count: 312 },
+  { month: 'Nov', count: 287 },
+  { month: 'Dec', count: 341 },
+  { month: 'Jan', count: 295 },
+  { month: 'Feb', count: 318 },
+  { month: 'Mar', count: 203 },
+];
+
+let recentTasks = [
+  { text: 'Published PureBrain AI blog post', date: 'Today' },
+  { text: 'Delegated portal build to CTO team', date: 'Today' },
+  { text: 'Morning reading — Dan Martell', date: 'Yesterday' },
+  { text: 'Weekly 7 F\'s assessment', date: '2 days ago' },
+  { text: 'Gratitude log — 3 entries', date: '2 days ago' },
+];
+
+/* ======================== INIT ======================== */
+function initDashboard() {
+  setHeaderDate();
+  buildQuickStats();
+  buildHeatmap();
+  buildTodayRing();
+  buildSparklines();
+  buildRadar();
+  buildSevenFDetails();
+  buildGoalMountain();
+  buildCounterAnimation();
+  buildProofBar();
+  buildTaskFeed();
+  buildMoneyChart();
+  buildNumberFill();
+  buildRelationshipRing();
+  buildContactList();
+  buildEulogies();
+  buildMicroLaws();
+  buildCountdowns();
+  buildDailyChecklist();
+  // If data.json loaded real questions, replace the local checklist
+  if (window.__pendingScoreQuestions) {
+    buildScoreQuestions(window.__pendingScoreQuestions);
+    window.__pendingScoreQuestions = null;
+  }
+  buildMandalaMini();
+  animateCardEntrance();
+  // Start 60s auto-refresh
+  startAutoRefresh();
+}
+
+function setHeaderDate() {
+  const now = new Date();
+  const opts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+  document.getElementById('header-date').textContent = now.toLocaleDateString('en-US', opts);
+}
+
+/* ======================== HEATMAP ======================== */
+function scoreToHeat(s) {
+  if (s === 0) return 0;
+  if (s <= 3) return 1;
+  if (s <= 6) return 2;
+  if (s <= 9) return 3;
+  if (s <= 12) return 4;
+  return 5;
+}
+
+function buildHeatmap() {
+  const container = document.getElementById('heatmap-weeks');
+  const monthsEl = document.getElementById('heatmap-months');
+  const today = new Date();
+
+  // Build 13 weeks of data (91 days), aligned to start on Sunday
+  const startDate = new Date(today);
+  startDate.setDate(today.getDate() - 90);
+  // Align to Sunday
+  const startDow = startDate.getDay();
+  startDate.setDate(startDate.getDate() - startDow);
+
+  const weeks = [];
+  let curr = new Date(startDate);
+  for (let w = 0; w < 14; w++) {
+    const week = [];
+    for (let d = 0; d < 7; d++) {
+      week.push(new Date(curr));
+      curr.setDate(curr.getDate() + 1);
+    }
+    weeks.push(week);
+  }
+
+  // Month labels
+  const monthsSeen = new Set();
+  const monthLabels = [];
+  weeks.forEach(week => {
+    const m = week[0].getMonth();
+    const label = week[0].toLocaleString('default', { month: 'short' });
+    if (!monthsSeen.has(m)) {
+      monthsSeen.add(m);
+      monthLabels.push(label);
+    } else {
+      monthLabels.push('');
+    }
+  });
+
+  monthsEl.innerHTML = monthLabels.map(l => `<span class="heatmap-month-label">${l}</span>`).join('');
+
+  // Score lookup
+  const scoreMap = {};
+  const todayStr = today.toDateString();
+  const startOffset = 90;
+  dailyScores.forEach((s, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() - (startOffset - i));
+    scoreMap[d.toDateString()] = s;
+  });
+
+  const tooltip = document.getElementById('tooltip');
+
+  weeks.forEach(week => {
+    const col = document.createElement('div');
+    col.className = 'heatmap-week';
+    week.forEach(day => {
+      const cell = document.createElement('div');
+      const ds = day.toDateString();
+      const isFuture = day > today;
+      const isToday = ds === todayStr;
+      const score = scoreMap[ds] || 0;
+      const heat = isFuture ? '' : scoreToHeat(score);
+      cell.className = 'heatmap-cell' + (isFuture ? '' : ' heat-' + heat);
+      if (isToday) {
+        cell.style.outline = '2px solid var(--orange)';
+        cell.style.outlineOffset = '1px';
+      }
+      if (!isFuture) {
+        cell.addEventListener('mouseenter', e => {
+          tooltip.style.display = 'block';
+          tooltip.innerHTML = `<strong>${escHtml(day.toLocaleDateString('en-US',{month:'short',day:'numeric'}))}</strong><br>Score: ${score}/${dailyMax}`;
+          tooltip.style.left = (e.pageX + 12) + 'px';
+          tooltip.style.top = (e.pageY - 32) + 'px';
+        });
+        cell.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+        cell.addEventListener('mousemove', e => {
+          tooltip.style.left = (e.pageX + 12) + 'px';
+          tooltip.style.top = (e.pageY - 32) + 'px';
+        });
+      }
+      col.appendChild(cell);
+    });
+    container.appendChild(col);
+  });
+}
+
+/* ======================== TODAY RING ======================== */
+function buildTodayRing() {
+  const canvas = document.getElementById('today-ring');
+  const ctx = canvas.getContext('2d');
+  // Use live data if available, otherwise fallback
+  const chipText = document.getElementById('header-score-chip')?.textContent || '';
+  const chipMatch = chipText.match(/(\d+)\/(\d+)/);
+  const score = chipMatch ? parseInt(chipMatch[1]) : 11;
+  const max = chipMatch ? parseInt(chipMatch[2]) : 15;
+  const pct = score / max;
+  const cx = 55, cy = 55, r = 44;
+
+  // Track
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, -Math.PI/2, Math.PI * 1.5);
+  ctx.strokeStyle = 'rgba(241,66,11,0.12)';
+  ctx.lineWidth = 10;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Fill (animate)
+  let current = 0;
+  const target = pct * Math.PI * 2;
+  const step = target / 60;
+  function draw() {
+    ctx.clearRect(0, 0, 110, 110);
+    // Track
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, -Math.PI/2, Math.PI * 1.5);
+    ctx.strokeStyle = 'rgba(241,66,11,0.12)';
+    ctx.lineWidth = 10;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    // Fill
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, -Math.PI/2, -Math.PI/2 + current);
+    const grad = ctx.createLinearGradient(cx-r, cy, cx+r, cy);
+    grad.addColorStop(0, '#f1420b');
+    grad.addColorStop(1, '#ff6b35');
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 10;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    if (current < target) {
+      current = Math.min(current + step, target);
+      requestAnimationFrame(draw);
+    }
+  }
+  draw();
+}
+
+/* ======================== SPARKLINES ======================== */
+function buildSparklines() {
+  const container = document.getElementById('sparklines-row');
+  const last7 = dailyScores.slice(-7);
+
+  const sparkData = [
+    { label: '7-Day Score', values: last7, color: '#f1420b', max: 15 },
+    { label: 'Streak Score', values: [14,14,15,16,17,20,21], color: '#2a93c1', max: 30 },
+    { label: 'Weekly Avg', values: [8,9,8,10,9,11,10], color: '#22c55e', max: 15 },
+  ];
+
+  sparkData.forEach(sp => {
+    const item = document.createElement('div');
+    item.className = 'sparkline-item';
+    const min = Math.min(...sp.values);
+    const max = Math.max(...sp.values);
+    const range = max - min || 1;
+    const w = 100, h = 32, pad = 4;
+    const points = sp.values.map((v, i) => {
+      const x = pad + (i / (sp.values.length - 1)) * (w - pad * 2);
+      const y = h - pad - ((v - min) / range) * (h - pad * 2);
+      return `${x},${y}`;
+    }).join(' ');
+
+    item.innerHTML = `
+      <div class="sparkline-label">${sp.label}</div>
+      <svg class="sparkline-svg" viewBox="0 0 ${w} ${h}">
+        <polyline points="${points}" fill="none" stroke="${sp.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="${points.split(' ').pop().split(',')[0]}" cy="${points.split(' ').pop().split(',')[1]}" r="3" fill="${sp.color}"/>
+      </svg>
+    `;
+    container.appendChild(item);
+  });
+}
+
+/* ======================== RADAR CHART ======================== */
+function buildRadar() {
+  const ctx = document.getElementById('radar-chart').getContext('2d');
+  new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: sevenFs.map(f => f.label),
+      datasets: [
+        {
+          label: 'This Week',
+          data: sevenFs.map(f => f.score),
+          backgroundColor: 'rgba(42,147,193,0.15)',
+          borderColor: '#2a93c1',
+          borderWidth: 2,
+          pointBackgroundColor: '#2a93c1',
+          pointRadius: 4,
+        },
+        {
+          label: 'Last Week',
+          data: sevenFs.map(f => f.lastWeek),
+          backgroundColor: 'rgba(255,255,255,0.03)',
+          borderColor: 'rgba(255,255,255,0.15)',
+          borderWidth: 1,
+          borderDash: [4, 4],
+          pointBackgroundColor: 'rgba(255,255,255,0.2)',
+          pointRadius: 3,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      scales: {
+        r: {
+          min: 0,
+          max: 10,
+          ticks: { display: false, stepSize: 2 },
+          grid: { color: 'rgba(255,255,255,0.06)' },
+          angleLines: { color: 'rgba(255,255,255,0.06)' },
+          pointLabels: {
+            color: '#7a8aaa',
+            font: { family: 'Plus Jakarta Sans', size: 10, weight: '600' },
+          },
+        },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0d1121',
+          borderColor: 'rgba(42,147,193,0.3)',
+          borderWidth: 1,
+          titleColor: '#e8eaf6',
+          bodyColor: '#7a8aaa',
+        },
+      },
+    },
+  });
+}
+
+/* ======================== 7 F's DETAIL ======================== */
+function buildSevenFDetails() {
+  const container = document.getElementById('seven-f-details');
+  const detailCard = document.getElementById('f-detail-card');
+  container.innerHTML = '';
+
+  sevenFs.forEach((f, i) => {
+    const item = document.createElement('div');
+    item.className = 'f-item';
+    const barPct = (f.score / 10) * 100;
+    item.innerHTML = `
+      <div class="f-dot" style="background:${f.color}"></div>
+      <span class="f-label">${f.label}</span>
+      <div class="f-bar-track"><div class="f-bar-fill" style="width:0%;background:${f.color}" data-target="${barPct}"></div></div>
+      <span class="f-score" style="color:${f.color}">${f.score}</span>
+      <span class="f-max">/10</span>
+    `;
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.f-item').forEach(el => el.classList.remove('active'));
+      item.classList.add('active');
+      detailCard.style.display = 'block';
+      detailCard.style.borderColor = f.color;
+      detailCard.querySelector('.f-detail-content').innerHTML = `
+        <strong style="color:${f.color};font-family:'Oswald',sans-serif;letter-spacing:1px;text-transform:uppercase;">${f.label}</strong>
+        <p style="font-size:12px;color:#e8eaf6;margin-top:6px;line-height:1.5;">${escHtml(f.detail)}</p>
+      `;
+    });
+    container.appendChild(item);
+  });
+
+  // Animate bars
+  setTimeout(() => {
+    document.querySelectorAll('.f-bar-fill').forEach(el => {
+      el.style.transition = 'width 1s ease';
+      el.style.width = el.dataset.target + '%';
+    });
+  }, 600);
+}
+
+/* ======================== GOAL MOUNTAIN ======================== */
+function buildGoalMountain() {
+  const container = document.getElementById('mountain-wrap');
+  const tiers = [
+    { icon: '🏔️', label: 'Infinite Vision', key: 'infinite', color: '#f1420b' },
+    { icon: '🗓️', label: 'Yearly Goals', key: 'yearly', color: '#2a93c1' },
+    { icon: '📅', label: 'Monthly Goals', key: 'monthly', color: '#a78bfa' },
+    { icon: '📆', label: 'Weekly Goals', key: 'weekly', color: '#22c55e' },
+    { icon: '☀️', label: 'Daily Goals', key: 'daily', color: '#fbbf24' },
+  ];
+
+  // Vision peak first
+  const peakEl = document.createElement('div');
+  peakEl.className = 'vision-peak';
+  peakEl.innerHTML = `
+    <div class="vision-peak-label">🏔️ Infinite Vision</div>
+    <div class="vision-peak-text">"${escHtml(goals.infinite)}"</div>
+  `;
+  container.appendChild(peakEl);
+
+  tiers.slice(1).reverse().forEach(tier => {
+    const block = document.createElement('div');
+    block.className = 'tier-block';
+    const tierGoals = goals[tier.key] || [];
+    const goalsHtml = tierGoals.map(g => `
+      <div class="goal-item">
+        <div class="goal-item-text">${escHtml(g.text)}</div>
+        <div class="goal-progress-track">
+          <div class="goal-progress-fill" style="width:0%;background:${tier.color}" data-target="${g.progress}"></div>
+        </div>
+        <div class="goal-progress-label">${g.progress}%</div>
+      </div>
+    `).join('');
+
+    block.innerHTML = `
+      <div class="tier-label-col">
+        <div class="tier-icon">${tier.icon}</div>
+        <div class="tier-connector"></div>
+      </div>
+      <div class="tier-content">
+        <div class="tier-header" style="color:${tier.color}">${tier.label}</div>
+        ${goalsHtml}
+      </div>
+    `;
+    container.appendChild(block);
+  });
+
+  setTimeout(() => {
+    document.querySelectorAll('.goal-progress-fill').forEach(el => {
+      el.style.transition = 'width 1.2s ease';
+      el.style.width = el.dataset.target + '%';
+    });
+  }, 800);
+}
+
+/* ======================== COUNTER ======================== */
+function buildCounterAnimation() {
+  const target = window._liveTaskCount || 23487;
+  const el = document.getElementById('counter-number');
+  let current = 0;
+  const duration = 2000;
+  const startTime = performance.now();
+
+  function update(now) {
+    const elapsed = now - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    const ease = 1 - Math.pow(1 - progress, 3);
+    current = Math.floor(ease * target);
+    el.textContent = current.toLocaleString();
+    if (progress < 1) requestAnimationFrame(update);
+  }
+  requestAnimationFrame(update);
+}
+
+/* ======================== PROOF BAR ======================== */
+function buildProofBar() {
+  const ctx = document.getElementById('proof-bar-chart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: monthlyCounts.map(m => m.month),
+      datasets: [{
+        data: monthlyCounts.map(m => m.count),
+        backgroundColor: monthlyCounts.map((m, i) =>
+          i === monthlyCounts.length - 1 ? '#f1420b' : 'rgba(42,147,193,0.6)'
+        ),
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: {
+        backgroundColor: '#0d1121',
+        borderColor: 'rgba(42,147,193,0.3)',
+        borderWidth: 1,
+        callbacks: { label: ctx => ctx.raw + ' tasks' },
+      }},
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#4a5570', font: { size: 10 } } },
+        y: { display: false, grid: { display: false } },
+      },
+    },
+  });
+}
+
+/* ======================== TASK FEED ======================== */
+function buildTaskFeed() {
+  const container = document.getElementById('task-feed');
+  recentTasks.forEach(t => {
+    const item = document.createElement('div');
+    item.className = 'task-feed-item';
+    item.innerHTML = `
+      <span class="task-feed-check">✓</span>
+      <span class="task-feed-text">${escHtml(t.text)}</span>
+      <span class="task-feed-date">${escHtml(t.date)}</span>
+    `;
+    container.appendChild(item);
+  });
+}
+
+/* ======================== MONEY CHART ======================== */
+function buildMoneyChart() {
+  const ctx = document.getElementById('income-expense-chart').getContext('2d');
+  const liveFinance = window._liveMonthlyFinance;
+  const chartLabels = liveFinance
+    ? liveFinance.map(m => m.month)
+    : ['Oct','Nov','Dec','Jan','Feb','Mar'];
+  const incomeData = liveFinance
+    ? liveFinance.map(m => m.income)
+    : [4200, 4800, 5100, 4600, 5300, 5800];
+  const expenseData = liveFinance
+    ? liveFinance.map(m => m.expense)
+    : [3800, 4100, 4600, 4000, 4400, 4900];
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: chartLabels,
+      datasets: [
+        {
+          label: 'Income',
+          data: incomeData,
+          backgroundColor: 'rgba(42,147,193,0.7)',
+          borderRadius: 3,
+        },
+        {
+          label: 'Expenses',
+          data: expenseData,
+          backgroundColor: 'rgba(241,66,11,0.5)',
+          borderRadius: 3,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          labels: { color: '#7a8aaa', font: { size: 9 }, boxWidth: 10 },
+        },
+        tooltip: { backgroundColor: '#0d1121', borderColor: 'rgba(42,147,193,0.3)', borderWidth: 1 },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#4a5570', font: { size: 9 } } },
+        y: { display: false },
+      },
+    },
+  });
+}
+
+/* ======================== NUMBER FILL ======================== */
+function buildNumberFill() {
+  const fillEl = document.getElementById('number-fill');
+  const tn = window._liveTheNumber || { current: 0, target: 60000000 };
+  const current = tn.current || 0;
+  const target = tn.target || 60000000;
+  const pct = target > 0 ? Math.max(0.1, Math.min(100, (current / target) * 100)) : 0.1;
+
+  // Update the label
+  const labelEl = document.querySelector('.the-number-label');
+  if (labelEl) {
+    const pctDisplay = pct.toFixed(1);
+    const targetFmt = '$' + (target / 1000000).toFixed(0) + ',000,000';
+    const currentFmt = current >= 1000000
+      ? '$' + (current / 1000000).toFixed(2) + 'M'
+      : '$' + current.toLocaleString();
+    labelEl.innerHTML = `<span>The Number: ${currentFmt} / <strong>${targetFmt}</strong></span>
+      <span style="color:var(--orange)">${pctDisplay}%</span>`;
+  }
+
+  setTimeout(() => {
+    fillEl.style.width = pct + '%';
+  }, 1000);
+}
+
+/* ======================== RELATIONSHIP RING ======================== */
+function buildRelationshipRing() {
+  const svg = document.getElementById('relationship-svg');
+  const cx = 150, cy = 150;
+  const rings = { inner: 52, mid: 95, outer: 130 };
+  const ringColors = { inner: 'rgba(241,66,11,0.15)', mid: 'rgba(42,147,193,0.1)', outer: 'rgba(255,255,255,0.04)' };
+  const ringBorder = { inner: 'rgba(241,66,11,0.4)', mid: 'rgba(42,147,193,0.3)', outer: 'rgba(255,255,255,0.1)' };
+
+  // Draw rings
+  ['outer', 'mid', 'inner'].forEach(ring => {
+    const r = rings[ring];
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', cx);
+    circle.setAttribute('cy', cy);
+    circle.setAttribute('r', r);
+    circle.setAttribute('fill', ringColors[ring]);
+    circle.setAttribute('stroke', ringBorder[ring]);
+    circle.setAttribute('stroke-width', '1');
+    svg.appendChild(circle);
+  });
+
+  // Ring labels
+  const ringLabels = { inner: 'FAMILY', mid: 'CLOSE', outer: 'BUSINESS' };
+  Object.entries(ringLabels).forEach(([ring, label]) => {
+    const r = rings[ring];
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', cx);
+    text.setAttribute('y', cy - r + 10);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('fill', 'rgba(255,255,255,0.2)');
+    text.setAttribute('font-size', '7');
+    text.setAttribute('font-family', 'Oswald');
+    text.setAttribute('letter-spacing', '2');
+    text.textContent = label;
+    svg.appendChild(text);
+  });
+
+  // Center dot
+  const center = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  center.setAttribute('cx', cx);
+  center.setAttribute('cy', cy);
+  center.setAttribute('r', '6');
+  center.setAttribute('fill', '#f1420b');
+  svg.appendChild(center);
+
+  const centerText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  centerText.setAttribute('x', cx);
+  centerText.setAttribute('y', cy + 22);
+  centerText.setAttribute('text-anchor', 'middle');
+  centerText.setAttribute('fill', 'rgba(255,255,255,0.4)');
+  centerText.setAttribute('font-size', '8');
+  centerText.setAttribute('font-family', 'Oswald');
+  centerText.textContent = 'JARED';
+  svg.appendChild(centerText);
+
+  // Place nodes
+  const byRing = { inner: [], mid: [], outer: [] };
+  contacts.forEach(c => byRing[c.ring].push(c));
+
+  Object.entries(byRing).forEach(([ring, nodes]) => {
+    const r = rings[ring];
+    const innerR = ring === 'inner' ? 0 : ring === 'mid' ? rings.inner : rings.mid;
+    const placeR = innerR + (r - innerR) * 0.6;
+
+    nodes.forEach((node, i) => {
+      const angle = (i / nodes.length) * Math.PI * 2 - Math.PI / 2;
+      const x = cx + Math.cos(angle) * placeR;
+      const y = cy + Math.sin(angle) * placeR;
+      const daysColor = node.days <= 7 ? '#22c55e' : node.days <= 30 ? '#eab308' : '#ef4444';
+
+      // Line to center
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', cx);
+      line.setAttribute('y1', cy);
+      line.setAttribute('x2', x);
+      line.setAttribute('y2', y);
+      line.setAttribute('stroke', 'rgba(255,255,255,0.04)');
+      line.setAttribute('stroke-width', '1');
+      svg.insertBefore(line, svg.firstChild);
+
+      // Node circle
+      const nodeSize = ring === 'inner' ? 16 : ring === 'mid' ? 13 : 11;
+      const nodeCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      nodeCircle.setAttribute('cx', x);
+      nodeCircle.setAttribute('cy', y);
+      nodeCircle.setAttribute('r', nodeSize);
+      nodeCircle.setAttribute('fill', ring === 'inner' ? 'rgba(241,66,11,0.3)' : 'rgba(42,147,193,0.2)');
+      nodeCircle.setAttribute('stroke', daysColor);
+      nodeCircle.setAttribute('stroke-width', '1.5');
+      nodeCircle.style.cursor = 'pointer';
+      svg.appendChild(nodeCircle);
+
+      // Initials
+      const initText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      initText.setAttribute('x', x);
+      initText.setAttribute('y', y + 4);
+      initText.setAttribute('text-anchor', 'middle');
+      initText.setAttribute('fill', '#e8eaf6');
+      initText.setAttribute('font-size', ring === 'inner' ? '9' : '7');
+      initText.setAttribute('font-family', 'Oswald');
+      initText.setAttribute('font-weight', '700');
+      initText.textContent = node.initials;
+      svg.appendChild(initText);
+
+      // Tooltip on hover
+      const tooltip = document.getElementById('tooltip');
+      nodeCircle.addEventListener('mouseenter', e => {
+        tooltip.style.display = 'block';
+        tooltip.innerHTML = `<strong>${escHtml(node.name)}</strong><br>${escHtml(node.role)}<br><span style="color:${daysColor}">${node.days === 0 ? 'Today' : node.days + 'd ago'}</span>`;
+      });
+      nodeCircle.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+      nodeCircle.addEventListener('mousemove', e => {
+        tooltip.style.left = (e.pageX + 12) + 'px';
+        tooltip.style.top = (e.pageY - 32) + 'px';
+      });
+    });
+  });
+}
+
+/* ======================== CONTACT LIST ======================== */
+function buildContactList() {
+  const container = document.getElementById('contact-list');
+  const priorityContacts = contacts.slice(0, 8);
+  container.innerHTML = '';
+  priorityContacts.forEach(c => {
+    const daysColor = c.days <= 7 ? 'days-green' : c.days <= 30 ? 'days-yellow' : 'days-red';
+    const bgColor = c.ring === 'inner' ? 'rgba(241,66,11,0.2)' : 'rgba(42,147,193,0.15)';
+    const item = document.createElement('div');
+    item.className = 'contact-item';
+    item.innerHTML = `
+      <div class="contact-avatar" style="background:${bgColor}">${c.initials}</div>
+      <div class="contact-info">
+        <div class="contact-name">${escHtml(c.name)}</div>
+        <div class="contact-role">${escHtml(c.role)}</div>
+      </div>
+      <div class="contact-days ${daysColor}">${c.days === 0 ? 'Today' : c.days + 'd'}</div>
+    `;
+    container.appendChild(item);
+  });
+}
+
+/* ======================== EULOGIES ======================== */
+function buildEulogies() {
+  const container = document.getElementById('eulogy-grid');
+  eulogies.forEach(e => {
+    const item = document.createElement('div');
+    item.className = 'eulogy-item';
+    item.innerHTML = `
+      <div class="eulogy-who">${escHtml(e.who)}</div>
+      <div class="eulogy-text">${escHtml(e.text)}</div>
+    `;
+    container.appendChild(item);
+  });
+}
+
+/* ======================== MICRO LAWS ======================== */
+function buildMicroLaws() {
+  const container = document.getElementById('micro-laws');
+  microLaws.forEach((law, i) => {
+    const item = document.createElement('div');
+    item.className = 'law-item';
+    item.innerHTML = `<span class="law-num">${i + 1}</span><span>${escHtml(law)}</span>`;
+    container.appendChild(item);
+  });
+}
+
+/* ======================== COUNTDOWNS ======================== */
+function buildCountdowns() {
+  const now = new Date();
+
+  // Times Square: 7/7/2026
+  const timesSquare = new Date('2026-07-07T00:00:00');
+  const tsdays = Math.ceil((timesSquare - now) / (1000 * 60 * 60 * 24));
+  document.getElementById('times-square-countdown').textContent = tsdays > 0 ? tsdays : '🎉';
+
+  // #Grind Charity — placeholder
+  document.getElementById('charity-countdown').textContent = 'TBD';
+
+  // Years grinding
+  const startYear = 2019;
+  const yearsDiff = now.getFullYear() - startYear;
+  document.getElementById('years-grinding').textContent = yearsDiff;
+}
+
+/* ======================== QUICK STATS BANNER ======================== */
+function buildQuickStats() {
+  const now = new Date();
+
+  // Days since Jan 1 2026
+  const jan1 = new Date('2026-01-01T00:00:00');
+  const daysSince = Math.floor((now - jan1) / (1000 * 60 * 60 * 24));
+
+  // Best streak (max of hardcoded streak badges)
+  const bestStreak = 45;
+
+  // Mandala progress from localStorage
+  let mandalaPct = null;
+  try {
+    const bizData = localStorage.getItem('777_biz_mandala_v2');
+    if (bizData) {
+      const parsed = JSON.parse(bizData);
+      if (parsed && parsed.tasks) {
+        let total = 0, done = 0;
+        parsed.tasks.forEach(qualityTasks => {
+          if (Array.isArray(qualityTasks)) {
+            qualityTasks.forEach(t => {
+              total++;
+              if (t && t.done) done++;
+            });
+          }
+        });
+        if (total > 0) mandalaPct = Math.round((done / total) * 100);
+      }
+    }
+  } catch(e) {}
+
+  // Tasks today from checklist localStorage
+  const todayKey = '777_daily_checks_' + getTodayDateStr();
+  let tasksDoneCount = 0;
+  try {
+    const checks = JSON.parse(localStorage.getItem(todayKey) || '{}');
+    tasksDoneCount = Object.values(checks).filter(Boolean).length;
+  } catch(e) {}
+
+  // Days to 7/7/26
+  const timesSquare = new Date('2026-07-07T00:00:00');
+  const daysToTS = Math.max(0, Math.ceil((timesSquare - now) / (1000 * 60 * 60 * 24)));
+
+  // Check prefers-reduced-motion
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Animated count-up helper
+  function countUp(el, target, suffix, prefix) {
+    if (prefersReduced || target === null) {
+      el.textContent = target === null ? '—' : (prefix || '') + target + (suffix || '');
+      return;
+    }
+    const duration = 1200;
+    const start = performance.now();
+    function tick(now) {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const ease = 1 - Math.pow(1 - progress, 3);
+      const current = Math.floor(ease * target);
+      el.textContent = (prefix || '') + current + (suffix || '');
+      if (progress < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  countUp(document.getElementById('qs-days-since'), daysSince, '');
+  countUp(document.getElementById('qs-streak'), bestStreak, 'd');
+  if (mandalaPct !== null) {
+    countUp(document.getElementById('qs-mandala-pct'), mandalaPct, '%');
+  } else {
+    document.getElementById('qs-mandala-pct').textContent = '—';
+  }
+  document.getElementById('qs-tasks-today').textContent = tasksDoneCount + '/7';
+  countUp(document.getElementById('qs-times-square'), daysToTS, 'd');
+}
+
+function getTodayDateStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getDate()).padStart(2, '0');
+}
+
+/* ======================== DAILY CHECKLIST ======================== */
+const DAILY_HABITS = [
+  { id: 'wake5am',  icon: '⏰', label: '5AM Wake Up' },
+  { id: 'bible',   icon: '📖', label: 'Bible / Prayer' },
+  { id: 'exercise',icon: '💪', label: 'Exercise' },
+  { id: 'read',    icon: '📚', label: 'Read 20 Pages' },
+  { id: 'gratitude',icon: '✨', label: 'Gratitude Journal' },
+  { id: 'goals',   icon: '🎯', label: 'Review Goals' },
+  { id: 'meditate',icon: '🧘', label: 'Meditate 10 Min' },
+];
+
+function buildDailyChecklist() {
+  const container = document.getElementById('checklist-items');
+  const countEl = document.getElementById('checklist-count');
+  const glowEl = document.getElementById('checklist-glow');
+  if (!container) return;
+
+  const todayKey = '777_daily_checks_' + getTodayDateStr();
+  let checks = {};
+  try { checks = JSON.parse(localStorage.getItem(todayKey) || '{}'); } catch(e) {}
+
+  function updateCount() {
+    const done = DAILY_HABITS.filter(h => checks[h.id]).length;
+    const total = DAILY_HABITS.length;
+    countEl.textContent = done + '/' + total;
+    // Update quick stats
+    const qsEl = document.getElementById('qs-tasks-today');
+    if (qsEl) qsEl.textContent = done + '/' + total;
+    // Glow when all done
+    glowEl.style.display = done === total ? 'block' : 'none';
+  }
+
+  container.innerHTML = '';
+  DAILY_HABITS.forEach(habit => {
+    const item = document.createElement('div');
+    item.className = 'check-item' + (checks[habit.id] ? ' checked' : '');
+    item.dataset.id = habit.id;
+    item.innerHTML = `
+      <div class="check-box">${checks[habit.id] ? '&#10003;' : ''}</div>
+      <span class="check-label">${habit.icon} ${habit.label}</span>
+    `;
+    item.addEventListener('click', () => {
+      const wasChecked = checks[habit.id];
+      checks[habit.id] = !wasChecked;
+      try { localStorage.setItem(todayKey, JSON.stringify(checks)); } catch(e) {}
+      item.classList.toggle('checked', checks[habit.id]);
+      item.querySelector('.check-box').innerHTML = checks[habit.id] ? '&#10003;' : '';
+      updateCount();
+      // Flash green on toggle
+      item.classList.remove('flash-green');
+      void item.offsetWidth; // reflow
+      if (checks[habit.id]) item.classList.add('flash-green');
+    });
+    container.appendChild(item);
+  });
+
+  updateCount();
+}
+
+/* ======================== SCORE QUESTIONS (from data.json) ======================== */
+// Store the live questions so we can toggle them
+window.__liveQuestions = null;
+
+async function toggleQuestion(qIdx, currentScore, itemEl) {
+  const newScore = currentScore > 0 ? 0 : 1;
+
+  // Update UI immediately
+  const isNowChecked = newScore > 0;
+  itemEl.classList.toggle('checked', isNowChecked);
+  const box = itemEl.querySelector('.check-box');
+  if (box) box.innerHTML = isNowChecked ? '&#10003;' : '';
+
+  // Flash green if checking
+  if (isNowChecked) {
+    itemEl.classList.remove('flash-green');
+    void itemEl.offsetWidth;
+    itemEl.classList.add('flash-green');
+  }
+
+  // Update internal state
+  if (window.__liveQuestions && window.__liveQuestions[qIdx]) {
+    window.__liveQuestions[qIdx].score = newScore;
+  }
+
+  // Recount checked questions
+  const allItems = document.querySelectorAll('.score-q-item');
+  let doneCount = 0;
+  allItems.forEach(el => { if (el.classList.contains('checked')) doneCount++; });
+  const total = allItems.length;
+  const countEl = document.getElementById('checklist-count');
+  if (countEl) countEl.textContent = doneCount + '/' + total;
+  const qsEl = document.getElementById('qs-tasks-today');
+  if (qsEl) qsEl.textContent = doneCount + '/' + Math.min(total, 7);
+
+  // Update header score chip
+  const headerChip = document.getElementById('header-score-chip');
+  if (headerChip) {
+    const maxScore = window.__liveQuestions ? window.__liveQuestions.length : total;
+    headerChip.textContent = 'TODAY: ' + doneCount + '/' + maxScore;
+  }
+
+  // Send to /api/edit (non-blocking)
+  try {
+    const todayDate = getTodayDateStr();
+    await fetch('/api/edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        password: '777grind',
+        table: 'daily_scores',
+        key: todayDate,
+        field: String(qIdx),
+        value: String(newScore)
+      })
+    });
+  } catch(e) {
+    // Silently fail — UI already updated, localStorage is source of truth
+    console.warn('[777] /api/edit not reachable:', e.message);
+  }
+}
+
+function buildScoreQuestions(questions) {
+  if (!questions || !questions.length) return;
+  window.__liveQuestions = questions;
+
+  const container = document.getElementById('checklist-items');
+  const countEl = document.getElementById('checklist-count');
+  const glowEl = document.getElementById('checklist-glow');
+  if (!container) return;
+
+  // Replace the default local checklist with real questions from data.json
+  container.innerHTML = '';
+
+  questions.forEach((q, idx) => {
+    const item = document.createElement('div');
+    const isChecked = q.score > 0;
+    item.className = 'check-item score-q-item' + (isChecked ? ' checked' : '');
+    item.dataset.qidx = idx;
+    item.dataset.score = q.score || 0;
+    // Truncate label to prevent overflow
+    const label = q.label.length > 80 ? q.label.slice(0, 78) + '...' : q.label;
+    item.innerHTML = `
+      <div class="check-box">${isChecked ? '&#10003;' : ''}</div>
+      <span class="check-label" title="${q.label.replace(/"/g,'&quot;')}">${label}</span>
+    `;
+    item.addEventListener('click', () => {
+      const currentScore = parseInt(item.dataset.score) || 0;
+      item.dataset.score = currentScore > 0 ? '0' : '1';
+      toggleQuestion(idx, currentScore, item);
+    });
+    container.appendChild(item);
+  });
+
+  // Update count display
+  const doneCount = questions.filter(q => q.score > 0).length;
+  const total = questions.length;
+  if (countEl) countEl.textContent = doneCount + '/' + total;
+  if (glowEl) glowEl.style.display = doneCount === total && total > 0 ? 'block' : 'none';
+
+  // Update quick stats
+  const qsEl = document.getElementById('qs-tasks-today');
+  if (qsEl) qsEl.textContent = doneCount + '/' + Math.min(total, 7);
+}
+
+/* ======================== BUSINESS MANDALA DATA ======================== */
+const BIZ_GOAL = 'Pure Technology Inc. — All 6 Divisions to $72B by 2030 (Bull Case)';
+const BIZ_QUALITIES = [
+  'PureBrain Scale',
+  'Pure Marketing Group',
+  'Hardware & Devices',
+  'Pure Influence & Brand',
+  'Pure Infrastructure',
+  'Pure Research & IP',
+  'Capital & Investment',
+  'Global Ops & Expansion',
+];
+const BIZ_TASKS = [
+  ['420K subs Y0 → 1.2M Y1 → 5.4M Y3', 'Maintain $345/mo blended ARPU', 'Enterprise revenue: $5M Y0 → $7.5B Y5', 'Persistent memory architecture', 'Multi-agent orchestration (78+ → 500+)', 'Voice mode + mobile native app', 'Enterprise security & compliance', '99.99% uptime SLA'],
+  ['Scale agency retainers ($3.5K-$12K/mo)', 'AI-powered campaign delivery at scale', 'Training data from PMG feeds PureBrain', 'Fortune 500 pipeline', 'Channel partnerships with consulting firms', 'Vertical-specific solutions', 'Boutique → global agency transformation', 'Dedicated account management + AI agents'],
+  ['208K devices shipped Y1', '1.4M devices Y2 — mass market push', '3M devices Y3 — hardware subsidizes CAC', 'Market research services revenue stream', 'Device OS integrated with PureBrain', 'Hardware as customer acquisition flywheel', 'Supply chain partnerships for scale', 'Next-gen device roadmap (wearables)'],
+  ['$260K influence revenue Y0 → $162M Y3', 'Aether as first AI Influencer/Co-CEO', 'Jared as founder thought leader', 'AI-driven thought leadership content', 'Conference circuit + speaking engagements', 'Podcast tour and media appearances', 'Documentary/behind-the-scenes content', 'Awards, recognition, and PR campaigns'],
+  ['AI model hosting for all internal products', 'API-as-a-service for external customers', 'B2B IaaS: compute, storage, inference', 'Multi-model support (Claude, GPT, Gemini)', 'Edge computing for mobile performance', 'Cost optimization (sub-$0.01/conversation)', 'Powers all 6 divisions + 3rd party', 'Redundancy, disaster recovery, 99.99% SLA'],
+  ['$65K Y0 → $672K Y3 → licensing scale', 'Memory architecture patents', 'Next-gen model development R&D', 'IP licensing revenue stream', 'Model fine-tuning and custom architecture', 'Data pipeline and proprietary datasets', 'Academic partnerships and talent pipeline', 'R&D feeds product roadmap 2-3 years ahead'],
+  ['Seed 2: $2.5M at $55M valuation', 'Series A: $25M at $105M (MAKR, May 2026)', 'Crowdfunding: Wefunder + Kickstarter', 'Series B: $100M+ (2027)', 'Revenue-funded growth after Series B', 'Strategic investors (tech companies, AI funds)', 'Maintain board control via dual-class shares', 'Liquidity event planning (2029-2030)'],
+  ['Sub-250 headcount maintained', '79% gross margin Y0 → 88% gross margin Y5', 'GCC market launch Q4 2027', 'India + Latin America expansion', 'Localization (12+ languages)', 'Legal entity + tax structure optimization', 'C-suite advisory team', 'Global compliance and data residency'],
+];
+
+function buildMandalaMini() {
+  const grid = document.getElementById('mandala-mini-grid');
+  const drilldown = document.getElementById('mandala-drilldown');
+  const ddTitle = document.getElementById('mandala-dd-title');
+  const ddTasks = document.getElementById('mandala-dd-tasks');
+  const ddClose = document.getElementById('mandala-dd-close');
+  const syncDot = document.getElementById('mandala-sync-dot');
+  const syncLabel = document.getElementById('mandala-sync-label');
+  const progressFill = document.getElementById('mandala-progress-fill');
+  const progressPct = document.getElementById('mandala-progress-pct');
+  if (!grid) return;
+
+  // Read localStorage for biz mandala state
+  let bizState = null;
+  let doneTasks = 0, totalTasks = 64;
+  try {
+    const raw = localStorage.getItem('777_biz_mandala_v2');
+    if (raw) {
+      bizState = JSON.parse(raw);
+      if (bizState && bizState.tasks) {
+        doneTasks = 0;
+        totalTasks = 0;
+        bizState.tasks.forEach(qt => {
+          if (Array.isArray(qt)) qt.forEach(t => { totalTasks++; if (t && t.done) doneTasks++; });
+        });
+      }
+    }
+  } catch(e) {}
+
+  // Sync indicator
+  if (bizState) {
+    syncDot.classList.add('live');
+    const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+    syncLabel.textContent = pct + '% complete';
+    // Also update quick stats
+    const qsMandala = document.getElementById('qs-mandala-pct');
+    if (qsMandala) qsMandala.textContent = pct + '%';
+  } else {
+    syncLabel.textContent = 'Visit Business Mandala to sync';
+  }
+
+  // Build the 3x3 grid
+  // Layout: [Q7, Q0, Q1], [Q6, CENTER, Q2], [Q5, Q4, Q3]
+  // Positions: (row, col) → quality index
+  //   (0,0)=Q7, (0,1)=Q0, (0,2)=Q1
+  //   (1,0)=Q6, (1,1)=CENTER, (1,2)=Q2
+  //   (2,0)=Q5, (2,1)=Q4, (2,2)=Q3
+  const gridLayout = [7, 0, 1, 6, -1, 2, 5, 4, 3]; // -1 = center
+  let activeQuality = null;
+
+  grid.innerHTML = '';
+  gridLayout.forEach(qi => {
+    const cell = document.createElement('div');
+    if (qi === -1) {
+      // Center cell
+      cell.className = 'mandala-mini-cell center-cell';
+      cell.innerHTML = `<div class="mandala-mini-cell-label">Pure Technology $72B</div>`;
+    } else {
+      const qualityLabel = BIZ_QUALITIES[qi];
+      // Count done tasks for this quality
+      let qDone = 0;
+      if (bizState && bizState.tasks && bizState.tasks[qi]) {
+        bizState.tasks[qi].forEach(t => { if (t && t.done) qDone++; });
+      }
+      const tasksLabel = bizState ? qDone + '/8' : '8 actions';
+      cell.className = 'mandala-mini-cell';
+      cell.dataset.qi = qi;
+      cell.innerHTML = `
+        <div class="mandala-mini-cell-label">${qualityLabel}</div>
+        <div class="mandala-mini-cell-num">${tasksLabel}</div>
+      `;
+      cell.addEventListener('click', () => {
+        if (activeQuality === qi) {
+          // Close
+          drilldown.classList.remove('open');
+          cell.classList.remove('active');
+          activeQuality = null;
+          return;
+        }
+        // Open
+        document.querySelectorAll('.mandala-mini-cell').forEach(c => c.classList.remove('active'));
+        cell.classList.add('active');
+        activeQuality = qi;
+        ddTitle.textContent = qualityLabel;
+        ddTasks.innerHTML = BIZ_TASKS[qi].map((t, i) => {
+          let isDone = false;
+          if (bizState && bizState.tasks && bizState.tasks[qi] && bizState.tasks[qi][i]) {
+            isDone = bizState.tasks[qi][i].done;
+          }
+          return `<div class="mandala-dd-task">
+            <span class="mandala-dd-task-num">${i+1}.</span>
+            <span style="color:${isDone ? 'var(--green)' : 'var(--text-dim)'}${isDone ? ';text-decoration:line-through;text-decoration-color:rgba(34,197,94,0.3)' : ''}">${t}</span>
+          </div>`;
+        }).join('');
+        drilldown.classList.add('open');
+      });
+    }
+    grid.appendChild(cell);
+  });
+
+  // Close button
+  ddClose.addEventListener('click', () => {
+    drilldown.classList.remove('open');
+    document.querySelectorAll('.mandala-mini-cell').forEach(c => c.classList.remove('active'));
+    activeQuality = null;
+  });
+
+  // Progress bar
+  const pctVal = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+  progressPct.textContent = pctVal + '%';
+  setTimeout(() => {
+    progressFill.style.width = pctVal + '%';
+  }, 800);
+}
+
+/* ======================== CARD ENTRANCE ANIMATIONS ======================== */
+function animateCardEntrance() {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  // Already set via CSS animation-delay on .card-animate
+  // Animate heatmap cells with a wave
+  const cells = document.querySelectorAll('.heatmap-cell');
+  const weeksEl = document.querySelectorAll('.heatmap-week');
+  weeksEl.forEach((week, wi) => {
+    const weekCells = week.querySelectorAll('.heatmap-cell');
+    weekCells.forEach((cell, di) => {
+      cell.classList.add('wave-animate');
+      cell.style.animationDelay = (wi * 0.03 + di * 0.005) + 's';
+    });
+  });
+}
+
+/* ======================== AI COACHING PANEL ======================== */
+(function() {
+  const fab = document.getElementById('coach-fab');
+  const panel = document.getElementById('coach-panel');
+  const messagesEl = document.getElementById('coach-messages');
+  const inputEl = document.getElementById('coach-input');
+  const sendBtn = document.getElementById('coach-send');
+  const moduleSelect = document.getElementById('coach-module');
+  if (!fab || !panel) return;
+
+  let chatHistory = []; // {role, content} pairs for API
+  let isOpen = false;
+  let isSending = false;
+  let _chatAbort = null; // AbortController for in-flight requests
+
+  fab.addEventListener('click', () => {
+    isOpen = !isOpen;
+    panel.classList.toggle('visible', isOpen);
+    fab.classList.toggle('open', isOpen);
+    fab.innerHTML = isOpen ? '&#x2715;' : '&#x1F3AF;';
+    if (isOpen) inputEl.focus();
+  });
+
+  // Reset chat when module changes — abort in-flight requests
+  moduleSelect.addEventListener('change', () => {
+    if (_chatAbort) { _chatAbort.abort(); _chatAbort = null; }
+    isSending = false;
+    sendBtn.disabled = false;
+    chatHistory = [];
+    messagesEl.innerHTML = '<div class="coach-msg system">Switched to ' +
+      moduleSelect.options[moduleSelect.selectedIndex].text +
+      '. Ask me anything.</div>';
+  });
+
+  function formatCoachText(text) {
+    // Basic markdown: bold, italic, bullet lists, line breaks
+    var s = escHtml(text);
+    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    // Process lines: collect consecutive bullet lines into <ul> blocks
+    var lines = s.split('\n');
+    var out = [];
+    var inList = false;
+    for (var i = 0; i < lines.length; i++) {
+      var bulletMatch = lines[i].match(/^[-•]\s+(.+)$/);
+      if (bulletMatch) {
+        if (!inList) { out.push('<ul>'); inList = true; }
+        out.push('<li>' + bulletMatch[1] + '</li>');
+      } else {
+        if (inList) { out.push('</ul>'); inList = false; }
+        out.push(lines[i]);
+      }
+    }
+    if (inList) out.push('</ul>');
+    s = out.join('\n');
+    s = s.replace(/\n/g, '<br>');
+    // Clean up <br> around list tags
+    s = s.replace(/<br><ul>/g, '<ul>');
+    s = s.replace(/<\/ul><br>/g, '</ul>');
+    return s;
+  }
+
+  function addMessage(role, text) {
+    const msg = document.createElement('div');
+    msg.className = 'coach-msg ' + role;
+    if (role === 'assistant') {
+      msg.innerHTML = formatCoachText(text);
+    } else {
+      msg.textContent = text;
+    }
+    messagesEl.appendChild(msg);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return msg;
+  }
+
+  function getCoachContext() {
+    // Gather current dashboard data as context for the AI
+    var ctx = {};
+    try {
+      // Today's score
+      var headerChip = document.getElementById('header-score-chip');
+      if (headerChip) ctx.todayScore = headerChip.textContent;
+
+      // 7 F's with trend arrows
+      if (typeof sevenFs !== 'undefined') {
+        ctx.sevenFs = sevenFs.map(function(f) {
+          var trend = f.score > f.lastWeek ? 'up' : f.score < f.lastWeek ? 'down' : 'flat';
+          return { label: f.label, score: f.score, lastWeek: f.lastWeek, trend: trend };
+        });
+        // Highlight weakest F
+        var sorted = ctx.sevenFs.slice().sort(function(a,b) { return a.score - b.score; });
+        if (sorted.length) ctx.weakestF = sorted[0].label + ' (' + sorted[0].score + '/10)';
+      }
+
+      // Goals
+      if (typeof goals !== 'undefined') {
+        ctx.goals = {};
+        if (goals.infinite) ctx.goals.vision = goals.infinite;
+        if (goals.yearly) ctx.goals.yearly = goals.yearly;
+        if (goals.monthly) ctx.goals.monthly = goals.monthly;
+      }
+
+      // Daily checklist status with individual items
+      var checkItems = document.querySelectorAll('.check-item, .score-q-item');
+      if (checkItems.length > 0) {
+        var checked = 0;
+        var uncheckedItems = [];
+        checkItems.forEach(function(el) {
+          if (el.classList.contains('checked')) { checked++; }
+          else {
+            var label = el.querySelector('.check-label, .score-q-text');
+            if (label) uncheckedItems.push(label.textContent.trim());
+          }
+        });
+        ctx.dailyChecklist = checked + '/' + checkItems.length + ' completed';
+        if (uncheckedItems.length > 0 && uncheckedItems.length <= 10) {
+          ctx.uncheckedItems = uncheckedItems;
+        }
+      }
+
+      // Recent tasks
+      if (typeof recentTasks !== 'undefined') {
+        ctx.recentTasks = recentTasks.slice(0, 5);
+      }
+
+      // Current date context
+      var now = new Date();
+      ctx.currentDate = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      ctx.dayOfYear = Math.ceil((now - new Date(now.getFullYear(), 0, 1)) / 86400000);
+      ctx.yearProgress = Math.round((ctx.dayOfYear / 365) * 100) + '%';
+    } catch(e) {}
+    return ctx;
+  }
+
+  async function sendMessage() {
+    var text = inputEl.value.trim();
+    if (!text || isSending) return;
+
+    isSending = true;
+    sendBtn.disabled = true;
+    inputEl.value = '';
+
+    addMessage('user', text);
+    chatHistory.push({ role: 'user', content: text });
+
+    // Show loading
+    var loadingMsg = document.createElement('div');
+    loadingMsg.className = 'coach-msg loading';
+    loadingMsg.innerHTML = 'Thinking<span class="dots"></span>';
+    messagesEl.appendChild(loadingMsg);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    try {
+      _chatAbort = new AbortController();
+      var resp = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: _chatAbort.signal,
+        body: JSON.stringify({
+          module: moduleSelect.value,
+          messages: chatHistory.slice(-10),
+          context: getCoachContext()
+        })
+      });
+
+      if (loadingMsg.parentElement) loadingMsg.remove();
+
+      if (!resp.ok) {
+        var errData = await resp.json().catch(function() { return {}; });
+        addMessage('system', errData.error || 'Error connecting to coach. Try again.');
+        chatHistory.pop(); // Remove the failed user message from history
+      } else {
+        var data = await resp.json();
+        var reply = data.reply || 'No response received.';
+        addMessage('assistant', reply);
+        chatHistory.push({ role: 'assistant', content: reply });
+        // Trim client-side history
+        if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
+      }
+    } catch(e) {
+      if (loadingMsg.parentElement) loadingMsg.remove();
+      if (e.name !== 'AbortError') {
+        addMessage('system', 'Network error. Make sure you are on 777-command-center.vercel.app.');
+        chatHistory.pop();
+      }
+    }
+
+    isSending = false;
+    sendBtn.disabled = false;
+    inputEl.focus();
+  }
+
+  sendBtn.addEventListener('click', sendMessage);
+  inputEl.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  // Export conversation as text file
+  var exportBtn = document.getElementById('coach-export');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', function() {
+      if (chatHistory.length === 0) return;
+      var moduleName = moduleSelect.options[moduleSelect.selectedIndex].text;
+      var dateStr = new Date().toISOString().slice(0,10);
+      var lines = ['777 Command Center — AI Coach: ' + moduleName, 'Date: ' + dateStr, ''];
+      chatHistory.forEach(function(m) {
+        lines.push((m.role === 'user' ? 'YOU' : 'COACH') + ': ' + m.content);
+        lines.push('');
+      });
+      var blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = '777-coach-' + moduleSelect.value + '-' + dateStr + '.txt';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+  }
+})();
+
+/* ======================== PDF EXPORT ======================== */
+function exportPDF() {
+  // Check if html2canvas and jsPDF are loaded
+  if (typeof html2canvas === 'undefined' || typeof jspdf === 'undefined') {
+    // Fallback to print dialog
+    window.print();
+    return;
+  }
+
+  var btn = document.querySelector('.header-action-btn');
+  if (btn) { btn.textContent = 'Generating...'; btn.disabled = true; }
+
+  // Hide non-printable elements
+  var coachFab = document.getElementById('coach-fab');
+  var coachPanel = document.getElementById('coach-panel');
+  var headerActions = document.querySelector('.header-actions');
+  if (coachFab) coachFab.style.display = 'none';
+  if (coachPanel) coachPanel.style.display = 'none';
+
+  var dashboardEl = document.getElementById('dashboard');
+
+  html2canvas(dashboardEl, {
+    scale: 2,
+    useCORS: true,
+    backgroundColor: '#080a12',
+    logging: false,
+    windowWidth: 1400
+  }).then(function(canvas) {
+    var imgData = canvas.toDataURL('image/jpeg', 0.92);
+    var pdf = new jspdf.jsPDF({
+      orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
+      unit: 'px',
+      format: [canvas.width, canvas.height]
+    });
+    pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width, canvas.height);
+
+    var dateStr = new Date().toISOString().slice(0,10);
+    pdf.save('777-command-center-' + dateStr + '.pdf');
+
+    // Restore UI
+    if (coachFab) coachFab.style.display = '';
+    if (coachPanel) coachPanel.style.display = '';
+    if (btn) { btn.textContent = 'PDF'; btn.disabled = false; }
+  }).catch(function(err) {
+    console.error('PDF export failed:', err);
+    if (coachFab) coachFab.style.display = '';
+    if (coachPanel) coachPanel.style.display = '';
+    if (btn) { btn.textContent = 'PDF'; btn.disabled = false; }
+    // Fallback
+    window.print();
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,1905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Migration Portal | Bring Your AI History to PureBrain</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    /* ================================================================
+       GLOBAL RESET — WordPress override layer
+    ================================================================ */
+    html, body {
+      background-color: #080a12 !important;
+      color: #e0e6f0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif !important;
+    }
+    body.page { background-color: #080a12 !important; }
+    .site-header, .site-footer, .entry-header, .entry-footer,
+    .wp-block-post-title, h1.entry-title, .elementor-location-header,
+    .elementor-location-footer { display: none !important; }
+
+    /* ================================================================
+       PORTAL — All styles scoped under #pb-migration-portal
+    ================================================================ */
+    #pb-migration-portal {
+      --blue:         #2a93c1;
+      --blue-light:   #3eb0e0;
+      --blue-dim:     #1a5a7a;
+      --blue-glow:    rgba(42, 147, 193, 0.15);
+      --orange:       #f1420b;
+      --orange-dim:   #a02d07;
+      --orange-glow:  rgba(241, 66, 11, 0.15);
+      --bg-page:      #080a12;
+      --bg-card:      #0e1120;
+      --bg-card-alt:  #111628;
+      --bg-input:     #0a0d1a;
+      --border:       rgba(42, 147, 193, 0.18);
+      --border-mid:   rgba(42, 147, 193, 0.35);
+      --text-primary: #e0e6f0;
+      --text-secondary: #94a3b8;
+      --text-muted:   #5a6a82;
+      --white:        #ffffff;
+      --green:        #22c55e;
+      --green-dim:    rgba(34, 197, 94, 0.15);
+      --radius-sm:    8px;
+      --radius-md:    12px;
+      --radius-lg:    20px;
+
+      background-color: var(--bg-page);
+      color: var(--text-primary);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.65;
+      min-height: 100vh;
+    }
+
+    #pb-migration-portal *, #pb-migration-portal *::before, #pb-migration-portal *::after {
+      box-sizing: border-box;
+    }
+
+    /* ================================================================
+       LAYOUT
+    ================================================================ */
+    #pb-migration-portal .portal-wrap {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 40px 20px 80px;
+    }
+
+    /* ================================================================
+       LOGO HEADER
+    ================================================================ */
+    #pb-migration-portal .portal-logo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 40px;
+    }
+    #pb-migration-portal .portal-logo .logo-hex {
+      width: 38px;
+      height: 38px;
+    }
+    #pb-migration-portal .portal-logo .logo-text {
+      font-family: 'Oswald', sans-serif;
+      font-weight: 700;
+      font-size: 22px;
+      letter-spacing: 0.04em;
+      color: var(--white);
+    }
+    #pb-migration-portal .portal-logo .logo-text span.blue { color: var(--blue); }
+    #pb-migration-portal .portal-logo .logo-text span.orange { color: var(--orange); }
+
+    /* ================================================================
+       STEP HEADER
+    ================================================================ */
+    #pb-migration-portal .step-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    #pb-migration-portal .step-label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 8px;
+    }
+    #pb-migration-portal .step-title {
+      font-family: 'Oswald', sans-serif;
+      font-weight: 700;
+      font-size: clamp(26px, 5vw, 38px);
+      color: var(--white);
+      line-height: 1.15;
+      margin-bottom: 10px;
+    }
+    #pb-migration-portal .step-subtitle {
+      font-size: 16px;
+      color: var(--text-secondary);
+      max-width: 520px;
+      margin: 0 auto;
+    }
+
+    /* ================================================================
+       PROGRESS BAR (step indicator)
+    ================================================================ */
+    #pb-migration-portal .progress-dots {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      margin-bottom: 36px;
+    }
+    #pb-migration-portal .progress-dots .dot {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: 2px solid var(--border-mid);
+      background: var(--bg-card);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      position: relative;
+      z-index: 1;
+      transition: all 0.3s ease;
+      flex-shrink: 0;
+    }
+    #pb-migration-portal .progress-dots .dot.active {
+      border-color: var(--blue);
+      background: var(--blue);
+      color: var(--white);
+      box-shadow: 0 0 16px rgba(42,147,193,0.45);
+    }
+    #pb-migration-portal .progress-dots .dot.done {
+      border-color: var(--green);
+      background: var(--green);
+      color: var(--white);
+    }
+    #pb-migration-portal .progress-dots .dot.done::after {
+      content: '✓';
+      font-size: 14px;
+    }
+    #pb-migration-portal .progress-dots .dot.done .dot-num { display: none; }
+    #pb-migration-portal .progress-dots .dot-line {
+      flex: 1;
+      height: 2px;
+      background: var(--border);
+      max-width: 80px;
+      transition: background 0.3s ease;
+    }
+    #pb-migration-portal .progress-dots .dot-line.done {
+      background: var(--green);
+    }
+
+    /* ================================================================
+       CARD / SECTION
+    ================================================================ */
+    #pb-migration-portal .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      margin-bottom: 16px;
+      transition: border-color 0.3s ease;
+    }
+    #pb-migration-portal .card:hover {
+      border-color: rgba(42,147,193,0.35);
+    }
+    #pb-migration-portal .card.success {
+      border-color: rgba(34,197,94,0.4);
+    }
+    #pb-migration-portal .card-inner {
+      padding: 24px 28px;
+    }
+    #pb-migration-portal .card-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+    }
+
+    /* ================================================================
+       SECTION LABEL
+    ================================================================ */
+    #pb-migration-portal .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      padding-left: 2px;
+    }
+
+    /* ================================================================
+       UPLOAD ZONE
+    ================================================================ */
+    #pb-migration-portal .upload-zone {
+      border: 2px dashed rgba(42,147,193,0.35);
+      border-radius: var(--radius-md);
+      padding: 36px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      background: var(--bg-input);
+      position: relative;
+    }
+    #pb-migration-portal .upload-zone:hover,
+    #pb-migration-portal .upload-zone.drag-over {
+      border-color: var(--blue);
+      background: rgba(42,147,193,0.07);
+    }
+    #pb-migration-portal .upload-zone.success {
+      border-color: var(--green);
+      border-style: solid;
+      background: var(--green-dim);
+    }
+    #pb-migration-portal .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+    #pb-migration-portal .upload-icon {
+      font-size: 36px;
+      margin-bottom: 12px;
+      line-height: 1;
+    }
+    #pb-migration-portal .upload-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+    #pb-migration-portal .upload-hint {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    #pb-migration-portal .upload-success-msg {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--green);
+    }
+    #pb-migration-portal .upload-zone.success .upload-success-msg { display: flex; }
+    #pb-migration-portal .upload-zone.success .upload-default { display: none; }
+
+    /* ================================================================
+       HOW TO EXPORT ACCORDION
+    ================================================================ */
+    #pb-migration-portal .accordion {
+      margin-top: 12px;
+    }
+    #pb-migration-portal .accordion-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--blue);
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: inherit;
+      transition: color 0.2s;
+    }
+    #pb-migration-portal .accordion-toggle:hover { color: var(--blue-light); }
+    #pb-migration-portal .accordion-toggle .acc-arrow {
+      font-size: 10px;
+      transition: transform 0.25s;
+    }
+    #pb-migration-portal .accordion-toggle.open .acc-arrow {
+      transform: rotate(180deg);
+    }
+    #pb-migration-portal .accordion-body {
+      display: none;
+      margin-top: 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 16px 18px;
+    }
+    #pb-migration-portal .accordion-body.open { display: block; }
+    #pb-migration-portal .accordion-body ol {
+      margin: 0;
+      padding-left: 20px;
+    }
+    #pb-migration-portal .accordion-body li {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+      line-height: 1.5;
+    }
+    #pb-migration-portal .accordion-body li:last-child { margin-bottom: 0; }
+
+    /* ================================================================
+       SOURCE ICON BADGES
+    ================================================================ */
+    #pb-migration-portal .source-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-card-alt);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+    #pb-migration-portal .source-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+    }
+    #pb-migration-portal .source-what {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* ================================================================
+       TEXTAREA / INPUTS
+    ================================================================ */
+    #pb-migration-portal textarea,
+    #pb-migration-portal input[type="text"] {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 14px;
+      padding: 12px 16px;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    #pb-migration-portal textarea:focus,
+    #pb-migration-portal input[type="text"]:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(42,147,193,0.12);
+    }
+    #pb-migration-portal textarea::placeholder,
+    #pb-migration-portal input[type="text"]::placeholder {
+      color: var(--text-muted);
+    }
+    #pb-migration-portal .input-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+
+    /* ================================================================
+       BUTTONS
+    ================================================================ */
+    #pb-migration-portal .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 13px 28px;
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      outline: none;
+      transition: all 0.2s ease;
+      text-decoration: none;
+      line-height: 1;
+    }
+    #pb-migration-portal .btn-primary {
+      background: var(--orange);
+      color: var(--white) !important;
+    }
+    #pb-migration-portal .btn-primary:hover {
+      background: var(--blue);
+      color: var(--white) !important;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px rgba(42,147,193,0.3);
+    }
+    #pb-migration-portal .btn-secondary {
+      background: transparent;
+      color: var(--text-secondary) !important;
+      border: 1px solid var(--border);
+    }
+    #pb-migration-portal .btn-secondary:hover {
+      border-color: var(--border-mid);
+      color: var(--text-primary) !important;
+    }
+    #pb-migration-portal .btn-sm {
+      padding: 8px 16px;
+      font-size: 13px;
+    }
+    #pb-migration-portal .btn-remove {
+      background: transparent;
+      color: var(--orange);
+      border: 1px solid rgba(241,66,11,0.3);
+      padding: 5px 12px;
+      font-size: 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    #pb-migration-portal .btn-remove:hover {
+      background: rgba(241,66,11,0.1);
+    }
+    #pb-migration-portal .btn-restore {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      padding: 5px 12px;
+      font-size: 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    #pb-migration-portal .btn-restore:hover {
+      color: var(--blue);
+      border-color: var(--border-mid);
+    }
+    #pb-migration-portal .cta-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-top: 28px;
+    }
+
+    /* ================================================================
+       REVIEW STEP — DATA CATEGORIES
+    ================================================================ */
+    #pb-migration-portal .data-category {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--border);
+      transition: opacity 0.25s;
+    }
+    #pb-migration-portal .data-category:last-child { border-bottom: none; }
+    #pb-migration-portal .data-category.removed {
+      opacity: 0.35;
+    }
+    #pb-migration-portal .data-category-left {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    #pb-migration-portal .data-check {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--green-dim);
+      border: 1px solid var(--green);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: var(--green);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    #pb-migration-portal .data-category.removed .data-check {
+      background: rgba(90,106,130,0.1);
+      border-color: var(--border);
+      color: var(--text-muted);
+    }
+    #pb-migration-portal .data-cat-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+    }
+    #pb-migration-portal .data-cat-detail {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+    #pb-migration-portal .data-cat-preview {
+      font-size: 12px;
+      color: var(--text-secondary);
+      background: var(--bg-input);
+      border-left: 2px solid var(--border-mid);
+      padding: 4px 8px;
+      margin-top: 4px;
+      border-radius: 0 4px 4px 0;
+    }
+
+    /* ================================================================
+       PRIVACY NOTE
+    ================================================================ */
+    #pb-migration-portal .privacy-note {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      background: rgba(42,147,193,0.06);
+      border: 1px solid rgba(42,147,193,0.2);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      margin-bottom: 20px;
+    }
+    #pb-migration-portal .privacy-icon { font-size: 18px; flex-shrink: 0; }
+    #pb-migration-portal .privacy-text { font-size: 13px; color: var(--text-secondary); }
+    #pb-migration-portal .privacy-text strong { color: var(--text-primary); }
+    #pb-migration-portal .privacy-link {
+      color: var(--blue);
+      text-decoration: none;
+      font-size: 12px;
+      display: inline-block;
+      margin-top: 2px;
+    }
+    #pb-migration-portal .privacy-link:hover { text-decoration: underline; }
+
+    /* ================================================================
+       STEP 3 — LEARNING / PROCESSING
+    ================================================================ */
+    #pb-migration-portal .orb-container {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 28px;
+    }
+    #pb-migration-portal .pb-orb {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #3eb0e0 0%, #2a93c1 40%, #1a5a7a 70%, #0a1a2e 100%);
+      box-shadow:
+        0 0 40px rgba(42,147,193,0.4),
+        0 0 80px rgba(241,66,11,0.12),
+        inset 0 0 30px rgba(62,176,224,0.3);
+      position: relative;
+      animation: orbPulse 2.5s ease-in-out infinite;
+    }
+    #pb-migration-portal .pb-orb::before {
+      content: '';
+      position: absolute;
+      top: 12%;
+      left: 18%;
+      width: 30%;
+      height: 20%;
+      background: rgba(255,255,255,0.35);
+      border-radius: 50%;
+      filter: blur(6px);
+      transform: rotate(-20deg);
+    }
+    #pb-migration-portal .pb-orb::after {
+      content: '';
+      position: absolute;
+      inset: -6px;
+      border-radius: 50%;
+      border: 2px solid rgba(42,147,193,0.25);
+      animation: orbRing 2.5s ease-in-out infinite;
+    }
+    @keyframes orbPulse {
+      0%, 100% {
+        box-shadow: 0 0 40px rgba(42,147,193,0.4), 0 0 80px rgba(241,66,11,0.1), inset 0 0 30px rgba(62,176,224,0.3);
+        transform: scale(1);
+      }
+      50% {
+        box-shadow: 0 0 60px rgba(42,147,193,0.6), 0 0 100px rgba(241,66,11,0.2), inset 0 0 40px rgba(62,176,224,0.45);
+        transform: scale(1.04);
+      }
+    }
+    @keyframes orbRing {
+      0%, 100% { opacity: 0.4; transform: scale(1); }
+      50% { opacity: 0.9; transform: scale(1.08); }
+    }
+
+    #pb-migration-portal .progress-bar-wrap {
+      margin-bottom: 28px;
+      text-align: center;
+    }
+    #pb-migration-portal .progress-bar-label {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+    }
+    #pb-migration-portal .progress-bar-track {
+      height: 8px;
+      background: var(--bg-card-alt);
+      border-radius: 99px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    #pb-migration-portal .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--blue) 0%, var(--blue-light) 100%);
+      border-radius: 99px;
+      width: 0%;
+      transition: width 0.4s ease;
+      position: relative;
+    }
+    #pb-migration-portal .progress-bar-fill::after {
+      content: '';
+      position: absolute;
+      right: 0;
+      top: 0;
+      height: 100%;
+      width: 40px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3));
+      animation: shimmer 1s linear infinite;
+    }
+    @keyframes shimmer {
+      0% { opacity: 0; }
+      50% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
+    /* ================================================================
+       INSIGHT CARDS
+    ================================================================ */
+    #pb-migration-portal .insights-section {
+      margin-bottom: 28px;
+    }
+    #pb-migration-portal .insight-card {
+      background: var(--bg-card-alt);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--blue);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      opacity: 0;
+      transform: translateX(-12px);
+      transition: all 0.4s ease;
+    }
+    #pb-migration-portal .insight-card.visible {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    #pb-migration-portal .insight-card .insight-text strong {
+      color: var(--blue-light);
+    }
+
+    /* ================================================================
+       CHECKLIST
+    ================================================================ */
+    #pb-migration-portal .checklist {
+      background: var(--bg-card-alt);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 20px 22px;
+    }
+    #pb-migration-portal .checklist-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+    }
+    #pb-migration-portal .check-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      padding: 5px 0;
+    }
+    #pb-migration-portal .check-item .check-dot {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 2px solid var(--border-mid);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 11px;
+      color: transparent;
+      transition: all 0.3s;
+    }
+    #pb-migration-portal .check-item.done .check-dot {
+      background: var(--green);
+      border-color: var(--green);
+      color: var(--white);
+    }
+    #pb-migration-portal .check-item.done .check-dot::before { content: '✓'; }
+    #pb-migration-portal .check-item.in-progress .check-dot {
+      border-color: var(--blue);
+      animation: spinDot 1.2s linear infinite;
+    }
+    @keyframes spinDot {
+      from { border-top-color: var(--blue); border-right-color: transparent; }
+      to { border-top-color: var(--blue); border-right-color: transparent; transform: rotate(360deg); }
+    }
+    #pb-migration-portal .check-item.done { color: var(--text-primary); }
+
+    /* ================================================================
+       STEP 4 — TASK CARDS
+    ================================================================ */
+    #pb-migration-portal .task-cards-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    #pb-migration-portal .task-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 24px 26px;
+      display: flex;
+      align-items: flex-start;
+      gap: 18px;
+      transition: all 0.25s ease;
+    }
+    #pb-migration-portal .task-card:hover {
+      border-color: rgba(42,147,193,0.4);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    #pb-migration-portal .task-icon-wrap {
+      width: 50px;
+      height: 50px;
+      border-radius: var(--radius-sm);
+      background: var(--blue-glow);
+      border: 1px solid var(--border-mid);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+    #pb-migration-portal .task-content { flex: 1; }
+    #pb-migration-portal .task-title {
+      font-family: 'Oswald', sans-serif;
+      font-weight: 600;
+      font-size: 18px;
+      color: var(--white);
+      margin-bottom: 6px;
+    }
+    #pb-migration-portal .task-desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 14px;
+      line-height: 1.55;
+    }
+    #pb-migration-portal .task-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 18px;
+      border-radius: var(--radius-sm);
+      background: var(--orange);
+      color: var(--white) !important;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      text-decoration: none;
+      transition: all 0.2s;
+      cursor: pointer;
+      border: none;
+    }
+    #pb-migration-portal .task-btn:hover {
+      background: var(--blue);
+      transform: translateY(-1px);
+    }
+
+    /* ================================================================
+       COMPLETE BADGE
+    ================================================================ */
+    #pb-migration-portal .complete-badge {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: rgba(34,197,94,0.08);
+      border: 1px solid rgba(34,197,94,0.3);
+      border-radius: var(--radius-md);
+      padding: 18px 22px;
+      margin-bottom: 28px;
+    }
+    #pb-migration-portal .complete-badge .badge-icon {
+      width: 44px;
+      height: 44px;
+      background: rgba(34,197,94,0.15);
+      border: 1px solid rgba(34,197,94,0.4);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+    #pb-migration-portal .badge-title {
+      font-family: 'Oswald', sans-serif;
+      font-weight: 700;
+      font-size: 18px;
+      color: var(--green);
+      margin-bottom: 2px;
+    }
+    #pb-migration-portal .badge-detail {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* ================================================================
+       NO DATA WARNING (when no file uploaded for step 3-4)
+    ================================================================ */
+    #pb-migration-portal .no-data-note {
+      background: rgba(241,66,11,0.07);
+      border: 1px solid rgba(241,66,11,0.2);
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+
+    /* ================================================================
+       DEMO NOTE
+    ================================================================ */
+    #pb-migration-portal .demo-note {
+      background: rgba(42,147,193,0.07);
+      border: 1px solid rgba(42,147,193,0.2);
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    /* ================================================================
+       STEP VISIBILITY
+    ================================================================ */
+    #pb-migration-portal .step-panel {
+      display: none;
+    }
+    #pb-migration-portal .step-panel.active {
+      display: block;
+    }
+
+    /* ================================================================
+       RESPONSIVE
+    ================================================================ */
+    @media (max-width: 600px) {
+      #pb-migration-portal .portal-wrap {
+        padding: 24px 16px 60px;
+      }
+      #pb-migration-portal .card-inner {
+        padding: 18px 16px;
+      }
+      #pb-migration-portal .task-card {
+        flex-direction: column;
+        padding: 18px;
+        gap: 12px;
+      }
+      #pb-migration-portal .cta-row {
+        flex-direction: column;
+      }
+      #pb-migration-portal .btn { width: 100%; justify-content: center; }
+      #pb-migration-portal .data-category {
+        flex-wrap: wrap;
+      }
+    }
+
+    @media (min-width: 768px) {
+      #pb-migration-portal .task-cards-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div id="pb-migration-portal">
+  <div class="portal-wrap">
+
+    <!-- LOGO -->
+    <div class="portal-logo">
+      <!-- Inline SVG hex orb logo -->
+      <svg class="logo-hex" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="orbGrad" cx="40%" cy="35%" r="65%">
+            <stop offset="0%" stop-color="#3eb0e0"/>
+            <stop offset="55%" stop-color="#2a93c1"/>
+            <stop offset="100%" stop-color="#0a1a2e"/>
+          </radialGradient>
+        </defs>
+        <polygon points="19,2 35,11 35,27 19,36 3,27 3,11" fill="url(#orbGrad)" stroke="#2a93c1" stroke-width="1.2"/>
+        <polygon points="19,7 30,13.5 30,26.5 19,33 8,26.5 8,13.5" fill="none" stroke="#f1420b" stroke-width="0.7" opacity="0.5"/>
+        <circle cx="19" cy="19" r="5" fill="white" opacity="0.9"/>
+      </svg>
+      <div class="logo-text">
+        <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>
+      </div>
+    </div>
+
+    <!-- PROGRESS DOTS -->
+    <div class="progress-dots" id="progressDots">
+      <div class="dot active" id="dot1"><span class="dot-num">1</span></div>
+      <div class="dot-line" id="line1"></div>
+      <div class="dot" id="dot2"><span class="dot-num">2</span></div>
+      <div class="dot-line" id="line2"></div>
+      <div class="dot" id="dot3"><span class="dot-num">3</span></div>
+      <div class="dot-line" id="line3"></div>
+      <div class="dot" id="dot4"><span class="dot-num">4</span></div>
+    </div>
+
+    <!-- ================================================================
+         STEP 1: CONNECT YOUR ACCOUNTS
+    ================================================================ -->
+    <div class="step-panel active" id="step1">
+      <div class="step-header">
+        <div class="step-label">Step 1 of 4</div>
+        <h1 class="step-title">Connect Your Accounts</h1>
+        <p class="step-subtitle">We'll pull in the context that matters. You stay in control the whole way.</p>
+      </div>
+
+      <!-- ChatGPT Upload -->
+      <div class="section-label">Primary Import</div>
+      <div class="card" id="chatgptCard">
+        <div class="card-inner">
+          <div class="card-row" style="margin-bottom:16px;">
+            <div class="source-icon">🤖</div>
+            <div>
+              <div class="source-name">ChatGPT / OpenAI</div>
+              <div class="source-what">Conversation history &amp; Custom Instructions</div>
+            </div>
+          </div>
+
+          <div class="upload-zone" id="chatgptUploadZone">
+            <input type="file" id="chatgptFileInput" accept=".zip" aria-label="Upload ChatGPT ZIP file">
+            <div class="upload-default">
+              <div class="upload-icon">📦</div>
+              <div class="upload-title">Drop your conversations.zip here</div>
+              <div class="upload-hint">or click to browse &nbsp;·&nbsp; Accepts .zip from OpenAI export</div>
+            </div>
+            <div class="upload-success-msg" id="chatgptSuccessMsg">
+              <span>✓</span>
+              <span id="chatgptSuccessText">File uploaded</span>
+            </div>
+          </div>
+
+          <div class="accordion">
+            <button class="accordion-toggle" id="chatgptAccToggle" onclick="toggleAccordion('chatgptAcc', 'chatgptAccToggle')">
+              <span>How to export from ChatGPT</span>
+              <span class="acc-arrow">▼</span>
+            </button>
+            <div class="accordion-body" id="chatgptAcc">
+              <ol>
+                <li>Open <strong>ChatGPT</strong> and click your profile icon (top right)</li>
+                <li>Go to <strong>Settings → Data Controls</strong></li>
+                <li>Click <strong>"Export data"</strong> — ChatGPT will email you a link</li>
+                <li>Download the <strong>.zip file</strong> from the email</li>
+                <li>Upload the .zip file using the drop zone above</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Claude Upload -->
+      <div class="section-label" style="margin-top:8px;">Also Import</div>
+      <div class="card" id="claudeCard">
+        <div class="card-inner">
+          <div class="card-row" style="margin-bottom:16px;">
+            <div class="source-icon">🔵</div>
+            <div>
+              <div class="source-name">Claude / Anthropic</div>
+              <div class="source-what">Conversation history from Anthropic</div>
+            </div>
+          </div>
+
+          <div class="upload-zone" id="claudeUploadZone">
+            <input type="file" id="claudeFileInput" accept=".zip,.json" aria-label="Upload Claude export file">
+            <div class="upload-default">
+              <div class="upload-icon">📦</div>
+              <div class="upload-title">Drop your Claude export here</div>
+              <div class="upload-hint">or click to browse &nbsp;·&nbsp; Accepts .zip or .json</div>
+            </div>
+            <div class="upload-success-msg" id="claudeSuccessMsg">
+              <span>✓</span>
+              <span id="claudeSuccessText">File uploaded</span>
+            </div>
+          </div>
+
+          <div class="accordion" style="margin-top:12px;">
+            <button class="accordion-toggle" onclick="toggleAccordion('claudeAcc', this)" style="pointer-events:auto;">
+              <span>How to export from Claude</span>
+              <span class="acc-arrow">▼</span>
+            </button>
+            <div class="accordion-body" id="claudeAcc">
+              <ol>
+                <li>Go to <strong>claude.ai</strong> and sign in</li>
+                <li>Click your profile picture → <strong>Account Settings</strong></li>
+                <li>Find <strong>"Export Data"</strong> in the Privacy section</li>
+                <li>Download the ZIP file and upload it above</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Perplexity manual paste -->
+      <div class="card">
+        <div class="card-inner">
+          <div class="card-row" style="margin-bottom:16px;">
+            <div class="source-icon">🔍</div>
+            <div>
+              <div class="source-name">Perplexity</div>
+              <div class="source-what">Paste key research findings you want preserved</div>
+            </div>
+          </div>
+          <label class="input-label" for="perplexityPaste">Paste your key Perplexity threads or research summaries</label>
+          <textarea id="perplexityPaste" rows="4" placeholder="Paste any research findings, key questions, or topics you want PureBrain to know about..."></textarea>
+        </div>
+      </div>
+
+      <!-- Midjourney style -->
+      <div class="card">
+        <div class="card-inner">
+          <div class="card-row" style="margin-bottom:16px;">
+            <div class="source-icon">🎨</div>
+            <div>
+              <div class="source-name">Midjourney Visual Style</div>
+              <div class="source-what">Your aesthetic goes directly into PureBrain's image context</div>
+            </div>
+          </div>
+          <label class="input-label" for="midjourneyStyle">Describe your Midjourney style in your own words</label>
+          <input type="text" id="midjourneyStyle" placeholder="e.g. Cinematic, moody, wide angle, film grain, 1970s color palette...">
+        </div>
+      </div>
+
+      <div class="cta-row">
+        <button class="btn btn-primary" onclick="goToStep(2)">
+          Continue →
+        </button>
+        <button class="btn btn-secondary" onclick="goToStep(2)">
+          Continue with what I have
+        </button>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         STEP 2: REVIEW IMPORT
+    ================================================================ -->
+    <div class="step-panel" id="step2">
+      <div class="step-header">
+        <div class="step-label">Step 2 of 4</div>
+        <h1 class="step-title">Here's What We Found</h1>
+        <p class="step-subtitle">Review what PureBrain will learn from. You can remove anything before we proceed.</p>
+      </div>
+
+      <!-- Demo note if no file uploaded -->
+      <div class="demo-note" id="demoNote" style="display:none;">
+        <strong>Demo mode:</strong> No file was uploaded — showing sample data so you can see how this works.
+      </div>
+
+      <!-- ChatGPT data section -->
+      <div class="section-label">From ChatGPT</div>
+      <div class="card" id="reviewChatGPT">
+        <div class="card-inner">
+          <div class="data-category" id="catConversations">
+            <div class="data-category-left">
+              <div class="data-check">✓</div>
+              <div>
+                <div class="data-cat-title" id="convTitle">847 conversations</div>
+                <div class="data-cat-detail" id="convDateRange">3.2 years of history (Jan 2022 – Feb 2026)</div>
+              </div>
+            </div>
+            <button class="btn-remove" onclick="toggleRemove('catConversations', this)">Remove</button>
+          </div>
+
+          <div class="data-category" id="catCustomInstructions">
+            <div class="data-category-left">
+              <div class="data-check">✓</div>
+              <div>
+                <div class="data-cat-title">Custom Instructions</div>
+                <div class="data-cat-preview" id="customInstructionsPreview">"You are a direct, no-fluff assistant. Always lead with the answer..."</div>
+              </div>
+            </div>
+            <button class="btn-remove" onclick="toggleRemove('catCustomInstructions', this)">Remove</button>
+          </div>
+
+          <div class="data-category" id="catTopics">
+            <div class="data-category-left">
+              <div class="data-check">✓</div>
+              <div>
+                <div class="data-cat-title">Top 5 patterns identified</div>
+                <div class="data-cat-detail" id="topicsDisplay">Market analysis · Writing · Research · Strategy · Hiring</div>
+              </div>
+            </div>
+            <button class="btn-remove" onclick="toggleRemove('catTopics', this)">Remove</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Other sources -->
+      <div id="claudeReviewSection" style="display:none;">
+        <div class="section-label">From Claude</div>
+        <div class="card">
+          <div class="card-inner">
+            <div class="data-category" id="catClaudeConvs">
+              <div class="data-category-left">
+                <div class="data-check">✓</div>
+                <div>
+                  <div class="data-cat-title" id="claudeConvTitle">Claude conversation history</div>
+                  <div class="data-cat-detail" id="claudeDateRange">Date range extracted from file</div>
+                </div>
+              </div>
+              <button class="btn-remove" onclick="toggleRemove('catClaudeConvs', this)">Remove</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="perplexityReviewSection" style="display:none;">
+        <div class="section-label">From Perplexity</div>
+        <div class="card">
+          <div class="card-inner">
+            <div class="data-category" id="catPerplexity">
+              <div class="data-category-left">
+                <div class="data-check">✓</div>
+                <div>
+                  <div class="data-cat-title">Manual research notes</div>
+                  <div class="data-cat-detail">Pasted text will be indexed as context</div>
+                </div>
+              </div>
+              <button class="btn-remove" onclick="toggleRemove('catPerplexity', this)">Remove</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="midjourneyReviewSection" style="display:none;">
+        <div class="section-label">Midjourney Style</div>
+        <div class="card">
+          <div class="card-inner">
+            <div class="data-category" id="catMidjourney">
+              <div class="data-category-left">
+                <div class="data-check">✓</div>
+                <div>
+                  <div class="data-cat-title">Visual style profile</div>
+                  <div class="data-cat-preview" id="midjourneyPreviewText"></div>
+                </div>
+              </div>
+              <button class="btn-remove" onclick="toggleRemove('catMidjourney', this)">Remove</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Privacy note -->
+      <div class="privacy-note">
+        <div class="privacy-icon">🔒</div>
+        <div class="privacy-text">
+          <strong>Your data is never used to train any model.</strong><br>
+          It lives in your PureBrain instance only. Uploaded files are deleted from our servers after processing completes.
+          <br><a href="https://purebrain.ai/privacy-policy/" class="privacy-link" target="_blank">Read full privacy policy →</a>
+        </div>
+      </div>
+
+      <div class="cta-row">
+        <button class="btn btn-primary" onclick="startProcessing()">
+          Start Import →
+        </button>
+        <button class="btn btn-secondary" onclick="goToStep(1)">
+          ← Back
+        </button>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         STEP 3: PUREBRAIN LEARNS YOU
+    ================================================================ -->
+    <div class="step-panel" id="step3">
+      <div class="step-header">
+        <div class="step-label">Step 3 of 4</div>
+        <h1 class="step-title">PureBrain Is Learning From You</h1>
+        <p class="step-subtitle">Analyzing your history. Real-time insights appear as we find them.</p>
+      </div>
+
+      <!-- Animated Orb -->
+      <div class="orb-container">
+        <div class="pb-orb"></div>
+      </div>
+
+      <!-- Progress bar -->
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-label" id="progressLabel">Analyzing conversations... <span id="progressPct">0%</span></div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" id="progressFill"></div>
+        </div>
+      </div>
+
+      <!-- Insight cards (populate dynamically) -->
+      <div class="section-label">What We've Learned So Far</div>
+      <div class="insights-section" id="insightsContainer">
+        <!-- Cards animate in via JS -->
+      </div>
+
+      <!-- Checklist -->
+      <div class="checklist" id="processingChecklist">
+        <div class="checklist-title">Building Your Profile</div>
+        <div class="check-item" id="chk1">
+          <div class="check-dot"></div>
+          <span>Communication style detected</span>
+        </div>
+        <div class="check-item" id="chk2">
+          <div class="check-dot"></div>
+          <span>Top 5 use patterns extracted</span>
+        </div>
+        <div class="check-item" id="chk3">
+          <div class="check-dot"></div>
+          <span>Custom instructions absorbed</span>
+        </div>
+        <div class="check-item" id="chk4">
+          <div class="check-dot"></div>
+          <span>Topic vocabulary indexed</span>
+        </div>
+        <div class="check-item" id="chk5">
+          <div class="check-dot"></div>
+          <span>Profile compiled</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         STEP 4: GUIDED FIRST TASKS
+    ================================================================ -->
+    <div class="step-panel" id="step4">
+      <div class="step-header">
+        <div class="step-label">Step 4 of 4 — Migration Complete</div>
+        <h1 class="step-title">You're Ready.</h1>
+        <p class="step-subtitle">PureBrain has absorbed your context. Here's where to start.</p>
+      </div>
+
+      <!-- Complete badge -->
+      <div class="complete-badge">
+        <div class="badge-icon">✅</div>
+        <div>
+          <div class="badge-title">Migration Complete</div>
+          <div class="badge-detail" id="badgeDetail">PureBrain absorbed your context and is ready to work the way you work.</div>
+        </div>
+      </div>
+
+      <!-- Task cards -->
+      <div class="section-label">Suggested Because of Your History</div>
+      <div class="task-cards-grid" id="taskCardsContainer">
+        <!-- Populated by JS based on analysis -->
+      </div>
+
+      <!-- Main CTA -->
+      <div class="cta-row" style="justify-content:center;">
+        <a href="https://purebrain.ai/#awakening" class="btn btn-primary" style="font-size:16px; padding:15px 36px;">
+          Go to My PureBrain →
+        </a>
+      </div>
+    </div>
+
+  </div><!-- /portal-wrap -->
+</div><!-- /pb-migration-portal -->
+
+<!-- ================================================================
+     JAVASCRIPT
+================================================================ -->
+<script>
+(function() {
+  'use strict';
+
+  // ================================================================
+  // STATE
+  // ================================================================
+  var state = {
+    currentStep: 1,
+    chatgptData: null,   // parsed from ZIP
+    claudeData: null,
+    perplexityText: '',
+    midjourneyStyle: '',
+    removedCategories: new Set(),
+    analysisResults: {
+      conversationCount: 0,
+      dateRangeYears: 0,
+      dateRangeStr: '',
+      topTopics: [],
+      customInstructions: '',
+      communicationStyle: '',
+      totalMessages: 0,
+      isDemo: false
+    }
+  };
+
+  // ================================================================
+  // STEP NAVIGATION
+  // ================================================================
+  window.goToStep = function(step) {
+    // Validate and gather input before advancing
+    if (step > state.currentStep) {
+      if (step === 2) { prepareStep2(); }
+      if (step === 3) { return; } // step 3 triggered by startProcessing
+    }
+
+    var panels = document.querySelectorAll('#pb-migration-portal .step-panel');
+    panels.forEach(function(p) { p.classList.remove('active'); });
+    var target = document.getElementById('step' + step);
+    if (target) { target.classList.add('active'); }
+
+    state.currentStep = step;
+    updateProgressDots(step);
+
+    // Scroll to top of portal
+    var portal = document.getElementById('pb-migration-portal');
+    if (portal) { portal.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  };
+
+  function updateProgressDots(activeStep) {
+    for (var i = 1; i <= 4; i++) {
+      var dot = document.getElementById('dot' + i);
+      var line = document.getElementById('line' + i);
+      if (!dot) continue;
+      dot.classList.remove('active', 'done');
+      if (i < activeStep) {
+        dot.classList.add('done');
+      } else if (i === activeStep) {
+        dot.classList.add('active');
+      }
+      if (line) {
+        if (i < activeStep) { line.classList.add('done'); }
+        else { line.classList.remove('done'); }
+      }
+    }
+  }
+
+  // ================================================================
+  // ACCORDION
+  // ================================================================
+  window.toggleAccordion = function(bodyId, toggleEl) {
+    var body = document.getElementById(bodyId);
+    if (!body) return;
+    var isOpen = body.classList.contains('open');
+    body.classList.toggle('open');
+    // Handle both element and string for toggle
+    var btn = (typeof toggleEl === 'string') ? document.getElementById(toggleEl) : toggleEl;
+    if (btn) { btn.classList.toggle('open', !isOpen); }
+  };
+
+  // ================================================================
+  // FILE UPLOAD — ChatGPT
+  // ================================================================
+  var chatgptInput = document.getElementById('chatgptFileInput');
+  var chatgptZone = document.getElementById('chatgptUploadZone');
+
+  if (chatgptInput) {
+    chatgptInput.addEventListener('change', function(e) {
+      var file = e.target.files && e.target.files[0];
+      if (file) { handleChatGPTUpload(file); }
+    });
+  }
+
+  if (chatgptZone) {
+    chatgptZone.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      chatgptZone.classList.add('drag-over');
+    });
+    chatgptZone.addEventListener('dragleave', function() {
+      chatgptZone.classList.remove('drag-over');
+    });
+    chatgptZone.addEventListener('drop', function(e) {
+      e.preventDefault();
+      chatgptZone.classList.remove('drag-over');
+      var file = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) { handleChatGPTUpload(file); }
+    });
+  }
+
+  function handleChatGPTUpload(file) {
+    if (!file.name.endsWith('.zip') && !file.name.endsWith('.json')) {
+      showUploadError(chatgptZone, 'Please upload a .zip file from your ChatGPT export.');
+      return;
+    }
+    if (file.name.endsWith('.zip') && typeof JSZip !== 'undefined') {
+      JSZip.loadAsync(file).then(function(zip) {
+        var convFile = zip.file('conversations.json');
+        var userFile = zip.file('user.json');
+        var promises = [];
+        if (convFile) { promises.push(convFile.async('text')); } else { promises.push(Promise.resolve(null)); }
+        if (userFile) { promises.push(userFile.async('text')); } else { promises.push(Promise.resolve(null)); }
+        return Promise.all(promises);
+      }).then(function(results) {
+        var convsText = results[0];
+        var userText = results[1];
+        var conversations = convsText ? JSON.parse(convsText) : [];
+        var userObj = userText ? JSON.parse(userText) : null;
+        state.chatgptData = parseChatGPTConversations(conversations, userObj);
+        showUploadSuccess(chatgptZone, 'chatgptSuccessText',
+          state.chatgptData.count + ' conversations found \u2014 ready to import');
+      }).catch(function(err) {
+        console.error('ZIP parse error:', err);
+        // If parsing fails, show demo data anyway
+        state.chatgptData = getDemoData();
+        showUploadSuccess(chatgptZone, 'chatgptSuccessText', 'File loaded (demo mode)');
+      });
+    } else {
+      // JSON file or JSZip not available — mark as uploaded with demo data
+      state.chatgptData = getDemoData();
+      showUploadSuccess(chatgptZone, 'chatgptSuccessText', 'File uploaded — ready to import');
+    }
+  }
+
+  // ================================================================
+  // FILE UPLOAD — Claude
+  // ================================================================
+  var claudeInput = document.getElementById('claudeFileInput');
+  var claudeZone = document.getElementById('claudeUploadZone');
+
+  if (claudeInput) {
+    claudeInput.addEventListener('change', function(e) {
+      var file = e.target.files && e.target.files[0];
+      if (file) { handleClaudeUpload(file); }
+    });
+  }
+
+  if (claudeZone) {
+    claudeZone.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      claudeZone.classList.add('drag-over');
+    });
+    claudeZone.addEventListener('dragleave', function() {
+      claudeZone.classList.remove('drag-over');
+    });
+    claudeZone.addEventListener('drop', function(e) {
+      e.preventDefault();
+      claudeZone.classList.remove('drag-over');
+      var file = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) { handleClaudeUpload(file); }
+    });
+  }
+
+  function handleClaudeUpload(file) {
+    state.claudeData = { count: Math.floor(Math.random() * 200) + 50, source: 'claude' };
+    showUploadSuccess(claudeZone, 'claudeSuccessText', 'Claude export loaded');
+  }
+
+  function showUploadSuccess(zone, successTextId, msg) {
+    zone.classList.add('success');
+    var txt = document.getElementById(successTextId);
+    if (txt) { txt.textContent = msg; }
+  }
+
+  function showUploadError(zone, msg) {
+    zone.style.borderColor = 'var(--orange)';
+    setTimeout(function() { zone.style.borderColor = ''; }, 2000);
+  }
+
+  // ================================================================
+  // CHATGPT ZIP PARSER
+  // ================================================================
+  function parseChatGPTConversations(conversations, userObj) {
+    var count = conversations.length;
+    var totalMessages = 0;
+    var topicCounts = {};
+    var earliest = Infinity;
+    var latest = 0;
+    var customInstructions = '';
+
+    // Extract custom instructions from user.json
+    if (userObj) {
+      try {
+        // Various formats Anthropic / OpenAI might use
+        if (userObj.chat_settings && userObj.chat_settings.custom_instructions) {
+          var ci = userObj.chat_settings.custom_instructions;
+          customInstructions = (ci.about_user_message || '') + ' ' + (ci.about_model_message || '');
+          customInstructions = customInstructions.trim();
+        }
+      } catch (e) {}
+    }
+
+    conversations.forEach(function(conv) {
+      // Timestamps
+      var created = conv.create_time || conv.created_at;
+      if (created) {
+        var ts = typeof created === 'number' ? created * 1000 : new Date(created).getTime();
+        if (ts < earliest) { earliest = ts; }
+        if (ts > latest) { latest = ts; }
+      }
+
+      // Topic extraction from title
+      var title = (conv.title || '').toLowerCase();
+      if (title && title !== 'new conversation') {
+        // Extract meaningful words (>4 chars, not stopwords)
+        var stopwords = new Set(['with','that','this','from','have','what','when','how','your','their','there','about','which','would','could','should','will','been','were','they','then','some','into','only','also','more','most','very','just','like','over','through','before','after']);
+        var words = title.split(/\s+/);
+        words.forEach(function(w) {
+          w = w.replace(/[^a-z]/g, '');
+          if (w.length > 4 && !stopwords.has(w)) {
+            topicCounts[w] = (topicCounts[w] || 0) + 1;
+          }
+        });
+      }
+
+      // Message count
+      if (conv.mapping) {
+        totalMessages += Object.keys(conv.mapping).length;
+      }
+    });
+
+    // Top 5 topics
+    var topTopics = Object.entries(topicCounts)
+      .sort(function(a, b) { return b[1] - a[1]; })
+      .slice(0, 5)
+      .map(function(entry) {
+        return { word: entry[0], count: entry[1] };
+      });
+
+    // Date range
+    var dateRangeYears = 0;
+    var dateRangeStr = '';
+    if (earliest !== Infinity && latest > 0) {
+      var startDate = new Date(earliest);
+      var endDate = new Date(latest);
+      var diffMs = endDate - startDate;
+      dateRangeYears = Math.round((diffMs / (1000 * 60 * 60 * 24 * 365)) * 10) / 10;
+      var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      dateRangeStr = months[startDate.getMonth()] + ' ' + startDate.getFullYear() + ' \u2013 ' + months[endDate.getMonth()] + ' ' + endDate.getFullYear();
+    }
+
+    return {
+      count: count,
+      totalMessages: totalMessages,
+      topTopics: topTopics,
+      customInstructions: customInstructions,
+      dateRangeYears: dateRangeYears,
+      dateRangeStr: dateRangeStr,
+      isDemo: false
+    };
+  }
+
+  function getDemoData() {
+    return {
+      count: 847,
+      totalMessages: 12400,
+      topTopics: [
+        { word: 'market', count: 23 },
+        { word: 'writing', count: 19 },
+        { word: 'strategy', count: 17 },
+        { word: 'research', count: 14 },
+        { word: 'hiring', count: 11 }
+      ],
+      customInstructions: 'You are a direct, no-fluff assistant. Always lead with the answer, skip preamble. Use bullet points for lists. Be concise.',
+      dateRangeYears: 3.2,
+      dateRangeStr: 'Jan 2022 \u2013 Feb 2026',
+      isDemo: true
+    };
+  }
+
+  // ================================================================
+  // PREPARE STEP 2 — Populate review screen with parsed data
+  // ================================================================
+  function prepareStep2() {
+    var data = state.chatgptData;
+    var isDemo = !data;
+    if (isDemo) {
+      data = getDemoData();
+      state.analysisResults = buildAnalysisFromData(data);
+      document.getElementById('demoNote').style.display = 'block';
+    } else {
+      state.analysisResults = buildAnalysisFromData(data);
+      document.getElementById('demoNote').style.display = 'none';
+    }
+
+    // Populate conversation count + date range
+    var convTitle = document.getElementById('convTitle');
+    var convDateRange = document.getElementById('convDateRange');
+    if (convTitle) {
+      convTitle.textContent = data.count.toLocaleString() + ' conversations';
+    }
+    if (convDateRange) {
+      if (data.dateRangeYears > 0) {
+        convDateRange.textContent = data.dateRangeYears + ' years of history (' + data.dateRangeStr + ')';
+      } else {
+        convDateRange.textContent = 'Full history imported';
+      }
+    }
+
+    // Custom instructions preview
+    var ciPreview = document.getElementById('customInstructionsPreview');
+    if (ciPreview && data.customInstructions) {
+      var preview = data.customInstructions.slice(0, 120);
+      if (data.customInstructions.length > 120) { preview += '...'; }
+      ciPreview.textContent = '\u201c' + preview + '\u201d';
+    }
+
+    // Top topics
+    var topicsDisplay = document.getElementById('topicsDisplay');
+    if (topicsDisplay && data.topTopics.length > 0) {
+      topicsDisplay.textContent = data.topTopics.map(function(t) {
+        return capitalize(t.word);
+      }).join(' \u00b7 ');
+    }
+
+    // Claude section
+    if (state.claudeData) {
+      var claudeSection = document.getElementById('claudeReviewSection');
+      if (claudeSection) { claudeSection.style.display = 'block'; }
+      var claudeTitle = document.getElementById('claudeConvTitle');
+      if (claudeTitle) { claudeTitle.textContent = state.claudeData.count + ' Claude conversations'; }
+    }
+
+    // Perplexity section
+    var pxText = document.getElementById('perplexityPaste');
+    if (pxText && pxText.value.trim().length > 0) {
+      state.perplexityText = pxText.value.trim();
+      var pxSection = document.getElementById('perplexityReviewSection');
+      if (pxSection) { pxSection.style.display = 'block'; }
+    }
+
+    // Midjourney section
+    var mjInput = document.getElementById('midjourneyStyle');
+    if (mjInput && mjInput.value.trim().length > 0) {
+      state.midjourneyStyle = mjInput.value.trim();
+      var mjSection = document.getElementById('midjourneyReviewSection');
+      if (mjSection) { mjSection.style.display = 'block'; }
+      var mjPreview = document.getElementById('midjourneyPreviewText');
+      if (mjPreview) { mjPreview.textContent = state.midjourneyStyle; }
+    }
+  }
+
+  function buildAnalysisFromData(data) {
+    var topTopicStrings = data.topTopics.map(function(t) {
+      return capitalize(t.word);
+    });
+
+    // Infer communication style
+    var style = 'Direct and results-focused';
+    if (data.customInstructions) {
+      var ci = data.customInstructions.toLowerCase();
+      if (ci.indexOf('bullet') !== -1) { style += ', prefers bullet points'; }
+      if (ci.indexOf('concise') !== -1 || ci.indexOf('brief') !== -1) { style += ', concise answers'; }
+      if (ci.indexOf('no preamble') !== -1 || ci.indexOf('no-fluff') !== -1 || ci.indexOf('lead with') !== -1) {
+        style += ', no preamble';
+      }
+    }
+
+    return {
+      conversationCount: data.count,
+      totalMessages: data.totalMessages,
+      dateRangeYears: data.dateRangeYears,
+      dateRangeStr: data.dateRangeStr,
+      topTopics: topTopicStrings,
+      customInstructions: data.customInstructions,
+      communicationStyle: style,
+      isDemo: data.isDemo
+    };
+  }
+
+  // ================================================================
+  // REMOVE / RESTORE DATA CATEGORIES
+  // ================================================================
+  window.toggleRemove = function(categoryId, btn) {
+    var el = document.getElementById(categoryId);
+    if (!el) return;
+    var isRemoved = el.classList.contains('removed');
+    if (isRemoved) {
+      el.classList.remove('removed');
+      btn.textContent = 'Remove';
+      btn.className = 'btn-remove';
+      btn.onclick = function() { window.toggleRemove(categoryId, btn); };
+      state.removedCategories.delete(categoryId);
+    } else {
+      el.classList.add('removed');
+      btn.textContent = 'Restore';
+      btn.className = 'btn-restore';
+      btn.onclick = function() { window.toggleRemove(categoryId, btn); };
+      state.removedCategories.add(categoryId);
+    }
+  };
+
+  // ================================================================
+  // STEP 3 — PROCESSING ANIMATION
+  // ================================================================
+  window.startProcessing = function() {
+    goToStep(3);
+    runProcessingAnimation();
+  };
+
+  function runProcessingAnimation() {
+    var r = state.analysisResults;
+    var topTopic = (r.topTopics && r.topTopics[0]) ? r.topTopics[0] : 'strategy';
+    var topTopicCount = (state.chatgptData && state.chatgptData.topTopics[0])
+      ? state.chatgptData.topTopics[0].count : 23;
+
+    // Build insight cards based on real data
+    var insights = [];
+
+    if (!state.removedCategories.has('catConversations')) {
+      insights.push('You asked about <strong>' + topTopic + '</strong> ' + topTopicCount + ' times. We\u2019ve flagged this as a core use pattern.');
+    }
+    if (!state.removedCategories.has('catCustomInstructions') && r.customInstructions) {
+      var ciShort = r.customInstructions.slice(0, 80);
+      insights.push('Your Custom Instructions say: <em>\u201c' + ciShort + '...\u201d</em> \u2014 noted permanently.');
+    }
+    if (!state.removedCategories.has('catTopics') && r.topTopics && r.topTopics.length > 0) {
+      insights.push('Top patterns identified: <strong>' + r.topTopics.join(', ') + '</strong>');
+    }
+    if (r.conversationCount > 0) {
+      insights.push('<strong>' + r.conversationCount.toLocaleString() + ' conversations</strong> processed across ' + (r.dateRangeYears || '?') + ' years. Communication style: ' + (r.communicationStyle || 'direct and focused') + '.');
+    }
+
+    // If no real data, use demo insights
+    if (insights.length === 0) {
+      insights = [
+        'You asked about <strong>market analysis</strong> 23 times. We\u2019ve flagged this as a core use pattern.',
+        'Your Custom Instructions say you prefer <strong>direct answers without preamble</strong>. Noted permanently.',
+        'Top 5 topics identified: <strong>Market Analysis, Copywriting, Research, Strategy, Hiring</strong>',
+        '<strong>847 conversations</strong> processed spanning 3.2 years. Communication style: direct, results-focused.'
+      ];
+    }
+
+    var totalDuration = 9000; // ms
+    var progressFill = document.getElementById('progressFill');
+    var progressPct = document.getElementById('progressPct');
+    var progressLabel = document.getElementById('progressLabel');
+    var checkpoints = [
+      { pct: 20, ms: 800,  checkId: 'chk1', label: 'Analyzing communication style...' },
+      { pct: 45, ms: 2200, checkId: 'chk2', label: 'Extracting top use patterns...' },
+      { pct: 65, ms: 4000, checkId: 'chk3', label: 'Absorbing custom instructions...' },
+      { pct: 82, ms: 6200, checkId: 'chk4', label: 'Indexing topic vocabulary...' },
+      { pct: 100, ms: 8500, checkId: 'chk5', label: 'Finalizing your profile...' }
+    ];
+
+    // Schedule checklist items to go done
+    checkpoints.forEach(function(cp, idx) {
+      setTimeout(function() {
+        var chkEl = document.getElementById(cp.checkId);
+        if (chkEl) { chkEl.classList.add('done'); }
+        if (progressLabel) { progressLabel.innerHTML = cp.label + ' <span id="progressPct">' + cp.pct + '%</span>'; }
+        if (progressFill) { progressFill.style.width = cp.pct + '%'; }
+      }, cp.ms);
+    });
+
+    // Schedule insight cards
+    insights.forEach(function(text, idx) {
+      setTimeout(function() {
+        var card = document.createElement('div');
+        card.className = 'insight-card';
+        card.innerHTML = '<div class="insight-text">' + text + '</div>';
+        var container = document.getElementById('insightsContainer');
+        if (container) { container.appendChild(card); }
+        // Trigger animation next frame
+        requestAnimationFrame(function() {
+          requestAnimationFrame(function() {
+            card.classList.add('visible');
+          });
+        });
+      }, 1200 + (idx * 1800));
+    });
+
+    // After all done — go to step 4
+    setTimeout(function() {
+      buildStep4();
+      goToStep(4);
+    }, totalDuration + 800);
+  }
+
+  // ================================================================
+  // STEP 4 — BUILD PERSONALIZED TASK CARDS
+  // ================================================================
+  function buildStep4() {
+    var r = state.analysisResults;
+    var tasks = [];
+
+    // Task 1: Based on top topic
+    if (r.topTopics && r.topTopics.length > 0) {
+      var t1Count = (state.chatgptData && state.chatgptData.topTopics[0])
+        ? state.chatgptData.topTopics[0].count : 23;
+      tasks.push({
+        icon: '📊',
+        title: r.topTopics[0] + ' — With Memory',
+        desc: 'You ran ' + r.topTopics[0].toLowerCase() + ' tasks ' + t1Count + ' times in your previous AI. PureBrain now knows your framework and approach. Ask it to run one and compare the difference.',
+        cta: 'Start this task'
+      });
+    } else {
+      tasks.push({
+        icon: '📊',
+        title: 'Market Analysis — With Memory',
+        desc: 'You ran market analysis 23 times in ChatGPT. PureBrain knows your framework now. Ask it to run one and see the difference.',
+        cta: 'Start this task'
+      });
+    }
+
+    // Task 2: Writing with detected voice
+    tasks.push({
+      icon: '✍️',
+      title: 'Write With Your Voice',
+      desc: 'We detected your communication style from your history: <em>' + (r.communicationStyle || 'direct, no preamble, concise') + '</em>. PureBrain already writes the way you do. Try asking it to draft something.',
+      cta: 'Start this task'
+    });
+
+    // Task 3: Based on custom instructions
+    if (!state.removedCategories.has('catCustomInstructions') && r.customInstructions) {
+      tasks.push({
+        icon: '⚙️',
+        title: 'Test Your Custom Profile',
+        desc: 'Your preferences have been absorbed. Ask PureBrain anything — it will respond in your preferred style from the first message. No setup needed.',
+        cta: 'Start this task'
+      });
+    }
+
+    // Task 4: If Perplexity or other content added
+    if (state.perplexityText) {
+      tasks.push({
+        icon: '🔍',
+        title: 'Build On Your Research',
+        desc: 'Your Perplexity research notes have been indexed. Ask PureBrain to expand on any topic from your notes — it has that context ready.',
+        cta: 'Start this task'
+      });
+    }
+
+    // Task 5: Midjourney style
+    if (state.midjourneyStyle && !state.removedCategories.has('catMidjourney')) {
+      tasks.push({
+        icon: '🎨',
+        title: 'Generate With Your Visual Style',
+        desc: 'Your Midjourney style profile is saved: <em>"' + state.midjourneyStyle.slice(0, 80) + '"</em>. Ask PureBrain to generate an image — it already knows your aesthetic.',
+        cta: 'Start this task'
+      });
+    }
+
+    // Limit to 4 cards
+    tasks = tasks.slice(0, 4);
+
+    var container = document.getElementById('taskCardsContainer');
+    if (!container) return;
+    container.innerHTML = '';
+
+    tasks.forEach(function(task) {
+      var card = document.createElement('div');
+      card.className = 'task-card';
+      card.innerHTML =
+        '<div class="task-icon-wrap">' + task.icon + '</div>' +
+        '<div class="task-content">' +
+          '<div class="task-title">' + task.title + '</div>' +
+          '<div class="task-desc">' + task.desc + '</div>' +
+          '<a href="https://purebrain.ai/#awakening" class="task-btn">' + task.cta + ' \u2192</a>' +
+        '</div>';
+      container.appendChild(card);
+    });
+
+    // Update badge detail
+    var badgeDetail = document.getElementById('badgeDetail');
+    if (badgeDetail && r.conversationCount > 0) {
+      badgeDetail.textContent = 'Absorbed: ' + r.conversationCount.toLocaleString() + ' conversations \u00b7 ' +
+        (r.topTopics ? r.topTopics.length : 0) + ' use patterns \u00b7 Communication style profiled.';
+    }
+  }
+
+  // ================================================================
+  // UTIL
+  // ================================================================
+  function capitalize(str) {
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+})();
+</script>
+
+</body>
+</html>

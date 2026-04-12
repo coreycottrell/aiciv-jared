@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Technology — Step Inside the Brain</title>
+<meta name="description" content="Empowering People Through AI. Experience the future of brand-consumer personalization through the power of Big Data and AI.">
+
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --blue: #2a93c1;
+    --orange: #f1420b;
+    --dark: #080a12;
+    --dark2: #0a0c16;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--dark);
+    color: #fff;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    overflow-x: hidden;
+  }
+
+  /* Canvas fixed fullscreen */
+  #canvas-container {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  #three-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Scroll driver — sets total scroll height */
+  #scroll-driver {
+    height: 600vh;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Content panels — fixed position, shown/hidden per section */
+  .scene-panel {
+    position: fixed;
+    z-index: 10;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  .scene-panel.visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+
+  /* Hero panel */
+  #panel-hero {
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    width: 90%;
+    max-width: 700px;
+  }
+  #panel-hero.visible {
+    transform: translate(-50%, -50%);
+  }
+
+  #panel-hero .eyebrow {
+    font-size: 13px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 20px;
+    opacity: 0.8;
+  }
+
+  #panel-hero h1 {
+    font-size: clamp(38px, 6vw, 80px);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -2px;
+    background: linear-gradient(135deg, #fff 30%, rgba(42,147,193,0.9) 70%, rgba(241,66,11,0.8) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 28px;
+  }
+
+  #panel-hero p {
+    font-size: clamp(15px, 2vw, 20px);
+    color: rgba(255,255,255,0.6);
+    line-height: 1.7;
+    max-width: 520px;
+    margin: 0 auto 36px;
+  }
+
+  .btn-primary {
+    display: inline-block;
+    padding: 16px 40px;
+    background: transparent;
+    border: 1px solid var(--orange);
+    border-radius: 4px;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.3s, box-shadow 0.3s;
+    animation: pulse-border 2s ease-in-out infinite;
+  }
+  .btn-primary:hover {
+    background: rgba(241,66,11,0.15);
+    box-shadow: 0 0 30px rgba(241,66,11,0.4);
+  }
+  @keyframes pulse-border {
+    0%, 100% { box-shadow: 0 0 10px rgba(241,66,11,0.3); }
+    50% { box-shadow: 0 0 25px rgba(241,66,11,0.6), 0 0 50px rgba(241,66,11,0.2); }
+  }
+
+  /* Section 2 — What PT Does */
+  #panel-services {
+    top: 50%;
+    right: 5%;
+    transform: translateY(-50%);
+    width: 380px;
+    max-width: 90vw;
+  }
+  #panel-services.visible {
+    transform: translateY(-50%);
+  }
+
+  /* Section 3 — How it works (left side) */
+  #panel-process {
+    top: 50%;
+    left: 5%;
+    transform: translateY(-50%);
+    width: 340px;
+    max-width: 90vw;
+  }
+  #panel-process.visible {
+    transform: translateY(-50%);
+  }
+
+  /* Section 4 — Inside the brain (center floating) */
+  #panel-inside {
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    max-width: 900px;
+  }
+  #panel-inside.visible {
+    transform: translate(-50%, -50%);
+  }
+
+  /* Section 5 — CTA */
+  #panel-cta {
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    width: 90%;
+    max-width: 640px;
+  }
+  #panel-cta.visible {
+    transform: translate(-50%, -50%);
+  }
+
+  /* Glass card */
+  .glass-card {
+    background: rgba(8,10,18,0.72);
+    border: 1px solid rgba(42,147,193,0.2);
+    border-radius: 12px;
+    padding: 28px 32px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  .glass-card h2 {
+    font-size: clamp(20px, 3vw, 30px);
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 8px;
+    letter-spacing: -0.5px;
+  }
+  .glass-card .section-label {
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--orange);
+    margin-bottom: 16px;
+    opacity: 0.9;
+  }
+  .glass-card p {
+    font-size: 15px;
+    color: rgba(255,255,255,0.65);
+    line-height: 1.7;
+    margin-bottom: 16px;
+  }
+
+  .service-list {
+    list-style: none;
+    margin-top: 16px;
+  }
+  .service-list li {
+    font-size: 14px;
+    color: rgba(255,255,255,0.7);
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .service-list li:last-child { border-bottom: none; }
+  .service-list li::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--blue);
+    flex-shrink: 0;
+  }
+
+  /* Steps */
+  .step-list { list-style: none; margin-top: 16px; }
+  .step-list li {
+    display: flex;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+  .step-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(42,147,193,0.2);
+    border: 1px solid rgba(42,147,193,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--blue);
+    flex-shrink: 0;
+  }
+  .step-text {
+    font-size: 14px;
+    color: rgba(255,255,255,0.7);
+    line-height: 1.5;
+  }
+  .step-text strong {
+    color: #fff;
+    display: block;
+    font-size: 15px;
+    margin-bottom: 2px;
+  }
+
+  /* Feature grid */
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 20px;
+  }
+  @media (max-width: 640px) {
+    .feature-grid { grid-template-columns: 1fr 1fr; }
+  }
+  .feat-card {
+    background: rgba(42,147,193,0.07);
+    border: 1px solid rgba(42,147,193,0.15);
+    border-radius: 8px;
+    padding: 16px;
+    transition: background 0.3s, border-color 0.3s;
+  }
+  .feat-card:hover {
+    background: rgba(42,147,193,0.12);
+    border-color: rgba(42,147,193,0.35);
+  }
+  .feat-card .feat-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: rgba(42,147,193,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    margin-bottom: 10px;
+  }
+  .feat-card h4 {
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 4px;
+  }
+  .feat-card p {
+    font-size: 12px;
+    color: rgba(255,255,255,0.5);
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  /* CTA section */
+  #panel-cta h2 {
+    font-size: clamp(32px, 5vw, 60px);
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    line-height: 1.1;
+    background: linear-gradient(135deg, #fff 20%, var(--orange) 80%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 16px;
+  }
+  #panel-cta p {
+    font-size: clamp(15px, 2vw, 18px);
+    color: rgba(255,255,255,0.55);
+    line-height: 1.7;
+    margin-bottom: 32px;
+  }
+  .btn-cta {
+    display: inline-block;
+    padding: 18px 50px;
+    background: var(--orange);
+    border: none;
+    border-radius: 4px;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 0 40px rgba(241,66,11,0.4);
+    animation: cta-pulse 2.5s ease-in-out infinite;
+  }
+  @keyframes cta-pulse {
+    0%, 100% { box-shadow: 0 0 30px rgba(241,66,11,0.4); }
+    50% { box-shadow: 0 0 60px rgba(241,66,11,0.7), 0 0 100px rgba(241,66,11,0.3); }
+  }
+  .btn-cta:hover {
+    background: #ff5520;
+    transform: scale(1.04);
+  }
+
+  /* Scroll indicator */
+  #scroll-hint {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    opacity: 1;
+    transition: opacity 0.5s;
+  }
+  #scroll-hint span {
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+  }
+  #scroll-hint .arrow {
+    width: 1px;
+    height: 40px;
+    background: linear-gradient(to bottom, rgba(42,147,193,0.6), transparent);
+    animation: scroll-drop 1.5s ease-in-out infinite;
+  }
+  @keyframes scroll-drop {
+    0% { transform: scaleY(0); transform-origin: top; opacity: 0; }
+    50% { transform: scaleY(1); transform-origin: top; opacity: 1; }
+    100% { transform: scaleY(0); transform-origin: bottom; opacity: 0; }
+  }
+
+  /* Progress dots */
+  #section-dots {
+    position: fixed;
+    right: 24px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .sdot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    transition: background 0.3s, transform 0.3s;
+    cursor: pointer;
+  }
+  .sdot.active {
+    background: var(--blue);
+    transform: scale(1.5);
+  }
+
+  /* Logo */
+  #nav-logo {
+    position: fixed;
+    top: 24px;
+    left: 32px;
+    z-index: 30;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.85);
+    text-decoration: none;
+  }
+  #nav-logo span { color: var(--blue); }
+
+  /* Stats row */
+  .stats-row {
+    display: flex;
+    gap: 24px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+  .stat-item { text-align: center; }
+  .stat-num {
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--blue);
+    display: block;
+    letter-spacing: -1px;
+  }
+  .stat-label {
+    font-size: 11px;
+    color: rgba(255,255,255,0.4);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  /* Inside section */
+  #panel-inside .inside-headline {
+    font-size: clamp(20px, 3.5vw, 38px);
+    font-weight: 800;
+    letter-spacing: -1px;
+    color: #fff;
+    text-align: center;
+    margin-bottom: 8px;
+  }
+  #panel-inside .inside-sub {
+    font-size: 14px;
+    color: rgba(255,255,255,0.45);
+    text-align: center;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 28px;
+  }
+
+  /* Testimonial strip */
+  .testimonial {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255,255,255,0.07);
+  }
+  .testimonial blockquote {
+    font-size: 13px;
+    color: rgba(255,255,255,0.55);
+    line-height: 1.6;
+    font-style: italic;
+    margin-bottom: 8px;
+  }
+  .testimonial cite {
+    font-size: 12px;
+    color: var(--blue);
+    font-style: normal;
+  }
+
+  /* Section label tag */
+  .tag {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    background: rgba(241,66,11,0.1);
+    border: 1px solid rgba(241,66,11,0.25);
+    font-size: 11px;
+    color: var(--orange);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<a href="https://puretechnology.ai" id="nav-logo">Pure<span>Technology</span></a>
+
+<!-- Section navigation dots -->
+<div id="section-dots">
+  <div class="sdot active" data-section="0"></div>
+  <div class="sdot" data-section="1"></div>
+  <div class="sdot" data-section="2"></div>
+  <div class="sdot" data-section="3"></div>
+  <div class="sdot" data-section="4"></div>
+</div>
+
+<!-- Scroll hint -->
+<div id="scroll-hint">
+  <span>Scroll</span>
+  <div class="arrow"></div>
+</div>
+
+<!-- FIXED 3D CANVAS -->
+<div id="canvas-container">
+  <canvas id="three-canvas"></canvas>
+</div>
+
+<!-- SCROLL DRIVER — 600vh of scroll space -->
+<div id="scroll-driver"></div>
+
+<!-- CONTENT PANELS — fixed position, toggled by scroll -->
+
+<!-- PANEL 0: Hero (scroll 0-15%) -->
+<div class="scene-panel visible" id="panel-hero">
+  <p class="eyebrow">Pure Technology Inc.</p>
+  <h1>Empowering People<br>Through AI</h1>
+  <p>The marketing world's multi-trillion-dollar problem is budget waste. We lay waste to this inefficiency by leveraging Big Data and AI to revolutionize brand-consumer personalization.</p>
+  <a href="#" class="btn-primary">Experience the Future</a>
+</div>
+
+<!-- PANEL 1: Services (scroll 18-38%) -->
+<div class="scene-panel" id="panel-services">
+  <div class="glass-card">
+    <div class="section-label">What We Do</div>
+    <h2>The AI That Matters Most</h2>
+    <p>We unlock the full consumer profile for the first time — ensuring personal brand ownership as a right, not a request.</p>
+    <ul class="service-list">
+      <li>Digital Marketing & Strategy</li>
+      <li>Influencer Marketing & Campaigns</li>
+      <li>Experiential Giveaways & GTM</li>
+      <li>Content Creation & Brand Strategy</li>
+      <li>Data-Driven Performance Advertising</li>
+      <li>LaunchBoost: 90-Day Global Scale</li>
+    </ul>
+    <div class="stats-row">
+      <div class="stat-item">
+        <span class="stat-num">100+</span>
+        <span class="stat-label">Brands Served</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num">$10K</span>
+        <span class="stat-label">Saved / Minute</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num">∞</span>
+        <span class="stat-label">Consumer Reach</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PANEL 2: Process (scroll 42-62%) -->
+<div class="scene-panel" id="panel-process">
+  <div class="glass-card">
+    <div class="section-label">How PureBrain Works</div>
+    <h2>Reimagining Data</h2>
+    <p>Redefining relationships between brands and consumers for a digitally inclusive mobile economy.</p>
+    <ol class="step-list">
+      <li>
+        <div class="step-num">1</div>
+        <div class="step-text">
+          <strong>Pure Purpose</strong>
+          Maximize humanity through technology by understanding their pure passions to propel purpose.
+        </div>
+      </li>
+      <li>
+        <div class="step-num">2</div>
+        <div class="step-text">
+          <strong>Our Mission</strong>
+          Reimagining data to redefine relationships between brands and consumers.
+        </div>
+      </li>
+      <li>
+        <div class="step-num">3</div>
+        <div class="step-text">
+          <strong>Our Vision</strong>
+          A brighter world where all people actualize their brilliance through AI-powered personalization.
+        </div>
+      </li>
+      <li>
+        <div class="step-num">4</div>
+        <div class="step-text">
+          <strong>Our Values</strong>
+          Integrity, transparency, growth, innovation, persistence, accountability, and love.
+        </div>
+      </li>
+    </ol>
+  </div>
+</div>
+
+<!-- PANEL 3: Inside the Brain (scroll 65-82%) -->
+<div class="scene-panel" id="panel-inside">
+  <div class="inside-sub">You Are Now Inside</div>
+  <div class="inside-headline">The Pure Ecosystem</div>
+  <div class="feature-grid">
+    <div class="feat-card">
+      <div class="feat-icon">&#9733;</div>
+      <h4>Personalized Approach</h4>
+      <p>Strategies customized to your brand's specific needs, ensuring alignment.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">&#9881;</div>
+      <h4>Experienced Team</h4>
+      <p>Industry knowledge and creativity combine for exceptional results.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">&#9654;</div>
+      <h4>Data-Driven</h4>
+      <p>Data insights refine strategies and ensure impactful, measurable results.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">&#9679;</div>
+      <h4>Ongoing Support</h4>
+      <p>Continuous maintenance to keep your digital assets at their best.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">&#9670;</div>
+      <h4>Strategy</h4>
+      <p>Revenue architecture that powers scalable, sustainable growth.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">&#9776;</div>
+      <h4>Technology</h4>
+      <p>Full-funnel digital marketing built for results — not just reach.</p>
+    </div>
+  </div>
+</div>
+
+<!-- PANEL 4: CTA (scroll 85-100%) -->
+<div class="scene-panel" id="panel-cta">
+  <div class="tag">Awakened State</div>
+  <h2>Experience<br>the Future</h2>
+  <p>Join a brighter world where all people actualize their brilliance through the power of AI.</p>
+  <a href="https://puretechnology.ai" class="btn-cta">Sign Up Here</a>
+</div>
+
+<!-- THREE.JS via ESM import map -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ─── CONSTANTS ───────────────────────────────────────────────────────────────
+const BLUE   = new THREE.Color(0x2a93c1);
+const ORANGE = new THREE.Color(0xf1420b);
+const DARK   = new THREE.Color(0x080a12);
+const MOBILE = window.innerWidth < 768;
+const NODE_COUNT = MOBILE ? 80 : 200;
+
+// ─── SCENE / RENDERER / CAMERA ───────────────────────────────────────────────
+const canvas   = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping     = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.outputColorSpace   = THREE.SRGBColorSpace;
+
+const scene  = new THREE.Scene();
+scene.background = DARK;
+scene.fog = new THREE.FogExp2(0x080a12, 0.018);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
+// Start far outside brain
+camera.position.set(0, 0, 14);
+
+// ─── POSTPROCESSING ───────────────────────────────────────────────────────────
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloom = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.8,   // intensity
+  0.5,   // radius
+  0.82   // threshold
+);
+composer.addPass(bloom);
+
+const outputPass = new OutputPass();
+composer.addPass(outputPass);
+
+// ─── LIGHTING ─────────────────────────────────────────────────────────────────
+const ambientLight = new THREE.AmbientLight(0x1a2a3a, 1.5);
+scene.add(ambientLight);
+
+const bluePoint = new THREE.PointLight(0x2a93c1, 6, 30);
+bluePoint.position.set(-3, 4, 6);
+scene.add(bluePoint);
+
+const orangePoint = new THREE.PointLight(0xf1420b, 3, 20);
+orangePoint.position.set(3, -2, 5);
+scene.add(orangePoint);
+
+const innerLight = new THREE.PointLight(0x2a93c1, 2, 10);
+innerLight.position.set(0, 0, 0);
+scene.add(innerLight);
+
+// ─── BRAIN GEOMETRY BUILDER ───────────────────────────────────────────────────
+// Build brain shape using Fibonacci lattice distorted into elongated sphere
+// Brain lobes: front protrudes, back is rounded, slightly flattened vertically
+
+function getBrainPosition(i, total) {
+  // Fibonacci spiral on sphere with brain distortion
+  const phi = Math.acos(1 - 2 * (i + 0.5) / total);
+  const theta = Math.PI * (1 + Math.sqrt(5)) * i;
+
+  let x = Math.sin(phi) * Math.cos(theta);
+  let y = Math.cos(phi);
+  let z = Math.sin(phi) * Math.sin(theta);
+
+  // Brain lobe distortion: elongate front (positive Z), flatten top
+  const isFront = z > 0;
+  const r = 3.2; // brain radius
+
+  // Frontal lobe bulge
+  if (isFront) {
+    z = z * (1.0 + 0.35 * z);
+    x = x * (1.0 + 0.15 * Math.abs(z));
+  }
+  // Flatten slightly top/bottom (brain is not perfectly spherical)
+  y = y * 0.82;
+  // Slight left/right asymmetry
+  x = x * (1.0 + 0.05 * Math.sin(theta * 3));
+
+  return new THREE.Vector3(x * r, y * r, z * r);
+}
+
+// Brain lobe assignment by position (for coloring)
+function getLobe(pos) {
+  if (pos.z > 1.5)  return 'frontal';
+  if (pos.z < -1.5) return 'occipital';
+  if (pos.y > 1.5)  return 'parietal';
+  if (pos.y < -1.0) return 'cerebellum';
+  return 'temporal';
+}
+
+// ─── NODES (BRAIN NEURONS) ────────────────────────────────────────────────────
+const nodeGroup   = new THREE.Group();
+scene.add(nodeGroup);
+
+const nodePositions = [];
+const nodeMeshes    = [];
+const nodeData      = [];
+
+const nodeMat = new THREE.MeshPhysicalMaterial({
+  color: BLUE,
+  emissive: new THREE.Color(0x0a2a3a),
+  emissiveIntensity: 0.6,
+  roughness: 0.05,
+  metalness: 0.1,
+  transmission: 0.7,
+  thickness: 0.5,
+  transparent: true,
+  opacity: 0.9,
+});
+
+const nodeGeo = new THREE.IcosahedronGeometry(0.065, 1);
+
+for (let i = 0; i < NODE_COUNT; i++) {
+  const pos  = getBrainPosition(i, NODE_COUNT);
+  const lobe = getLobe(pos);
+  const isFrontal = lobe === 'frontal';
+
+  const mesh = new THREE.Mesh(nodeGeo, nodeMat.clone());
+  mesh.position.copy(pos);
+  mesh.scale.setScalar(0.6 + Math.random() * 0.8);
+
+  // Color variation by lobe
+  if (isFrontal) {
+    mesh.material.color.set(0x3db0e8);
+    mesh.material.emissive.set(0x0a2540);
+  } else if (lobe === 'cerebellum') {
+    mesh.material.color.set(0x1a6a90);
+    mesh.material.emissive.set(0x050f1a);
+  }
+
+  nodeGroup.add(mesh);
+  nodePositions.push(pos.clone());
+  nodeMeshes.push(mesh);
+  nodeData.push({ lobe, baseScale: mesh.scale.x, phase: Math.random() * Math.PI * 2, speed: 0.5 + Math.random() * 1.0 });
+}
+
+// ─── NEURAL PATHWAYS ──────────────────────────────────────────────────────────
+const connectionGroup = new THREE.Group();
+scene.add(connectionGroup);
+
+const connectionLines = [];
+const MAX_CONNECTIONS  = MOBILE ? 120 : 320;
+const CONNECTION_DIST  = 2.8; // max distance for auto-connection
+
+// Connect nearby nodes
+const lineMatBase = new THREE.LineBasicMaterial({
+  color: new THREE.Color(0x1a5c8a),
+  transparent: true,
+  opacity: 0.25,
+});
+
+let connCount = 0;
+for (let i = 0; i < NODE_COUNT && connCount < MAX_CONNECTIONS; i++) {
+  for (let j = i + 1; j < NODE_COUNT && connCount < MAX_CONNECTIONS; j++) {
+    const dist = nodePositions[i].distanceTo(nodePositions[j]);
+    if (dist < CONNECTION_DIST) {
+      const geo = new THREE.BufferGeometry().setFromPoints([
+        nodePositions[i],
+        nodePositions[j]
+      ]);
+      const mat = lineMatBase.clone();
+      mat.opacity = 0.08 + (1 - dist / CONNECTION_DIST) * 0.3;
+      const line = new THREE.Line(geo, mat);
+      connectionGroup.add(line);
+      connectionLines.push({ line, i, j, dist, baseOpacity: mat.opacity });
+      connCount++;
+    }
+  }
+}
+
+// ─── SIGNAL PARTICLES (travel along pathways) ─────────────────────────────────
+// We'll use simple particles that travel between random node pairs
+const SIGNAL_COUNT = MOBILE ? 40 : 100;
+const signals = [];
+
+const signalGeo  = new THREE.SphereGeometry(0.045, 4, 4);
+const signalMats = {
+  blue:   new THREE.MeshBasicMaterial({ color: 0x5bc8f0, transparent: true, opacity: 0.9 }),
+  orange: new THREE.MeshBasicMaterial({ color: 0xf1420b, transparent: true, opacity: 0.85 }),
+};
+
+for (let i = 0; i < SIGNAL_COUNT; i++) {
+  const isOrange = Math.random() < 0.3;
+  const mesh     = new THREE.Mesh(signalGeo, (isOrange ? signalMats.orange : signalMats.blue).clone());
+  const fromIdx  = Math.floor(Math.random() * NODE_COUNT);
+  const toIdx    = Math.floor(Math.random() * NODE_COUNT);
+  const t        = Math.random();
+
+  mesh.position.lerpVectors(nodePositions[fromIdx], nodePositions[toIdx], t);
+  scene.add(mesh);
+
+  signals.push({
+    mesh,
+    from: fromIdx,
+    to: toIdx,
+    t,
+    speed: 0.003 + Math.random() * 0.012,
+    isOrange,
+  });
+}
+
+// ─── AMBIENT PARTICLES (outside brain fog) ────────────────────────────────────
+const AMBIENT_COUNT = MOBILE ? 60 : 150;
+const ambientGeo    = new THREE.BufferGeometry();
+const ambPositions  = new Float32Array(AMBIENT_COUNT * 3);
+const ambSpeeds     = [];
+
+for (let i = 0; i < AMBIENT_COUNT; i++) {
+  ambPositions[i * 3]     = (Math.random() - 0.5) * 28;
+  ambPositions[i * 3 + 1] = (Math.random() - 0.5) * 20;
+  ambPositions[i * 3 + 2] = (Math.random() - 0.5) * 28;
+  ambSpeeds.push({
+    vx: (Math.random() - 0.5) * 0.003,
+    vy: (Math.random() - 0.5) * 0.003,
+    vz: (Math.random() - 0.5) * 0.003,
+  });
+}
+ambientGeo.setAttribute('position', new THREE.BufferAttribute(ambPositions, 3));
+
+const ambientParticles = new THREE.Points(
+  ambientGeo,
+  new THREE.PointsMaterial({
+    color: 0x2a93c1,
+    size: 0.06,
+    transparent: true,
+    opacity: 0.4,
+    sizeAttenuation: true,
+  })
+);
+scene.add(ambientParticles);
+
+// ─── SCROLL-DRIVEN CAMERA JOURNEY ─────────────────────────────────────────────
+// 5 phases defined by scroll progress (0-1)
+//
+// Phase 0: 0.00 – 0.18  → Hero: camera at z=14, brain full, centered, slow rotate
+// Phase 1: 0.18 – 0.38  → Services: camera orbits right, brain shifts left
+// Phase 2: 0.38 – 0.58  → Process: camera starts moving FORWARD, brain separates
+// Phase 3: 0.58 – 0.82  → Inside: camera IS INSIDE, surrounded by nodes
+// Phase 4: 0.82 – 1.00  → CTA: camera pulls back, brain explodes → reassembles
+
+// Camera keyframes
+const camKeyframes = [
+  { t: 0.00, pos: new THREE.Vector3(0,   0,    14),  look: new THREE.Vector3(0, 0, 0) },
+  { t: 0.18, pos: new THREE.Vector3(5,   1,    11),  look: new THREE.Vector3(-1, 0, 0) },
+  { t: 0.38, pos: new THREE.Vector3(2,   0.5,   7),  look: new THREE.Vector3(0, 0, 0) },
+  { t: 0.58, pos: new THREE.Vector3(-0.5, 0.3, 1.2), look: new THREE.Vector3(0, 0, 0) },
+  { t: 0.75, pos: new THREE.Vector3(0.8, -0.4, -0.5), look: new THREE.Vector3(0, 0.2, 0) },
+  { t: 0.88, pos: new THREE.Vector3(0,   0,    0.2), look: new THREE.Vector3(0, 0, 0) },
+  { t: 1.00, pos: new THREE.Vector3(0,   2,    13),  look: new THREE.Vector3(0, 0, 0) },
+];
+
+// Interpolate between keyframes
+function getCameraFromScroll(progress) {
+  let from, to;
+  for (let i = 0; i < camKeyframes.length - 1; i++) {
+    if (progress >= camKeyframes[i].t && progress <= camKeyframes[i + 1].t) {
+      from = camKeyframes[i];
+      to   = camKeyframes[i + 1];
+      break;
+    }
+  }
+  if (!from) { from = camKeyframes[camKeyframes.length - 2]; to = camKeyframes[camKeyframes.length - 1]; }
+
+  const range = to.t - from.t;
+  const local = (progress - from.t) / range;
+  // Ease in/out
+  const eased = local < 0.5 ? 2 * local * local : -1 + (4 - 2 * local) * local;
+
+  const pos  = new THREE.Vector3().lerpVectors(from.pos,  to.pos,  eased);
+  const look = new THREE.Vector3().lerpVectors(from.look, to.look, eased);
+  return { pos, look };
+}
+
+// ─── BRAIN EXPLOSION EFFECT ────────────────────────────────────────────────────
+// At section 4 (CTA), nodes scatter and return
+let explosionProgress = 0;
+let exploding = false;
+const nodeOriginalPositions = nodePositions.map(p => p.clone());
+const nodeExplodeTargets    = nodePositions.map(() =>
+  new THREE.Vector3(
+    (Math.random() - 0.5) * 25,
+    (Math.random() - 0.5) * 18,
+    (Math.random() - 0.5) * 25,
+  )
+);
+
+// ─── PANEL MANAGER ────────────────────────────────────────────────────────────
+const panels = [
+  document.getElementById('panel-hero'),
+  document.getElementById('panel-services'),
+  document.getElementById('panel-process'),
+  document.getElementById('panel-inside'),
+  document.getElementById('panel-cta'),
+];
+const dots = document.querySelectorAll('.sdot');
+const scrollHint = document.getElementById('scroll-hint');
+
+function getSectionFromProgress(p) {
+  if (p < 0.18) return 0;
+  if (p < 0.40) return 1;
+  if (p < 0.60) return 2;
+  if (p < 0.82) return 3;
+  return 4;
+}
+
+let lastSection = -1;
+function updatePanels(section) {
+  if (section === lastSection) return;
+  lastSection = section;
+
+  panels.forEach((p, i) => {
+    if (i === section) {
+      p.classList.add('visible');
+    } else {
+      p.classList.remove('visible');
+    }
+  });
+
+  dots.forEach((d, i) => {
+    d.classList.toggle('active', i === section);
+  });
+
+  // Hide scroll hint after first scroll
+  if (section > 0) scrollHint.style.opacity = '0';
+  else scrollHint.style.opacity = '1';
+}
+
+// ─── BRAIN SEGMENT GLOW (section 2 — process) ────────────────────────────────
+// Light up lobe regions sequentially
+let activeLobeTimer = 0;
+const lobes = ['frontal', 'temporal', 'parietal', 'occipital', 'cerebellum'];
+let currentLobe = 0;
+
+// ─── MOUSE INTERACTION ────────────────────────────────────────────────────────
+const mouse = new THREE.Vector2(0, 0);
+const targetMouse = new THREE.Vector2(0, 0);
+let mouseMoved = false;
+
+window.addEventListener('mousemove', (e) => {
+  targetMouse.x = (e.clientX / window.innerWidth - 0.5) * 2;
+  targetMouse.y = -(e.clientY / window.innerHeight - 0.5) * 2;
+  mouseMoved = true;
+});
+
+// Click pulse
+let clickPulse = 0;
+window.addEventListener('click', (e) => {
+  // Don't trigger if clicking a button/link
+  if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
+  clickPulse = 1.0;
+});
+
+// Dot navigation
+dots.forEach((dot) => {
+  dot.addEventListener('click', () => {
+    const sectionIndex = parseInt(dot.dataset.section);
+    const scrollTarget = (sectionIndex / 4.1) * (document.getElementById('scroll-driver').offsetHeight - window.innerHeight);
+    window.scrollTo({ top: scrollTarget, behavior: 'smooth' });
+  });
+});
+
+// ─── MAIN ANIMATION LOOP ──────────────────────────────────────────────────────
+const clock   = new THREE.Clock();
+let lastScroll = 0;
+let targetScrollProgress = 0;
+let currentScrollProgress = 0;
+
+function getScrollProgress() {
+  const total = document.getElementById('scroll-driver').offsetHeight - window.innerHeight;
+  return Math.min(Math.max(window.scrollY / total, 0), 1);
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const t    = clock.getElapsedTime();
+  const delta = clock.getDelta() || 0.016;
+
+  // Smooth scroll progress
+  const rawProgress = getScrollProgress();
+  currentScrollProgress += (rawProgress - currentScrollProgress) * 0.05;
+  const progress = currentScrollProgress;
+
+  // Section detection
+  const section = getSectionFromProgress(progress);
+  updatePanels(section);
+
+  // ── Camera journey ──────────────────────────────────────────────────────────
+  const cam = getCameraFromScroll(progress);
+
+  // Mouse-based tilt (only outside brain)
+  mouse.x += (targetMouse.x - mouse.x) * 0.06;
+  mouse.y += (targetMouse.y - mouse.y) * 0.06;
+
+  const outsideFactor = Math.max(0, 1 - progress * 3); // fades as you go inside
+  cam.pos.x += mouse.x * 1.2 * outsideFactor;
+  cam.pos.y += mouse.y * 0.8 * outsideFactor;
+
+  // Inside: particles drift toward look direction slightly
+  if (progress > 0.55 && progress < 0.85) {
+    cam.pos.x += mouse.x * 0.3;
+    cam.pos.y += mouse.y * 0.2;
+  }
+
+  camera.position.lerp(cam.pos, 0.04);
+  const lookTarget = cam.look.clone();
+  camera.lookAt(lookTarget);
+
+  // ── Brain rotation (hero section only, slows as you go inside) ──────────────
+  const rotSpeed = Math.max(0, 1 - progress * 4);
+  nodeGroup.rotation.y      = t * 0.12 * rotSpeed;
+  connectionGroup.rotation.y = t * 0.12 * rotSpeed;
+
+  // ── Node animations ─────────────────────────────────────────────────────────
+  for (let i = 0; i < nodeMeshes.length; i++) {
+    const nd   = nodeData[i];
+    const mesh = nodeMeshes[i];
+
+    // Breathing pulse
+    const pulse = 1.0 + Math.sin(t * nd.speed + nd.phase) * 0.15;
+    mesh.scale.setScalar(nd.baseScale * pulse);
+
+    // Click pulse wave
+    if (clickPulse > 0.01) {
+      const distFactor = 1 - (nodePositions[i].length() / 8);
+      mesh.material.emissiveIntensity = 0.6 + clickPulse * distFactor * 2;
+      mesh.material.color.lerpColors(BLUE, ORANGE, clickPulse * distFactor);
+    } else {
+      mesh.material.emissiveIntensity = 0.6;
+    }
+
+    // Section-based lobe illumination (process section)
+    if (section === 2) {
+      activeLobeTimer += delta * 0.4;
+      if (activeLobeTimer > 1) { activeLobeTimer = 0; currentLobe = (currentLobe + 1) % lobes.length; }
+
+      if (nd.lobe === lobes[currentLobe]) {
+        mesh.material.color.lerpColors(mesh.material.color, ORANGE, 0.06);
+        mesh.material.emissiveIntensity = 1.2;
+      }
+    }
+
+    // Inside section: particles drift toward camera position subtly
+    if (section === 3) {
+      const toCamera = camera.position.clone().sub(nodePositions[i]).normalize();
+      mesh.material.emissiveIntensity = 0.4 + Math.sin(t * nd.speed * 1.5 + nd.phase) * 0.4;
+    }
+
+    // CTA section: explosion / reassembly
+    if (section === 4) {
+      if (!exploding && explosionProgress < 0.01) {
+        exploding = true;
+      }
+    } else {
+      exploding    = false;
+      explosionProgress = Math.max(0, explosionProgress - delta * 0.8);
+    }
+
+    if (explosionProgress > 0) {
+      const explodePhase = explosionProgress < 0.5 ? explosionProgress * 2 : (1 - explosionProgress) * 2;
+      const target = explosionProgress < 0.5 ? nodeExplodeTargets[i] : nodeOriginalPositions[i];
+      const base   = explosionProgress < 0.5 ? nodeOriginalPositions[i] : nodeExplodeTargets[i];
+      const lerped = new THREE.Vector3().lerpVectors(base, target, Math.min(explodePhase * 1.5, 1));
+      mesh.position.copy(lerped.applyEuler(nodeGroup.rotation));
+    }
+  }
+
+  // Advance explosion
+  if (exploding) explosionProgress = Math.min(1, explosionProgress + delta * 0.35);
+
+  // ── Signal particles travel along neural pathways ──────────────────────────
+  for (let i = 0; i < signals.length; i++) {
+    const sig = signals[i];
+    sig.t += sig.speed;
+
+    if (sig.t > 1) {
+      // Pick new path
+      sig.t    = 0;
+      sig.from = sig.to;
+      sig.to   = Math.floor(Math.random() * NODE_COUNT);
+    }
+
+    const from = nodePositions[sig.from];
+    const to   = nodePositions[sig.to];
+
+    // Apply brain group rotation
+    const wFrom = from.clone().applyEuler(nodeGroup.rotation);
+    const wTo   = to.clone().applyEuler(nodeGroup.rotation);
+
+    sig.mesh.position.lerpVectors(wFrom, wTo, sig.t);
+
+    // Fade in/out at endpoints
+    const edgeFade = Math.sin(sig.t * Math.PI);
+    sig.mesh.material.opacity = edgeFade * (sig.isOrange ? 0.85 : 0.75);
+
+    // Hide signals when fully inside (too many visible overwhelms)
+    if (section === 3 && !sig.isOrange) sig.mesh.material.opacity *= 0.5;
+  }
+
+  // ── Connection line opacity (bloom when inside) ─────────────────────────────
+  const insideFactor = Math.max(0, Math.min(1, (progress - 0.55) / 0.1));
+  for (const conn of connectionLines) {
+    conn.line.material.opacity = conn.baseOpacity * (1 + insideFactor * 1.5);
+    conn.line.rotation.copy(nodeGroup.rotation);
+  }
+
+  // ── Ambient particles drift ──────────────────────────────────────────────────
+  const ambPos = ambientGeo.attributes.position.array;
+  for (let i = 0; i < AMBIENT_COUNT; i++) {
+    ambPos[i * 3]     += ambSpeeds[i].vx;
+    ambPos[i * 3 + 1] += ambSpeeds[i].vy;
+    ambPos[i * 3 + 2] += ambSpeeds[i].vz;
+    // Wrap
+    if (Math.abs(ambPos[i * 3])     > 14) ambPos[i * 3]     *= -0.95;
+    if (Math.abs(ambPos[i * 3 + 1]) > 10) ambPos[i * 3 + 1] *= -0.95;
+    if (Math.abs(ambPos[i * 3 + 2]) > 14) ambPos[i * 3 + 2] *= -0.95;
+  }
+  ambientGeo.attributes.position.needsUpdate = true;
+
+  // Drift ambient particles toward cursor (gentle)
+  ambientParticles.rotation.y = t * 0.01 + mouse.x * 0.05;
+  ambientParticles.rotation.x = mouse.y * 0.03;
+
+  // ── Bloom intensity scales with inside-ness ──────────────────────────────────
+  bloom.strength = 0.8 + insideFactor * 0.8 + (explosionProgress * 1.5);
+
+  // ── Inner light pulses ────────────────────────────────────────────────────────
+  innerLight.intensity = 2 + Math.sin(t * 2) * 0.8 + insideFactor * 4;
+  orangePoint.intensity = 3 + (section === 4 ? 8 : 0);
+
+  // ── Click pulse decay ──────────────────────────────────────────────────────
+  clickPulse *= 0.93;
+
+  composer.render();
+}
+
+animate();
+
+// ─── RESIZE ───────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+  bloom.resolution.set(window.innerWidth, window.innerHeight);
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 12 V3: Mobile-Optimized Glass with Native Dispersion</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #080a12; overflow: hidden; }
+canvas { display: block; width: 100vw; height: 100vh; }
+#info { position: fixed; bottom: 20px; left: 20px; color: rgba(255,255,255,0.4); font: 12px monospace; z-index: 10; }
+#perf { position: fixed; top: 20px; right: 20px; color: rgba(255,255,255,0.5); font: 12px monospace; z-index: 10; }
+</style>
+</head>
+<body>
+<div id="info">Night 12 V3 | Mobile-Optimized Glass | Adaptive Quality</div>
+<div id="perf">Detecting GPU...</div>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.164.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+// ===========================================
+// GPU DETECTION & QUALITY TIER SYSTEM
+// ===========================================
+// Key learning: Cut order matters. Cut MeshTransmission first (biggest win),
+// lower DPR second, kill post-processing third, reduce geometry last.
+
+const QualityTier = {
+  HIGH: 'high',    // Desktop GPU: full effects
+  MEDIUM: 'medium', // Mid-range: simplified glass, reduced post
+  LOW: 'low'       // Mobile/weak: MeshPhysical only, no post
+};
+
+function detectQualityTier() {
+  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+  const canvas = document.createElement('canvas');
+  const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+
+  if (!gl) return QualityTier.LOW;
+
+  const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+  const gpuRenderer = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : '';
+  const maxTexSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+
+  // Known weak GPUs
+  const isWeakGPU = /Mali|Adreno [34]|PowerVR|Intel HD [45]/i.test(gpuRenderer);
+  const isStrongGPU = /RTX|RX [567]|GTX 1[06-9]|M[1-4] (Pro|Max|Ultra)|Apple GPU/i.test(gpuRenderer);
+
+  if (isMobile || isWeakGPU || maxTexSize < 4096) return QualityTier.LOW;
+  if (isStrongGPU && !isMobile) return QualityTier.HIGH;
+  return QualityTier.MEDIUM;
+}
+
+const quality = detectQualityTier();
+const perfInfo = document.getElementById('perf');
+perfInfo.textContent = `Quality: ${quality.toUpperCase()}`;
+
+// ===========================================
+// QUALITY-DEPENDENT CONFIGURATION
+// ===========================================
+const config = {
+  [QualityTier.HIGH]: {
+    dpr: Math.min(devicePixelRatio, 2),
+    segments: 6,        // Icosahedron detail
+    shellCount: 3,
+    useDispersion: true,
+    useIridescence: true,
+    bloom: true,
+    bloomIntensity: 0.5,
+    dustCount: 200,
+    envMapSize: 256,
+    postProcessing: true,
+    label: 'FULL EFFECTS'
+  },
+  [QualityTier.MEDIUM]: {
+    dpr: Math.min(devicePixelRatio, 1.5),
+    segments: 4,
+    shellCount: 2,
+    useDispersion: true,
+    useIridescence: false,
+    bloom: true,
+    bloomIntensity: 0.3,
+    dustCount: 80,
+    envMapSize: 128,
+    postProcessing: true,
+    label: 'REDUCED EFFECTS'
+  },
+  [QualityTier.LOW]: {
+    dpr: 1,
+    segments: 3,
+    shellCount: 1,
+    useDispersion: false,
+    useIridescence: false,
+    bloom: false,
+    bloomIntensity: 0,
+    dustCount: 30,
+    envMapSize: 64,
+    postProcessing: false,
+    label: 'MOBILE OPTIMIZED'
+  }
+}[quality];
+
+perfInfo.textContent = `Quality: ${quality.toUpperCase()} | ${config.label} | DPR: ${config.dpr}`;
+
+// ===========================================
+// SCENE SETUP
+// ===========================================
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 0, 5.5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: quality !== QualityTier.LOW });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(config.dpr);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+document.body.appendChild(renderer.domElement);
+
+// --- Lighting ---
+scene.add(new THREE.AmbientLight(0x1a1a2e, 0.4));
+
+const keyLight = new THREE.DirectionalLight(0x4fc3f7, 2.0);
+keyLight.position.set(3, 4, 5);
+scene.add(keyLight);
+
+const rimLight = new THREE.DirectionalLight(0xff6f00, 1.0);
+rimLight.position.set(-3, 2, -3);
+scene.add(rimLight);
+
+const fillLight = new THREE.PointLight(0x7c4dff, 1.5, 15);
+fillLight.position.set(-2, -1, 4);
+scene.add(fillLight);
+
+// --- CubeCamera (skip on LOW) ---
+let cubeRT, cubeCamera;
+if (quality !== QualityTier.LOW) {
+  cubeRT = new THREE.WebGLCubeRenderTarget(config.envMapSize, {
+    format: THREE.RGBAFormat, generateMipmaps: true,
+    minFilter: THREE.LinearMipmapLinearFilter
+  });
+  cubeCamera = new THREE.CubeCamera(0.1, 100, cubeRT);
+  scene.add(cubeCamera);
+}
+
+// ===========================================
+// GLASS ORB (QUALITY-ADAPTIVE)
+// ===========================================
+// Key technique: MeshPhysicalMaterial with native `dispersion` property (r164+)
+// This is the mobile fallback for MeshTransmissionMaterial
+// On LOW: just transmission + roughness, no extra render pass
+
+const glassGroup = new THREE.Group();
+const shells = [];
+
+const shellConfigs = [
+  { radius: 1.0, ior: 1.55, color: 0x1a237e, opacity: 0.6, dispersion: 0.2 },
+  { radius: 0.75, ior: 1.50, color: 0x0d47a1, opacity: 0.5, dispersion: 0.15 },
+  { radius: 0.5, ior: 1.45, color: 0x4fc3f7, opacity: 0.4, dispersion: 0.1 },
+];
+
+for (let i = 0; i < config.shellCount; i++) {
+  const s = shellConfigs[i];
+  const geo = new THREE.IcosahedronGeometry(s.radius, config.segments);
+
+  const matParams = {
+    color: new THREE.Color(s.color),
+    metalness: 0.0,
+    roughness: quality === QualityTier.LOW ? 0.1 : 0.05,
+    transmission: 0.95,
+    thickness: 0.5,
+    ior: s.ior,
+    transparent: true,
+    opacity: s.opacity,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  };
+
+  // Add env map if available
+  if (cubeRT) matParams.envMap = cubeRT.texture;
+  matParams.envMapIntensity = cubeRT ? 1.5 : 0.5;
+
+  // Native dispersion (THREE.js r164+ feature)
+  if (config.useDispersion) {
+    matParams.dispersion = s.dispersion;
+  }
+
+  // Iridescence (HIGH only)
+  if (config.useIridescence) {
+    matParams.iridescence = 0.3;
+    matParams.iridescenceIOR = 1.3;
+    matParams.clearcoat = 1.0;
+    matParams.clearcoatRoughness = 0.02;
+  }
+
+  const mat = new THREE.MeshPhysicalMaterial(matParams);
+  const mesh = new THREE.Mesh(geo, mat);
+  shells.push(mesh);
+  glassGroup.add(mesh);
+}
+
+scene.add(glassGroup);
+
+// --- Dust Motes (count varies by quality) ---
+const dustGeo = new THREE.BufferGeometry();
+const dustPos = new Float32Array(config.dustCount * 3);
+for (let i = 0; i < config.dustCount; i++) {
+  dustPos[i * 3] = (Math.random() - 0.5) * 10;
+  dustPos[i * 3 + 1] = (Math.random() - 0.5) * 7;
+  dustPos[i * 3 + 2] = (Math.random() - 0.5) * 8;
+}
+dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+const dustMat = new THREE.PointsMaterial({
+  color: 0x4fc3f7, size: 0.015, transparent: true, opacity: 0.25,
+  blending: THREE.AdditiveBlending, depthWrite: false
+});
+const dust = new THREE.Points(dustGeo, dustMat);
+scene.add(dust);
+
+// --- Background elements ---
+for (let i = 0; i < 5; i++) {
+  const geo = new THREE.TorusGeometry(0.2 + Math.random() * 0.3, 0.04, 12, 24);
+  const mat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color().setHSL(i / 5, 0.6, 0.4),
+    emissive: new THREE.Color().setHSL(i / 5, 0.4, 0.15),
+    metalness: 0.7, roughness: 0.3
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(
+    (Math.random() - 0.5) * 5,
+    (Math.random() - 0.5) * 3,
+    -2 - Math.random() * 4
+  );
+  mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+  scene.add(mesh);
+}
+
+// ===========================================
+// POST-PROCESSING (CONDITIONAL)
+// ===========================================
+let composer;
+
+if (config.postProcessing) {
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+
+  if (config.bloom) {
+    const bloom = new UnrealBloomPass(
+      new THREE.Vector2(innerWidth, innerHeight),
+      config.bloomIntensity, 0.3, 0.85
+    );
+    composer.addPass(bloom);
+  }
+
+  // Vignette (skip on MEDIUM with no bloom)
+  const vignettePass = new ShaderPass({
+    uniforms: { tDiffuse: { value: null }, offset: { value: 0.3 }, darkness: { value: 0.6 } },
+    vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `
+      uniform sampler2D tDiffuse; uniform float offset; uniform float darkness; varying vec2 vUv;
+      void main() {
+        vec4 c = texture2D(tDiffuse, vUv);
+        float d = distance(vUv, vec2(0.5));
+        c.rgb *= smoothstep(0.8, offset * 0.799, d * (darkness + offset));
+        gl_FragColor = c;
+      }
+    `
+  });
+  composer.addPass(vignettePass);
+}
+
+// ===========================================
+// FPS MONITOR (Runtime Quality Adaptation)
+// ===========================================
+let frameCount = 0;
+let lastFPSCheck = performance.now();
+let adaptedDown = false;
+
+function checkFPS() {
+  frameCount++;
+  const now = performance.now();
+  const elapsed = now - lastFPSCheck;
+
+  if (elapsed >= 2000) { // Check every 2 seconds
+    const fps = (frameCount / elapsed) * 1000;
+    frameCount = 0;
+    lastFPSCheck = now;
+
+    perfInfo.textContent = `Quality: ${quality.toUpperCase()} | ${config.label} | FPS: ${Math.round(fps)}`;
+
+    // Runtime adaptation: if FPS drops below 30, disable effects
+    if (fps < 25 && !adaptedDown && composer) {
+      // Kill bloom
+      composer.passes = composer.passes.filter(p => !(p instanceof UnrealBloomPass));
+      renderer.setPixelRatio(1.0);
+      adaptedDown = true;
+      perfInfo.textContent += ' | ADAPTED DOWN';
+    }
+  }
+}
+
+// ===========================================
+// ANIMATION LOOP
+// ===========================================
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // Shell rotations (different speeds)
+  shells.forEach((shell, i) => {
+    const speed = 0.05 + i * 0.02;
+    const dir = i % 2 === 0 ? 1 : -1;
+    shell.rotation.y = t * speed * dir;
+    shell.rotation.x = t * speed * 0.7 * -dir;
+  });
+
+  // Group float
+  glassGroup.position.y = Math.sin(t * 0.4) * 0.12;
+  glassGroup.rotation.y = t * 0.12;
+
+  // Dust drift
+  const positions = dust.geometry.attributes.position.array;
+  for (let i = 0; i < config.dustCount; i++) {
+    positions[i * 3 + 1] += Math.sin(t + i) * 0.0004;
+    positions[i * 3] += Math.cos(t * 0.5 + i * 0.3) * 0.0003;
+  }
+  dust.geometry.attributes.position.needsUpdate = true;
+
+  // CubeCamera update (skip on LOW)
+  if (cubeCamera) {
+    shells.forEach(s => s.visible = false);
+    cubeCamera.position.copy(glassGroup.position);
+    cubeCamera.update(renderer, scene);
+    shells.forEach(s => s.visible = true);
+  }
+
+  // Render
+  if (composer) {
+    composer.render();
+  } else {
+    renderer.render(scene, camera);
+  }
+
+  checkFPS();
+}
+
+animate();
+
+// --- Resize ---
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  if (composer) composer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
