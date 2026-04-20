@@ -817,6 +817,17 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
           <div class="platform-composer-body" id="pc-body"></div>
         </div>
 
+        <!-- AI Tools -->
+        <div class="ai-tools-row" style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn-sm ai-btn" onclick="generateVariations()" style="background:linear-gradient(135deg,var(--blue),var(--orange));color:#fff;border:none;font-size:11px;padding:6px 14px;border-radius:6px;cursor:pointer">
+            ✨ Generate Variations
+          </button>
+          <button class="btn-sm ai-btn" onclick="repurposePost()" style="background:var(--surface);border:1px solid var(--border);color:var(--text-muted);font-size:11px;padding:6px 14px;border-radius:6px;cursor:pointer">
+            🔄 Repurpose to Other Platforms
+          </button>
+        </div>
+        <div id="ai-variations-panel" style="display:none;margin-top:12px"></div>
+
         <!-- Media Upload -->
         <div class="form-group">
           <label class="form-label">Media</label>
@@ -1304,6 +1315,7 @@ let cachedPosts = [];
 
 // ========== UTILITIES ==========
 function esc(s){ return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+function getImgSrc(p){var u=p.media_url||p.banner_image||'';if(u)return u;var mr=p.media_refs;if(!mr)return '';try{var arr=typeof mr==='string'?JSON.parse(mr):mr;if(Array.isArray(arr)&&arr.length)return arr[0];if(typeof mr==='string'&&mr.startsWith('http'))return mr;}catch(e){}return '';}
 function h(tag, attrs={}, children=[]){
   const el = document.createElement(tag);
   for (const [k,v] of Object.entries(attrs)){
@@ -1366,7 +1378,7 @@ async function api(path, opts={}){
   const headers = Object.assign({"Content-Type":"application/json"}, opts.headers||{});
   if(TOKEN) headers["Authorization"]="Bearer "+TOKEN;
   const res = await fetch(API+path, Object.assign({},opts,{headers,credentials:"include"}));
-  if(res.status===401){logout();throw new Error("Session expired");}
+  if(res.status===401){TOKEN="";localStorage.removeItem("social_token");throw new Error("Session expired");}
   const data = await res.json().catch(()=>({}));
   if(!res.ok) throw new Error(data.error||"HTTP "+res.status);
   return data;
@@ -1423,7 +1435,16 @@ async function bootApp(){
     renderKanbanBoard(); renderMonthView(); updateCalNavTitle(); updateBadges();
     loadTeamContent(); loadAccounts(); loadPartners(); loadAnalytics();
     renderMediaGrid();
-  }catch(e){console.warn("boot failed",e);logout();}
+  }catch(e){
+    console.warn("boot failed",e);
+    // Don't logout-loop on stale token — just clear and show login
+    TOKEN="";localStorage.removeItem("social_token");
+    document.getElementById("auth-gate").style.display="";
+    document.getElementById("main-app").style.display="none";
+    // Re-enable login button in case it was disabled
+    const btn=document.getElementById("login-btn");
+    if(btn){btn.disabled=false;btn.textContent="Sign in";}
+  }
 }
 
 function renderUserChip(){
@@ -1681,6 +1702,111 @@ async function postNow(){
   clearForm(); await refreshAllData();
 }
 
+// ========== AI TOOLS (Phase 3) ==========
+
+async function generateVariations() {
+  const caption = document.getElementById('post-text')?.value || '';
+  if (!caption || caption.length < 20) {
+    toast('Write at least 20 characters first', 'error');
+    return;
+  }
+
+  const panel = document.getElementById('ai-variations-panel');
+  panel.style.display = 'block';
+  panel.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim)">Generating variations...</div>';
+
+  try {
+    const data = await api('/api/ai/captions', {
+      method: 'POST',
+      body: JSON.stringify({ caption, platforms: ['linkedin', 'twitter', 'bluesky'], count: 3 })
+    });
+
+    let html = '<div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">AI Variations</div>';
+
+    for (const [platform, variations] of Object.entries(data.variations || {})) {
+      html += '<div style="margin-bottom:12px">';
+      html += '<div style="font-size:11px;font-weight:600;color:var(--blue);margin-bottom:6px">' + platform.toUpperCase() + '</div>';
+
+      for (const v of variations) {
+        html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:6px;cursor:pointer;transition:border-color .15s" onclick="useVariation(this)" data-text="' + esc(v.text) + '">';
+        html += '<div style="font-size:12px;line-height:1.4;color:var(--text);margin-bottom:4px">' + esc(v.text.substring(0, 150)) + (v.text.length > 150 ? '...' : '') + '</div>';
+        html += '<div style="font-size:10px;color:var(--text-dim)">' + v.char_count + '/' + v.char_limit + ' chars · Score: ' + (v.score * 100).toFixed(0) + '%</div>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    html += '<button class="btn-sm" onclick="document.getElementById(\'ai-variations-panel\').style.display=\'none\'" style="margin-top:4px;font-size:11px">Close</button>';
+    panel.innerHTML = html;
+  } catch (e) {
+    panel.innerHTML = '<div style="color:var(--red);padding:12px;font-size:13px">Failed: ' + esc(e.message) + '</div>';
+  }
+}
+
+function useVariation(el) {
+  const text = el.dataset.text;
+  const textarea = document.getElementById('post-text');
+  if (textarea && text) {
+    textarea.value = text;
+    textarea.dispatchEvent(new Event('input'));
+    toast('Variation applied');
+    document.getElementById('ai-variations-panel').style.display = 'none';
+  }
+}
+
+async function repurposePost() {
+  const textarea = document.getElementById('post-text');
+  const caption = textarea?.value || '';
+  if (!caption || caption.length < 50) {
+    toast('Write at least 50 characters to repurpose', 'error');
+    return;
+  }
+
+  const panel = document.getElementById('ai-variations-panel');
+  panel.style.display = 'block';
+  panel.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim)">Repurposing content...</div>';
+
+  try {
+    // Create a temporary content item to repurpose from
+    const createRes = await api('/api/content', {
+      method: 'POST',
+      body: JSON.stringify({
+        body: caption,
+        platform: 'linkedin',
+        status: 'draft',
+        social_account_id: 'temp'
+      })
+    });
+
+    const sourceId = createRes.item?.id;
+    if (!sourceId) throw new Error('Could not create source');
+
+    const data = await api('/api/ai/repurpose', {
+      method: 'POST',
+      body: JSON.stringify({
+        source_content_id: sourceId,
+        target_platforms: ['linkedin', 'bluesky', 'twitter']
+      })
+    });
+
+    let html = '<div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Repurposed Content</div>';
+
+    for (const [platform, output] of Object.entries(data.outputs || {})) {
+      html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px">';
+      html += '<div style="font-size:11px;font-weight:600;color:var(--blue);margin-bottom:6px">' + platform.toUpperCase() + ' · ' + output.content_type + '</div>';
+      html += '<div style="font-size:13px;line-height:1.5;color:var(--text);margin-bottom:6px">' + esc(output.caption) + '</div>';
+      html += '<div style="font-size:10px;color:var(--text-dim)">' + output.char_count + '/' + output.char_limit + ' chars</div>';
+      html += '<button class="btn-sm" onclick="useVariation(this)" data-text="' + esc(output.caption) + '" style="margin-top:6px;font-size:11px">Use This</button>';
+      html += '</div>';
+    }
+
+    html += '<button class="btn-sm" onclick="document.getElementById(\'ai-variations-panel\').style.display=\'none\'" style="margin-top:4px;font-size:11px">Close</button>';
+    panel.innerHTML = html;
+  } catch (e) {
+    panel.innerHTML = '<div style="color:var(--red);padding:12px;font-size:13px">Failed: ' + esc(e.message) + '</div>';
+  }
+}
+
 // ========== CALENDAR VIEW TOGGLE ==========
 function setCalendarView(view){
   calendarView=view;
@@ -1895,7 +2021,7 @@ function renderListView(){
     const preview=(p.content||'').substring(0,100)+((p.content||'').length>100?'...':'');
     const titleDisplay=p.title?'<strong>'+esc(p.title)+'</strong> - ':'';
     const time=p.scheduled_at?fmtTime(p.scheduled_at):(p.created_at?fmtTime(p.created_at):'No time set');
-    const imgSrc=p.media_url||p.banner_image||'';
+    const imgSrc=getImgSrc(p);
     const mediaHtml=imgSrc?'<div class="post-thumb"><img src="'+esc(imgSrc)+'" alt="media" onerror="this.parentElement.style.display=\'none\'"></div>':'';
     const feedbackBadge=getFeedbackBadge(p);
     const feedbackCountBadge=renderFeedbackBadge(p);
@@ -2002,7 +2128,7 @@ function openEditModal(id){
   document.body.style.overflow='hidden';
 
   // Populate left side
-  const imgSrc=post.media_url||post.banner_image||'';
+  const imgSrc=getImgSrc(post);
   const imgContainer=document.getElementById('modal-img-container');
   const imgEl=document.getElementById('modal-img');
   if(imgSrc){imgEl.src=imgSrc;imgContainer.style.display='block';}
@@ -2405,7 +2531,7 @@ function renderKanbanCard(post,colType){
   const ctLabel=CONTENT_TYPE_LABELS[ct]||ct;
   const preview=(post.content||post.body||'').substring(0,120)+((post.content||post.body||'').length>120?'...':'');
   const hasMedia=!!(post.media_url||post.banner_image||(post.media_refs&&post.media_refs.length));
-  const imgSrc=post.media_url||post.banner_image||'';
+  const imgSrc=getImgSrc(post);
   const schedDate=post.scheduled_at?new Date(post.scheduled_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'Not scheduled';
   const feedback=post.feedback||[];
   let feedbackFromRd=[];

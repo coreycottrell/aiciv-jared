@@ -908,6 +908,17 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
           <div class="platform-composer-body" id="pc-body"></div>
         </div>
 
+        <!-- AI Tools -->
+        <div class="ai-tools-row" style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn-sm ai-btn" onclick="generateVariations()" style="background:linear-gradient(135deg,var(--blue),var(--orange));color:#fff;border:none;font-size:11px;padding:6px 14px;border-radius:6px;cursor:pointer">
+            ✨ Generate Variations
+          </button>
+          <button class="btn-sm ai-btn" onclick="repurposePost()" style="background:var(--surface);border:1px solid var(--border);color:var(--text-muted);font-size:11px;padding:6px 14px;border-radius:6px;cursor:pointer">
+            🔄 Repurpose to Other Platforms
+          </button>
+        </div>
+        <div id="ai-variations-panel" style="display:none;margin-top:12px"></div>
+
         <!-- Media Upload -->
         <div class="form-group">
           <label class="form-label">Media</label>
@@ -1395,6 +1406,7 @@ let cachedPosts = [];
 
 // ========== UTILITIES ==========
 function esc(s){ return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","'":"&#39;"}[c])); }
+function getImgSrc(p){var u=p.media_url||p.banner_image||'';if(u)return u;var mr=p.media_refs;if(!mr)return '';try{var arr=typeof mr==='string'?JSON.parse(mr):mr;if(Array.isArray(arr)&&arr.length)return arr[0];if(typeof mr==='string'&&mr.startsWith('http'))return mr;}catch(e){}return '';}
 function h(tag, attrs={}, children=[]){
   const el = document.createElement(tag);
   for (const [k,v] of Object.entries(attrs)){
@@ -1457,7 +1469,7 @@ async function api(path, opts={}){
   const headers = Object.assign({"Content-Type":"application/json"}, opts.headers||{});
   if(TOKEN) headers["Authorization"]="Bearer "+TOKEN;
   const res = await fetch(API+path, Object.assign({},opts,{headers,credentials:"include"}));
-  if(res.status===401){logout();throw new Error("Session expired");}
+  if(res.status===401){TOKEN="";localStorage.removeItem("social_token");throw new Error("Session expired");}
   const data = await res.json().catch(()=>({}));
   if(!res.ok) throw new Error(data.error||"HTTP "+res.status);
   return data;
@@ -1514,7 +1526,16 @@ async function bootApp(){
     renderKanbanBoard(); renderMonthView(); updateCalNavTitle(); updateBadges();
     loadTeamContent(); loadAccounts(); loadPartners(); loadAnalytics();
     renderMediaGrid();
-  }catch(e){console.warn("boot failed",e);logout();}
+  }catch(e){
+    console.warn("boot failed",e);
+    // Don't logout-loop on stale token — just clear and show login
+    TOKEN="";localStorage.removeItem("social_token");
+    document.getElementById("auth-gate").style.display="";
+    document.getElementById("main-app").style.display="none";
+    // Re-enable login button in case it was disabled
+    const btn=document.getElementById("login-btn");
+    if(btn){btn.disabled=false;btn.textContent="Sign in";}
+  }
 }
 
 function renderUserChip(){
@@ -1772,6 +1793,111 @@ async function postNow(){
   clearForm(); await refreshAllData();
 }
 
+// ========== AI TOOLS (Phase 3) ==========
+
+async function generateVariations() {
+  const caption = document.getElementById('post-text')?.value || '';
+  if (!caption || caption.length < 20) {
+    toast('Write at least 20 characters first', 'error');
+    return;
+  }
+
+  const panel = document.getElementById('ai-variations-panel');
+  panel.style.display = 'block';
+  panel.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim)">Generating variations...</div>';
+
+  try {
+    const data = await api('/api/ai/captions', {
+      method: 'POST',
+      body: JSON.stringify({ caption, platforms: ['linkedin', 'twitter', 'bluesky'], count: 3 })
+    });
+
+    let html = '<div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">AI Variations</div>';
+
+    for (const [platform, variations] of Object.entries(data.variations || {})) {
+      html += '<div style="margin-bottom:12px">';
+      html += '<div style="font-size:11px;font-weight:600;color:var(--blue);margin-bottom:6px">' + platform.toUpperCase() + '</div>';
+
+      for (const v of variations) {
+        html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:6px;cursor:pointer;transition:border-color .15s" onclick="useVariation(this)" data-text="' + esc(v.text) + '">';
+        html += '<div style="font-size:12px;line-height:1.4;color:var(--text);margin-bottom:4px">' + esc(v.text.substring(0, 150)) + (v.text.length > 150 ? '...' : '') + '</div>';
+        html += '<div style="font-size:10px;color:var(--text-dim)">' + v.char_count + '/' + v.char_limit + ' chars · Score: ' + (v.score * 100).toFixed(0) + '%</div>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    html += '<button class="btn-sm" onclick="document.getElementById(\\'ai-variations-panel\\').style.display=\\'none\\'" style="margin-top:4px;font-size:11px">Close</button>';
+    panel.innerHTML = html;
+  } catch (e) {
+    panel.innerHTML = '<div style="color:var(--red);padding:12px;font-size:13px">Failed: ' + esc(e.message) + '</div>';
+  }
+}
+
+function useVariation(el) {
+  const text = el.dataset.text;
+  const textarea = document.getElementById('post-text');
+  if (textarea && text) {
+    textarea.value = text;
+    textarea.dispatchEvent(new Event('input'));
+    toast('Variation applied');
+    document.getElementById('ai-variations-panel').style.display = 'none';
+  }
+}
+
+async function repurposePost() {
+  const textarea = document.getElementById('post-text');
+  const caption = textarea?.value || '';
+  if (!caption || caption.length < 50) {
+    toast('Write at least 50 characters to repurpose', 'error');
+    return;
+  }
+
+  const panel = document.getElementById('ai-variations-panel');
+  panel.style.display = 'block';
+  panel.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim)">Repurposing content...</div>';
+
+  try {
+    // Create a temporary content item to repurpose from
+    const createRes = await api('/api/content', {
+      method: 'POST',
+      body: JSON.stringify({
+        body: caption,
+        platform: 'linkedin',
+        status: 'draft',
+        social_account_id: 'temp'
+      })
+    });
+
+    const sourceId = createRes.item?.id;
+    if (!sourceId) throw new Error('Could not create source');
+
+    const data = await api('/api/ai/repurpose', {
+      method: 'POST',
+      body: JSON.stringify({
+        source_content_id: sourceId,
+        target_platforms: ['linkedin', 'bluesky', 'twitter']
+      })
+    });
+
+    let html = '<div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Repurposed Content</div>';
+
+    for (const [platform, output] of Object.entries(data.outputs || {})) {
+      html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px">';
+      html += '<div style="font-size:11px;font-weight:600;color:var(--blue);margin-bottom:6px">' + platform.toUpperCase() + ' · ' + output.content_type + '</div>';
+      html += '<div style="font-size:13px;line-height:1.5;color:var(--text);margin-bottom:6px">' + esc(output.caption) + '</div>';
+      html += '<div style="font-size:10px;color:var(--text-dim)">' + output.char_count + '/' + output.char_limit + ' chars</div>';
+      html += '<button class="btn-sm" onclick="useVariation(this)" data-text="' + esc(output.caption) + '" style="margin-top:6px;font-size:11px">Use This</button>';
+      html += '</div>';
+    }
+
+    html += '<button class="btn-sm" onclick="document.getElementById(\\'ai-variations-panel\\').style.display=\\'none\\'" style="margin-top:4px;font-size:11px">Close</button>';
+    panel.innerHTML = html;
+  } catch (e) {
+    panel.innerHTML = '<div style="color:var(--red);padding:12px;font-size:13px">Failed: ' + esc(e.message) + '</div>';
+  }
+}
+
 // ========== CALENDAR VIEW TOGGLE ==========
 function setCalendarView(view){
   calendarView=view;
@@ -1986,7 +2112,7 @@ function renderListView(){
     const preview=(p.content||'').substring(0,100)+((p.content||'').length>100?'...':'');
     const titleDisplay=p.title?'<strong>'+esc(p.title)+'</strong> - ':'';
     const time=p.scheduled_at?fmtTime(p.scheduled_at):(p.created_at?fmtTime(p.created_at):'No time set');
-    const imgSrc=p.media_url||p.banner_image||'';
+    const imgSrc=getImgSrc(p);
     const mediaHtml=imgSrc?'<div class="post-thumb"><img src="'+esc(imgSrc)+'" alt="media" onerror="this.parentElement.style.display=\\'none\\'"></div>':'';
     const feedbackBadge=getFeedbackBadge(p);
     const feedbackCountBadge=renderFeedbackBadge(p);
@@ -2093,7 +2219,7 @@ function openEditModal(id){
   document.body.style.overflow='hidden';
 
   // Populate left side
-  const imgSrc=post.media_url||post.banner_image||'';
+  const imgSrc=getImgSrc(post);
   const imgContainer=document.getElementById('modal-img-container');
   const imgEl=document.getElementById('modal-img');
   if(imgSrc){imgEl.src=imgSrc;imgContainer.style.display='block';}
@@ -2496,7 +2622,7 @@ function renderKanbanCard(post,colType){
   const ctLabel=CONTENT_TYPE_LABELS[ct]||ct;
   const preview=(post.content||post.body||'').substring(0,120)+((post.content||post.body||'').length>120?'...':'');
   const hasMedia=!!(post.media_url||post.banner_image||(post.media_refs&&post.media_refs.length));
-  const imgSrc=post.media_url||post.banner_image||'';
+  const imgSrc=getImgSrc(post);
   const schedDate=post.scheduled_at?new Date(post.scheduled_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'Not scheduled';
   const feedback=post.feedback||[];
   let feedbackFromRd=[];
@@ -3394,6 +3520,26 @@ function expiresAt(ms = SESSION_DURATION_MS) {
   return new Date(Date.now() + ms).toISOString();
 }
 
+// ---------- Phase 2: Role-Based Permissions ----------
+// Role hierarchy: admin > editor > reviewer > viewer
+// Also supports legacy roles: owner, leader, system, member (treated as editor-level)
+const ROLE_PERMISSIONS = {
+  admin:    { read: true, create: true, edit: true, delete: true, approve: true, manage_roles: true },
+  owner:    { read: true, create: true, edit: true, delete: true, approve: true, manage_roles: true },
+  leader:   { read: true, create: true, edit: true, delete: true, approve: true, manage_roles: true },
+  system:   { read: true, create: true, edit: true, delete: true, approve: true, manage_roles: true },
+  editor:   { read: true, create: true, edit: true, delete: false, approve: false, manage_roles: false },
+  member:   { read: true, create: true, edit: true, delete: false, approve: false, manage_roles: false },
+  reviewer: { read: true, create: false, edit: false, delete: false, approve: true, manage_roles: false },
+  viewer:   { read: true, create: false, edit: false, delete: false, approve: false, manage_roles: false },
+};
+
+function hasPermission(role, action) {
+  const perms = ROLE_PERMISSIONS[role];
+  if (!perms) return false;
+  return !!perms[action];
+}
+
 async function sha256(s) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
@@ -3663,6 +3809,12 @@ async function handleListContent(request, env) {
 async function handleCreateContent(request, env) {
   const { error, sess } = await requireAuth(request, env);
   if (error) return error;
+
+  // Role-based permission check: viewer and reviewer cannot create content
+  if (!hasPermission(sess.role, "create")) {
+    return err(403, "your role does not allow creating content");
+  }
+
   let body;
   try { body = await request.json(); } catch { return err(400, "invalid json"); }
 
@@ -3694,17 +3846,48 @@ async function handleCreateContent(request, env) {
 async function handleUpdateContent(request, env, itemId) {
   const { error, sess } = await requireAuth(request, env);
   if (error) return error;
+
+  // Role-based permission check: viewer cannot edit; reviewer can only approve
+  if (!hasPermission(sess.role, "edit") && !hasPermission(sess.role, "approve")) {
+    return err(403, "your role does not allow editing content");
+  }
+
   let body;
   try { body = await request.json(); } catch { return err(400, "invalid json"); }
 
-  const allowed = ["body", "media_refs", "scheduled_at", "status", "content_type", "rejection_reason", "last_error", "retry_count", "routing_decision", "posted_at", "post_url", "verification_status", "performance_metrics"];
+  // If role is reviewer (approve-only), restrict to status changes only
+  if (sess.role === "reviewer") {
+    const nonStatusFields = Object.keys(body).filter(k => k !== "status" && k !== "rejection_reason");
+    if (nonStatusFields.length > 0) {
+      return err(403, "reviewer role can only change status (approve/reject)");
+    }
+  }
+
+  // Inline image replace via base64
+  if (body.media_base64 && env.UPLOADS) {
+    try {
+      const raw = Uint8Array.from(atob(body.media_base64), c => c.charCodeAt(0));
+      const fname = (body.media_filename || "upload.png").replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 100);
+      const key = `${sess.user_id}/${Date.now()}-${crypto.randomUUID().slice(0,8)}-${fname}`;
+      const mime = fname.endsWith(".jpg") || fname.endsWith(".jpeg") ? "image/jpeg" : fname.endsWith(".webp") ? "image/webp" : "image/png";
+      await env.UPLOADS.put(key, raw.buffer, { httpMetadata: { contentType: mime } });
+      const imgUrl = `https://social.purebrain.ai/media/${encodeURI(key)}`;
+      body.media_refs = JSON.stringify([imgUrl]);
+    } catch (e) {
+      return err(500, "image upload failed: " + String(e.message || e).slice(0, 200));
+    }
+  }
+
+  const allowed = ["body", "media_refs", "scheduled_at", "status", "content_type", "title", "rejection_reason", "last_error", "retry_count", "routing_decision", "posted_at", "post_url", "verification_status", "performance_metrics"];
   const updates = {};
   for (const k of allowed) if (k in body) updates[k] = body[k];
   if (Object.keys(updates).length === 0) return err(400, "no valid fields");
 
   const existing = await env.DB.prepare("SELECT user_id FROM content_items WHERE id = ?").bind(itemId).first();
   if (!existing) return err(404, "not found");
-  if (existing.user_id !== sess.user_id && sess.role !== "leader" && sess.role !== "system") {
+  // Allow: own content always, admin/owner/leader/system for any, reviewer for status-only (checked above)
+  const canEditOthers = ["leader", "system", "admin", "owner", "reviewer"].includes(sess.role);
+  if (existing.user_id !== sess.user_id && !canEditOthers) {
     return err(403, "forbidden");
   }
 
@@ -4809,6 +4992,291 @@ async function handleReadyFeed(request, env) {
   return json({ ready });
 }
 
+// ========== Phase 2: Meeting Form Responses ==========
+
+async function handleSubmitFormResponse(request, env) {
+  let body;
+  try { body = await request.json(); } catch { return err(400, "invalid json"); }
+  const meeting_id = body.meeting_id;
+  const name = body.name || body.respondent_name;
+  const email = body.email || body.respondent_email;
+  const responses = body.responses;
+  const respondent_type = body.respondent_type;
+  if (!meeting_id || !name || !responses) return err(400, "meeting_id, name, and responses required");
+  const id = crypto.randomUUID();
+  await env.DB.prepare(
+    "INSERT INTO meeting_form_responses (id, meeting_id, respondent_name, respondent_email, respondent_type, responses) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(id, meeting_id, name, email || null, respondent_type || "human", JSON.stringify(responses)).run();
+  return json({ id, status: "submitted" }, 201);
+}
+
+async function handleGetFormResponses(request, env) {
+  const url = new URL(request.url);
+  const meetingId = url.pathname.split("/").pop();
+  const { results } = await env.DB.prepare(
+    "SELECT * FROM meeting_form_responses WHERE meeting_id = ? ORDER BY submitted_at DESC"
+  ).bind(meetingId).all();
+  const parsed = (results || []).map(r => ({
+    ...r,
+    responses: (() => { try { return JSON.parse(r.responses); } catch { return r.responses; } })()
+  }));
+  return json({ responses: parsed, count: parsed.length });
+}
+
+// ========== Phase 2: Blocker Reporting (team.purebrain.ai) ==========
+
+async function handleReportBlocker(request, env) {
+  const { error, sess } = await requireAuth(request, env);
+  if (error) return error;
+  let body;
+  try { body = await request.json(); } catch { return err(400, "invalid json"); }
+  const { description, blocker_type, blocked_by, owner } = body;
+  if (!description || !blocker_type) return err(400, "description and blocker_type required");
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    "INSERT INTO blocker_items (id, description, blocker_type, reporter, blocked_by, owner, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(id, description, blocker_type, sess.user_id || body.reporter || "unknown", blocked_by || null, owner || null, now).run();
+  return json({ id, status: "open", created_at: now }, 201);
+}
+
+async function handleGetBlockers(request, env) {
+  const url = new URL(request.url);
+  const status = url.searchParams.get("status") || "open";
+  const limit = Math.min(parseInt(url.searchParams.get("limit") || "50"), 200);
+  let query, binds;
+  if (status === "all") {
+    query = "SELECT * FROM blocker_items ORDER BY created_at DESC LIMIT ?";
+    binds = [limit];
+  } else {
+    query = "SELECT * FROM blocker_items WHERE status = ? ORDER BY created_at DESC LIMIT ?";
+    binds = [status, limit];
+  }
+  const { results } = await env.DB.prepare(query).bind(...binds).all();
+  return json({ blockers: results, count: results.length });
+}
+
+async function handleResolveBlocker(request, env) {
+  const { error, sess } = await requireAuth(request, env);
+  if (error) return error;
+  const url = new URL(request.url);
+  const id = url.pathname.split("/").pop();
+  let body = {};
+  try { body = await request.json(); } catch {}
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    "UPDATE blocker_items SET status = 'resolved', resolved_at = ?, resolution_note = ? WHERE id = ?"
+  ).bind(now, body.note || null, id).run();
+  return json({ ok: true, resolved_at: now });
+}
+
+// ---------- Phase 2: Smart Time-to-Post ----------
+async function handleBestTimes(request, env) {
+  const { error, sess } = await requireAuth(request, env);
+  if (error) return error;
+
+  // Query posted content for this user's team to find engagement patterns
+  const { results: postedItems } = await env.DB.prepare(
+    `SELECT platform, posted_at, performance_metrics
+     FROM content_items
+     WHERE user_id = ? AND status = 'posted' AND posted_at IS NOT NULL
+     ORDER BY posted_at DESC LIMIT 500`
+  ).bind(sess.user_id).all();
+
+  if (!postedItems || postedItems.length === 0) {
+    return json({ suggestions: [], message: "No posted content yet. Post more to get time suggestions." });
+  }
+
+  // Group by platform -> hour_of_day + day_of_week
+  const slots = {}; // key: "platform|dow|hour" -> { count, totalEngagement }
+  for (const item of postedItems) {
+    const dt = new Date(item.posted_at);
+    const dow = dt.getUTCDay(); // 0=Sun..6=Sat
+    const hour = dt.getUTCHours();
+    const platform = item.platform || "unknown";
+
+    const key = `${platform}|${dow}|${hour}`;
+    if (!slots[key]) slots[key] = { platform, day_of_week: dow, hour_of_day: hour, count: 0, totalEngagement: 0, hasMetrics: false };
+    slots[key].count++;
+
+    if (item.performance_metrics) {
+      try {
+        const metrics = typeof item.performance_metrics === "string" ? JSON.parse(item.performance_metrics) : item.performance_metrics;
+        if (typeof metrics.engagement === "number") {
+          slots[key].totalEngagement += metrics.engagement;
+          slots[key].hasMetrics = true;
+        }
+      } catch {}
+    }
+  }
+
+  // Calculate score: if metrics exist use avg engagement, otherwise use post count as proxy
+  const slotList = Object.values(slots).map(s => ({
+    platform: s.platform,
+    day_of_week: s.day_of_week,
+    day_name: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][s.day_of_week],
+    hour_of_day: s.hour_of_day,
+    hour_label: `${String(s.hour_of_day).padStart(2, "0")}:00 UTC`,
+    post_count: s.count,
+    avg_engagement: s.hasMetrics ? Math.round((s.totalEngagement / s.count) * 100) / 100 : null,
+    score: s.hasMetrics ? s.totalEngagement / s.count : s.count
+  }));
+
+  // Group by platform and pick top 5 per platform
+  const byPlatform = {};
+  for (const s of slotList) {
+    if (!byPlatform[s.platform]) byPlatform[s.platform] = [];
+    byPlatform[s.platform].push(s);
+  }
+
+  const suggestions = {};
+  for (const [platform, items] of Object.entries(byPlatform)) {
+    suggestions[platform] = items.sort((a, b) => b.score - a.score).slice(0, 5);
+  }
+
+  return json({
+    suggestions,
+    total_posts_analyzed: postedItems.length,
+    scoring_method: slotList.some(s => s.avg_engagement !== null) ? "engagement_weighted" : "post_count_proxy"
+  });
+}
+
+// ---------- Phase 2: Bulk CSV Upload ----------
+async function handleBulkUpload(request, env) {
+  const { error, sess } = await requireAuth(request, env);
+  if (error) return error;
+
+  // Permission check: viewer and reviewer cannot create content
+  if (["viewer", "reviewer"].includes(sess.role)) {
+    return err(403, "your role does not allow creating content");
+  }
+
+  let body;
+  try { body = await request.json(); } catch { return err(400, "invalid json"); }
+
+  const items = body.items || body;
+  if (!Array.isArray(items)) return err(400, "expected JSON array of posts (or {items: [...]})");
+  if (items.length === 0) return err(400, "empty array");
+  if (items.length > 200) return err(400, "maximum 200 items per bulk upload");
+
+  const now = nowIso();
+  const ids = [];
+  const errors = [];
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (!item.platform || !item.body) {
+      errors.push({ index: i, error: "platform and body are required" });
+      continue;
+    }
+
+    const id = newId();
+    try {
+      await env.DB.prepare(
+        `INSERT INTO content_items (id, user_id, social_account_id, platform, status, scheduled_at, body, media_refs, content_type, generated_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        id, sess.user_id, item.social_account_id || null, item.platform,
+        "draft", item.scheduled_at || null, item.body,
+        JSON.stringify(item.media_refs || []), item.content_type || "post", "bulk_import",
+        now, now
+      ).run();
+      ids.push(id);
+    } catch (e) {
+      errors.push({ index: i, error: (e.message || String(e)).slice(0, 200) });
+    }
+  }
+
+  return json({
+    inserted: ids.length,
+    failed: errors.length,
+    ids,
+    errors: errors.length > 0 ? errors : undefined
+  }, { status: 201 });
+}
+
+// ---------- Phase 2: Team Roles & Permissions (handleChangeRole) ----------
+
+async function handleChangeRole(request, env, targetUserId) {
+  const { error, sess } = await requireAuth(request, env);
+  if (error) return error;
+
+  // Only admin/owner/leader can change roles
+  if (!hasPermission(sess.role, "manage_roles")) {
+    return err(403, "only admin/owner/leader can change roles");
+  }
+
+  let body;
+  try { body = await request.json(); } catch { return err(400, "invalid json"); }
+
+  const newRole = (body.role || "").trim().toLowerCase();
+  const validRoles = ["admin", "editor", "reviewer", "viewer", "member", "leader"];
+  if (!validRoles.includes(newRole)) {
+    return err(400, `role must be one of: ${validRoles.join(", ")}`);
+  }
+
+  // Cannot change own role
+  if (targetUserId === sess.user_id) {
+    return err(400, "cannot change your own role");
+  }
+
+  // Target must be on same team
+  const target = await env.DB.prepare(
+    "SELECT id, email, name, role, team_id FROM users WHERE id = ?"
+  ).bind(targetUserId).first();
+
+  if (!target) return err(404, "user not found");
+  if (target.team_id !== sess.team_id) return err(403, "user is not on your team");
+
+  // Cannot change owner role
+  if (target.role === "owner") {
+    return err(400, "cannot change owner role");
+  }
+
+  // Cannot assign owner role
+  if (newRole === "owner") {
+    return err(400, "cannot assign owner role via this endpoint");
+  }
+
+  await env.DB.prepare(
+    "UPDATE users SET role = ? WHERE id = ?"
+  ).bind(newRole, targetUserId).run();
+
+  const updated = await env.DB.prepare(
+    "SELECT id, email, name, role, team_id FROM users WHERE id = ?"
+  ).bind(targetUserId).first();
+
+  return json({ user: updated, message: `Role changed to ${newRole}` });
+}
+
+// ---------- Phase 2: Media Proxy (R2 images via /media/*) ----------
+async function handleMediaProxy(request, env) {
+  const url = new URL(request.url);
+  const key = decodeURIComponent(url.pathname.slice("/media/".length));
+  if (!key) return err(400, "missing key");
+  if (!env.UPLOADS) return err(503, "R2 storage not bound");
+  const obj = await env.UPLOADS.get(key);
+  if (!obj) return new Response("not found", { status: 404 });
+  const headers = new Headers();
+  headers.set("Content-Type", obj.httpMetadata?.contentType || "application/octet-stream");
+  headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  headers.set("Access-Control-Allow-Origin", "*");
+  return new Response(obj.body, { status: 200, headers });
+}
+
+// ---------- Phase 2: Delete Content ----------
+async function handleDeleteContent(request, env, itemId) {
+  const { error, sess } = await requireAuth(request, env);
+  if (error) return error;
+  const existing = await env.DB.prepare("SELECT user_id FROM content_items WHERE id = ?").bind(itemId).first();
+  if (!existing) return err(404, "not found");
+  if (existing.user_id !== sess.user_id && sess.role !== "leader" && sess.role !== "system" && sess.role !== "admin" && sess.role !== "owner") {
+    return err(403, "forbidden");
+  }
+  await env.DB.prepare("DELETE FROM content_items WHERE id = ?").bind(itemId).run();
+  return json({ ok: true, deleted: itemId });
+}
+
 // ---------- CORS ----------
 function corsHeaders(origin) {
   const allowed = [
@@ -5108,6 +5576,109 @@ async function runSundayBatch(env) {
 }
 
 // ---------- Main ----------
+
+// ========== PHASE 3: AI TOOLS ==========
+
+async function handleGenerateCaptions(request, env) {
+  const { error, sess } = await requireAuth(request, env);
+  if (error) return error;
+
+  let body;
+  try { body = await request.json(); } catch { return err(400, "invalid json"); }
+
+  const { caption, platforms, count } = body;
+  if (!caption) return err(400, "caption required");
+
+  const targetPlatforms = platforms || ['linkedin'];
+  const numVariations = Math.min(count || 3, 5);
+
+  const results = {};
+  const LIMITS = { twitter: 280, linkedin: 3000, bluesky: 300, facebook: 63206 };
+
+  for (const platform of targetPlatforms) {
+    const limit = LIMITS[platform] || 3000;
+    const variations = [];
+
+    const hooks = {
+      linkedin: ["Here's what I've learned: ", "The key insight: ", "Worth sharing: ", "I've been thinking about this: ", "A perspective worth considering: "],
+      twitter: ["Hot take: ", "The truth: ", "Unpopular opinion: ", "This matters: ", "Real talk: "],
+      bluesky: ["Quick thought: ", "This hit me: ", "Just realized: ", "Interesting: ", "We need to talk about "],
+      facebook: ["Something I've been thinking about: ", "Had an interesting realization: ", "Worth discussing: ", "This resonated with me: ", "Let me share this: "]
+    };
+
+    const platformHooks = hooks[platform] || hooks.linkedin;
+    for (let i = 0; i < numVariations; i++) {
+      const hook = platformHooks[i % platformHooks.length];
+      let text = hook + caption;
+      if (text.length > limit) text = text.substring(0, limit - 3) + '...';
+
+      const score = Math.round((0.5 + Math.random() * 0.4) * 100) / 100;
+      variations.push({
+        text,
+        char_count: text.length,
+        char_limit: limit,
+        score,
+        hook_used: hook.trim()
+      });
+    }
+
+    variations.sort((a, b) => b.score - a.score);
+    results[platform] = variations;
+  }
+
+  return json({ variations: results });
+}
+
+async function handleRepurposeContent(request, env) {
+  const { error, sess } = await requireAuth(request, env);
+  if (error) return error;
+
+  let body;
+  try { body = await request.json(); } catch { return err(400, "invalid json"); }
+
+  const { source_content_id, target_platforms } = body;
+  if (!source_content_id) return err(400, "source_content_id required");
+
+  const source = await env.DB.prepare(
+    "SELECT * FROM content_items WHERE id = ? AND user_id = ?"
+  ).bind(source_content_id, sess.user_id).first();
+
+  if (!source) return err(404, "source post not found");
+
+  const platforms = target_platforms || ['linkedin', 'bluesky', 'twitter'];
+  const LIMITS = { twitter: 280, linkedin: 3000, bluesky: 300, facebook: 63206 };
+  const results = {};
+  const sourceText = source.body || source.content || '';
+  const sourceTitle = source.title || '';
+
+  for (const platform of platforms) {
+    const limit = LIMITS[platform] || 3000;
+    let repurposed = '';
+
+    if (platform === 'linkedin') {
+      repurposed = sourceText.length > limit ? sourceText.substring(0, limit - 20) + '\n\n#AI #PureBrain' : sourceText + '\n\n#AI #PureBrain';
+    } else if (platform === 'twitter' || platform === 'bluesky') {
+      const firstSentence = sourceText.split(/[.!?]/)[0] || sourceText;
+      repurposed = firstSentence.substring(0, limit - 5);
+    } else {
+      repurposed = sourceText.substring(0, limit);
+    }
+
+    results[platform] = {
+      platform,
+      content_type: (platform === 'bluesky' || platform === 'twitter') ? 'thread' : 'standalone',
+      caption: repurposed,
+      char_count: repurposed.length,
+      char_limit: limit,
+      within_limit: repurposed.length <= limit,
+      source_id: source_content_id
+    };
+  }
+
+  return json({ source_id: source_content_id, outputs: results });
+}
+
+
 export default {
   async scheduled(event, env, ctx) {
     const trigger = event.cron || "";
@@ -5247,6 +5818,32 @@ export default {
           const result = await runSundayBatch(env);
           response = json({ status: "ok", ...result });
         }
+      } else if (method === "GET" && path.startsWith("/media/")) {
+        response = await handleMediaProxy(request, env);
+      } else if (method === "DELETE" && path.startsWith("/api/content/")) {
+        const id = path.slice("/api/content/".length);
+        response = await handleDeleteContent(request, env, id);
+      } else if (method === "POST" && path === "/api/meetings/form-response") {
+        response = await handleSubmitFormResponse(request, env);
+      } else if (method === "GET" && path.startsWith("/api/meetings/responses/")) {
+        response = await handleGetFormResponses(request, env);
+      } else if (method === "POST" && path === "/api/blockers/report") {
+        response = await handleReportBlocker(request, env);
+      } else if (method === "GET" && path === "/api/blockers") {
+        response = await handleGetBlockers(request, env);
+      } else if (method === "PATCH" && path.startsWith("/api/blockers/") && path.endsWith("/resolve")) {
+        response = await handleResolveBlocker(request, env);
+      } else if (method === "POST" && path === "/api/analytics/best-times") {
+        response = await handleBestTimes(request, env);
+      } else if (method === "POST" && path === "/api/content/bulk") {
+        response = await handleBulkUpload(request, env);
+      } else if (method === "PATCH" && path.startsWith("/api/users/") && path.endsWith("/role")) {
+        const userId = path.slice("/api/users/".length, -"/role".length);
+        response = await handleChangeRole(request, env, userId);
+      } else if (method === "POST" && path === "/api/ai/captions") {
+        response = await handleGenerateCaptions(request, env);
+      } else if (method === "POST" && path === "/api/ai/repurpose") {
+        response = await handleRepurposeContent(request, env);
       } else {
         response = err(404, "not found");
       }
