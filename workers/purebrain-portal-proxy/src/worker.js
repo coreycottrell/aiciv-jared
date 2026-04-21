@@ -145,11 +145,22 @@ export default {
 
     // portal.purebrain.ai routing
     if (subdomain === 'portal') {
-      // Admin pages → serve from CF Pages (purebrain.ai) with email/password login
+      // Admin HTML pages → CF Pages (git, NOT container)
       if (url.pathname.startsWith('/admin/clients') || url.pathname.startsWith('/admin/referrals')) {
-        const pagesUrl = `https://purebrain.ai${url.pathname}${url.pathname.endsWith('/') ? '' : '/'}${url.search}`;
-        const resp = await fetch(pagesUrl);
+        const pagesPath = url.pathname.endsWith('/') ? url.pathname + 'index.html' : url.pathname + '/index.html';
+        const resp = await fetch(`https://purebrain.ai${pagesPath}`);
         return new Response(resp.body, { status: resp.status, headers: resp.headers });
+      }
+      // Admin + Referral API → D1 Workers
+      // Login API → social-api Worker (for email/password auth)
+      if (url.pathname === '/api/login') {
+        const resp = await fetch(new Request('https://social-api.in0v8.workers.dev/api/login', {
+          method: request.method, headers: request.headers,
+          body: request.method !== 'GET' ? request.body : null,
+        }));
+        const respHeaders = new Headers(resp.headers);
+        respHeaders.set('Access-Control-Allow-Origin', '*');
+        return new Response(resp.body, { status: resp.status, headers: respHeaders });
       }
       // Referral API → referrals-api Worker (D1)
       if (url.pathname.startsWith('/api/referral/') || url.pathname === '/api/referral') {
