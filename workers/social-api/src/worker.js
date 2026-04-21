@@ -3356,7 +3356,12 @@ async function qgApproveAnyway() {
 
 async function doApprovePost(id) {
   try {
-    await api("/api/content/" + id, { method: "PATCH", body: JSON.stringify({ status: "scheduled" }) });
+    var post = cachedPosts.find(function(p){return p.id===id;});
+    var patchBody = { status: "scheduled" };
+    if (post && post.scheduled_at) {
+      patchBody.scheduled_at = post.scheduled_at;
+    }
+    await api("/api/content/" + id, { method: "PATCH", body: JSON.stringify(patchBody) });
     toast('Post approved', 'success'); await refreshAllData();
   } catch(e) { toast('Failed: ' + e.message, 'error'); }
 }
@@ -5676,6 +5681,276 @@ async function handleRepurposeContent(request, env) {
 
   return json({ source_id: source_content_id, outputs: results });
 }
+
+
+
+// ============================================================
+// ENHANCED SUNDAY BATCH CRON HANDLER
+// Fires every Sunday 6am ET (11am UTC)
+// Generates weekly content for all registered AI partners
+// Falls back to built-in templates when no partner endpoint
+// Validates SOP compliance before insertion
+// ============================================================
+
+// SOP CONTENT TEMPLATES (used when no AI partner endpoint available)
+const CONTENT_TEMPLATES = {
+  standalone: [
+    { hook: "Here's what nobody tells you about {topic}: ", body: "The real insight isn't in the technology — it's in how you deploy it. {insight} That's the difference between a tool and a transformation.", hashtags: "#AI #AgenticAI #PureBrain" },
+    { hook: "I've seen this pattern in every successful AI deployment: ", body: "{insight} The companies that get this right don't just adopt AI — they redesign their workflows around it.", hashtags: "#AIPartnership #FutureOfWork #PureBrain" },
+    { hook: "Stop asking 'which AI model should I use?' Start asking: ", body: "'What system am I building around it?' {insight} The model is a commodity. The system is the moat.", hashtags: "#AI #BusinessAI #PureBrain" },
+    { hook: "The hardest lesson in AI adoption: ", body: "{insight} Most companies learn this after burning through their first budget. The smart ones learn it before.", hashtags: "#AIStrategy #PureBrain #AgenticAI" },
+    { hook: "Your AI agent ran 847 tasks while you slept. But here's what matters: ", body: "{insight} It's not about volume. It's about the 3 tasks that actually moved the needle.", hashtags: "#AIAgents #Productivity #PureBrain" },
+  ],
+  blog: [
+    { title: "Why {topic} Changes Everything for {industry}", hook: "The landscape shifted and most people missed it.", body: "{insight} We've been building towards this for months, and the data is finally clear." },
+    { title: "The {metric} Problem: What Nobody's Talking About", hook: "Everyone's focused on the wrong metric.", body: "Here's what actually matters: {insight}" },
+    { title: "How {company_type} Companies Are Using AI Wrong", hook: "It's not the technology that's failing.", body: "{insight} The fix isn't more AI — it's better systems around the AI you already have." },
+  ],
+  newsletter_promo: [
+    { hook: "New on the blog: ", body: "\"{title}\" — {insight}\n\nRead the full post: {url}\n\nWhat's your take?", hashtags: "#PureBrain #AIThoughtLeadership" },
+  ]
+};
+
+// TOPICS for template filling
+const TOPICS = [
+  "persistent memory in AI agents",
+  "AI agent security and governance",
+  "the cost of AI tool sprawl",
+  "AI partnerships vs AI tools",
+  "autonomous AI decision-making",
+  "enterprise AI deployment patterns",
+  "AI agent orchestration at scale",
+  "the Three Minds Framework",
+  "measuring AI ROI beyond automation",
+  "AI agents that learn from experience",
+  "cross-functional AI coordination",
+  "AI-powered revenue operations",
+  "building AI systems that compound",
+  "the future of human-AI collaboration",
+];
+
+const INSIGHTS = [
+  "The companies winning with AI aren't the ones with the best models — they're the ones with the best workflows.",
+  "A persistent AI agent that remembers your context is worth more than 10 that start fresh every conversation.",
+  "The real cost isn't the subscription. It's the 23 hours your team spends re-teaching the AI what it should already know.",
+  "When your AI agents coordinate with each other, you stop being the bottleneck.",
+  "Security isn't a feature you add to AI agents. It's the foundation you build them on.",
+  "The first AI company to solve persistent memory at scale will own the next decade.",
+  "Most AI deployments fail not because the AI is bad, but because the system around it is.",
+  "Your competitors aren't using better AI. They're using the same AI with better infrastructure.",
+];
+
+// SOP QUALITY GATE
+const BANNED_WORDS = ['chatbot', 'ai tool', 'ai assistant', 'saas', 'free trial', 'leverage', 'disruption', 'disruptive', 'best-in-class', 'cutting-edge', 'game-changer', 'revolutionary', 'synergy'];
+const CHAR_LIMITS = { linkedin: 3000, twitter: 280, bluesky: 300, facebook: 63206 };
+
+function validateSOP(post) {
+  const violations = [];
+  const text = (post.body || '').toLowerCase();
+
+  // Check banned words
+  for (const word of BANNED_WORDS) {
+    if (text.includes(word)) violations.push(`Banned word: "${word}"`);
+  }
+
+  // Check character limits
+  const limit = CHAR_LIMITS[post.platform] || 3000;
+  if (post.body && post.body.length > limit) {
+    violations.push(`Over char limit: ${post.body.length}/${limit}`);
+  }
+
+  // Check line breaks (SOP requires paragraph breaks for LinkedIn)
+  if (post.platform === 'linkedin' && post.body && !post.body.includes('\n\n')) {
+    violations.push('Missing paragraph breaks (LinkedIn SOP requires line breaks)');
+  }
+
+  // Check minimum length
+  if (post.body && post.body.length < 50) {
+    violations.push(`Too short: ${post.body.length} chars (min 50)`);
+  }
+
+  return { valid: violations.length === 0, violations };
+}
+
+// GENERATE CONTENT (template-based, no external AI needed)
+function generateWeeklyContent(platform, count, weekStart) {
+  const drafts = [];
+  const usedTopics = new Set();
+
+  for (let i = 0; i < count; i++) {
+    // Pick unique topic
+    let topicIdx;
+    do { topicIdx = Math.floor(Math.random() * TOPICS.length); } while (usedTopics.has(topicIdx) && usedTopics.size < TOPICS.length);
+    usedTopics.add(topicIdx);
+
+    const topic = TOPICS[topicIdx];
+    const insight = INSIGHTS[Math.floor(Math.random() * INSIGHTS.length)];
+
+    // Determine content type based on position in week
+    let contentType, template;
+    if (i === 0 && count >= 5) {
+      // First item = blog
+      contentType = 'blog';
+      const tpl = CONTENT_TEMPLATES.blog[Math.floor(Math.random() * CONTENT_TEMPLATES.blog.length)];
+      template = tpl;
+    } else if (i === 1 && count >= 5) {
+      // Second = newsletter promo
+      contentType = 'newsletter_promo';
+      template = CONTENT_TEMPLATES.newsletter_promo[0];
+    } else {
+      contentType = 'standalone';
+      template = CONTENT_TEMPLATES.standalone[Math.floor(Math.random() * CONTENT_TEMPLATES.standalone.length)];
+    }
+
+    // Fill template
+    let body = (template.hook || '') + (template.body || '');
+    body = body.replace(/\{topic\}/g, topic)
+               .replace(/\{insight\}/g, insight)
+               .replace(/\{industry\}/g, 'enterprise')
+               .replace(/\{metric\}/g, '40%')
+               .replace(/\{company_type\}/g, 'mid-market')
+               .replace(/\{title\}/g, template.title || topic)
+               .replace(/\{url\}/g, 'https://purebrain.ai/blog/');
+
+    if (template.hashtags) body += '\n\n' + template.hashtags;
+
+    // Schedule across the week (Mon-Fri, 8am-1pm ET)
+    const dayOffset = i % 5 + 1; // Mon=1, Tue=2, ...
+    const hour = 8 + (i % 3) * 2; // 8am, 10am, 12pm
+    const schedDate = new Date(weekStart);
+    schedDate.setUTCDate(schedDate.getUTCDate() + dayOffset);
+    schedDate.setUTCHours(hour + 5, 0, 0, 0); // ET = UTC-5
+
+    const draft = {
+      platform,
+      content_type: contentType,
+      body,
+      title: template.title ? template.title.replace(/\{topic\}/g, topic).replace(/\{metric\}/g, '40%').replace(/\{company_type\}/g, 'mid-market').replace(/\{industry\}/g, 'enterprise') : null,
+      scheduled_at: schedDate.toISOString(),
+      media_refs: [], // Images need to be generated separately
+    };
+
+    // Validate SOP
+    const validation = validateSOP(draft);
+    if (validation.valid) {
+      drafts.push(draft);
+    } else {
+      console.log(`[sunday-batch] SOP violation for ${contentType}: ${validation.violations.join(', ')}`);
+      // Fix and retry
+      for (const word of BANNED_WORDS) {
+        draft.body = draft.body.replace(new RegExp(word, 'gi'), '');
+      }
+      drafts.push(draft); // Insert anyway after cleanup
+    }
+  }
+
+  return drafts;
+}
+
+// MAIN HANDLER — called from scheduled() event
+async function runEnhancedSundayBatch(env) {
+  console.log("[sunday-batch-v2] Starting enhanced weekly content generation");
+
+  const now = new Date();
+  const weekStart = new Date(now);
+  weekStart.setUTCDate(weekStart.getUTCDate() + (1 - weekStart.getUTCDay())); // next Monday
+  const weekStartIso = weekStart.toISOString().slice(0, 10);
+
+  // Get all AI partners
+  const { results: partners } = await env.DB.prepare(
+    `SELECT ap.id, ap.user_id, ap.partner_name, ap.partner_endpoint, ap.mode,
+            u.email, u.name
+     FROM ai_partners ap JOIN users u ON ap.user_id = u.id`
+  ).all();
+
+  let totalDrafts = 0;
+  const errors = [];
+
+  for (const p of partners || []) {
+    try {
+      // Get user's social accounts
+      const { results: accounts } = await env.DB.prepare(
+        "SELECT id, platform, account_handle FROM social_accounts WHERE user_id = ?"
+      ).bind(p.user_id).all();
+
+      if (!accounts || accounts.length === 0) {
+        console.log(`[sunday-batch-v2] skip ${p.partner_name} — no accounts`);
+        continue;
+      }
+
+      let drafts = [];
+
+      // Try external AI partner endpoint first
+      if (p.partner_endpoint && p.mode !== 'poll') {
+        try {
+          const res = await fetch(p.partner_endpoint.replace(/\/$/, "") + "/generate_week", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: p.user_id,
+              week_start: weekStartIso,
+              target_count_per_platform: { linkedin: 7 }
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            drafts = data.drafts || [];
+          }
+        } catch (e) {
+          console.log(`[sunday-batch-v2] ${p.partner_name} endpoint failed: ${e.message}`);
+        }
+      }
+
+      // FALLBACK: Generate content using templates
+      if (drafts.length === 0) {
+        console.log(`[sunday-batch-v2] ${p.partner_name}: using built-in content generator`);
+        for (const acct of accounts) {
+          const count = acct.platform === 'linkedin' ? 7 : 3;
+          const generated = generateWeeklyContent(acct.platform, count, weekStart);
+          for (const d of generated) {
+            d.social_account_id = acct.id;
+          }
+          drafts.push(...generated);
+        }
+      }
+
+      // Insert drafts into D1 with SOP validation
+      for (const d of drafts) {
+        const acctId = d.social_account_id || (accounts.find(a => a.platform === d.platform) || {}).id;
+        if (!acctId) continue;
+
+        const validation = validateSOP(d);
+        if (!validation.valid) {
+          console.log(`[sunday-batch-v2] SOP reject: ${validation.violations.join(', ')}`);
+          continue;
+        }
+
+        await env.DB.prepare(
+          `INSERT INTO content_items (id, user_id, social_account_id, platform, status, content_type, scheduled_at, body, media_refs, generated_by, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          crypto.randomUUID(), p.user_id, acctId, d.platform || 'linkedin',
+          d.content_type || 'standalone', d.scheduled_at || null, d.body,
+          JSON.stringify(d.media_refs || []), `ai:${p.partner_name}`,
+          new Date().toISOString(), new Date().toISOString()
+        ).run();
+        totalDrafts++;
+      }
+
+      console.log(`[sunday-batch-v2] ${p.partner_name}: +${drafts.length} drafts`);
+    } catch (e) {
+      errors.push(`${p.partner_name}: ${e.message}`);
+      console.log(`[sunday-batch-v2] ERROR ${p.partner_name}: ${e.message}`);
+    }
+  }
+
+  console.log(`[sunday-batch-v2] DONE. ${totalDrafts} drafts, ${errors.length} errors`);
+  return { totalDrafts, partnerCount: (partners || []).length, errors };
+}
+
+// Export for integration into worker.js scheduled handler
+// In scheduled(event, env, ctx):
+//   if (trigger === "0 11 * * 0") ctx.waitUntil(runEnhancedSundayBatch(env));
 
 
 export default {
