@@ -175,7 +175,35 @@ export default {
         respHeaders.set('Access-Control-Allow-Origin', '*');
         return new Response(resp.body, { status: resp.status, headers: respHeaders });
       }
-      // Admin API → social-api Worker (D1)
+      // Admin referral endpoints → referrals-api Worker (D1)
+      if (url.pathname.startsWith('/api/admin/affiliat') || url.pathname.startsWith('/api/admin/payout') || url.pathname.startsWith('/api/admin/referral/') || url.pathname === '/api/admin/stats') {
+        const workerPath = url.pathname.replace('/api/admin', '/admin');
+        const workerUrl = `https://referrals-api.in0v8.workers.dev${workerPath}${url.search}`;
+        const proxyHeaders = new Headers(request.headers);
+        proxyHeaders.set('X-Admin-Token', 'purebrain-admin-2026');
+        const resp = await fetch(new Request(workerUrl, {
+          method: request.method, headers: proxyHeaders,
+          body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : null,
+        }));
+        const respHeaders = new Headers(resp.headers);
+        respHeaders.set('Access-Control-Allow-Origin', '*');
+        return new Response(resp.body, { status: resp.status, headers: respHeaders });
+      }
+      // Admin referral endpoints → referrals-api Worker (D1)
+      if (url.pathname.startsWith('/api/admin/affiliat') || url.pathname.startsWith('/api/admin/payout') || url.pathname.startsWith('/api/admin/referral/') || url.pathname === '/api/admin/stats') {
+        const workerPath = url.pathname.replace('/api/admin', '/admin');
+        const proxyHeaders = new Headers(request.headers);
+        proxyHeaders.set('X-Admin-Token', 'purebrain-admin-2026');
+        const workerUrl = `https://referrals-api.in0v8.workers.dev${workerPath}${url.search}`;
+        const resp = await fetch(new Request(workerUrl, {
+          method: request.method, headers: proxyHeaders,
+          body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : null,
+        }));
+        const respHeaders = new Headers(resp.headers);
+        respHeaders.set('Access-Control-Allow-Origin', '*');
+        return new Response(resp.body, { status: resp.status, headers: respHeaders });
+      }
+      // Admin client endpoints → social-api Worker (D1)
       if (url.pathname.startsWith('/api/admin/')) {
         const workerUrl = `https://social-api.in0v8.workers.dev${url.pathname}${url.search}`;
         const resp = await fetch(new Request(workerUrl, {
