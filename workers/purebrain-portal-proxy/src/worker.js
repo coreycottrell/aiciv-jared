@@ -143,8 +143,14 @@ export default {
     // to the tunnel → nginx → portal_server.py, which is the authoritative
     // SQLite write path.
 
-    // portal.purebrain.ai API routing to D1-backed Workers (NO local SQLite)
+    // portal.purebrain.ai routing
     if (subdomain === 'portal') {
+      // Admin pages → serve from CF Pages (purebrain.ai) with email/password login
+      if (url.pathname.startsWith('/admin/clients') || url.pathname.startsWith('/admin/referrals')) {
+        const pagesUrl = `https://purebrain.ai${url.pathname}${url.pathname.endsWith('/') ? '' : '/'}${url.search}`;
+        const resp = await fetch(pagesUrl);
+        return new Response(resp.body, { status: resp.status, headers: resp.headers });
+      }
       // Referral API → referrals-api Worker (D1)
       if (url.pathname.startsWith('/api/referral/') || url.pathname === '/api/referral') {
         const workerPath = url.pathname.replace('/api/referral', '') || '/';
