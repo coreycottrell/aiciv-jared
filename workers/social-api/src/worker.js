@@ -4978,6 +4978,7 @@ async function handleReadyFeed(request, env) {
             sa.credentials_encrypted, sa.session_token_encrypted
      FROM content_items ci JOIN social_accounts sa ON ci.social_account_id = sa.id
      WHERE ci.status = 'scheduled' AND ci.scheduled_at <= ?
+       AND ci.content_type IN ('standalone', 'newsletter_promo', 'post')
      ORDER BY ci.scheduled_at ASC LIMIT 50`
   ).bind(now).all();
 
