@@ -478,54 +478,56 @@ export default {
       if (path === "/admin/affiliates") {
         if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
 
+        // Single aggregated query instead of N+1 per-referrer
         const { results: referrers } = await env.DB.prepare(
-          `SELECT * FROM referrers ORDER BY created_at DESC`
+          `SELECT r.*,
+                  COALESCE(rc.click_count, 0) AS clicks,
+                  COALESCE(ref_stats.total, 0) AS total,
+                  COALESCE(ref_stats.completed, 0) AS completed,
+                  COALESCE(ref_stats.pending, 0) AS pending,
+                  COALESCE(rew.earnings, 0) AS earnings
+           FROM referrers r
+           LEFT JOIN (SELECT referral_code, COUNT(*) AS click_count FROM referral_clicks GROUP BY referral_code) rc
+             ON LOWER(rc.referral_code) = LOWER(r.referral_code)
+           LEFT JOIN (SELECT referrer_id,
+                             COUNT(*) AS total,
+                             SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
+                             SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending
+                      FROM referrals GROUP BY referrer_id) ref_stats
+             ON ref_stats.referrer_id = r.id
+           LEFT JOIN (SELECT referrer_id, COALESCE(SUM(reward_value), 0) AS earnings FROM rewards GROUP BY referrer_id) rew
+             ON rew.referrer_id = r.id
+           ORDER BY r.created_at DESC`
         ).all();
 
-        const affiliates = [];
-        for (const r of referrers || []) {
-          const rid = r.id, code = r.referral_code;
-          const totalQ = await env.DB.prepare(
-            `SELECT COUNT(*) AS c FROM referrals WHERE referrer_id = ?`
-          ).bind(rid).first();
-          const completedQ = await env.DB.prepare(
-            `SELECT COUNT(*) AS c FROM referrals WHERE referrer_id = ? AND status = 'completed'`
-          ).bind(rid).first();
-          const pendingQ = await env.DB.prepare(
-            `SELECT COUNT(*) AS c FROM referrals WHERE referrer_id = ? AND status = 'pending'`
-          ).bind(rid).first();
-          const earningsQ = await env.DB.prepare(
-            `SELECT COALESCE(SUM(reward_value), 0) AS s FROM rewards WHERE referrer_id = ?`
-          ).bind(rid).first();
-          const clicksQ = await env.DB.prepare(
-            `SELECT COUNT(*) AS c FROM referral_clicks WHERE referral_code = ? COLLATE NOCASE`
-          ).bind(code).first();
-          const histQ = await env.DB.prepare(
-            `SELECT ref.id, ref.referred_name, ref.referred_email, ref.status, ref.created_at,
-                    COALESCE(SUM(cp.commission_value), 0) AS earnings,
-                    COUNT(cp.id) AS payment_count
-               FROM referrals ref
-               LEFT JOIN commission_payments cp ON cp.referral_id = ref.id
-              WHERE ref.referrer_id = ?
+        // Get referral history in one query
+        const { results: allHistory } = await env.DB.prepare(
+          `SELECT ref.referrer_id, ref.id, ref.referred_name, ref.referred_email, ref.status, ref.created_at,
+                  COALESCE(SUM(cp.commission_value), 0) AS earnings,
+                  COUNT(cp.id) AS payment_count
+           FROM referrals ref
+           LEFT JOIN commission_payments cp ON cp.referral_id = ref.id
            GROUP BY ref.id
            ORDER BY ref.created_at DESC`
-          ).bind(rid).all();
+        ).all();
 
-          affiliates.push({
-            id:           rid,
-            name:         r.user_name,
-            email:        r.user_email,
-            code:         code,
-            paypal_email: r.paypal_email,
-            clicks:       clicksQ.c,
-            total:        totalQ.c,
-            completed:    completedQ.c,
-            pending:      pendingQ.c,
-            earnings:     Math.round((earningsQ.s || 0) * 100) / 100,
-            joined:       r.created_at,
-            history:      histQ.results || [],
+        // Group history by referrer
+        const histMap = {};
+        for (const h of allHistory || []) {
+          if (!histMap[h.referrer_id]) histMap[h.referrer_id] = [];
+          histMap[h.referrer_id].push({
+            id: h.id, referred_name: h.referred_name, referred_email: h.referred_email,
+            status: h.status, created_at: h.created_at, earnings: h.earnings, payment_count: h.payment_count
           });
         }
+
+        const affiliates = (referrers || []).map(r => ({
+          id: r.id, name: r.user_name, email: r.user_email, code: r.referral_code,
+          paypal_email: r.paypal_email || "", clicks: r.clicks || 0,
+          total: r.total || 0, completed: r.completed || 0, pending: r.pending || 0,
+          earnings: r.earnings || 0, joined: r.created_at,
+          history: histMap[r.id] || []
+        }));
 
         return json({ affiliates, count: affiliates.length });
       }
