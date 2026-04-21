@@ -6082,6 +6082,14 @@ export default {
         response = await handleUpload(request, env);
       } else if (method === "POST" && path === "/api/me/password") {
         response = await handleChangePassword(request, env);
+      } else if (method === "GET" && path === "/api/admin/clients") {
+        const { error: authErr, sess } = await requireAuth(request, env);
+        if (authErr) { response = authErr; }
+        else {
+          const { results } = await env.DB.prepare("SELECT * FROM clients ORDER BY last_active_at DESC").all();
+          const stats = { total: results.length, active: results.filter(r => r.payment_status === 'active').length, total_revenue: results.reduce((s, r) => s + (r.total_paid || 0), 0) };
+          response = json({ clients: results || [], stats });
+        }
       } else if (method === "POST" && path === "/api/admin/trigger_sunday_batch") {
         // Manual trigger for testing — requires ROUTER_API_KEY or leader role
         const { error: authErr, sess } = await requireAuth(request, env);
