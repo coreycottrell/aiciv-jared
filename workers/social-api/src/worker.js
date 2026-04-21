@@ -89,7 +89,7 @@ async function decryptSecret(encoded, env) {
 }
 
 
-const FRONTEND_HTML = `<!-- VERIFIED BUILD: 3185 lines, LinkedIn preview + Trello cards, 2026-04-20 10:15 UTC -->
+const FRONTEND_HTML = `<!-- VERIFIED BUILD: 3447 lines, content routing UI + kanban grouping, 2026-04-21 UTC -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -567,13 +567,13 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .kanban-filter-chip:hover{color:var(--text);border-color:var(--border-focus)}
 .kanban-filter-chip.active{color:#fff;background:linear-gradient(135deg,rgba(42,147,193,.2),rgba(241,66,11,.15));border-color:var(--border-focus)}
 .kanban-board{display:flex;gap:16px;padding:16px 20px;height:calc(100vh - 160px);overflow-x:auto}
-.kanban-col{flex:1;min-width:300px;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.kanban-col{flex:1;min-width:280px;max-width:420px;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
 .kanban-col-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);flex-shrink:0}
 .kanban-col-header .col-count{padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;min-width:22px;text-align:center}
 .kanban-col-body{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
 .kanban-col-body.drag-over{background:rgba(42,147,193,0.04);outline:2px dashed var(--border-focus);outline-offset:-4px;border-radius:0 0 12px 12px}
 /* Trello-style kanban cards: visual-first with full-width images */
-.kanban-card{flex-shrink:0;background:rgba(255,255,255,0.025);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;transition:border-color .15s,transform .15s,box-shadow .15s;position:relative;display:flex;flex-direction:column}
+.kanban-card{background:rgba(255,255,255,0.025);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;transition:border-color .15s,transform .15s,box-shadow .15s;position:relative;display:flex;flex-direction:column}
 .kanban-card:hover{border-color:var(--border-focus);transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,0.35)}
 .kanban-card.dragging{opacity:.5;transform:scale(0.96);box-shadow:0 8px 32px rgba(0,0,0,0.4)}
 .kanban-card-bar{height:3px;flex-shrink:0}
@@ -601,6 +601,12 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .ks-approved{background:var(--blue-dim);color:var(--blue)}
 .ks-posted{background:var(--green-dim);color:var(--green)}
 .ks-rejected{background:var(--red-dim);color:var(--red)}
+.route-badge{padding:2px 8px;border-radius:8px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+.route-api{background:rgba(34,197,94,0.15);color:#22c55e}
+.route-blog{background:rgba(42,147,193,0.15);color:#2a93c1}
+.route-manual{background:rgba(245,158,11,0.15);color:#f59e0b}
+.kanban-ct-divider{font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;padding:8px 4px 4px;border-top:1px solid var(--border);margin-top:8px}
+.kanban-ct-divider:first-child{border-top:none;margin-top:0;padding-top:0}
 @keyframes kanbanSlide{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
 .kanban-card-anim{animation:kanbanSlide .3s ease}
 @media (max-width:768px){
@@ -1561,7 +1567,7 @@ function wireTabs(){
 // ========== CONTENT DATA ==========
 async function fetchAllContent(){
   try{
-    const data = await api("/api/content?limit=500");
+    const data = await api("/api/content");
     cachedPosts = (data.items||[]).map(normalizePost);
   }catch(e){
     console.error('fetchAllContent failed:',e);
@@ -2632,8 +2638,38 @@ function renderKanbanCard(post,colType){
   const fbCount=feedback.length||feedbackFromRd.length;
 
   // Post type labels
-  const POST_TYPES = {post:'Standalone',blog:'Blog',newsletter:'Newsletter',newsletter_post:'Newsletter Post',thread:'Thread',linkedin:'Standalone'};
+  const POST_TYPES = {post:'Standalone',blog:'Blog',newsletter:'Newsletter',newsletter_post:'Newsletter Post',newsletter_promo:'Newsletter Promo',thread:'Thread',linkedin:'Standalone',standalone:'Standalone'};
   const typeLabel = POST_TYPES[ct] || 'Standalone';
+
+  // Content routing badge (ONLY standalone auto-publishes via API)
+  let routeBadgeHtml='';
+  if(ct==='standalone'||ct==='post'){
+    routeBadgeHtml='<span class="route-badge route-api">\\u2192 LinkedIn API</span>';
+  }else if(ct==='blog'){
+    routeBadgeHtml='<span class="route-badge route-blog">\\u2192 Blog Deploy</span>';
+  }else if(ct==='newsletter'){
+    routeBadgeHtml='<span class="route-badge route-manual">Manual / PureSurf</span>';
+  }else if(ct==='newsletter_promo'){
+    routeBadgeHtml='<span class="route-badge route-manual">Manual (after newsletter)</span>';
+  }
+
+  // Content-type info banners
+  let infoBannerHtml='';
+  if(ct==='newsletter'){
+    infoBannerHtml='<div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:6px 10px;margin-top:6px;font-size:11px;color:#f59e0b;font-weight:600">\\u26a0\\ufe0f Manual publish — post via LinkedIn UI or PureSurf</div>';
+  }else if(ct==='newsletter_promo'){
+    infoBannerHtml='<div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:6px 10px;margin-top:6px;font-size:11px;color:#f59e0b;font-weight:600">\\u26a0\\ufe0f Post AFTER newsletter drops — manual via LinkedIn UI or PureSurf</div>';
+  }else if(ct==='blog'){
+    infoBannerHtml='<div style="background:rgba(42,147,193,0.1);border:1px solid rgba(42,147,193,0.3);border-radius:6px;padding:6px 10px;margin-top:6px;font-size:11px;color:#2a93c1;font-weight:600">\\ud83d\\udcdd Blog post — deploys to purebrain.ai/blog/, not LinkedIn</div>';
+  }
+
+  // Approve button text by content type
+  let approveLabel='Approve';
+  if(ct==='blog') approveLabel='Approve for Blog Deploy';
+  else if(ct==='newsletter') approveLabel='Approve (Manual Publish)';
+  else if(ct==='newsletter_promo') approveLabel='Approve (After Newsletter)';
+  else if(ct==='newsletter') approveLabel='Approve (Manual Publish)';
+  else approveLabel='Approve &amp; Schedule';
   const schedParts = post.scheduled_at ? new Date(post.scheduled_at) : null;
   const schedDateShort = schedParts ? schedParts.toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
   const schedTimeShort = schedParts ? schedParts.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}) : '';
@@ -2655,6 +2691,7 @@ function renderKanbanCard(post,colType){
   html+='<div class="kanban-card-badges">';
   html+='<span class="kanban-platform-chip" style="background:'+barColor+'">'+(PLATFORM_NAMES[pl]||pl)+'</span>';
   html+='<span class="kanban-type-badge">'+esc(typeLabel)+'</span>';
+  html+=routeBadgeHtml;
   if(!hasMedia)html+='<span class="kanban-needs-image">Needs Image</span>';
   if(post.status==='rejected')html+='<span class="kanban-status-badge ks-rejected">Rejected</span>';
   if(fbCount){
@@ -2670,6 +2707,7 @@ function renderKanbanCard(post,colType){
 
   // Preview text
   html+='<div class="kanban-card-preview">'+esc(preview)+'</div>';
+  html+=infoBannerHtml;
 
   // Schedule info (subtle, at bottom)
   html+='<div class="kanban-card-info-row" style="margin-top:8px">';
@@ -2683,7 +2721,7 @@ function renderKanbanCard(post,colType){
   // Actions
   if(colType==='pending'){
     html+='<div class="kanban-card-actions" onclick="event.stopPropagation()">';
-    html+='<button class="action-btn approve btn-sm" onclick="event.stopPropagation();kanbanApprove(\\''+post.id+'\\')">Approve</button>';
+    html+='<button class="action-btn approve btn-sm" onclick="event.stopPropagation();kanbanApprove(\\''+post.id+'\\')">'+approveLabel+'</button>';
     html+='<button class="action-btn edit btn-sm" onclick="event.stopPropagation();openEditModal(\\''+post.id+'\\')">Edit</button>';
     html+='</div>';
   }else if(colType==='approved'){
@@ -2720,16 +2758,60 @@ function renderKanbanBoard(){
   const approved=posts.filter(p=>getKanbanColumn(p.status)==='approved');
   const live=posts.filter(p=>getKanbanColumn(p.status)==='live');
 
-  // Sort: most recent first
-  const sortByDate=(a,b)=>{
+  // Sort: group by content_type, then by date within each group
+  const CT_ORDER={blog:0,newsletter:1,newsletter_promo:2,standalone:3,linkedin:4,post:5};
+  const sortByTypeAndDate=(a,b)=>{
+    const ctA=a.content_type||'linkedin';const ctB=b.content_type||'linkedin';
+    const orderA=CT_ORDER[ctA]!=null?CT_ORDER[ctA]:6;
+    const orderB=CT_ORDER[ctB]!=null?CT_ORDER[ctB]:6;
+    if(orderA!==orderB)return orderA-orderB;
     const at=a.scheduled_at||a.created_at||'';const bt=b.scheduled_at||b.created_at||'';
     if(!at)return 1;if(!bt)return -1;return new Date(bt)-new Date(at);
   };
-  pending.sort(sortByDate);approved.sort(sortByDate);live.sort(sortByDate);
+  pending.sort(sortByTypeAndDate);approved.sort(sortByTypeAndDate);live.sort(sortByTypeAndDate);
 
   document.getElementById('kanban-count-pending').textContent=pending.length;
   document.getElementById('kanban-count-approved').textContent=approved.length;
   document.getElementById('kanban-count-live').textContent=live.length;
+
+  const CT_SECTION_LABELS={blog:'Blog Packages',newsletter:'Newsletters',newsletter_promo:'Newsletter Promos',standalone:'Standalone Posts',linkedin:'Standalone Posts',post:'Standalone Posts'};
+
+  // Group blog packages (blog + newsletter + newsletter_promo) into accordions
+  function groupBlogPackages(items) {
+    const blogItems = items.filter(p => ['blog','newsletter','newsletter_promo'].includes(p.content_type));
+    const standaloneItems = items.filter(p => !['blog','newsletter','newsletter_promo'].includes(p.content_type));
+
+    // Group blog items by similarity (first 40 chars of body or matching title)
+    const packages = [];
+    const used = new Set();
+
+    blogItems.filter(p => p.content_type === 'blog').forEach(blog => {
+      if (used.has(blog.id)) return;
+      used.add(blog.id);
+      const pkg = { blog, items: [blog] };
+      const blogPrefix = (blog.body || '').substring(0, 40).toLowerCase();
+
+      // Find matching newsletter + promo
+      blogItems.forEach(p => {
+        if (used.has(p.id) || p.id === blog.id) return;
+        if (p.content_type === 'newsletter' || p.content_type === 'newsletter_promo') {
+          pkg.items.push(p);
+          used.add(p.id);
+        }
+      });
+      packages.push(pkg);
+    });
+
+    // Any remaining newsletter/promo without a blog parent
+    blogItems.forEach(p => {
+      if (!used.has(p.id)) {
+        packages.push({ blog: null, items: [p] });
+        used.add(p.id);
+      }
+    });
+
+    return { packages, standaloneItems };
+  }
 
   const renderCol=(items,containerId,colType)=>{
     const el=document.getElementById(containerId);
@@ -2737,7 +2819,45 @@ function renderKanbanBoard(){
       el.innerHTML='<div class="empty" style="padding:24px 12px"><div class="empty-text" style="font-size:12px">No posts</div></div>';
       return;
     }
-    el.innerHTML=items.map(p=>renderKanbanCard(p,colType)).join('');
+
+    const { packages, standaloneItems } = groupBlogPackages(items);
+    let html='';
+
+    // Render blog packages as accordions
+    if(packages.length > 0) {
+      html+='<div class="kanban-ct-divider">Blog Packages</div>';
+      packages.forEach((pkg, idx) => {
+        const title = pkg.blog ? (pkg.blog.title || (pkg.blog.body||'').substring(0,50)+'...') : 'Blog Package';
+        const count = pkg.items.length;
+        const types = pkg.items.map(i => i.content_type).join(', ');
+        const pkgId = 'pkg-'+containerId+'-'+idx;
+
+        // Accordion header
+        html+='<div style="background:rgba(42,147,193,0.05);border:1px solid rgba(42,147,193,0.15);border-radius:10px;margin-bottom:8px;overflow:hidden">';
+        html+='<div onclick="document.getElementById(\\''+pkgId+'\\').style.display=document.getElementById(\\''+pkgId+'\\').style.display===\\'none\\'?\\'block\\':\\'none\\';this.querySelector(\\'.pkg-arrow\\').textContent=document.getElementById(\\''+pkgId+'\\').style.display===\\'none\\'?\\'\\u25B6\\':\\'\\u25BC\\'" style="padding:10px 12px;cursor:pointer;display:flex;align-items:center;gap:8px">';
+        html+='<span class="pkg-arrow" style="font-size:10px;color:var(--blue)">\\u25BC</span>';
+        html+='<span style="font-size:12px;font-weight:700;color:#fff;flex:1">'+esc(title)+'</span>';
+        html+='<span style="font-size:10px;color:var(--text-dim)">'+count+' items ('+esc(types)+')</span>';
+        html+='</div>';
+
+        // Accordion body (expanded by default)
+        html+='<div id="'+pkgId+'" style="padding:0 8px 8px;display:flex;flex-direction:column;gap:6px">';
+        pkg.items.forEach(p => {
+          html+=renderKanbanCard(p, colType);
+        });
+        html+='</div></div>';
+      });
+    }
+
+    // Render standalone items
+    if(standaloneItems.length > 0) {
+      if(packages.length > 0) html+='<div class="kanban-ct-divider">Standalone Posts</div>';
+      standaloneItems.forEach(p => {
+        html+=renderKanbanCard(p, colType);
+      });
+    }
+
+    el.innerHTML=html;
   };
 
   renderCol(pending,'kanban-body-pending','pending');
@@ -3356,12 +3476,7 @@ async function qgApproveAnyway() {
 
 async function doApprovePost(id) {
   try {
-    var post = cachedPosts.find(function(p){return p.id===id;});
-    var patchBody = { status: "scheduled" };
-    if (post && post.scheduled_at) {
-      patchBody.scheduled_at = post.scheduled_at;
-    }
-    await api("/api/content/" + id, { method: "PATCH", body: JSON.stringify(patchBody) });
+    await api("/api/content/" + id, { method: "PATCH", body: JSON.stringify({ status: "scheduled" }) });
     toast('Post approved', 'success'); await refreshAllData();
   } catch(e) { toast('Failed: ' + e.message, 'error'); }
 }
