@@ -567,13 +567,13 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .kanban-filter-chip:hover{color:var(--text);border-color:var(--border-focus)}
 .kanban-filter-chip.active{color:#fff;background:linear-gradient(135deg,rgba(42,147,193,.2),rgba(241,66,11,.15));border-color:var(--border-focus)}
 .kanban-board{display:flex;gap:16px;padding:16px 20px;height:calc(100vh - 160px);overflow-x:auto}
-.kanban-col{flex:1;min-width:280px;max-width:420px;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.kanban-col{flex:1;min-width:300px;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
 .kanban-col-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);flex-shrink:0}
 .kanban-col-header .col-count{padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;min-width:22px;text-align:center}
 .kanban-col-body{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
 .kanban-col-body.drag-over{background:rgba(42,147,193,0.04);outline:2px dashed var(--border-focus);outline-offset:-4px;border-radius:0 0 12px 12px}
 /* Trello-style kanban cards: visual-first with full-width images */
-.kanban-card{background:rgba(255,255,255,0.025);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;transition:border-color .15s,transform .15s,box-shadow .15s;position:relative;display:flex;flex-direction:column}
+.kanban-card{flex-shrink:0;background:rgba(255,255,255,0.025);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;transition:border-color .15s,transform .15s,box-shadow .15s;position:relative;display:flex;flex-direction:column}
 .kanban-card:hover{border-color:var(--border-focus);transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,0.35)}
 .kanban-card.dragging{opacity:.5;transform:scale(0.96);box-shadow:0 8px 32px rgba(0,0,0,0.4)}
 .kanban-card-bar{height:3px;flex-shrink:0}
