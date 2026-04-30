@@ -419,9 +419,9 @@ def send_welcome_email(human_email: str, human_first: str, ai_name: str, magic_l
     # Load and render template
     if MAGIC_LINK_EMAIL_TEMPLATE.exists():
         html = MAGIC_LINK_EMAIL_TEMPLATE.read_text(encoding="utf-8")
-        html = html.replace("{{HUMAN_FIRST_NAME}}", human_first)
-        html = html.replace("{{CIV_NAME}}", ai_name)
-        html = html.replace("{{MAGIC_LINK}}", magic_link)
+        html = html.replace("{HUMAN_FIRST}", human_first)
+        html = html.replace("{AI_NAME}", ai_name)
+        html = html.replace("{MAGIC_LINK}", magic_link)
     else:
         log.warning("Magic link email template not found at /tmp — using fallback HTML")
         html = _get_fallback_email_html(human_first, ai_name, magic_link)
