@@ -238,7 +238,8 @@ export default {
 
     try {
       // GET /api/sheets/read?range=...&spreadsheetId=...
-      if (path === '/api/sheets/read' && request.method === 'GET') {
+      // GET /api/sheet?range=...  (alias — used by Conductor BOOPs, dashboard, reference docs)
+      if ((path === '/api/sheets/read' || path === '/api/sheet') && request.method === 'GET') {
         const range = url.searchParams.get('range');
         if (!range) return corsResponse(env, { error: 'Missing range parameter' }, 400);
         const ssId = getSpreadsheetId(env, url.searchParams.get('spreadsheetId'));
