@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CE SME — PureBrain.AI</title>
+    <meta name="description" content="Your operations, fully staffed — without the staff. AI-powered proposals, operations, and project control for SMEs.">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg: #080a12;
+            --bg-mid: #0d1020;
+            --bg-light: #131830;
+            --blue: #2a93c1;
+            --blue-light: #3eb5e6;
+            --red: #f1420b;
+            --white: #ffffff;
+            --off-white: #e8eaf0;
+            --muted: #7a8599;
+            --green: #34d399;
+            --yellow: #fbbf24;
+            --border: rgba(42,147,193,0.15);
+            --border-active: rgba(42,147,193,0.4);
+            --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+            --mono: 'SF Mono', 'Fira Code', monospace;
+            --container: 1280px;
+            --transition: 0.25s ease;
+            --radius: 6px;
+        }
+
+        /* Light mode */
+        .light {
+            --bg: #f4f6fa;
+            --bg-mid: #ffffff;
+            --bg-light: #edf0f5;
+            --white: #0a0e1a;
+            --off-white: #1a1e2e;
+            --muted: #5a6577;
+            --border: rgba(42,147,193,0.2);
+            --border-active: rgba(42,147,193,0.5);
+        }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: var(--sans);
+            background: var(--bg);
+            color: var(--white);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            min-height: 100vh;
+        }
+
+        .container { max-width: var(--container); margin: 0 auto; padding: 0 1.5rem; }
+
+        /* ── Auth Screen ── */
+        #auth-screen {
+            position: fixed; inset: 0; z-index: 9999;
+            background: var(--bg);
+            display: flex; align-items: center; justify-content: center;
+            flex-direction: column;
+        }
+        #auth-screen.hidden { display: none; }
+
+        .auth-logo {
+            font-size: 2.5rem; font-weight: 800; margin-bottom: 0.25rem;
+            letter-spacing: -0.02em;
+        }
+        .auth-logo .ce { color: var(--blue); }
+        .auth-logo .brand { color: var(--muted); font-size: 1rem; font-weight: 400; }
+        .auth-tagline {
+            color: var(--muted); font-size: 0.95rem;
+            margin-bottom: 2.5rem; text-align: center;
+            max-width: 360px; line-height: 1.5;
+        }
+        .auth-box {
+            background: var(--bg-mid); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 2rem;
+            width: 100%; max-width: 400px;
+        }
+        .auth-tabs {
+            display: flex; gap: 0; margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .auth-tab {
+            flex: 1; background: none; border: none; color: var(--muted);
+            padding: 0.6rem 0; font-size: 0.85rem; font-weight: 600;
+            cursor: pointer; border-bottom: 2px solid transparent;
+            transition: all var(--transition); font-family: var(--sans);
+        }
+        .auth-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+        .auth-field { margin-bottom: 1rem; }
+        .auth-field label {
+            display: block; font-size: 0.75rem; font-weight: 600;
+            color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em;
+            margin-bottom: 0.4rem;
+        }
+        .auth-field input {
+            width: 100%; background: var(--bg); border: 1px solid var(--border);
+            color: var(--white); padding: 0.7rem 1rem; border-radius: var(--radius);
+            font-size: 0.95rem; font-family: var(--sans);
+            transition: border-color var(--transition); outline: none;
+        }
+        .auth-field input:focus { border-color: var(--blue); }
+        .auth-field input::placeholder { color: var(--muted); opacity: 0.6; }
+
+        .auth-btn {
+            width: 100%; background: var(--blue); color: #fff;
+            border: none; padding: 0.75rem; border-radius: var(--radius);
+            font-size: 0.95rem; font-weight: 600; cursor: pointer;
+            font-family: var(--sans); transition: background var(--transition);
+            margin-top: 0.5rem;
+        }
+        .auth-btn:hover { background: var(--blue-light); }
+        .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .auth-error {
+            color: var(--red); font-size: 0.8rem; margin-top: 0.75rem;
+            display: none; text-align: center;
+        }
+
+        .register-extra { display: none; }
+        .register-extra.visible { display: block; }
+
+        /* ── Top Bar ── */
+        .top-bar {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            background: rgba(8,10,18,0.97); backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            padding: 0.75rem 0; height: 54px;
+        }
+        .light .top-bar { background: rgba(244,246,250,0.97); }
+        .top-bar-inner {
+            display: flex; align-items: center; justify-content: space-between;
+            max-width: var(--container); margin: 0 auto; padding: 0 1.5rem;
+        }
+        .top-logo {
+            font-size: 1.2rem; font-weight: 800; text-decoration: none;
+            color: var(--white); letter-spacing: -0.01em;
+        }
+        .top-logo .ce { color: var(--blue); }
+        .top-logo .dot { color: var(--red); }
+        .top-right { display: flex; align-items: center; gap: 1rem; }
+        .top-user {
+            font-size: 0.8rem; color: var(--muted); max-width: 180px;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .theme-toggle, .logout-btn {
+            background: none; border: 1px solid var(--border);
+            color: var(--muted); padding: 0.35rem 0.65rem; border-radius: var(--radius);
+            font-size: 0.75rem; cursor: pointer; font-family: var(--sans);
+            transition: all var(--transition);
+        }
+        .theme-toggle:hover, .logout-btn:hover {
+            border-color: var(--blue); color: var(--white);
+        }
+
+        /* ── Tab Navigation ── */
+        .tab-nav {
+            display: flex; gap: 0; overflow-x: auto;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-mid);
+            padding: 0 1.5rem;
+            position: fixed; top: 54px; left: 0; right: 0; z-index: 99;
+            -webkit-overflow-scrolling: touch;
+        }
+        .tab-btn {
+            background: none; border: none; color: var(--muted);
+            padding: 0.75rem 1.25rem; font-size: 0.78rem;
+            font-family: var(--sans); font-weight: 600;
+            letter-spacing: 0.06em; text-transform: uppercase;
+            cursor: pointer; white-space: nowrap;
+            border-bottom: 2px solid transparent;
+            transition: color var(--transition), border-color var(--transition);
+        }
+        .tab-btn:hover { color: var(--white); }
+        .tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+        .tab-panel { display: none; padding-top: 120px; padding-bottom: 3rem; }
+        .tab-panel.active { display: block; }
+
+        #main-app { display: none; }
+        #main-app.visible { display: block; }
+
+        /* ── Section ── */
+        .section { padding: 2rem 0; }
+        .section-label {
+            font-size: 0.7rem; letter-spacing: 0.15em; text-transform: uppercase;
+            color: var(--blue); font-weight: 600; margin-bottom: 0.5rem;
+        }
+        .section-title {
+            font-size: 1.6rem; font-weight: 700; margin-bottom: 0.5rem;
+        }
+        .section-title em { font-style: normal; color: var(--blue); }
+        .section-sub {
+            color: var(--muted); font-size: 0.95rem; max-width: 600px;
+            margin-bottom: 2rem;
+        }
+
+        /* ── Stats Cards ── */
+        .stats-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem; margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: var(--bg-mid); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 1.5rem;
+            transition: border-color var(--transition);
+        }
+        .stat-card:hover { border-color: var(--border-active); }
+        .stat-label {
+            font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em;
+            color: var(--muted); font-weight: 600; margin-bottom: 0.5rem;
+        }
+        .stat-value {
+            font-size: 2rem; font-weight: 800; color: var(--white);
+            letter-spacing: -0.02em;
+        }
+        .stat-sub { font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem; }
+        .stat-value.green { color: var(--green); }
+        .stat-value.blue { color: var(--blue); }
+        .stat-value.yellow { color: var(--yellow); }
+
+        /* ── Cards / List ── */
+        .cards-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+        .card {
+            background: var(--bg-mid); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 1.25rem;
+            transition: border-color var(--transition);
+        }
+        .card:hover { border-color: var(--border-active); }
+        .card-title {
+            font-size: 1rem; font-weight: 700; margin-bottom: 0.5rem;
+        }
+        .card-meta {
+            font-size: 0.8rem; color: var(--muted); margin-bottom: 0.5rem;
+        }
+        .card-meta span { margin-right: 1rem; }
+
+        .badge {
+            display: inline-block; font-size: 0.65rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.08em;
+            padding: 0.2rem 0.55rem; border-radius: 3px;
+        }
+        .badge-draft { background: rgba(123,137,153,0.2); color: var(--muted); }
+        .badge-sent { background: rgba(42,147,193,0.15); color: var(--blue); }
+        .badge-won { background: rgba(52,211,153,0.15); color: var(--green); }
+        .badge-lost { background: rgba(241,66,11,0.15); color: var(--red); }
+        .badge-active { background: rgba(42,147,193,0.15); color: var(--blue); }
+        .badge-completed { background: rgba(52,211,153,0.15); color: var(--green); }
+        .badge-pending { background: rgba(251,191,36,0.15); color: var(--yellow); }
+        .badge-high { background: rgba(241,66,11,0.15); color: var(--red); }
+        .badge-medium { background: rgba(251,191,36,0.15); color: var(--yellow); }
+        .badge-low { background: rgba(123,137,153,0.15); color: var(--muted); }
+
+        /* ── Table ── */
+        .data-table {
+            width: 100%; border-collapse: collapse;
+            background: var(--bg-mid); border: 1px solid var(--border);
+            border-radius: var(--radius); overflow: hidden;
+        }
+        .data-table th {
+            font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em;
+            color: var(--muted); font-weight: 600; padding: 0.75rem 1rem;
+            text-align: left; border-bottom: 1px solid var(--border);
+            background: var(--bg-light);
+        }
+        .data-table td {
+            padding: 0.75rem 1rem; font-size: 0.9rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .data-table tr:last-child td { border-bottom: none; }
+        .data-table tr:hover td { background: var(--bg-light); }
+
+        /* ── Buttons ── */
+        .btn {
+            display: inline-flex; align-items: center; gap: 0.4rem;
+            background: var(--blue); color: #fff; border: none;
+            padding: 0.6rem 1.2rem; border-radius: var(--radius);
+            font-size: 0.85rem; font-weight: 600; cursor: pointer;
+            font-family: var(--sans); transition: background var(--transition);
+        }
+        .btn:hover { background: var(--blue-light); }
+        .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.75rem; }
+        .btn-outline {
+            background: transparent; border: 1px solid var(--border);
+            color: var(--white);
+        }
+        .btn-outline:hover { background: var(--bg-light); border-color: var(--blue); }
+        .btn-green { background: var(--green); color: #080a12; }
+        .btn-green:hover { background: #5fe8b5; }
+        .btn-red { background: var(--red); }
+        .btn-red:hover { background: #ff5c2b; }
+
+        .btn-row { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+
+        /* ── Modal ── */
+        .modal-overlay {
+            position: fixed; inset: 0; z-index: 200;
+            background: rgba(0,0,0,0.7); display: none;
+            align-items: center; justify-content: center;
+            padding: 1rem;
+        }
+        .modal-overlay.visible { display: flex; }
+        .modal {
+            background: var(--bg-mid); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 2rem;
+            width: 100%; max-width: 560px; max-height: 85vh;
+            overflow-y: auto;
+        }
+        .modal-title {
+            font-size: 1.2rem; font-weight: 700; margin-bottom: 1.5rem;
+        }
+        .form-field { margin-bottom: 1rem; }
+        .form-field label {
+            display: block; font-size: 0.75rem; font-weight: 600;
+            color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;
+            margin-bottom: 0.35rem;
+        }
+        .form-field input, .form-field select, .form-field textarea {
+            width: 100%; background: var(--bg); border: 1px solid var(--border);
+            color: var(--white); padding: 0.65rem 0.9rem; border-radius: var(--radius);
+            font-size: 0.9rem; font-family: var(--sans);
+            transition: border-color var(--transition); outline: none;
+        }
+        .form-field input:focus, .form-field select:focus, .form-field textarea:focus {
+            border-color: var(--blue);
+        }
+        .form-field textarea { min-height: 100px; resize: vertical; }
+        .form-actions { display: flex; gap: 0.75rem; margin-top: 1.5rem; }
+
+        /* ── AI Draft ── */
+        .ai-draft {
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 1.5rem;
+            white-space: pre-wrap; font-size: 0.9rem; line-height: 1.7;
+            max-height: 500px; overflow-y: auto; margin-top: 1rem;
+        }
+
+        /* ── Empty State ── */
+        .empty-state {
+            text-align: center; padding: 4rem 2rem;
+            color: var(--muted);
+        }
+        .empty-state-icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.3; }
+        .empty-state-text { font-size: 1rem; margin-bottom: 1rem; }
+
+        /* ── Activity Feed ── */
+        .activity-item {
+            display: flex; gap: 0.75rem; padding: 0.6rem 0;
+            border-bottom: 1px solid var(--border); font-size: 0.85rem;
+        }
+        .activity-item:last-child { border-bottom: none; }
+        .activity-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--blue); margin-top: 0.4rem; flex-shrink: 0;
+        }
+        .activity-time { color: var(--muted); font-size: 0.75rem; }
+
+        /* ── Powered By ── */
+        .powered-by {
+            text-align: center; padding: 2rem 0; font-size: 0.75rem;
+            color: var(--muted); border-top: 1px solid var(--border);
+            margin-top: 2rem;
+        }
+        .powered-by strong { color: var(--blue); }
+
+        /* ── Loading ── */
+        .spinner {
+            display: inline-block; width: 16px; height: 16px;
+            border: 2px solid var(--border); border-top-color: var(--blue);
+            border-radius: 50%; animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-overlay {
+            position: absolute; inset: 0; background: rgba(8,10,18,0.8);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 10; border-radius: var(--radius);
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .cards-grid { grid-template-columns: 1fr; }
+            .top-user { display: none; }
+            .tab-btn { padding: 0.75rem 0.85rem; font-size: 0.7rem; }
+        }
+        @media (max-width: 480px) {
+            .stats-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══ Auth Screen ═══ -->
+<div id="auth-screen">
+    <div class="auth-logo">
+        <span class="ce">CE</span> <span class="brand">PUREBRAIN.AI</span>
+    </div>
+    <div class="auth-tagline">Your operations, fully staffed &mdash; without the staff.</div>
+    <div class="auth-box">
+        <div class="auth-tabs">
+            <button class="auth-tab active" data-auth="login">Sign In</button>
+            <button class="auth-tab" data-auth="register">Register</button>
+        </div>
+        <form id="auth-form">
+            <div class="auth-field">
+                <label>Email</label>
+                <input type="email" id="auth-email" placeholder="you@company.com" required>
+            </div>
+            <div class="auth-field">
+                <label>Password</label>
+                <input type="password" id="auth-password" placeholder="Min 6 characters" required>
+            </div>
+            <div class="register-extra" id="register-fields">
+                <div class="auth-field">
+                    <label>Company Name</label>
+                    <input type="text" id="auth-company" placeholder="Your company">
+                </div>
+                <div class="auth-field">
+                    <label>Industry</label>
+                    <input type="text" id="auth-industry" placeholder="e.g. Construction, Consulting">
+                </div>
+            </div>
+            <button type="submit" class="auth-btn" id="auth-submit">Sign In</button>
+            <div class="auth-error" id="auth-error"></div>
+        </form>
+    </div>
+</div>
+
+<!-- ═══ Main App ═══ -->
+<div id="main-app">
+
+    <!-- Top Bar -->
+    <div class="top-bar">
+        <div class="top-bar-inner">
+            <a class="top-logo" href="#">
+                <span class="ce">CE</span> PUREBRAIN<span class="dot">.</span>AI
+            </a>
+            <div class="top-right">
+                <span class="top-user" id="user-display"></span>
+                <button class="theme-toggle" onclick="toggleTheme()">Light</button>
+                <button class="logout-btn" onclick="logout()">Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="tab-nav">
+        <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+        <button class="tab-btn" data-tab="proposals">Proposals</button>
+        <button class="tab-btn" data-tab="operations">Operations</button>
+        <button class="tab-btn" data-tab="projects">Projects</button>
+    </div>
+
+    <!-- ═══ Dashboard Tab ═══ -->
+    <div class="tab-panel active" id="tab-dashboard">
+        <div class="container">
+            <div class="section">
+                <div class="section-label">Command Center</div>
+                <div class="section-title">Your Business at a <em>Glance</em></div>
+                <div class="section-sub">Real-time visibility across proposals, projects, tasks, and revenue.</div>
+
+                <div class="stats-grid" id="dashboard-stats">
+                    <div class="stat-card">
+                        <div class="stat-label">Active Proposals</div>
+                        <div class="stat-value blue" id="stat-proposals">--</div>
+                        <div class="stat-sub" id="stat-proposals-sub">Loading...</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Open Projects</div>
+                        <div class="stat-value" id="stat-projects">--</div>
+                        <div class="stat-sub" id="stat-projects-sub">Loading...</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Pending Tasks</div>
+                        <div class="stat-value yellow" id="stat-tasks">--</div>
+                        <div class="stat-sub" id="stat-tasks-sub">Loading...</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Revenue Pipeline</div>
+                        <div class="stat-value green" id="stat-revenue">--</div>
+                        <div class="stat-sub" id="stat-revenue-sub">Loading...</div>
+                    </div>
+                </div>
+
+                <div class="section-label" style="margin-top:2rem;">Recent Activity</div>
+                <div id="activity-feed" class="card" style="padding:1rem 1.25rem;">
+                    <div class="empty-state" style="padding:2rem 0;">Loading...</div>
+                </div>
+            </div>
+
+            <div class="powered-by">Powered by <strong>TIE</strong> &mdash; The Intelligence Engine</div>
+        </div>
+    </div>
+
+    <!-- ═══ Proposals Tab ═══ -->
+    <div class="tab-panel" id="tab-proposals">
+        <div class="container">
+            <div class="section">
+                <div class="section-label">Module 1</div>
+                <div class="section-title">Proposal <em>Engine</em></div>
+                <div class="section-sub">Create proposals from a brief. AI generates professional drafts. Track win/loss.</div>
+
+                <div class="btn-row">
+                    <button class="btn" onclick="openModal('proposal')">+ New Proposal</button>
+                </div>
+
+                <div class="stats-grid" id="proposal-stats-row" style="margin-bottom:1.5rem;">
+                    <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value" id="ps-total">--</div></div>
+                    <div class="stat-card"><div class="stat-label">Won</div><div class="stat-value green" id="ps-won">--</div></div>
+                    <div class="stat-card"><div class="stat-label">Pipeline</div><div class="stat-value blue" id="ps-pipeline">--</div></div>
+                    <div class="stat-card"><div class="stat-label">Won Revenue</div><div class="stat-value green" id="ps-revenue">--</div></div>
+                </div>
+
+                <div id="proposals-list" class="cards-grid">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">&equiv;</div>
+                        <div class="empty-state-text">No proposals yet. Create your first one.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Operations Tab ═══ -->
+    <div class="tab-panel" id="tab-operations">
+        <div class="container">
+            <div class="section">
+                <div class="section-label">Module 3</div>
+                <div class="section-title">Operations <em>Hub</em></div>
+                <div class="section-sub">SOPs, recurring tasks, vendors, and compliance tracking in one place.</div>
+
+                <!-- Sub-tabs for operations -->
+                <div style="display:flex;gap:0.5rem;margin-bottom:1.5rem;flex-wrap:wrap;">
+                    <button class="btn btn-sm ops-sub active" data-ops="sops" onclick="switchOpsTab('sops')">SOPs</button>
+                    <button class="btn btn-sm btn-outline ops-sub" data-ops="tasks" onclick="switchOpsTab('tasks')">Tasks</button>
+                    <button class="btn btn-sm btn-outline ops-sub" data-ops="vendors" onclick="switchOpsTab('vendors')">Vendors</button>
+                    <button class="btn btn-sm btn-outline ops-sub" data-ops="compliance" onclick="switchOpsTab('compliance')">Compliance</button>
+                </div>
+
+                <!-- SOPs -->
+                <div class="ops-panel active" id="ops-sops">
+                    <div class="btn-row"><button class="btn" onclick="openModal('sop')">+ New SOP</button></div>
+                    <div id="sops-list" class="cards-grid">
+                        <div class="empty-state"><div class="empty-state-text">No SOPs yet.</div></div>
+                    </div>
+                </div>
+
+                <!-- Tasks -->
+                <div class="ops-panel" id="ops-tasks" style="display:none;">
+                    <div class="btn-row"><button class="btn" onclick="openModal('task')">+ New Task</button></div>
+                    <div id="tasks-list">
+                        <div class="empty-state"><div class="empty-state-text">No tasks yet.</div></div>
+                    </div>
+                </div>
+
+                <!-- Vendors -->
+                <div class="ops-panel" id="ops-vendors" style="display:none;">
+                    <div class="btn-row"><button class="btn" onclick="openModal('vendor')">+ New Vendor</button></div>
+                    <div id="vendors-list">
+                        <div class="empty-state"><div class="empty-state-text">No vendors yet.</div></div>
+                    </div>
+                </div>
+
+                <!-- Compliance -->
+                <div class="ops-panel" id="ops-compliance" style="display:none;">
+                    <div id="compliance-list">
+                        <div class="empty-state"><div class="empty-state-text">No compliance items yet.</div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Projects Tab ═══ -->
+    <div class="tab-panel" id="tab-projects">
+        <div class="container">
+            <div class="section">
+                <div class="section-label">Module 4</div>
+                <div class="section-title">Project <em>Control</em></div>
+                <div class="section-sub">Track projects, milestones, and budgets. Generate client status updates.</div>
+
+                <div class="btn-row">
+                    <button class="btn" onclick="openModal('project')">+ New Project</button>
+                </div>
+
+                <div id="projects-list" class="cards-grid">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">&equiv;</div>
+                        <div class="empty-state-text">No projects yet.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ═══ Modal ═══ -->
+<div class="modal-overlay" id="modal-overlay">
+    <div class="modal" id="modal-content"></div>
+</div>
+
+<script>
+// ─── Config ──────────────────────────────────────────────
+const API_BASE = window.location.hostname === 'localhost'
+    ? 'http://localhost:8787'
+    : 'https://ce-sme-api.purebrain.workers.dev';
+
+let authToken = localStorage.getItem('ce_token') || '';
+let currentUser = JSON.parse(localStorage.getItem('ce_user') || 'null');
+let authMode = 'login';
+
+// ─── API Helper ──────────────────────────────────────────
+async function api(path, opts = {}) {
+    const resp = await fetch(`${API_BASE}${path}`, {
+        ...opts,
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`,
+            ...(opts.headers || {}),
+        },
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+        if (resp.status === 401) { logout(); return null; }
+        throw new Error(data.error || 'Request failed');
+    }
+    return data;
+}
+
+// ─── Auth ────────────────────────────────────────────────
+document.querySelectorAll('.auth-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        authMode = tab.dataset.auth;
+        document.getElementById('register-fields').classList.toggle('visible', authMode === 'register');
+        document.getElementById('auth-submit').textContent = authMode === 'login' ? 'Sign In' : 'Create Account';
+        document.getElementById('auth-error').style.display = 'none';
+    });
+});
+
+document.getElementById('auth-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('auth-submit');
+    const errEl = document.getElementById('auth-error');
+    btn.disabled = true;
+    errEl.style.display = 'none';
+
+    const body = {
+        email: document.getElementById('auth-email').value,
+        password: document.getElementById('auth-password').value,
+    };
+    if (authMode === 'register') {
+        body.company_name = document.getElementById('auth-company').value;
+        body.industry = document.getElementById('auth-industry').value;
+    }
+
+    try {
+        const data = await fetch(`${API_BASE}/api/auth/${authMode}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        }).then(r => r.json());
+
+        if (data.error) throw new Error(data.error);
+
+        authToken = data.token;
+        currentUser = data.user;
+        localStorage.setItem('ce_token', authToken);
+        localStorage.setItem('ce_user', JSON.stringify(currentUser));
+        showApp();
+    } catch (err) {
+        errEl.textContent = err.message;
+        errEl.style.display = 'block';
+    } finally {
+        btn.disabled = false;
+    }
+});
+
+function logout() {
+    authToken = '';
+    currentUser = null;
+    localStorage.removeItem('ce_token');
+    localStorage.removeItem('ce_user');
+    document.getElementById('auth-screen').classList.remove('hidden');
+    document.getElementById('main-app').classList.remove('visible');
+}
+
+function showApp() {
+    document.getElementById('auth-screen').classList.add('hidden');
+    document.getElementById('main-app').classList.add('visible');
+    document.getElementById('user-display').textContent = currentUser?.email || '';
+    loadDashboard();
+    loadProposals();
+    loadProposalStats();
+    loadSops();
+    loadTasks();
+    loadVendors();
+    loadCompliance();
+    loadProjects();
+}
+
+// ─── Theme Toggle ────────────────────────────────────────
+function toggleTheme() {
+    document.body.classList.toggle('light');
+    const isLight = document.body.classList.contains('light');
+    document.querySelector('.theme-toggle').textContent = isLight ? 'Dark' : 'Light';
+    localStorage.setItem('ce_theme', isLight ? 'light' : 'dark');
+}
+
+if (localStorage.getItem('ce_theme') === 'light') {
+    document.body.classList.add('light');
+    document.querySelector('.theme-toggle').textContent = 'Dark';
+}
+
+// ─── Tab Navigation ──────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+});
+
+// ─── Operations Sub-tabs ─────────────────────────────────
+function switchOpsTab(tab) {
+    document.querySelectorAll('.ops-sub').forEach(b => {
+        b.classList.toggle('btn-outline', b.dataset.ops !== tab);
+        b.classList.toggle('active', b.dataset.ops === tab);
+    });
+    document.querySelectorAll('.ops-panel').forEach(p => {
+        p.style.display = p.id === 'ops-' + tab ? 'block' : 'none';
+    });
+}
+
+// ─── Dashboard ───────────────────────────────────────────
+async function loadDashboard() {
+    try {
+        const d = await api('/api/dashboard');
+        if (!d) return;
+        document.getElementById('stat-proposals').textContent = d.proposals?.active || 0;
+        document.getElementById('stat-proposals-sub').textContent = `${d.proposals?.total || 0} total`;
+        document.getElementById('stat-projects').textContent = d.projects?.active || 0;
+        document.getElementById('stat-projects-sub').textContent = `${d.projects?.total || 0} total`;
+        document.getElementById('stat-tasks').textContent = d.tasks?.pending || 0;
+        document.getElementById('stat-tasks-sub').textContent = `${d.tasks?.due_soon || 0} due this week`;
+        document.getElementById('stat-revenue').textContent = '$' + (d.revenue?.pipeline || 0).toLocaleString();
+        document.getElementById('stat-revenue-sub').textContent = `$${(d.revenue?.won_revenue || 0).toLocaleString()} won`;
+
+        const feed = document.getElementById('activity-feed');
+        if (d.recent_activity && d.recent_activity.length > 0) {
+            feed.innerHTML = d.recent_activity.map(a => `
+                <div class="activity-item">
+                    <div class="activity-dot"></div>
+                    <div>
+                        <div>${a.action} ${a.entity_type} #${a.entity_id || ''}</div>
+                        <div class="activity-time">${new Date(a.created_at).toLocaleString()}</div>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            feed.innerHTML = '<div class="empty-state" style="padding:1.5rem 0;">No activity yet. Start by creating a proposal or task.</div>';
+        }
+    } catch (e) {
+        console.error('Dashboard load error:', e);
+    }
+}
+
+// ─── Proposals ───────────────────────────────────────────
+let proposals = [];
+async function loadProposals() {
+    try {
+        const d = await api('/api/proposals');
+        if (!d) return;
+        proposals = d.proposals || [];
+        renderProposals();
+    } catch (e) { console.error(e); }
+}
+
+function renderProposals() {
+    const el = document.getElementById('proposals-list');
+    if (!proposals.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-text">No proposals yet. Create your first one.</div></div>';
+        return;
+    }
+    el.innerHTML = proposals.map(p => `
+        <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:start;">
+                <div class="card-title">${esc(p.client_name || 'Untitled')}</div>
+                <span class="badge badge-${p.status}">${p.status}</span>
+            </div>
+            <div class="card-meta">
+                <span>${esc(p.project_type || 'General')}</span>
+                <span>$${(p.pricing || 0).toLocaleString()}</span>
+            </div>
+            <div style="margin-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+                <button class="btn btn-sm btn-outline" onclick="viewProposal(${p.id})">View</button>
+                <button class="btn btn-sm btn-green" onclick="generateAiDraft(${p.id})">AI Generate</button>
+                <select onchange="updateProposalStatus(${p.id}, this.value)" style="background:var(--bg);color:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:0.3rem 0.5rem;font-size:0.75rem;">
+                    <option value="draft" ${p.status==='draft'?'selected':''}>Draft</option>
+                    <option value="sent" ${p.status==='sent'?'selected':''}>Sent</option>
+                    <option value="won" ${p.status==='won'?'selected':''}>Won</option>
+                    <option value="lost" ${p.status==='lost'?'selected':''}>Lost</option>
+                </select>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function loadProposalStats() {
+    try {
+        const d = await api('/api/proposals/stats');
+        if (!d) return;
+        const s = d.stats;
+        document.getElementById('ps-total').textContent = s.total || 0;
+        document.getElementById('ps-won').textContent = s.won || 0;
+        document.getElementById('ps-pipeline').textContent = '$' + (s.pipeline_value || 0).toLocaleString();
+        document.getElementById('ps-revenue').textContent = '$' + (s.won_revenue || 0).toLocaleString();
+    } catch (e) { console.error(e); }
+}
+
+async function updateProposalStatus(id, status) {
+    try {
+        await api(`/api/proposals/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+        loadProposals();
+        loadProposalStats();
+        loadDashboard();
+    } catch (e) { alert(e.message); }
+}
+
+async function generateAiDraft(id) {
+    if (!confirm('Generate AI proposal draft? This calls the AI engine.')) return;
+    try {
+        const d = await api(`/api/proposals/${id}/generate`, { method: 'POST' });
+        if (d && d.ai_draft) {
+            showDraftModal(d.ai_draft);
+            loadProposals();
+        }
+    } catch (e) { alert('AI generation failed: ' + e.message); }
+}
+
+function viewProposal(id) {
+    const p = proposals.find(x => x.id === id);
+    if (!p) return;
+    const html = `
+        <div class="modal-title">${esc(p.client_name || 'Untitled Proposal')}</div>
+        <div class="card-meta"><span>Type: ${esc(p.project_type)}</span> <span>Status: ${p.status}</span> <span>$${(p.pricing||0).toLocaleString()}</span></div>
+        <div style="margin-top:1rem;">
+            <strong style="font-size:0.8rem;color:var(--muted);">BRIEF / SCOPE</strong>
+            <div style="margin-top:0.5rem;font-size:0.9rem;">${esc(p.brief || p.scope || 'No brief provided')}</div>
+        </div>
+        ${p.ai_draft ? `<div style="margin-top:1.5rem;"><strong style="font-size:0.8rem;color:var(--muted);">AI DRAFT</strong><div class="ai-draft">${esc(p.ai_draft)}</div></div>` : ''}
+        <div class="form-actions"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
+    `;
+    showModal(html);
+}
+
+function showDraftModal(draft) {
+    showModal(`
+        <div class="modal-title">AI-Generated Proposal</div>
+        <div class="ai-draft">${esc(draft)}</div>
+        <div class="form-actions"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
+    `);
+}
+
+// ─── SOPs ────────────────────────────────────────────────
+let sops = [];
+async function loadSops() {
+    try {
+        const d = await api('/api/sops');
+        if (!d) return;
+        sops = d.sops || [];
+        renderSops();
+    } catch (e) { console.error(e); }
+}
+
+function renderSops() {
+    const el = document.getElementById('sops-list');
+    if (!sops.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-text">No SOPs yet. Document your first procedure.</div></div>';
+        return;
+    }
+    el.innerHTML = sops.map(s => `
+        <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:start;">
+                <div class="card-title">${esc(s.title)}</div>
+                <span class="badge badge-active">${esc(s.category)}</span>
+            </div>
+            <div class="card-meta"><span>Updated: ${new Date(s.updated_at).toLocaleDateString()}</span></div>
+            <div style="margin-top:0.5rem;font-size:0.85rem;color:var(--muted);max-height:60px;overflow:hidden;">${esc((s.content || '').substring(0, 200))}</div>
+        </div>
+    `).join('');
+}
+
+// ─── Tasks ───────────────────────────────────────────────
+let tasks = [];
+async function loadTasks() {
+    try {
+        const d = await api('/api/tasks');
+        if (!d) return;
+        tasks = d.tasks || [];
+        renderTasks();
+    } catch (e) { console.error(e); }
+}
+
+function renderTasks() {
+    const el = document.getElementById('tasks-list');
+    if (!tasks.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-text">No tasks yet.</div></div>';
+        return;
+    }
+    el.innerHTML = `<table class="data-table">
+        <thead><tr><th>Task</th><th>Due</th><th>Priority</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody>${tasks.map(t => `
+            <tr>
+                <td>${esc(t.title)}</td>
+                <td>${t.due_date || '--'}</td>
+                <td><span class="badge badge-${t.priority}">${t.priority}</span></td>
+                <td><span class="badge badge-${t.status}">${t.status}</span></td>
+                <td>
+                    <select onchange="updateTaskStatus(${t.id}, this.value)" style="background:var(--bg);color:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:0.2rem 0.4rem;font-size:0.75rem;">
+                        <option value="pending" ${t.status==='pending'?'selected':''}>Pending</option>
+                        <option value="in_progress" ${t.status==='in_progress'?'selected':''}>In Progress</option>
+                        <option value="completed" ${t.status==='completed'?'selected':''}>Completed</option>
+                    </select>
+                </td>
+            </tr>
+        `).join('')}</tbody>
+    </table>`;
+}
+
+async function updateTaskStatus(id, status) {
+    try {
+        await api(`/api/tasks/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+        loadTasks();
+        loadDashboard();
+    } catch (e) { alert(e.message); }
+}
+
+// ─── Vendors ─────────────────────────────────────────────
+let vendors = [];
+async function loadVendors() {
+    try {
+        const d = await api('/api/vendors');
+        if (!d) return;
+        vendors = d.vendors || [];
+        renderVendors();
+    } catch (e) { console.error(e); }
+}
+
+function renderVendors() {
+    const el = document.getElementById('vendors-list');
+    if (!vendors.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-text">No vendors yet.</div></div>';
+        return;
+    }
+    el.innerHTML = `<table class="data-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Contract End</th></tr></thead>
+        <tbody>${vendors.map(v => `
+            <tr>
+                <td>${esc(v.name)}</td>
+                <td>${esc(v.contact_email || '--')}</td>
+                <td>${esc(v.phone || '--')}</td>
+                <td>${v.contract_end || '--'}</td>
+            </tr>
+        `).join('')}</tbody>
+    </table>`;
+}
+
+// ─── Compliance ──────────────────────────────────────────
+async function loadCompliance() {
+    try {
+        const d = await api('/api/compliance');
+        if (!d) return;
+        const items = d.compliance || [];
+        const el = document.getElementById('compliance-list');
+        if (!items.length) {
+            el.innerHTML = '<div class="empty-state"><div class="empty-state-text">No compliance items yet.</div></div>';
+            return;
+        }
+        el.innerHTML = `<table class="data-table">
+            <thead><tr><th>Item</th><th>Category</th><th>Deadline</th><th>Status</th></tr></thead>
+            <tbody>${items.map(c => `
+                <tr>
+                    <td>${esc(c.title)}</td>
+                    <td>${esc(c.category)}</td>
+                    <td>${c.deadline || '--'}</td>
+                    <td><span class="badge badge-${c.status}">${c.status}</span></td>
+                </tr>
+            `).join('')}</tbody>
+        </table>`;
+    } catch (e) { console.error(e); }
+}
+
+// ─── Projects ────────────────────────────────────────────
+let projects = [];
+async function loadProjects() {
+    try {
+        const d = await api('/api/projects');
+        if (!d) return;
+        projects = d.projects || [];
+        renderProjects();
+    } catch (e) { console.error(e); }
+}
+
+function renderProjects() {
+    const el = document.getElementById('projects-list');
+    if (!projects.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-text">No projects yet. Create one or convert a won proposal.</div></div>';
+        return;
+    }
+    el.innerHTML = projects.map(p => {
+        const pct = p.budget > 0 ? ((p.actual_spend / p.budget) * 100).toFixed(0) : 0;
+        return `
+        <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:start;">
+                <div class="card-title">${esc(p.name)}</div>
+                <span class="badge badge-${p.status}">${p.status}</span>
+            </div>
+            <div class="card-meta">
+                <span>${esc(p.client_name || 'Internal')}</span>
+                <span>Budget: $${(p.budget||0).toLocaleString()}</span>
+                <span>Spent: $${(p.actual_spend||0).toLocaleString()} (${pct}%)</span>
+            </div>
+            <div style="margin-top:0.5rem;">
+                <div style="background:var(--bg);border-radius:3px;height:6px;overflow:hidden;">
+                    <div style="background:${pct > 90 ? 'var(--red)' : pct > 70 ? 'var(--yellow)' : 'var(--green)'};height:100%;width:${Math.min(pct,100)}%;transition:width 0.3s;"></div>
+                </div>
+            </div>
+            <div style="margin-top:0.75rem;display:flex;gap:0.5rem;">
+                <button class="btn btn-sm btn-outline" onclick="viewProject(${p.id})">Details</button>
+                <button class="btn btn-sm btn-outline" onclick="generateStatusUpdate(${p.id})">Status Email</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function viewProject(id) {
+    try {
+        const d = await api(`/api/projects/${id}`);
+        if (!d) return;
+        const ms = d.milestones || [];
+        showModal(`
+            <div class="modal-title">${esc(d.name)}</div>
+            <div class="card-meta"><span>Client: ${esc(d.client_name||'Internal')}</span> <span>Status: ${d.status}</span></div>
+            <div style="margin-top:1rem;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+                    <strong style="font-size:0.8rem;color:var(--muted);">MILESTONES</strong>
+                    <button class="btn btn-sm" onclick="openMilestoneForm(${id})">+ Add</button>
+                </div>
+                ${ms.length ? ms.map(m => `
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0;border-bottom:1px solid var(--border);">
+                        <div>
+                            <div style="font-size:0.9rem;">${esc(m.title)}</div>
+                            <div style="font-size:0.75rem;color:var(--muted);">Due: ${m.due_date || 'TBD'}</div>
+                        </div>
+                        <select onchange="updateMilestone(${id},${m.id},this.value)" style="background:var(--bg);color:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:0.2rem 0.4rem;font-size:0.75rem;">
+                            <option value="pending" ${m.status==='pending'?'selected':''}>Pending</option>
+                            <option value="in_progress" ${m.status==='in_progress'?'selected':''}>In Progress</option>
+                            <option value="completed" ${m.status==='completed'?'selected':''}>Completed</option>
+                        </select>
+                    </div>
+                `).join('') : '<div class="empty-state" style="padding:1rem 0;">No milestones yet.</div>'}
+            </div>
+            <div class="form-actions"><button class="btn btn-outline" onclick="closeModal()">Close</button></div>
+        `);
+    } catch (e) { alert(e.message); }
+}
+
+async function updateMilestone(projectId, milestoneId, status) {
+    try {
+        await api(`/api/projects/${projectId}/milestones/${milestoneId}`, { method: 'PUT', body: JSON.stringify({ status }) });
+        viewProject(projectId);
+    } catch (e) { alert(e.message); }
+}
+
+function openMilestoneForm(projectId) {
+    showModal(`
+        <div class="modal-title">Add Milestone</div>
+        <form onsubmit="submitMilestone(event, ${projectId})">
+            <div class="form-field"><label>Title</label><input id="ms-title" required></div>
+            <div class="form-field"><label>Due Date</label><input type="date" id="ms-due"></div>
+            <div class="form-field"><label>Notes</label><textarea id="ms-notes"></textarea></div>
+            <div class="form-actions">
+                <button type="submit" class="btn">Add Milestone</button>
+                <button type="button" class="btn btn-outline" onclick="viewProject(${projectId})">Cancel</button>
+            </div>
+        </form>
+    `);
+}
+
+async function submitMilestone(e, projectId) {
+    e.preventDefault();
+    try {
+        await api(`/api/projects/${projectId}/milestones`, {
+            method: 'POST',
+            body: JSON.stringify({
+                title: document.getElementById('ms-title').value,
+                due_date: document.getElementById('ms-due').value,
+                notes: document.getElementById('ms-notes').value,
+            }),
+        });
+        viewProject(projectId);
+    } catch (e) { alert(e.message); }
+}
+
+async function generateStatusUpdate(id) {
+    try {
+        const d = await api(`/api/projects/${id}/status-update`, { method: 'POST' });
+        if (d && d.status_email) {
+            showModal(`
+                <div class="modal-title">Client Status Email</div>
+                <div class="ai-draft">${esc(d.status_email)}</div>
+                <div class="form-actions">
+                    <button class="btn btn-green" onclick="copyToClipboard(this)" data-copy="${esc(d.status_email).replace(/"/g,'&quot;')}">Copy</button>
+                    <button class="btn btn-outline" onclick="closeModal()">Close</button>
+                </div>
+            `);
+        }
+    } catch (e) { alert(e.message); }
+}
+
+// ─── Modal System ────────────────────────────────────────
+function showModal(html) {
+    document.getElementById('modal-content').innerHTML = html;
+    document.getElementById('modal-overlay').classList.add('visible');
+}
+
+function closeModal() {
+    document.getElementById('modal-overlay').classList.remove('visible');
+}
+
+document.getElementById('modal-overlay').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('modal-overlay')) closeModal();
+});
+
+function openModal(type) {
+    const forms = {
+        proposal: `
+            <div class="modal-title">New Proposal</div>
+            <form onsubmit="submitForm(event, 'proposal')">
+                <div class="form-field"><label>Client Name</label><input id="f-client_name" required></div>
+                <div class="form-field"><label>Project Type</label><input id="f-project_type" placeholder="e.g. Website Redesign"></div>
+                <div class="form-field"><label>Brief</label><textarea id="f-brief" placeholder="Describe what the client needs..."></textarea></div>
+                <div class="form-field"><label>Estimated Price ($)</label><input type="number" id="f-pricing" step="0.01"></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Create Proposal</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>`,
+        sop: `
+            <div class="modal-title">New SOP</div>
+            <form onsubmit="submitForm(event, 'sop')">
+                <div class="form-field"><label>Title</label><input id="f-title" required></div>
+                <div class="form-field"><label>Category</label>
+                    <select id="f-category"><option>general</option><option>operations</option><option>safety</option><option>hr</option><option>finance</option><option>customer-service</option></select>
+                </div>
+                <div class="form-field"><label>Content</label><textarea id="f-content" placeholder="Step-by-step procedure..." style="min-height:200px;"></textarea></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Create SOP</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>`,
+        task: `
+            <div class="modal-title">New Task</div>
+            <form onsubmit="submitForm(event, 'task')">
+                <div class="form-field"><label>Title</label><input id="f-title" required></div>
+                <div class="form-field"><label>Description</label><textarea id="f-description"></textarea></div>
+                <div class="form-field"><label>Due Date</label><input type="date" id="f-due_date"></div>
+                <div class="form-field"><label>Priority</label>
+                    <select id="f-priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
+                </div>
+                <div class="form-field"><label>Recurrence</label>
+                    <select id="f-recurrence"><option value="none">None</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option></select>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Create Task</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>`,
+        vendor: `
+            <div class="modal-title">Add Vendor</div>
+            <form onsubmit="submitForm(event, 'vendor')">
+                <div class="form-field"><label>Company Name</label><input id="f-name" required></div>
+                <div class="form-field"><label>Contact Email</label><input type="email" id="f-contact_email"></div>
+                <div class="form-field"><label>Phone</label><input id="f-phone"></div>
+                <div class="form-field"><label>Contract End Date</label><input type="date" id="f-contract_end"></div>
+                <div class="form-field"><label>Notes</label><textarea id="f-notes"></textarea></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Add Vendor</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>`,
+        project: `
+            <div class="modal-title">New Project</div>
+            <form onsubmit="submitForm(event, 'project')">
+                <div class="form-field"><label>Project Name</label><input id="f-name" required></div>
+                <div class="form-field"><label>Client Name</label><input id="f-client_name"></div>
+                <div class="form-field"><label>Budget ($)</label><input type="number" id="f-budget" step="0.01"></div>
+                <div class="form-field"><label>Start Date</label><input type="date" id="f-start_date"></div>
+                <div class="form-field"><label>End Date</label><input type="date" id="f-end_date"></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Create Project</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>`,
+    };
+    showModal(forms[type] || '');
+}
+
+const formFieldMap = {
+    proposal: ['client_name', 'project_type', 'brief', 'pricing'],
+    sop: ['title', 'content', 'category'],
+    task: ['title', 'description', 'due_date', 'priority', 'recurrence'],
+    vendor: ['name', 'contact_email', 'phone', 'contract_end', 'notes'],
+    project: ['name', 'client_name', 'budget', 'start_date', 'end_date'],
+};
+
+const formEndpoints = {
+    proposal: '/api/proposals',
+    sop: '/api/sops',
+    task: '/api/tasks',
+    vendor: '/api/vendors',
+    project: '/api/projects',
+};
+
+const formReloaders = {
+    proposal: () => { loadProposals(); loadProposalStats(); loadDashboard(); },
+    sop: () => { loadSops(); },
+    task: () => { loadTasks(); loadDashboard(); },
+    vendor: () => { loadVendors(); },
+    project: () => { loadProjects(); loadDashboard(); },
+};
+
+async function submitForm(e, type) {
+    e.preventDefault();
+    const body = {};
+    for (const field of formFieldMap[type]) {
+        const el = document.getElementById('f-' + field);
+        if (el) body[field] = el.type === 'number' ? parseFloat(el.value || 0) : el.value;
+    }
+    try {
+        await api(formEndpoints[type], { method: 'POST', body: JSON.stringify(body) });
+        closeModal();
+        formReloaders[type]();
+    } catch (e) { alert('Error: ' + e.message); }
+}
+
+// ─── Utilities ───────────────────────────────────────────
+function esc(str) {
+    if (!str) return '';
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+function copyToClipboard(btn) {
+    const text = btn.dataset.copy;
+    navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+    });
+}
+
+// ─── Init ────────────────────────────────────────────────
+if (authToken && currentUser) {
+    showApp();
+}
+</script>
+</body>
+</html>
