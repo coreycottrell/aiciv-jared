@@ -20,6 +20,9 @@ function json(body, init = {}) {
       "content-type": "application/json",
       "cache-control": "no-store",
       "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "strict-transport-security": "max-age=31536000; includeSubDomains",
+      "referrer-policy": "strict-origin-when-cross-origin",
     },
   });
 }
@@ -56,13 +59,110 @@ function applyCors(response, origin, env) {
   return new Response(response.body, { status: response.status, headers: newHeaders });
 }
 
+// ─── Input Validation ───────────────────────────────────
+
+function validateLength(value, maxLen, fieldName) {
+  if (typeof value === "string" && value.length > maxLen) {
+    return `${fieldName} exceeds maximum length of ${maxLen} characters`;
+  }
+  return null;
+}
+
+function validateEmail(email) {
+  if (!email || typeof email !== "string") return "Email is required";
+  if (email.length > 254) return "Email exceeds maximum length";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Invalid email format";
+  return null;
+}
+
+function validateTextInputs(body, rules) {
+  for (const [field, maxLen] of Object.entries(rules)) {
+    if (body[field] !== undefined && body[field] !== null) {
+      const error = validateLength(String(body[field]), maxLen, field);
+      if (error) return error;
+    }
+  }
+  return null;
+}
+
+// ─── Rate Limiting ──────────────────────────────────────
+
+async function checkRateLimit(env, key, maxRequests, windowSeconds) {
+  try {
+    const now = new Date();
+    const row = await env.DB.prepare(
+      "SELECT count, window_start FROM rate_limits WHERE key = ?"
+    ).bind(key).first();
+
+    if (row) {
+      const windowStart = new Date(row.window_start);
+      const elapsed = (now - windowStart) / 1000;
+      if (elapsed < windowSeconds) {
+        if (row.count >= maxRequests) {
+          return false; // rate limited
+        }
+        await env.DB.prepare(
+          "UPDATE rate_limits SET count = count + 1 WHERE key = ?"
+        ).bind(key).run();
+        return true;
+      }
+      // Window expired, reset
+      await env.DB.prepare(
+        "UPDATE rate_limits SET count = 1, window_start = datetime('now') WHERE key = ?"
+      ).bind(key).run();
+      return true;
+    }
+
+    // No record, create one
+    await env.DB.prepare(
+      "INSERT INTO rate_limits (key, count, window_start) VALUES (?, 1, datetime('now'))"
+    ).bind(key).run();
+    return true;
+  } catch {
+    // If rate limit check fails, allow the request (fail open for availability)
+    return true;
+  }
+}
+
+function getClientIP(request) {
+  return request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for") || "unknown";
+}
+
 // ─── Auth ────────────────────────────────────────────────
 
-async function hashPassword(password) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return btoa(String.fromCharCode(...new Uint8Array(hash)));
+async function hashPassword(password, existingSalt) {
+  const salt = existingSalt || crypto.getRandomValues(new Uint8Array(16));
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]
+  );
+  const hash = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+    keyMaterial, 256
+  );
+  const saltB64 = btoa(String.fromCharCode(...salt));
+  const hashB64 = btoa(String.fromCharCode(...new Uint8Array(hash)));
+  return saltB64 + ':' + hashB64;
+}
+
+async function verifyPassword(password, storedHash) {
+  const [saltB64, hashB64] = storedHash.split(':');
+  if (!saltB64 || !hashB64) {
+    // Legacy unsalted hash -- verify with old method, then caller should re-hash
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hash = await crypto.subtle.digest("SHA-256", data);
+    const legacyHash = btoa(String.fromCharCode(...new Uint8Array(hash)));
+    return { valid: legacyHash === storedHash, legacy: true };
+  }
+  const salt = new Uint8Array([...atob(saltB64)].map(c => c.charCodeAt(0)));
+  const newHash = await hashPassword(password, salt);
+  // Constant-time comparison
+  const a = new TextEncoder().encode(newHash);
+  const b = new TextEncoder().encode(saltB64 + ':' + hashB64);
+  if (a.length !== b.length) return { valid: false, legacy: false };
+  let result = 0;
+  for (let i = 0; i < a.length; i++) result |= a[i] ^ b[i];
+  return { valid: result === 0, legacy: false };
 }
 
 async function getSession(request, env) {
@@ -105,12 +205,24 @@ async function logActivity(env, userId, action, entityType, entityId) {
 // ─── Auth Routes ─────────────────────────────────────────
 
 async function handleRegister(request, env) {
+  // Rate limit: 3 registrations per IP per hour
+  const ip = getClientIP(request);
+  if (!await checkRateLimit(env, `reg:${ip}`, 3, 3600)) {
+    return err(429, "Too many registration attempts. Try again later.");
+  }
+
   let body;
   try { body = await request.json(); } catch { return err(400, "Invalid JSON"); }
 
   const { email, password, company_name, industry } = body;
   if (!email || !password) return err(400, "Email and password required");
   if (password.length < 6) return err(400, "Password must be at least 6 characters");
+
+  // Input validation
+  const emailErr = validateEmail(email);
+  if (emailErr) return err(400, emailErr);
+  const lengthErr = validateTextInputs(body, { company_name: 200, industry: 200 });
+  if (lengthErr) return err(400, lengthErr);
 
   const existing = await env.DB.prepare("SELECT id FROM users WHERE email = ?").bind(email.toLowerCase().trim()).first();
   if (existing) return err(409, "Email already registered");
@@ -122,7 +234,7 @@ async function handleRegister(request, env) {
 
   const userId = result.meta.last_row_id;
   const token = generateToken();
-  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 days
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
 
   await env.DB.prepare(
     "INSERT INTO sessions (user_id, token, expires_at) VALUES (?, ?, ?)"
@@ -134,6 +246,12 @@ async function handleRegister(request, env) {
 }
 
 async function handleLogin(request, env) {
+  // Rate limit: 5 login attempts per IP per minute
+  const ip = getClientIP(request);
+  if (!await checkRateLimit(env, `login:${ip}`, 5, 60)) {
+    return err(429, "Too many login attempts. Try again later.");
+  }
+
   let body;
   try { body = await request.json(); } catch { return err(400, "Invalid JSON"); }
 
@@ -145,17 +263,38 @@ async function handleLogin(request, env) {
   ).bind(email.toLowerCase().trim()).first();
   if (!user) return err(401, "Invalid credentials");
 
-  const passwordHash = await hashPassword(password);
-  if (passwordHash !== user.password_hash) return err(401, "Invalid credentials");
+  const { valid, legacy } = await verifyPassword(password, user.password_hash);
+  if (!valid) return err(401, "Invalid credentials");
+
+  // Upgrade legacy SHA-256 hash to PBKDF2 on successful login
+  if (legacy) {
+    const newHash = await hashPassword(password);
+    await env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(newHash, user.id).run();
+  }
 
   const token = generateToken();
-  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
 
   await env.DB.prepare(
     "INSERT INTO sessions (user_id, token, expires_at) VALUES (?, ?, ?)"
   ).bind(user.id, token, expiresAt).run();
 
   return json({ ok: true, token, user: { id: user.id, email: user.email, company_name: user.company_name, industry: user.industry } });
+}
+
+async function handleLogout(request, env) {
+  let token = "";
+  const auth = request.headers.get("authorization") || "";
+  if (auth.startsWith("Bearer ")) token = auth.slice(7);
+  if (!token) {
+    const cookies = request.headers.get("cookie") || "";
+    const m = cookies.match(/ce_session=([^;]+)/);
+    if (m) token = m[1];
+  }
+  if (!token) return err(401, "Unauthorized");
+
+  await env.DB.prepare("DELETE FROM sessions WHERE token = ?").bind(token).run();
+  return json({ ok: true, message: "Logged out" });
 }
 
 // ─── Proposals Routes ────────────────────────────────────
@@ -165,6 +304,11 @@ async function handleCreateProposal(request, env, sess) {
   try { body = await request.json(); } catch { return err(400, "Invalid JSON"); }
 
   const { client_name, project_type, scope, pricing, brief, items } = body;
+
+  // Input validation
+  const lengthErr = validateTextInputs(body, { client_name: 200, project_type: 200, scope: 50000, brief: 50000 });
+  if (lengthErr) return err(400, lengthErr);
+
   const result = await env.DB.prepare(
     "INSERT INTO proposals (user_id, client_name, project_type, scope, pricing, brief) VALUES (?, ?, ?, ?, ?, ?)"
   ).bind(sess.user_id, client_name || "", project_type || "", scope || "", pricing || 0, brief || "").run();
@@ -198,8 +342,8 @@ async function handleGetProposal(env, sess, id) {
   if (!proposal) return err(404, "Proposal not found");
 
   const items = await env.DB.prepare(
-    "SELECT * FROM proposal_items WHERE proposal_id = ?"
-  ).bind(id).all();
+    "SELECT pi.* FROM proposal_items pi JOIN proposals p ON pi.proposal_id = p.id WHERE pi.proposal_id = ? AND p.user_id = ?"
+  ).bind(id, sess.user_id).all();
 
   return json({ ...proposal, items: items.results });
 }
@@ -235,6 +379,11 @@ async function handleUpdateProposal(request, env, sess, id) {
 }
 
 async function handleGenerateProposal(request, env, sess, id) {
+  // Rate limit: 20 AI generations per user per hour
+  if (!await checkRateLimit(env, `ai:${sess.user_id}`, 20, 3600)) {
+    return err(429, "AI generation rate limit exceeded. Try again later.");
+  }
+
   const proposal = await env.DB.prepare(
     "SELECT * FROM proposals WHERE id = ? AND user_id = ?"
   ).bind(id, sess.user_id).first();
@@ -245,10 +394,12 @@ async function handleGenerateProposal(request, env, sess, id) {
 
   const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(sess.user_id).first();
 
-  const systemPrompt = `You are a professional proposal writer for small and medium businesses.
+  const systemPrompt = `${TIE_SYSTEM_CONTEXT}
+
+You are a professional proposal writer for small and medium businesses.
 The user's company is "${user.company_name || "a professional services firm"}" in the "${user.industry || "general"}" industry.
 Generate a complete, professional business proposal based on the brief provided.
-Include: Executive Summary, Scope of Work, Timeline, Deliverables, Pricing Breakdown, Terms & Conditions.
+Include: Executive Summary, Scope of Work, Timeline, Deliverables, Pricing Breakdown (in CAD), Terms & Conditions.
 Format in clean markdown. Be specific, professional, and persuasive.`;
 
   const userPrompt = `Create a proposal for:
@@ -274,8 +425,8 @@ Budget Range: $${proposal.pricing || "TBD"}`;
     });
 
     if (!resp.ok) {
-      const errBody = await resp.text();
-      return err(502, `AI generation failed: ${resp.status}`);
+      console.error(`AI generation failed: ${resp.status}`);
+      return err(502, "AI generation failed");
     }
 
     const result = await resp.json();
@@ -288,7 +439,8 @@ Budget Range: $${proposal.pricing || "TBD"}`;
     await logActivity(env, sess.user_id, "ai_generate", "proposal", id);
     return json({ ok: true, ai_draft: aiDraft });
   } catch (e) {
-    return err(502, `AI generation error: ${e.message}`);
+    console.error("AI generation error:", e.message);
+    return err(502, "AI generation failed");
   }
 }
 
@@ -300,8 +452,8 @@ async function handleProposalPdf(request, env, sess, id) {
   if (!proposal) return err(404, "Proposal not found");
 
   const items = await env.DB.prepare(
-    "SELECT * FROM proposal_items WHERE proposal_id = ?"
-  ).bind(id).all();
+    "SELECT pi.* FROM proposal_items pi JOIN proposals p ON pi.proposal_id = p.id WHERE pi.proposal_id = ? AND p.user_id = ?"
+  ).bind(id, sess.user_id).all();
 
   // Return structured data that the frontend can render as PDF via browser print
   return json({
@@ -338,6 +490,10 @@ async function handleCreateSop(request, env, sess) {
 
   const { title, content, category } = body;
   if (!title) return err(400, "Title required");
+
+  // Input validation
+  const lengthErr = validateTextInputs(body, { title: 200, content: 50000, category: 200 });
+  if (lengthErr) return err(400, lengthErr);
 
   const result = await env.DB.prepare(
     "INSERT INTO sops (user_id, title, content, category) VALUES (?, ?, ?, ?)"
@@ -388,6 +544,10 @@ async function handleCreateTask(request, env, sess) {
 
   const { title, description, due_date, recurrence, priority } = body;
   if (!title) return err(400, "Title required");
+
+  // Input validation
+  const lengthErr = validateTextInputs(body, { title: 200, description: 50000 });
+  if (lengthErr) return err(400, lengthErr);
 
   const result = await env.DB.prepare(
     "INSERT INTO tasks (user_id, title, description, due_date, recurrence, priority) VALUES (?, ?, ?, ?, ?, ?)"
@@ -442,6 +602,14 @@ async function handleCreateVendor(request, env, sess) {
   const { name, contact_email, phone, contract_end, notes } = body;
   if (!name) return err(400, "Vendor name required");
 
+  // Input validation
+  const lengthErr = validateTextInputs(body, { name: 200, contact_email: 254, phone: 50, notes: 50000 });
+  if (lengthErr) return err(400, lengthErr);
+  if (contact_email) {
+    const emailErr = validateEmail(contact_email);
+    if (emailErr) return err(400, emailErr);
+  }
+
   const result = await env.DB.prepare(
     "INSERT INTO vendors (user_id, name, contact_email, phone, contract_end, notes) VALUES (?, ?, ?, ?, ?, ?)"
   ).bind(sess.user_id, name, contact_email || "", phone || "", contract_end || "", notes || "").run();
@@ -475,6 +643,10 @@ async function handleCreateProject(request, env, sess) {
   const { name, client_name, proposal_id, budget, start_date, end_date } = body;
   if (!name) return err(400, "Project name required");
 
+  // Input validation
+  const lengthErr = validateTextInputs(body, { name: 200, client_name: 200 });
+  if (lengthErr) return err(400, lengthErr);
+
   const result = await env.DB.prepare(
     "INSERT INTO projects (user_id, proposal_id, name, client_name, budget, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?)"
   ).bind(sess.user_id, proposal_id || null, name, client_name || "", budget || 0, start_date || "", end_date || "").run();
@@ -497,8 +669,8 @@ async function handleGetProject(env, sess, id) {
   if (!project) return err(404, "Project not found");
 
   const milestones = await env.DB.prepare(
-    "SELECT * FROM milestones WHERE project_id = ? ORDER BY due_date ASC"
-  ).bind(id).all();
+    "SELECT m.* FROM milestones m JOIN projects p ON m.project_id = p.id WHERE m.project_id = ? AND p.user_id = ? ORDER BY m.due_date ASC"
+  ).bind(id, sess.user_id).all();
 
   return json({ ...project, milestones: milestones.results });
 }
@@ -575,8 +747,8 @@ async function handleProjectStatusUpdate(request, env, sess, id) {
   if (!project) return err(404, "Project not found");
 
   const milestones = await env.DB.prepare(
-    "SELECT * FROM milestones WHERE project_id = ? ORDER BY due_date ASC"
-  ).bind(id).all();
+    "SELECT m.* FROM milestones m JOIN projects p ON m.project_id = p.id WHERE m.project_id = ? AND p.user_id = ? ORDER BY m.due_date ASC"
+  ).bind(id, sess.user_id).all();
 
   const completed = milestones.results.filter(m => m.status === "completed").length;
   const total = milestones.results.length;
@@ -722,6 +894,10 @@ async function handleCreateJob(request, env, sess) {
   const { title, description, requirements, salary_range } = body;
   if (!title) return err(400, "Job title required");
 
+  // Input validation
+  const lengthErr = validateTextInputs(body, { title: 200, description: 50000, requirements: 50000, salary_range: 200 });
+  if (lengthErr) return err(400, lengthErr);
+
   const result = await env.DB.prepare(
     "INSERT INTO jobs (user_id, title, description, requirements, salary_range) VALUES (?, ?, ?, ?, ?)"
   ).bind(sess.user_id, title, description || "", requirements || "", salary_range || "").run();
@@ -770,6 +946,14 @@ async function handleCreateCandidate(request, env, sess) {
 
   const { job_id, name, email, phone, resume_text, notes } = body;
   if (!job_id || !name) return err(400, "Job ID and candidate name required");
+
+  // Input validation
+  const lengthErr = validateTextInputs(body, { name: 200, email: 254, phone: 50, resume_text: 50000, notes: 50000 });
+  if (lengthErr) return err(400, lengthErr);
+  if (email) {
+    const emailErr = validateEmail(email);
+    if (emailErr) return err(400, emailErr);
+  }
 
   // Verify job belongs to user
   const job = await env.DB.prepare("SELECT id FROM jobs WHERE id = ? AND user_id = ?").bind(job_id, sess.user_id).first();
@@ -820,6 +1004,11 @@ async function handleUpdateCandidate(request, env, sess, id) {
 }
 
 async function handleScreenCandidate(request, env, sess, id) {
+  // Rate limit: 20 AI screenings per user per hour
+  if (!await checkRateLimit(env, `ai:${sess.user_id}`, 20, 3600)) {
+    return err(429, "AI screening rate limit exceeded. Try again later.");
+  }
+
   const candidate = await env.DB.prepare(
     "SELECT c.*, j.title as job_title, j.description as job_description, j.requirements as job_requirements FROM candidates c JOIN jobs j ON c.job_id = j.id WHERE c.id = ? AND c.user_id = ?"
   ).bind(id, sess.user_id).first();
@@ -828,7 +1017,10 @@ async function handleScreenCandidate(request, env, sess, id) {
   const apiKey = env.ANTHROPIC_API_KEY;
   if (!apiKey) return err(503, "AI screening not configured");
 
-  const systemPrompt = `You are an HR screening assistant. Evaluate the candidate against the job requirements.
+  const systemPrompt = `${TIE_SYSTEM_CONTEXT}
+
+You are an HR screening assistant for a Canadian business. Evaluate the candidate against the job requirements.
+Consider Canadian employment standards and labour law context where relevant.
 Provide:
 1. Overall Match Score (1-10)
 2. Key Strengths (matching requirements)
@@ -861,7 +1053,10 @@ Notes: ${candidate.notes || 'None'}`;
       }),
     });
 
-    if (!resp.ok) return err(502, `AI screening failed: ${resp.status}`);
+    if (!resp.ok) {
+      console.error(`AI screening failed: ${resp.status}`);
+      return err(502, "AI screening failed");
+    }
 
     const result = await resp.json();
     const screening = result.content?.[0]?.text || "";
@@ -873,7 +1068,8 @@ Notes: ${candidate.notes || 'None'}`;
     await logActivity(env, sess.user_id, "ai_screen", "candidate", id);
     return json({ ok: true, ai_screening: screening });
   } catch (e) {
-    return err(502, `AI screening error: ${e.message}`);
+    console.error("AI screening error:", e.message);
+    return err(502, "AI screening failed");
   }
 }
 
@@ -924,6 +1120,17 @@ async function handleCreateReview(request, env, sess) {
   const { employee_name, position, review_period, rating, strengths, improvements, goals, generate_ai } = body;
   if (!employee_name) return err(400, "Employee name required");
 
+  // Input validation
+  const lengthErr = validateTextInputs(body, { employee_name: 200, position: 200, review_period: 200, strengths: 50000, improvements: 50000, goals: 50000 });
+  if (lengthErr) return err(400, lengthErr);
+
+  // Rate limit AI if requested
+  if (generate_ai) {
+    if (!await checkRateLimit(env, `ai:${sess.user_id}`, 20, 3600)) {
+      return err(429, "AI generation rate limit exceeded. Try again later.");
+    }
+  }
+
   let aiDraft = "";
   if (generate_ai && env.ANTHROPIC_API_KEY) {
     try {
@@ -937,7 +1144,7 @@ async function handleCreateReview(request, env, sess) {
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
           max_tokens: 2048,
-          system: "You are an HR professional writing a performance review. Be constructive, specific, and balanced. Format in clean markdown.",
+          system: `${TIE_SYSTEM_CONTEXT}\n\nYou are an HR professional writing a performance review for a Canadian business. Be constructive, specific, and balanced. Reference Canadian employment standards where appropriate. Format in clean markdown.`,
           messages: [{ role: "user", content: `Write a performance review for:
 Employee: ${employee_name}
 Position: ${position || 'N/A'}
@@ -968,6 +1175,193 @@ async function handleListReviews(env, sess) {
     "SELECT * FROM reviews WHERE user_id = ? ORDER BY created_at DESC"
   ).bind(sess.user_id).all();
   return json({ reviews: rows.results });
+}
+
+// ─── Canadian TIE System Prompt ─────────────────────────
+
+const TIE_SYSTEM_CONTEXT = `You are TIE (The Intelligence Engine), an AI assistant for Canadian small and medium businesses.
+Context: The user operates a business in Canada. Apply Canadian business norms including:
+- Canadian tax references (GST/HST, CRA, T4, T2, provincial tax rates)
+- Canadian employment standards (ESA, provincial labour codes)
+- Canadian regulatory environment (PIPEDA for privacy, provincial regulations)
+- Canadian spelling conventions (colour, honour, licence, centre)
+- Canadian currency (CAD $) unless specified otherwise
+- Canadian market context (BDC funding, IRAP, SR&ED tax credits)`;
+
+// ─── Content Calendar Routes ────────────────────────────
+
+async function handleCreateContent(request, env, sess) {
+  let body;
+  try { body = await request.json(); } catch { return err(400, "Invalid JSON"); }
+
+  const { type, title, topic, audience, brand_voice, scheduled_date, channel } = body;
+  if (!title) return err(400, "Title required");
+
+  // Input validation
+  const lengthErr = validateTextInputs(body, { type: 200, title: 200, topic: 50000, audience: 200, brand_voice: 200, channel: 200 });
+  if (lengthErr) return err(400, lengthErr);
+
+  const result = await env.DB.prepare(
+    "INSERT INTO content_calendar (user_id, type, title, topic, audience, brand_voice, scheduled_date, channel) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(sess.user_id, type || "blog", title, topic || "", audience || "", brand_voice || "", scheduled_date || "", channel || "").run();
+
+  await logActivity(env, sess.user_id, "create", "content", result.meta.last_row_id);
+  return json({ ok: true, id: result.meta.last_row_id }, { status: 201 });
+}
+
+async function handleListContent(env, sess, url) {
+  const month = url.searchParams.get("month"); // format: YYYY-MM
+  const type = url.searchParams.get("type");
+  let query = "SELECT * FROM content_calendar WHERE user_id = ?";
+  const params = [sess.user_id];
+
+  if (month) {
+    query += " AND scheduled_date LIKE ?";
+    params.push(month + "%");
+  }
+  if (type) {
+    query += " AND type = ?";
+    params.push(type);
+  }
+  query += " ORDER BY scheduled_date ASC, created_at DESC";
+
+  const rows = await env.DB.prepare(query).bind(...params).all();
+  return json({ content: rows.results });
+}
+
+async function handleGetContent(env, sess, id) {
+  const row = await env.DB.prepare(
+    "SELECT * FROM content_calendar WHERE id = ? AND user_id = ?"
+  ).bind(id, sess.user_id).first();
+  if (!row) return err(404, "Content entry not found");
+  return json(row);
+}
+
+async function handleUpdateContent(request, env, sess, id) {
+  let body;
+  try { body = await request.json(); } catch { return err(400, "Invalid JSON"); }
+
+  const existing = await env.DB.prepare(
+    "SELECT id FROM content_calendar WHERE id = ? AND user_id = ?"
+  ).bind(id, sess.user_id).first();
+  if (!existing) return err(404, "Content entry not found");
+
+  const fields = [];
+  const values = [];
+  for (const key of ["type", "title", "topic", "audience", "brand_voice", "ai_draft", "status", "scheduled_date", "published_date", "channel"]) {
+    if (body[key] !== undefined) { fields.push(`${key} = ?`); values.push(body[key]); }
+  }
+  if (fields.length === 0) return err(400, "No fields to update");
+  values.push(id, sess.user_id);
+
+  await env.DB.prepare(
+    `UPDATE content_calendar SET ${fields.join(", ")} WHERE id = ? AND user_id = ?`
+  ).bind(...values).run();
+
+  await logActivity(env, sess.user_id, "update", "content", id);
+  return json({ ok: true });
+}
+
+async function handleGenerateContent(request, env, sess) {
+  // Rate limit: 20 AI generations per user per hour
+  if (!await checkRateLimit(env, `ai:${sess.user_id}`, 20, 3600)) {
+    return err(429, "AI generation rate limit exceeded. Try again later.");
+  }
+
+  let body;
+  try { body = await request.json(); } catch { return err(400, "Invalid JSON"); }
+
+  const { type, topic, brand_voice, audience } = body;
+  if (!topic) return err(400, "Topic required");
+
+  const apiKey = env.ANTHROPIC_API_KEY;
+  if (!apiKey) return err(503, "AI generation not configured");
+
+  const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(sess.user_id).first();
+
+  const systemPrompt = `${TIE_SYSTEM_CONTEXT}
+
+You are a content creation specialist. The user's company is "${user.company_name || "a Canadian business"}" in the "${user.industry || "general"}" industry.
+Generate high-quality ${type || "blog"} content based on the topic provided.
+${brand_voice ? `Brand voice: ${brand_voice}` : "Use a professional, approachable tone."}
+${audience ? `Target audience: ${audience}` : ""}
+
+For blog posts: Include title, introduction, 3-5 sections with subheadings, and a conclusion with CTA.
+For social media: Keep it concise, engaging, with relevant hashtags.
+For email: Include subject line, preview text, body with clear CTA.
+For newsletter: Include headline, 2-3 featured stories/tips, and sign-off.
+Format in clean markdown.`;
+
+  const userPrompt = `Create ${type || "blog"} content about: ${topic}`;
+
+  try {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userPrompt }],
+      }),
+    });
+
+    if (!resp.ok) {
+      console.error(`AI content generation failed: ${resp.status}`);
+      return err(502, "AI generation failed");
+    }
+
+    const result = await resp.json();
+    const aiDraft = result.content?.[0]?.text || "";
+
+    await logActivity(env, sess.user_id, "ai_generate", "content", 0);
+    return json({ ok: true, ai_draft: aiDraft });
+  } catch (e) {
+    console.error("AI content generation error:", e.message);
+    return err(502, "AI generation failed");
+  }
+}
+
+async function handlePublishContent(request, env, sess) {
+  let body;
+  try { body = await request.json(); } catch { return err(400, "Invalid JSON"); }
+
+  const { id } = body;
+  if (!id) return err(400, "Content ID required");
+
+  const existing = await env.DB.prepare(
+    "SELECT id FROM content_calendar WHERE id = ? AND user_id = ?"
+  ).bind(id, sess.user_id).first();
+  if (!existing) return err(404, "Content entry not found");
+
+  const publishedDate = new Date().toISOString().split("T")[0];
+  await env.DB.prepare(
+    "UPDATE content_calendar SET status = 'published', published_date = ? WHERE id = ? AND user_id = ?"
+  ).bind(publishedDate, id, sess.user_id).run();
+
+  await logActivity(env, sess.user_id, "publish", "content", id);
+  return json({ ok: true, message: "Content marked as published" });
+}
+
+async function handleContentStats(env, sess) {
+  const now = new Date();
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  const stats = await env.DB.prepare(`
+    SELECT
+      COUNT(*) as total,
+      SUM(CASE WHEN status = 'published' AND published_date LIKE ? THEN 1 ELSE 0 END) as published_this_month,
+      SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END) as scheduled,
+      SUM(CASE WHEN status IN ('idea','draft') THEN 1 ELSE 0 END) as drafts_pending,
+      SUM(CASE WHEN status = 'review' THEN 1 ELSE 0 END) as in_review
+    FROM content_calendar WHERE user_id = ?
+  `).bind(monthStart + "%", sess.user_id).first();
+
+  return json({ stats });
 }
 
 // ─── Dashboard ───────────────────────────────────────────
@@ -1021,6 +1415,9 @@ export default {
       }
       else if (path === "/api/auth/login" && method === "POST") {
         response = await handleLogin(request, env);
+      }
+      else if (path === "/api/auth/logout" && method === "POST") {
+        response = await handleLogout(request, env);
       }
 
       // All routes below require auth
@@ -1171,6 +1568,31 @@ export default {
           response = await handleListReviews(env, sess);
         }
 
+        // Content Calendar
+        else if (path === "/api/content/calendar" && method === "POST") {
+          response = await handleCreateContent(request, env, sess);
+        }
+        else if (path === "/api/content/calendar" && method === "GET") {
+          response = await handleListContent(env, sess, url);
+        }
+        else if (path === "/api/content/stats" && method === "GET") {
+          response = await handleContentStats(env, sess);
+        }
+        else if (path === "/api/content/generate" && method === "POST") {
+          response = await handleGenerateContent(request, env, sess);
+        }
+        else if (path === "/api/content/publish" && method === "POST") {
+          response = await handlePublishContent(request, env, sess);
+        }
+        else if (/^\/api\/content\/calendar\/(\d+)$/.test(path) && method === "GET") {
+          const id = parseInt(path.match(/\/api\/content\/calendar\/(\d+)/)[1]);
+          response = await handleGetContent(env, sess, id);
+        }
+        else if (/^\/api\/content\/calendar\/(\d+)$/.test(path) && method === "PUT") {
+          const id = parseInt(path.match(/\/api\/content\/calendar\/(\d+)/)[1]);
+          response = await handleUpdateContent(request, env, sess, id);
+        }
+
         // Projects
         else if (path === "/api/projects" && method === "POST") {
           response = await handleCreateProject(request, env, sess);
@@ -1207,7 +1629,8 @@ export default {
         response = err(404, "Not found");
       }
     } catch (e) {
-      response = err(500, `Internal error: ${e.message}`);
+      console.error("Internal error:", e.message);
+      response = err(500, "Internal server error");
     }
 
     return applyCors(response, origin, env);
