@@ -85,6 +85,26 @@ function validateTextInputs(body, rules) {
   return null;
 }
 
+// ─── Status Enums ───────────────────────────────────────
+
+const STATUS_ENUMS = {
+  proposals: ['draft', 'sent', 'won', 'lost'],
+  tasks: ['pending', 'in_progress', 'completed'],
+  projects: ['planning', 'active', 'on_hold', 'completed', 'cancelled'],
+  invoices: ['draft', 'sent', 'paid', 'overdue'],
+  jobs: ['open', 'closed', 'filled'],
+  candidates: ['applied', 'screening', 'interview', 'offer', 'hired', 'rejected'],
+  content_calendar: ['idea', 'draft', 'review', 'scheduled', 'published'],
+  onboarding: ['pending', 'in_progress', 'completed'],
+};
+
+function validateStatus(entityType, status) {
+  const allowed = STATUS_ENUMS[entityType];
+  if (!allowed) return null;
+  if (!allowed.includes(status)) return `Invalid status '${status}'. Allowed: ${allowed.join(', ')}`;
+  return null;
+}
+
 // ─── Rate Limiting ──────────────────────────────────────
 
 async function checkRateLimit(env, key, maxRequests, windowSeconds) {
@@ -359,6 +379,11 @@ async function handleUpdateProposal(request, env, sess, id) {
 
   const fields = [];
   const values = [];
+  if (body.status !== undefined) {
+    const statusErr = validateStatus('proposals', body.status);
+    if (statusErr) return err(400, statusErr);
+  }
+
   for (const key of ["client_name", "project_type", "scope", "pricing", "status", "ai_draft", "pdf_url", "brief"]) {
     if (body[key] !== undefined) {
       fields.push(`${key} = ?`);
@@ -579,6 +604,11 @@ async function handleUpdateTask(request, env, sess, id) {
 
   const fields = [];
   const values = [];
+  if (body.status !== undefined) {
+    const statusErr = validateStatus('tasks', body.status);
+    if (statusErr) return err(400, statusErr);
+  }
+
   for (const key of ["title", "description", "due_date", "recurrence", "status", "priority"]) {
     if (body[key] !== undefined) { fields.push(`${key} = ?`); values.push(body[key]); }
   }
@@ -627,6 +657,26 @@ async function handleListVendors(env, sess) {
 
 // ─── Compliance Routes ───────────────────────────────────
 
+async function handleCreateCompliance(request, env, sess) {
+  let body;
+  try { body = await request.json(); } catch { return err(400, "Invalid JSON"); }
+
+  const { title, deadline, category, reminder_days } = body;
+  if (!title) return err(400, "Title required");
+  if (!deadline) return err(400, "Deadline required");
+
+  // Input validation
+  const lengthErr = validateTextInputs(body, { title: 200, category: 200 });
+  if (lengthErr) return err(400, lengthErr);
+
+  const result = await env.DB.prepare(
+    "INSERT INTO compliance_items (user_id, title, deadline, category, status, reminder_days) VALUES (?, ?, ?, ?, 'active', ?)"
+  ).bind(sess.user_id, title, deadline, category || "Regulatory", reminder_days || 30).run();
+
+  await logActivity(env, sess.user_id, "create", "compliance", result.meta.last_row_id);
+  return json({ ok: true, id: result.meta.last_row_id }, { status: 201 });
+}
+
 async function handleListCompliance(env, sess) {
   const rows = await env.DB.prepare(
     "SELECT * FROM compliance_items WHERE user_id = ? ORDER BY deadline ASC"
@@ -646,6 +696,12 @@ async function handleCreateProject(request, env, sess) {
   // Input validation
   const lengthErr = validateTextInputs(body, { name: 200, client_name: 200 });
   if (lengthErr) return err(400, lengthErr);
+
+  // Validate proposal_id belongs to user
+  if (proposal_id) {
+    const pCheck = await env.DB.prepare("SELECT id FROM proposals WHERE id = ? AND user_id = ?").bind(proposal_id, sess.user_id).first();
+    if (!pCheck) return err(403, "Proposal not found");
+  }
 
   const result = await env.DB.prepare(
     "INSERT INTO projects (user_id, proposal_id, name, client_name, budget, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -809,6 +865,11 @@ async function handleUpdateInvoice(request, env, sess, id) {
 
   const fields = [];
   const values = [];
+  if (body.status !== undefined) {
+    const statusErr = validateStatus('invoices', body.status);
+    if (statusErr) return err(400, statusErr);
+  }
+
   for (const key of ["client_name", "project_id", "milestone_id", "amount", "status", "due_date", "paid_date", "notes"]) {
     if (body[key] !== undefined) { fields.push(`${key} = ?`); values.push(body[key]); }
   }
@@ -924,6 +985,11 @@ async function handleUpdateJob(request, env, sess, id) {
 
   const fields = [];
   const values = [];
+  if (body.status !== undefined) {
+    const statusErr = validateStatus('jobs', body.status);
+    if (statusErr) return err(400, statusErr);
+  }
+
   for (const key of ["title", "description", "requirements", "salary_range", "status"]) {
     if (body[key] !== undefined) { fields.push(`${key} = ?`); values.push(body[key]); }
   }
@@ -989,6 +1055,11 @@ async function handleUpdateCandidate(request, env, sess, id) {
 
   const fields = [];
   const values = [];
+  if (body.status !== undefined) {
+    const statusErr = validateStatus('candidates', body.status);
+    if (statusErr) return err(400, statusErr);
+  }
+
   for (const key of ["name", "email", "phone", "resume_text", "status", "rating", "notes", "ai_screening"]) {
     if (body[key] !== undefined) { fields.push(`${key} = ?`); values.push(body[key]); }
   }
@@ -1109,6 +1180,13 @@ async function handleGetOnboarding(env, sess, id) {
   try { checklist = JSON.parse(row.checklist || "[]"); } catch { checklist = []; }
 
   return json({ ...row, checklist_parsed: checklist });
+}
+
+async function handleListOnboarding(env, sess) {
+  const rows = await env.DB.prepare(
+    "SELECT * FROM onboarding WHERE user_id = ? ORDER BY created_at DESC"
+  ).bind(sess.user_id).all();
+  return json({ onboarding: rows.results });
 }
 
 // ─── Reviews Routes ─────────────────────────────────────
@@ -1248,6 +1326,11 @@ async function handleUpdateContent(request, env, sess, id) {
 
   const fields = [];
   const values = [];
+  if (body.status !== undefined) {
+    const statusErr = validateStatus('content_calendar', body.status);
+    if (statusErr) return err(400, statusErr);
+  }
+
   for (const key of ["type", "title", "topic", "audience", "brand_voice", "ai_draft", "status", "scheduled_date", "published_date", "channel"]) {
     if (body[key] !== undefined) { fields.push(`${key} = ?`); values.push(body[key]); }
   }
@@ -1370,7 +1453,7 @@ async function handleDashboard(env, sess) {
   const [proposalStats, projectStats, taskStats, revenueStats] = await Promise.all([
     env.DB.prepare("SELECT COUNT(*) as total, SUM(CASE WHEN status IN ('draft','sent') THEN 1 ELSE 0 END) as active FROM proposals WHERE user_id = ?").bind(sess.user_id).first(),
     env.DB.prepare("SELECT COUNT(*) as total, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active FROM projects WHERE user_id = ?").bind(sess.user_id).first(),
-    env.DB.prepare("SELECT COUNT(*) as total, SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending, SUM(CASE WHEN due_date <= date('now','+7 days') AND status = 'pending' THEN 1 ELSE 0 END) as due_soon FROM tasks WHERE user_id = ?").bind(sess.user_id).first(),
+    env.DB.prepare("SELECT COUNT(*) as total, SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending, SUM(CASE WHEN due_date <= date('now','+7 days') AND status = 'pending' THEN 1 ELSE 0 END) as due_soon, SUM(CASE WHEN due_date < date('now') AND status = 'pending' THEN 1 ELSE 0 END) as overdue FROM tasks WHERE user_id = ?").bind(sess.user_id).first(),
     env.DB.prepare("SELECT SUM(CASE WHEN status = 'won' THEN pricing ELSE 0 END) as won_revenue, SUM(CASE WHEN status IN ('draft','sent') THEN pricing ELSE 0 END) as pipeline FROM proposals WHERE user_id = ?").bind(sess.user_id).first(),
   ]);
 
@@ -1490,6 +1573,9 @@ export default {
         }
 
         // Compliance
+        else if (path === "/api/compliance" && method === "POST") {
+          response = await handleCreateCompliance(request, env, sess);
+        }
         else if (path === "/api/compliance" && method === "GET") {
           response = await handleListCompliance(env, sess);
         }
@@ -1554,6 +1640,9 @@ export default {
         // Onboarding
         else if (path === "/api/onboarding" && method === "POST") {
           response = await handleCreateOnboarding(request, env, sess);
+        }
+        else if (path === "/api/onboarding" && method === "GET") {
+          response = await handleListOnboarding(env, sess);
         }
         else if (/^\/api\/onboarding\/(\d+)$/.test(path) && method === "GET") {
           const id = parseInt(path.match(/\/api\/onboarding\/(\d+)/)[1]);
