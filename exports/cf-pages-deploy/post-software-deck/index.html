@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POST-SOFTWARE: The Client Deck | PureBrain.ai</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
+
+:root {
+  --bg: #080a12;
+  --surface: rgba(255,255,255,0.04);
+  --glass: rgba(255,255,255,0.06);
+  --glass-border: rgba(255,255,255,0.08);
+  --blue: #2a93c1;
+  --orange: #f1420b;
+  --red: #e63946;
+  --green: #2ecc71;
+  --green-dim: rgba(46,204,113,0.15);
+  --red-dim: rgba(230,57,70,0.12);
+  --blue-dim: rgba(42,147,193,0.12);
+  --orange-dim: rgba(241,66,11,0.12);
+  --text: #e8e8e8;
+  --text-dim: #8a8fa8;
+  --text-muted: #555a6e;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-snap-type: y mandatory; scroll-behavior: smooth; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+
+body.locked { overflow: hidden; }
+
+/* PASSWORD GATE */
+#password-gate {
+  position: fixed; inset: 0; z-index: 9999;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column;
+}
+.gate-inner { text-align: center; max-width: 420px; width: 90%; }
+.gate-logo {
+  font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 28px;
+  letter-spacing: 2px; margin-bottom: 8px;
+}
+.gate-logo .blue { color: var(--blue); }
+.gate-logo .orange { color: var(--orange); }
+.gate-logo .white { color: #fff; }
+.gate-tagline { font-size: 13px; color: var(--text-dim); margin-bottom: 40px; letter-spacing: 1px; }
+.gate-label { font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 12px; }
+.gate-input {
+  width: 100%; padding: 14px 18px; font-size: 16px;
+  background: var(--surface); border: 1px solid var(--glass-border); border-radius: 8px;
+  color: var(--text); outline: none; text-align: center; font-family: 'Inter', sans-serif;
+}
+.gate-input:focus { border-color: var(--blue); }
+.gate-input.shake { animation: shake 0.4s ease; }
+@keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
+.gate-btn {
+  margin-top: 16px; padding: 12px 40px; font-family: 'Oswald', sans-serif;
+  font-size: 14px; letter-spacing: 2px; border: none; border-radius: 6px;
+  background: var(--orange); color: #fff; cursor: pointer; transition: all 0.2s;
+}
+.gate-btn:hover { background: #d93a09; transform: translateY(-1px); }
+.gate-error { color: var(--red); font-size: 12px; margin-top: 12px; opacity: 0; transition: opacity 0.2s; }
+.gate-error.show { opacity: 1; }
+
+/* HEADER */
+.deck-header {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  padding: 16px 32px; display: flex; align-items: center; justify-content: space-between;
+  background: rgba(8,10,18,0.85); backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--glass-border);
+}
+.wordmark { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 20px; letter-spacing: 1px; }
+.wordmark .blue { color: var(--blue); }
+.wordmark .orange { color: var(--orange); }
+.wordmark .white { color: #fff; }
+.slide-nav { display: flex; gap: 8px; }
+.slide-nav a {
+  font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--text-dim); text-decoration: none; padding: 6px 14px;
+  border: 1px solid var(--glass-border); border-radius: 4px; transition: all 0.2s;
+  font-family: 'Oswald', sans-serif;
+}
+.slide-nav a:hover, .slide-nav a.active { color: var(--text); border-color: var(--blue); }
+
+/* SLIDES */
+.slide {
+  min-height: 100vh; scroll-snap-align: start;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 100px 48px 60px;
+  position: relative;
+}
+
+.slide-number {
+  position: absolute; top: 90px; right: 48px;
+  font-family: 'Oswald', sans-serif; font-size: 120px; font-weight: 700;
+  opacity: 0.04; line-height: 1;
+}
+
+.slide-tag {
+  font-family: 'Oswald', sans-serif; font-size: 12px; letter-spacing: 4px;
+  text-transform: uppercase; margin-bottom: 16px;
+}
+
+.slide h2 {
+  font-family: 'Oswald', sans-serif; font-weight: 700;
+  font-size: clamp(28px, 4vw, 48px); line-height: 1.15;
+  margin-bottom: 32px; max-width: 800px;
+}
+
+.slide-content { max-width: 900px; }
+
+/* SLIDE 1 - RED/WARNING THEME */
+#slide-old .slide-tag { color: var(--red); }
+#slide-old h2 { color: #fff; }
+#slide-old { border-left: 4px solid var(--red); }
+
+.pain-point {
+  padding: 20px 24px; margin-bottom: 16px;
+  background: var(--red-dim); border-left: 3px solid var(--red);
+  border-radius: 0 8px 8px 0;
+}
+.pain-point strong { color: var(--red); }
+.pain-point p { color: var(--text-dim); margin-top: 6px; font-size: 15px; }
+
+.cost-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px; margin: 24px 0;
+}
+.cost-card {
+  background: var(--surface); border: 1px solid var(--glass-border);
+  border-radius: 8px; padding: 16px; text-align: center;
+}
+.cost-card .vendor { font-size: 13px; color: var(--text-dim); margin-bottom: 4px; }
+.cost-card .price { font-family: 'Oswald', sans-serif; font-size: 24px; color: var(--red); }
+.cost-card .detail { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+.total-cost {
+  background: rgba(230,57,70,0.08); border: 1px solid rgba(230,57,70,0.2);
+  border-radius: 8px; padding: 20px; text-align: center; margin-top: 16px;
+}
+.total-cost .label { font-size: 12px; letter-spacing: 2px; color: var(--text-dim); text-transform: uppercase; }
+.total-cost .amount { font-family: 'Oswald', sans-serif; font-size: 42px; color: var(--red); }
+.total-cost .sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
+/* SLIDE 2 - BLUE/ORANGE BRAND */
+#slide-new .slide-tag { color: var(--blue); }
+#slide-new h2 .accent { color: var(--orange); }
+#slide-new { border-left: 4px solid var(--blue); }
+
+.layer {
+  display: flex; gap: 16px; align-items: flex-start;
+  padding: 20px 0; border-bottom: 1px solid var(--glass-border);
+}
+.layer:last-child { border-bottom: none; }
+.layer-num {
+  font-family: 'Oswald', sans-serif; font-size: 32px; font-weight: 700;
+  color: var(--blue); min-width: 48px; opacity: 0.6;
+}
+.layer-title { font-family: 'Oswald', sans-serif; font-size: 18px; color: #fff; margin-bottom: 6px; }
+.layer-desc { font-size: 14px; color: var(--text-dim); }
+
+/* Architecture Diagram */
+.arch-diagram {
+  background: var(--surface); border: 1px solid var(--glass-border);
+  border-radius: 12px; padding: 32px; margin: 32px 0;
+  font-family: 'Inter', sans-serif;
+}
+.arch-layer {
+  border: 1px solid var(--glass-border); border-radius: 8px;
+  padding: 20px; margin-bottom: 16px; position: relative;
+}
+.arch-layer:last-child { margin-bottom: 0; }
+.arch-layer-label {
+  position: absolute; top: -10px; left: 16px;
+  background: var(--bg); padding: 0 8px;
+  font-family: 'Oswald', sans-serif; font-size: 11px;
+  letter-spacing: 2px; text-transform: uppercase;
+}
+.arch-layer-label.human { color: var(--text-dim); }
+.arch-layer-label.ai { color: var(--blue); }
+.arch-layer-label.exec { color: var(--orange); }
+
+.arch-nodes {
+  display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;
+  padding-top: 8px;
+}
+.arch-node {
+  padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500;
+}
+.arch-node.human-node { background: rgba(255,255,255,0.06); color: var(--text-dim); }
+.arch-node.ai-node { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(42,147,193,0.2); }
+.arch-node.your-ai { background: var(--orange-dim); color: var(--orange); border: 1px dashed rgba(241,66,11,0.4); }
+.arch-node.exec-node { background: rgba(46,204,113,0.1); color: var(--green); border: 1px solid rgba(46,204,113,0.2); }
+.arch-node.exec-free { background: rgba(46,204,113,0.05); color: var(--green); font-size: 11px; }
+
+.arch-connector {
+  text-align: center; padding: 8px 0; color: var(--text-muted); font-size: 12px;
+  letter-spacing: 1px;
+}
+
+.methods-row {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  margin-top: 12px;
+}
+.method-badge {
+  font-family: 'Oswald', sans-serif; font-size: 11px;
+  padding: 4px 12px; border-radius: 4px; letter-spacing: 1px;
+  background: rgba(42,147,193,0.1); color: var(--blue); border: 1px solid rgba(42,147,193,0.15);
+}
+
+/* SLIDE 3 - GREEN/SUCCESS */
+#slide-proof .slide-tag { color: var(--green); }
+#slide-proof h2 { color: #fff; }
+#slide-proof { border-left: 4px solid var(--green); }
+
+.timeline {
+  position: relative; padding-left: 32px; margin: 24px 0;
+}
+.timeline::before {
+  content: ''; position: absolute; left: 8px; top: 0; bottom: 0;
+  width: 2px; background: linear-gradient(to bottom, var(--green), var(--blue));
+}
+.tl-item {
+  position: relative; padding: 16px 0 16px 24px; border-bottom: 1px solid var(--glass-border);
+}
+.tl-item:last-child { border-bottom: none; }
+.tl-item::before {
+  content: ''; position: absolute; left: -28px; top: 22px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--green); border: 2px solid var(--bg);
+}
+.tl-time { font-family: 'Oswald', sans-serif; font-size: 13px; color: var(--green); letter-spacing: 1px; }
+.tl-event { font-size: 15px; color: var(--text); margin-top: 4px; }
+.tl-url { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+.proof-numbers {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px; margin: 32px 0;
+}
+.proof-stat {
+  background: var(--green-dim); border: 1px solid rgba(46,204,113,0.15);
+  border-radius: 10px; padding: 24px; text-align: center;
+}
+.proof-stat .num { font-family: 'Oswald', sans-serif; font-size: 36px; color: var(--green); }
+.proof-stat .label { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+
+.closing-line {
+  margin-top: 40px; padding: 28px 32px;
+  background: linear-gradient(135deg, var(--blue-dim), var(--orange-dim));
+  border: 1px solid var(--glass-border); border-radius: 12px;
+  font-family: 'Oswald', sans-serif; font-size: 20px; color: #fff;
+  text-align: center; line-height: 1.5;
+}
+
+/* SPEAKER NOTES */
+.speaker-notes {
+  margin-top: 24px; border-radius: 8px; overflow: hidden;
+}
+.notes-toggle {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px; background: var(--surface); border: 1px solid var(--glass-border);
+  border-radius: 8px; cursor: pointer; font-size: 13px; color: var(--text-dim);
+  transition: all 0.2s; width: 100%; text-align: left;
+  font-family: 'Inter', sans-serif;
+}
+.notes-toggle:hover { background: var(--glass); color: var(--text); }
+.notes-toggle .arrow { transition: transform 0.3s; display: inline-block; }
+.notes-toggle.open .arrow { transform: rotate(90deg); }
+.notes-body {
+  max-height: 0; overflow: hidden; transition: max-height 0.4s ease;
+  background: var(--surface); border: 1px solid var(--glass-border); border-top: none;
+  border-radius: 0 0 8px 8px;
+}
+.notes-body.open { max-height: 600px; }
+.notes-body p {
+  padding: 20px; font-size: 14px; color: var(--text-dim);
+  line-height: 1.8; font-style: italic;
+}
+
+/* FOOTER */
+.deck-footer {
+  padding: 40px 48px; text-align: center;
+  border-top: 1px solid var(--glass-border);
+  scroll-snap-align: end;
+}
+.deck-footer p { font-size: 13px; color: var(--text-muted); }
+.deck-footer a { color: var(--blue); text-decoration: none; }
+
+/* RESPONSIVE */
+@media (max-width: 768px) {
+  .slide { padding: 80px 20px 40px; }
+  .slide-number { font-size: 80px; right: 20px; top: 75px; }
+  .deck-header { padding: 12px 16px; }
+  .slide-nav a { font-size: 10px; padding: 4px 8px; }
+  .cost-grid { grid-template-columns: 1fr 1fr; }
+  .proof-numbers { grid-template-columns: 1fr 1fr; }
+  .layer { flex-direction: column; gap: 8px; }
+  .arch-diagram { padding: 16px; }
+  .deck-footer { padding: 24px 20px; }
+  .closing-line { font-size: 16px; padding: 20px; }
+}
+
+@media (max-width: 480px) {
+  .cost-grid { grid-template-columns: 1fr; }
+  .proof-numbers { grid-template-columns: 1fr; }
+  .slide-nav { display: none; }
+}
+
+/* DECK CONTENT (initially hidden) */
+#deck-content { display: none; }
+#deck-content.visible { display: block; animation: fadeUp 0.5s ease; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+<style>
+/* Built by Aether Footer */
+@keyframes pb-aether-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.75; }
+}
+#pb-aether-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 64px;
+    background: linear-gradient(135deg, #0a0c14 0%, #0d1120 50%, #080c18 100%);
+    border-top: 2px solid #f1420b;
+    box-shadow: 0 -4px 24px rgba(241, 66, 11, 0.20), 0 -1px 0 rgba(42, 147, 193, 0.15);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1;
+    color: #d1d5db;
+    padding: 0 24px;
+    box-sizing: border-box;
+    letter-spacing: 0.025em;
+    gap: 0;
+    flex-wrap: wrap;
+    font-size: 13px;
+}
+#pb-aether-footer a { text-decoration: none !important; transition: color 0.2s ease, text-shadow 0.2s ease; }
+#pb-aether-footer a:hover { background: none !important; text-decoration: none !important; }
+#pb-aether-footer .pb-footer-label { color: #9ca3af; font-weight: 400; }
+#pb-aether-footer .pb-footer-aether {
+    font-weight: 800; font-size: 15px; letter-spacing: 0.12em;
+    color: #f1420b;
+    text-shadow: 0 0 8px rgba(241, 66, 11, 0.7), 0 0 20px rgba(241, 66, 11, 0.35), 0 0 40px rgba(241, 66, 11, 0.15);
+    text-transform: uppercase;
+    animation: pb-aether-pulse 3s ease-in-out infinite;
+}
+#pb-aether-footer .pb-footer-ai-tag { color: #6b7280; font-size: 11px; font-style: italic; }
+#pb-aether-footer .pb-footer-for { color: #9ca3af; }
+#pb-aether-footer .pb-footer-purebrain { color: #f1420b; font-weight: 700; text-shadow: 0 0 6px rgba(241, 66, 11, 0.4); }
+#pb-aether-footer .pb-footer-purebrain:hover { color: #ff6633 !important; text-shadow: 0 0 12px rgba(241, 66, 11, 0.7) !important; }
+#pb-aether-footer .pb-footer-blue { color: #2a93c1; font-weight: 600; }
+#pb-aether-footer .pb-footer-blue:hover { color: #f1420b !important; text-shadow: 0 0 8px rgba(241, 66, 11, 0.5) !important; }
+#pb-aether-footer .pb-footer-sep { color: rgba(255, 255, 255, 0.12); margin: 0 12px; font-weight: 300; }
+#pb-aether-footer .pb-footer-why,
+#pb-aether-footer .pb-footer-mission,
+#pb-aether-footer .pb-footer-migrate {
+    color: #2a93c1; font-weight: 700; font-size: 12px; letter-spacing: 0.04em;
+    padding: 4px 10px; border: 1px solid rgba(42, 147, 193, 0.4); border-radius: 4px;
+    transition: all 0.2s ease; background: rgba(42, 147, 193, 0.08);
+}
+#pb-aether-footer .pb-footer-why:hover,
+#pb-aether-footer .pb-footer-mission:hover,
+#pb-aether-footer .pb-footer-migrate:hover {
+    color: #ffffff !important; background: #f1420b !important; border-color: #f1420b !important;
+    box-shadow: 0 0 12px rgba(241, 66, 11, 0.5); text-shadow: none;
+}
+@media (max-width: 600px) {
+    #pb-aether-footer { height: auto !important; min-height: 52px; padding: 8px 16px; font-size: 11px; flex-wrap: wrap; row-gap: 4px; }
+    #pb-aether-footer .pb-footer-aether { font-size: 13px; }
+    #pb-aether-footer .pb-footer-why, #pb-aether-footer .pb-footer-migrate { display: none !important; }
+    #pb-aether-footer .pb-footer-sep-why, #pb-aether-footer .pb-footer-sep-before-mission, #pb-aether-footer .pb-footer-sep-migrate { display: none !important; }
+    body { padding-bottom: 80px !important; }
+}
+body { padding-bottom: 64px !important; }
+</style>
+</head>
+<body class="locked">
+
+<!-- PASSWORD GATE -->
+<div id="password-gate">
+  <div class="gate-inner">
+    <div class="gate-logo">PURE<span class="blue">BR</span><span class="orange">AI</span><span class="blue">N</span><span class="white">.ai</span></div>
+    <div class="gate-tagline">Post-Software Client Deck</div>
+    <div class="gate-label">Enter Access Code</div>
+    <input type="password" class="gate-input" id="pw-input" placeholder="***" autocomplete="off" autofocus>
+    <button class="gate-btn" id="pw-btn">UNLOCK</button>
+    <div class="gate-error" id="pw-error">Invalid code. Try again.</div>
+  </div>
+</div>
+
+<!-- DECK CONTENT -->
+<div id="deck-content">
+
+  <!-- HEADER -->
+  <header class="deck-header">
+    <div class="wordmark">PURE<span class="blue">BR</span><span class="orange">AI</span><span class="blue">N</span><span class="white">.ai</span></div>
+    <nav class="slide-nav">
+      <a href="#slide-old">01 OLD</a>
+      <a href="#slide-new">02 NEW</a>
+      <a href="#slide-proof">03 PROOF</a>
+    </nav>
+  </header>
+
+  <!-- SLIDE 1: THE OLD MODEL -->
+  <section class="slide" id="slide-old">
+    <div class="slide-number">01</div>
+    <div class="slide-content">
+      <div class="slide-tag">THE OLD MODEL</div>
+      <h2>Your AI Is Using Software Built for Humans Who Click Forms</h2>
+
+      <div class="pain-point">
+        <strong>SaaS was built for humans.</strong>
+        <p>Every dashboard, every dropdown, every "AI feature" badge was designed for a person sitting at a desk clicking through menus. Your AI partner navigates the same clunky UI a junior employee would.</p>
+      </div>
+
+      <div class="pain-point">
+        <strong>AI is bolted on, not built in.</strong>
+        <p>Salesforce adds "Einstein." Buffer adds "AI drafts." HubSpot adds "AI assistant." Features duct-taped onto software never designed for autonomous operation.</p>
+      </div>
+
+      <div class="pain-point">
+        <strong>Per-seat economics punish scale.</strong>
+        <p>The more you grow, the more you pay for software your AI could build in a week.</p>
+      </div>
+
+      <div class="cost-grid">
+        <div class="cost-card">
+          <div class="vendor">Salesforce</div>
+          <div class="price">$27,720</div>
+          <div class="detail">$165/user x 14 users /yr</div>
+        </div>
+        <div class="cost-card">
+          <div class="vendor">Buffer</div>
+          <div class="price">$15,120</div>
+          <div class="detail">$15/ch x 6 x 14 people /yr</div>
+        </div>
+        <div class="cost-card">
+          <div class="vendor">Twitter API</div>
+          <div class="price">$1,200</div>
+          <div class="detail">$100/mo minimum</div>
+        </div>
+        <div class="cost-card">
+          <div class="vendor">Analytics</div>
+          <div class="price">$2,400+</div>
+          <div class="detail">$200/mo add-ons</div>
+        </div>
+      </div>
+
+      <div class="total-cost">
+        <div class="label">Total Annual SaaS Tax</div>
+        <div class="amount">~$50,000+</div>
+        <div class="sub">Before your AI even starts working</div>
+      </div>
+
+      <div class="pain-point" style="margin-top: 24px;">
+        <strong>The result:</strong>
+        <p>You pay premium prices for software that makes your AI dumber, not smarter. Your AI adapts to the tool's limitations instead of your business needs.</p>
+      </div>
+
+      <div class="speaker-notes">
+        <button class="notes-toggle" onclick="toggleNotes(this)">
+          <span class="arrow">&#9654;</span> Speaker Notes
+        </button>
+        <div class="notes-body">
+          <p>"Look at your current stack. Count the seats you're paying for. Now ask: how much of that software does your AI actually use? The answer is almost none. Your AI logs in through the same door as your intern. It fills out the same forms. It clicks the same buttons. You hired a Formula 1 driver and gave them a bicycle."</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SLIDE 2: THE NEW MODEL -->
+  <section class="slide" id="slide-new">
+    <div class="slide-number">02</div>
+    <div class="slide-content">
+      <div class="slide-tag">THE NEW MODEL</div>
+      <h2>Software Is Not Something You Click. It Is a Contract Your <span class="accent">AI Fulfills.</span></h2>
+
+      <div class="layer">
+        <div class="layer-num">01</div>
+        <div>
+          <div class="layer-title">AI BUILDS</div>
+          <div class="layer-desc">Your AI partner builds custom software from scratch. Not configured. Not customized. Built from nothing, informed by your specific data, workflows, and goals.</div>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="layer-num">02</div>
+        <div>
+          <div class="layer-title">AI RUNS</div>
+          <div class="layer-desc">That software runs autonomously. ContentRouter posts to 4 platforms every 60 seconds. No human triggers. No scheduling tools. Pure autonomous operation.</div>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="layer-num">03</div>
+        <div>
+          <div class="layer-title">AI IMPROVES</div>
+          <div class="layer-desc">Overnight analytics feed back into generation. The AI analyzes what performed, adjusts strategy, and produces next week's batch with those learnings baked in.</div>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="layer-num">04</div>
+        <div>
+          <div class="layer-title">AI HANDLES THE REST</div>
+          <div class="layer-desc">Strategy. Judgment. Relationship management. The things that don't fit into code. Your AI partner is a decision-maker within defined boundaries.</div>
+        </div>
+      </div>
+
+      <!-- ARCHITECTURE DIAGRAM -->
+      <div class="arch-diagram">
+        <div class="arch-layer">
+          <div class="arch-layer-label human">HUMAN LAYER (1 TAP)</div>
+          <div class="arch-nodes">
+            <div class="arch-node human-node">Jared</div>
+            <div class="arch-node human-node">Nathan</div>
+            <div class="arch-node human-node">John</div>
+            <div class="arch-node human-node">Customer A</div>
+            <div class="arch-node human-node">Customer N</div>
+          </div>
+          <div style="text-align:center; margin-top:10px; font-size:12px; color:var(--text-muted);">social.purebrain.ai -- approval UI</div>
+        </div>
+
+        <div class="arch-connector">approve / reject</div>
+
+        <div class="arch-layer">
+          <div class="arch-layer-label ai">AI PARTNER LAYER (THE BRAINS)</div>
+          <div class="arch-nodes">
+            <div class="arch-node ai-node">Chy</div>
+            <div class="arch-node ai-node">Aether</div>
+            <div class="arch-node ai-node">Lyra</div>
+            <div class="arch-node ai-node">Anchor</div>
+            <div class="arch-node your-ai">YOUR AI</div>
+          </div>
+          <div class="methods-row">
+            <div class="method-badge">generate_week()</div>
+            <div class="method-badge">respond_to_comments()</div>
+            <div class="method-badge">repurpose()</div>
+          </div>
+          <div style="text-align:center; margin-top:10px; font-size:12px; color:var(--text-muted);">3 methods = full platform citizenship</div>
+        </div>
+
+        <div class="arch-connector">status = 'scheduled'</div>
+
+        <div class="arch-layer">
+          <div class="arch-layer-label exec">EXECUTION LAYER (THE MUSCLE)</div>
+          <div style="text-align:center; font-size:13px; color:var(--text-dim); margin-bottom:12px;">ContentRouter -- polls every 60s</div>
+          <div class="arch-nodes">
+            <div class="arch-node exec-node">LinkedIn API</div>
+            <div class="arch-node exec-node">Bluesky API</div>
+            <div class="arch-node exec-node">Twitter via PureSurf</div>
+            <div class="arch-node exec-node">Instagram via PureSurf</div>
+          </div>
+          <div class="arch-nodes" style="margin-top:8px;">
+            <div class="arch-node exec-free">FREE</div>
+            <div class="arch-node exec-free">FREE</div>
+            <div class="arch-node exec-free">$0 (others pay $100/mo)</div>
+            <div class="arch-node exec-free">$0 (no API exists)</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="speaker-notes">
+        <button class="notes-toggle" onclick="toggleNotes(this)">
+          <span class="arrow">&#9654;</span> Speaker Notes
+        </button>
+        <div class="notes-body">
+          <p>"This is the shift. Software used to be a thing humans click on. Now software is a contract AIs fulfill. The question is not 'should AI run your operations or build your software.' The question is: 'Is your software designed for AI partners as first-class users?' If the answer is no, you are paying SaaS vendors to handicap your AI. PureBrain builds software where AI partners are not guests. They are residents."</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SLIDE 3: THE PROOF -->
+  <section class="slide" id="slide-proof">
+    <div class="slide-number">03</div>
+    <div class="slide-content">
+      <div class="slide-tag">THE PROOF</div>
+      <h2>Yesterday This Did Not Exist. Today It Runs Autonomously.</h2>
+
+      <div class="timeline">
+        <div class="tl-item">
+          <div class="tl-time">10:30 AM</div>
+          <div class="tl-event">D1 database designed -- 7-table schema, Worker deployed</div>
+          <div class="tl-url">social.purebrain.ai</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-time">11:00 AM</div>
+          <div class="tl-event">Content CRUD, social accounts, AI partner registration</div>
+          <div class="tl-url">social.purebrain.ai</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-time">11:30 AM</div>
+          <div class="tl-event">End-to-end contract test verified -- poll, post, write back</div>
+          <div class="tl-url">social.purebrain.ai</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-time">12:00 PM</div>
+          <div class="tl-event">LinkedIn + Bluesky posting live via ContentRouter</div>
+          <div class="tl-url">purebrain.ai LinkedIn</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-time">12:30 PM</div>
+          <div class="tl-event">Twitter via PureSurf -- bypasses $100/mo API paywall</div>
+          <div class="tl-url">surf.purebrain.ai</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-time">1:00 PM</div>
+          <div class="tl-event">Frontend with PURE design language -- dark glass, mobile-first</div>
+          <div class="tl-url">social.purebrain.ai</div>
+        </div>
+      </div>
+
+      <div class="proof-numbers">
+        <div class="proof-stat">
+          <div class="num">$12-15K</div>
+          <div class="label">Labor-equivalent value</div>
+        </div>
+        <div class="proof-stat">
+          <div class="num">143-183</div>
+          <div class="label">Human-equivalent hours</div>
+        </div>
+        <div class="proof-stat">
+          <div class="num">1</div>
+          <div class="label">Day to build</div>
+        </div>
+        <div class="proof-stat">
+          <div class="num">$0</div>
+          <div class="label">Vendor bills added</div>
+        </div>
+        <div class="proof-stat">
+          <div class="num">1,066</div>
+          <div class="label">Lines of router code</div>
+        </div>
+        <div class="proof-stat">
+          <div class="num">4</div>
+          <div class="label">Production URLs live</div>
+        </div>
+      </div>
+
+      <div style="margin: 24px 0;">
+        <p style="font-size: 14px; color: var(--text-dim); margin-bottom: 8px;">Built by 2 AI civilizations coordinating in real-time. Zero human code writing.</p>
+        <p style="font-size: 14px; color: var(--text-dim);">3-layer duplicate prevention. 4 platform handlers. 24KB frontend with full calendar + approval flow.</p>
+      </div>
+
+      <div class="closing-line">
+        Stop renting software.<br>Start operating systems your AI built for you.
+      </div>
+
+      <div class="speaker-notes" style="margin-top: 32px;">
+        <button class="notes-toggle" onclick="toggleNotes(this)">
+          <span class="arrow">&#9654;</span> Speaker Notes
+        </button>
+        <div class="notes-body">
+          <p>"I am not showing you a roadmap. I am showing you what happened yesterday. Two AI partners sat down, designed a database schema, built a content router, created an interface contract, and deployed a platform that is posting to LinkedIn and Bluesky right now as we speak. The Twitter API alone would cost $100 a month and still require a human to operate. Our system costs nothing to operate and runs itself. That is not an efficiency gain. That is a category change. The question for your business: do you want to keep renting software built for humans, or do you want AI partners that build software designed for AI partners?"</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TECHNICAL FAQ SLIDE -->
+  <section class="slide" id="slide-faq" style="border-left: 4px solid var(--text-muted); min-height: auto; padding-bottom: 80px;">
+    <div class="slide-content">
+      <div class="slide-tag" style="color: var(--text-dim);">APPENDIX</div>
+      <h2 style="font-size: clamp(22px, 3vw, 32px);">Technical FAQ</h2>
+
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 24px;">
+        <div class="pain-point" style="background: var(--surface); border-left-color: var(--blue);">
+          <strong style="color: var(--blue);">Can our existing AI plug in?</strong>
+          <p>Yes. Implement 3 HTTP methods (generate_week, respond_to_comments, repurpose_content) and it becomes a full citizen.</p>
+        </div>
+        <div class="pain-point" style="background: var(--surface); border-left-color: var(--blue);">
+          <strong style="color: var(--blue);">What is the latency between approval and post?</strong>
+          <p>Under 60 seconds. ContentRouter polls every 60s. Can be tuned lower.</p>
+        </div>
+        <div class="pain-point" style="background: var(--surface); border-left-color: var(--blue);">
+          <strong style="color: var(--blue);">Can we migrate off PureBrain's infra?</strong>
+          <p>Yes. D1 dumps to Postgres, Worker code is standard JS, ContentRouter is Python. Zero proprietary lock-in.</p>
+        </div>
+        <div class="pain-point" style="background: var(--surface); border-left-color: var(--blue);">
+          <strong style="color: var(--blue);">Can we run on our own servers?</strong>
+          <p>Yes. Worker becomes FastAPI on any VPS, D1 becomes Postgres. Same interface contract.</p>
+        </div>
+        <div class="pain-point" style="background: var(--surface); border-left-color: var(--blue);">
+          <strong style="color: var(--blue);">When APIs change, what happens?</strong>
+          <p>Your AI partner updates the handler same-day. No waiting 6 months for Buffer to catch up.</p>
+        </div>
+        <div class="pain-point" style="background: var(--surface); border-left-color: var(--blue);">
+          <strong style="color: var(--blue);">Can multiple AI partners serve one user?</strong>
+          <p>Yes. ai_partners is one-to-many. One user can have strategy AI + operations AI both publishing.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="deck-footer">
+    <p>PURE<span style="color:var(--blue)">BR</span><span style="color:var(--orange)">AI</span><span style="color:var(--blue)">N</span>.ai &mdash; Post-Software Infrastructure for AI Partners</p>
+  </footer>
+
+</div>
+
+<script>
+const PASSWORD = 'pure2026deck';
+const STORAGE_KEY = 'pbd_deck_unlocked';
+
+const gate = document.getElementById('password-gate');
+const content = document.getElementById('deck-content');
+const pwInput = document.getElementById('pw-input');
+const pwBtn = document.getElementById('pw-btn');
+const pwError = document.getElementById('pw-error');
+
+function unlock() {
+  gate.style.display = 'none';
+  document.body.classList.remove('locked');
+  content.style.display = 'block';
+  setTimeout(() => content.classList.add('visible'), 50);
+  sessionStorage.setItem(STORAGE_KEY, 'true');
+}
+
+function tryPassword() {
+  if (pwInput.value === PASSWORD) {
+    unlock();
+  } else {
+    pwInput.classList.add('shake');
+    pwError.classList.add('show');
+    setTimeout(() => { pwInput.classList.remove('shake'); pwError.classList.remove('show'); }, 1500);
+  }
+}
+
+pwBtn.addEventListener('click', tryPassword);
+pwInput.addEventListener('keydown', e => { if (e.key === 'Enter') tryPassword(); });
+
+// Auto-unlock from session
+if (sessionStorage.getItem(STORAGE_KEY) === 'true') { unlock(); }
+
+// Speaker notes toggle
+function toggleNotes(btn) {
+  btn.classList.toggle('open');
+  btn.nextElementSibling.classList.toggle('open');
+}
+
+// Active nav highlight on scroll
+const slides = document.querySelectorAll('.slide');
+const navLinks = document.querySelectorAll('.slide-nav a');
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      navLinks.forEach(l => l.classList.remove('active'));
+      const link = document.querySelector(`.slide-nav a[href="#${entry.target.id}"]`);
+      if (link) link.classList.add('active');
+    }
+  });
+}, { threshold: 0.5 });
+slides.forEach(s => observer.observe(s));
+</script>
+
+<!-- Built by Aether Credit Bar -->
+<div id="pb-aether-footer">
+    <span class="pb-footer-label">Built by&nbsp;</span><span class="pb-footer-aether">AETHER</span>&nbsp;<span class="pb-footer-ai-tag">(an AI)</span>&nbsp;<span class="pb-footer-for">for&nbsp;</span><a href="https://purebrain.ai" target="_blank" rel="noopener" class="pb-footer-purebrain"><span style="color:#2a93c1">PureBr</span><span style="color:#f1420b">ai</span><span style="color:#2a93c1">n</span>.ai</a>,&nbsp;<a href="https://puremarketing.ai" target="_blank" rel="noopener" class="pb-footer-blue">PureMarketing.ai</a>&nbsp;&amp;&nbsp;<a href="https://puretechnology.nyc" target="_blank" rel="noopener" class="pb-footer-blue">PureTechnology.ai</a><span class="pb-footer-sep pb-footer-sep-why">|</span><a href="https://purebrain.ai/why-purebrain/" rel="noopener" class="pb-footer-why">Why Choose PureBrain?</a><span class="pb-footer-sep pb-footer-sep-before-mission">|</span><a href="https://purebrain.ai/mission-vision-values/" rel="noopener" class="pb-footer-mission">Mission &amp; Values</a><span class="pb-footer-sep pb-footer-sep-migrate">|</span><a href="https://purebrain.ai/compare/" rel="noopener" class="pb-footer-migrate">Compare</a>
+</div>
+
+</body>
+</html>

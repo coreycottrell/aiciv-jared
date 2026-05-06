@@ -1,0 +1,1507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Built for Jay Whitehurst — PureBrain.ai</title>
+<meta name="robots" content="noindex,nofollow">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #0c0a14;
+  --surface: rgba(255, 255, 255, 0.03);
+  --surface-elevated: rgba(255, 255, 255, 0.055);
+  --border: rgba(255, 255, 255, 0.07);
+  --border-hover: rgba(232, 121, 117, 0.35);
+  --text: rgba(255, 255, 255, 0.85);
+  --text-muted: rgba(255, 255, 255, 0.48);
+  --text-dim: rgba(255, 255, 255, 0.28);
+  --coral: #e87975;
+  --coral-light: #f4a09d;
+  --coral-dark: #c95a56;
+  --rose: #d4648a;
+  --warm: #f5b89a;
+  --blue: #5ba3d9;
+  --blue-dark: #3d7ab3;
+  --coral-glow: rgba(232, 121, 117, 0.12);
+  --rose-glow: rgba(212, 100, 138, 0.08);
+}
+
+html { overflow: hidden; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+  line-height: 1.6;
+  height: 100vh;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -20%, var(--coral-glow), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 100%, var(--rose-glow), transparent);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* PASSWORD GATE */
+.gate-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.6s ease, visibility 0.6s ease;
+}
+
+.gate-overlay.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.gate-panel {
+  text-align: center;
+  max-width: 400px;
+  padding: 48px 40px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  backdrop-filter: blur(24px);
+}
+
+.gate-logo {
+  font-family: 'Playfair Display', serif;
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, var(--coral) 0%, var(--coral-light) 50%, var(--warm) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gate-subtitle {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 32px;
+}
+
+.gate-input {
+  width: 100%;
+  padding: 14px 16px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  color: #e8edf5;
+  font-size: 17px;
+  letter-spacing: 0.08em;
+  outline: none;
+  text-align: center;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.gate-input:focus {
+  border-color: var(--coral);
+  box-shadow: 0 0 0 3px rgba(232,121,117,0.15);
+}
+
+.gate-input::placeholder {
+  color: rgba(232,237,245,0.25);
+  letter-spacing: 0.04em;
+}
+
+.gate-btn {
+  width: 100%;
+  margin-top: 14px;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--coral-dark), var(--coral));
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.gate-btn:hover {
+  background: linear-gradient(135deg, var(--coral), var(--coral-light));
+  box-shadow: 0 4px 24px rgba(232,121,117,0.3);
+  transform: translateY(-1px);
+}
+
+.gate-error {
+  color: #ef4444;
+  font-size: 16px;
+  margin-top: 12px;
+  min-height: 20px;
+}
+
+/* SLIDE DECK */
+.deck {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.8s ease;
+  z-index: 1;
+}
+
+.deck.visible { opacity: 1; }
+
+.slides-container {
+  display: flex;
+  height: 100vh;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.slide {
+  min-width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 80px 80px;
+  overflow: hidden;
+  position: relative;
+}
+
+/* NAVIGATION BAR */
+.nav-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 16px 24px;
+  background: linear-gradient(to top, rgba(12,10,20,0.95) 60%, transparent);
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+
+.nav-bar.visible { opacity: 1; }
+
+.nav-arrow {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s ease;
+  flex-shrink: 0;
+}
+
+.nav-arrow:hover {
+  border-color: var(--coral);
+  background: rgba(232,121,117,0.1);
+  color: var(--coral);
+}
+
+.nav-arrow:disabled {
+  opacity: 0.25;
+  cursor: default;
+  pointer-events: none;
+}
+
+.nav-dots {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.nav-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+  padding: 0;
+}
+
+.nav-dot.active {
+  background: var(--coral);
+  box-shadow: 0 0 8px rgba(232,121,117,0.4);
+  transform: scale(1.25);
+}
+
+.nav-dot:hover:not(.active) {
+  background: rgba(255,255,255,0.35);
+}
+
+.nav-counter {
+  font-size: 16px;
+  color: var(--text-dim);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 50px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* SLIDE CONTENT STYLES */
+.slide-inner {
+  max-width: 1100px;
+  width: 100%;
+  text-align: center;
+}
+
+.slide-inner.left-align { text-align: left; }
+
+.slide-label {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--coral);
+  margin-bottom: 16px;
+}
+
+.slide-title {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(32px, 5vw, 52px);
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.2;
+  margin-bottom: 16px;
+}
+
+.slide-accent {
+  display: inline-block;
+  width: 48px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--coral), var(--coral-dark));
+  border-radius: 2px;
+  margin-bottom: 24px;
+}
+
+.slide-text {
+  font-size: 20px;
+  color: var(--text);
+  line-height: 1.7;
+  max-width: 750px;
+  margin: 0 auto 24px;
+}
+
+.slide-text .highlight { color: var(--coral-light); font-weight: 600; }
+.slide-text .accent { color: var(--coral); font-weight: 600; }
+
+/* Card grid for multi-card slides */
+.cards-grid { display: grid; }
+.cards-grid .card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 20px 18px;
+  text-align: left;
+}
+.cards-grid .card-icon { font-size: 28px; margin-bottom: 10px; }
+.cards-grid .card-title { font-size: 17px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+.cards-grid .card-desc { font-size: 14px; color: var(--text); line-height: 1.5; opacity: 0.85; }
+
+/* HEART LOGO */
+.heart-logo {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 24px;
+  display: block;
+}
+
+/* SUBTITLE */
+.hero-subtitle {
+  font-size: 17px;
+  color: var(--text-muted);
+  font-weight: 400;
+  line-height: 1.6;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.hero-subtitle .accent { color: var(--coral); font-weight: 600; }
+
+/* TIMELINE */
+.timeline-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 20px;
+  max-width: 900px;
+  width: 100%;
+}
+
+.timeline-card {
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-align: left;
+  transition: border-color 0.3s;
+}
+
+.timeline-card:hover { border-color: var(--border-hover); }
+
+.timeline-years {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--coral);
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+
+.timeline-role {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 2px;
+}
+
+.timeline-company {
+  font-size: 17px;
+  color: var(--text-muted);
+}
+
+.timeline-detail {
+  font-size: 17px;
+  color: var(--text-dim);
+  margin-top: 4px;
+  line-height: 1.45;
+}
+
+/* USE CASE GRID */
+.uc-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 16px;
+  max-width: 1050px;
+  width: 100%;
+}
+
+.uc-card {
+  padding: 20px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  text-align: left;
+  transition: border-color 0.3s, background 0.3s;
+}
+
+.uc-card:hover {
+  border-color: var(--border-hover);
+  background: var(--surface-elevated);
+}
+
+.uc-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.uc-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 6px;
+  line-height: 1.3;
+}
+
+.uc-desc {
+  font-size: 17px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.uc-features {
+  list-style: none;
+  margin-top: 8px;
+  padding: 0;
+}
+
+.uc-features li {
+  font-size: 16px;
+  color: var(--text);
+  padding: 3px 0 3px 16px;
+  position: relative;
+  line-height: 1.4;
+}
+
+.uc-features li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--coral);
+  opacity: 0.5;
+}
+
+/* ADVANTAGE GRID */
+.advantage-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-top: 20px;
+  max-width: 800px;
+  width: 100%;
+}
+
+.advantage-card {
+  padding: 24px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  text-align: left;
+  transition: border-color 0.3s;
+}
+
+.advantage-card:hover { border-color: var(--border-hover); }
+
+.advantage-icon { font-size: 24px; margin-bottom: 10px; }
+.advantage-title { font-size: 17px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+.advantage-desc { font-size: 16px; color: var(--text-muted); line-height: 1.6; }
+
+/* DASHBOARD */
+.dashboard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 28px;
+  max-width: 900px;
+  width: 100%;
+}
+
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.dashboard-title { font-size: 16px; font-weight: 700; color: #fff; }
+
+.dashboard-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  color: #4ade80;
+  font-weight: 600;
+}
+
+.dashboard-status .dot {
+  width: 8px;
+  height: 8px;
+  background: #4ade80;
+  border-radius: 50%;
+  animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(74,222,128,0.4); }
+  50% { opacity: 0.8; box-shadow: 0 0 0 6px rgba(74,222,128,0); }
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  padding: 16px 12px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-value.coral { color: var(--coral); }
+.stat-value.blue { color: var(--blue); }
+.stat-value.warm { color: var(--warm); }
+.stat-value.green { color: #4ade80; }
+
+.stat-label {
+  font-size: 16px;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.topics { margin-top: 16px; }
+
+.topic-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.topic-name {
+  width: 120px;
+  font-size: 17px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.topic-bar-bg {
+  flex: 1;
+  height: 7px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.topic-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 1.5s ease;
+  width: 0;
+}
+
+.topic-bar.b1 { background: var(--coral); }
+.topic-bar.b2 { background: var(--rose); }
+.topic-bar.b3 { background: var(--blue); }
+.topic-bar.b4 { background: var(--warm); }
+.topic-bar.b5 { background: #a78bfa; }
+
+.topic-pct {
+  width: 32px;
+  font-size: 16px;
+  color: var(--text-dim);
+  text-align: right;
+  font-weight: 600;
+}
+
+.insight-card {
+  margin-top: 16px;
+  padding: 14px 18px;
+  background: rgba(232,121,117,0.06);
+  border: 1px solid rgba(232,121,117,0.15);
+  border-radius: 12px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.insight-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+.insight-text { font-size: 16px; color: var(--text); line-height: 1.55; }
+.insight-text strong { color: var(--coral-light); }
+
+/* GAUGE */
+.gauge-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 12px 0;
+}
+
+.gauge-svg { width: 160px; height: 90px; overflow: visible; }
+.gauge-bg { fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 12; stroke-linecap: round; }
+.gauge-fill { fill: none; stroke: url(#gaugeGrad); stroke-width: 12; stroke-linecap: round; stroke-dasharray: 220; stroke-dashoffset: 220; transition: stroke-dashoffset 2s ease; }
+.gauge-label { font-size: 30px; font-weight: 800; fill: #fff; text-anchor: middle; }
+.gauge-sublabel { font-size: 16px; fill: var(--text-muted); text-anchor: middle; text-transform: uppercase; letter-spacing: 0.12em; }
+
+/* ABOUT GRID */
+.about-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-top: 20px;
+  max-width: 700px;
+  width: 100%;
+}
+
+.about-stat {
+  padding: 18px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-align: center;
+}
+
+.about-stat-value {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--coral);
+  margin-bottom: 4px;
+}
+
+.about-stat-label {
+  font-size: 16px;
+  color: var(--text-muted);
+}
+
+.about-text {
+  margin-top: 16px;
+  font-size: 17px;
+  color: var(--text);
+  line-height: 1.75;
+  max-width: 700px;
+}
+
+.about-text .name { color: var(--coral-light); font-weight: 600; }
+
+/* CTA */
+.cta-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+.cta-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 28px;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.cta-btn.primary {
+  background: linear-gradient(135deg, var(--coral-dark), var(--coral));
+  color: #fff;
+  border: none;
+}
+
+.cta-btn.primary:hover {
+  background: linear-gradient(135deg, var(--coral), var(--coral-light));
+  box-shadow: 0 4px 24px rgba(232,121,117,0.3);
+  transform: translateY(-2px);
+}
+
+.cta-btn.secondary {
+  background: transparent;
+  color: var(--coral);
+  border: 1px solid rgba(232,121,117,0.3);
+}
+
+.cta-btn.secondary:hover {
+  border-color: var(--coral);
+  background: rgba(232,121,117,0.06);
+  transform: translateY(-2px);
+}
+
+.cta-contact {
+  margin-top: 20px;
+  font-size: 16px;
+  color: var(--text-dim);
+}
+
+.cta-contact a {
+  color: var(--coral);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.cta-contact a:hover { text-decoration: underline; }
+
+/* AI BADGE */
+.ai-badge {
+  font-size: 16px;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+  margin-top: 16px;
+}
+
+.ai-badge .names { color: var(--coral); font-weight: 600; }
+
+/* SLIDE ENTER ANIMATION */
+.slide-enter .slide-label,
+.slide-enter .slide-title,
+.slide-enter .slide-accent,
+.slide-enter .slide-text,
+.slide-enter .heart-logo,
+.slide-enter .hero-subtitle,
+.slide-enter .timeline-grid,
+.slide-enter .uc-grid,
+.slide-enter .advantage-grid,
+.slide-enter .dashboard,
+.slide-enter .about-grid,
+.slide-enter .about-text,
+.slide-enter .cta-buttons,
+.slide-enter .cta-contact,
+.slide-enter .ai-badge {
+  opacity: 0;
+  transform: translateY(20px);
+  animation: slideUp 0.5s ease forwards;
+}
+
+@keyframes slideUp {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.slide-enter .slide-label { animation-delay: 0.05s; }
+.slide-enter .slide-title { animation-delay: 0.1s; }
+.slide-enter .slide-accent { animation-delay: 0.15s; }
+.slide-enter .slide-text { animation-delay: 0.2s; }
+.slide-enter .heart-logo { animation-delay: 0s; }
+.slide-enter .hero-subtitle { animation-delay: 0.25s; }
+.slide-enter .timeline-grid { animation-delay: 0.3s; }
+.slide-enter .uc-grid { animation-delay: 0.25s; }
+.slide-enter .advantage-grid { animation-delay: 0.25s; }
+.slide-enter .dashboard { animation-delay: 0.2s; }
+.slide-enter .about-grid { animation-delay: 0.25s; }
+.slide-enter .about-text { animation-delay: 0.3s; }
+.slide-enter .cta-buttons { animation-delay: 0.25s; }
+.slide-enter .cta-contact { animation-delay: 0.3s; }
+.slide-enter .ai-badge { animation-delay: 0.35s; }
+
+/* RESPONSIVE */
+@media (max-width: 900px) {
+  .slide { padding: 40px 28px 90px; }
+  .uc-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .timeline-grid { grid-template-columns: 1fr; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .about-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 600px) {
+  .slide { padding: 30px 18px 90px; }
+  .uc-grid { grid-template-columns: 1fr; }
+  .advantage-grid { grid-template-columns: 1fr; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .about-grid { grid-template-columns: repeat(2, 1fr); }
+  .nav-dots { gap: 6px; }
+  .nav-dot { width: 6px; height: 6px; }
+  .uc-card { padding: 16px 14px; }
+  .slide-title { font-size: clamp(22px, 5vw, 34px); }
+}
+
+/* Scrollable slides for overflow */
+.slide.scrollable {
+  overflow-y: auto;
+  justify-content: flex-start;
+  padding-top: 40px;
+}
+
+.slide.scrollable::-webkit-scrollbar { width: 4px; }
+.slide.scrollable::-webkit-scrollbar-track { background: transparent; }
+.slide.scrollable::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- PASSWORD GATE -->
+<div class="gate-overlay" id="gate">
+  <div class="gate-panel">
+    <div class="gate-logo">PureBrain</div>
+    <div class="gate-subtitle">Private Presentation</div>
+    <input type="password" class="gate-input" id="gateInput" placeholder="Enter access code" autocomplete="off" autofocus>
+    <button class="gate-btn" id="gateBtn">Unlock</button>
+    <div class="gate-error" id="gateError"></div>
+  </div>
+</div>
+
+<!-- SLIDE DECK -->
+<div class="deck" id="deck">
+  <div class="slides-container" id="slidesContainer">
+
+    <!-- SLIDE 1: HERO -->
+    <div class="slide" data-slide="0">
+      <div class="slide-inner">
+        <svg class="heart-logo" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="heartGrad" x1="10" y1="18" x2="62" y2="58" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#e87975"/>
+              <stop offset="50%" stop-color="#d4648a"/>
+              <stop offset="100%" stop-color="#5ba3d9"/>
+            </linearGradient>
+          </defs>
+          <path d="M36 62 C36 62 8 42 8 24 C8 14 16 8 24 8 C30 8 34 12 36 16 C38 12 42 8 48 8 C56 8 64 14 64 24 C64 42 36 62 36 62Z" stroke="url(#heartGrad)" stroke-width="2.5" fill="none" opacity="0.8"/>
+          <circle cx="28" cy="30" r="3" fill="#e87975" opacity="0.6"/>
+          <circle cx="44" cy="30" r="3" fill="#5ba3d9" opacity="0.6"/>
+          <line x1="28" y1="30" x2="36" y2="42" stroke="#e87975" stroke-width="1.5" opacity="0.3"/>
+          <line x1="44" y1="30" x2="36" y2="42" stroke="#5ba3d9" stroke-width="1.5" opacity="0.3"/>
+          <circle cx="36" cy="42" r="4" fill="url(#heartGrad)" opacity="0.5"/>
+        </svg>
+        <div class="slide-label">Built Specifically For</div>
+        <h1 class="slide-title" style="font-size: clamp(32px, 5vw, 52px);">Jay Whitehurst</h1>
+        <div class="slide-accent"></div>
+        <p class="hero-subtitle">AI-powered marketing &amp; growth for <span class="accent">Couplify</span> &amp; <span class="accent">TRIumph Gymnastics</span></p>
+      </div>
+    </div>
+
+    <!-- SLIDE 2: WE DID OUR HOMEWORK -->
+    <div class="slide" data-slide="1">
+      <div class="slide-inner">
+        <div class="slide-label">We Did Our Homework</div>
+        <h2 class="slide-title">Four Decades of Making Technology Human</h2>
+        <div class="slide-accent"></div>
+        <p class="slide-text" style="font-size: 17px;">
+          Jay, your career tells a remarkable story. From your early years at <span class="highlight">Bell-Northern Research</span> through leading product lines at Tekelec, Movius, and Comtech that processed <span class="highlight">millions of emergency communications</span>, one thread runs through everything: taking complex technology and making it serve real human needs.
+        </p>
+        <p class="slide-text" style="font-size: 17px;">
+          Now you're running <span class="highlight">TRIumph Gymnastics</span> (200+ waitlist) and launching <span class="highlight">Couplify</span> in May. Rick Groome introduced us because he knew we could help &mdash; here's exactly how.
+        </p>
+        <div class="timeline-grid">
+          <div class="timeline-card">
+            <div class="timeline-years">2020 - Present</div>
+            <div class="timeline-role">Founder & Executive Chairman</div>
+            <div class="timeline-company">Couplify</div>
+            <div class="timeline-detail">AI-powered platform helping couples communicate, decide, and thrive together.</div>
+          </div>
+          <div class="timeline-card">
+            <div class="timeline-years">2011 - 2022</div>
+            <div class="timeline-role">President, Trusted Location</div>
+            <div class="timeline-company">Comtech / TCS</div>
+            <div class="timeline-detail">Led location platforms, wireless emergency alerts, and messaging services at scale.</div>
+          </div>
+          <div class="timeline-card">
+            <div class="timeline-years">Previous Roles</div>
+            <div class="timeline-role">COO &bull; President & GM</div>
+            <div class="timeline-company">Movius Interactive &bull; Tekelec Inc.</div>
+            <div class="timeline-detail">Global mobile unified comms. Switching solutions for telecom infrastructure.</div>
+          </div>
+          <div class="timeline-card">
+            <div class="timeline-years">1983 - 1998</div>
+            <div class="timeline-role">Software Development</div>
+            <div class="timeline-company">Bell-Northern Research</div>
+            <div class="timeline-detail">15 years building the foundational telecom systems that connected North America.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 3: COUPLIFY USE CASES -->
+    <div class="slide" data-slide="2">
+      <div class="slide-inner">
+        <div class="slide-label">The Opportunity</div>
+        <h2 class="slide-title">What PureBrain Does for Couplify</h2>
+        <div class="slide-accent"></div>
+        <div class="uc-grid">
+          <div class="uc-card">
+            <span class="uc-icon">&#x1F4AC;</span>
+            <div class="uc-title">AI Relationship Coach</div>
+            <div class="uc-desc">Conversational AI partner couples can talk to &mdash; practical guidance that learns their dynamic.</div>
+            <ul class="uc-features">
+              <li>Personalized to each couple's situation</li>
+              <li>Voice-enabled using Chatterbox TTS</li>
+              <li>Available 24/7, no appointment needed</li>
+            </ul>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">&#x1F9E0;</span>
+            <div class="uc-title">Smart Decision Engine</div>
+            <div class="uc-desc">AI that understands context, history, and consequences for better decisions.</div>
+            <ul class="uc-features">
+              <li>Pulls financial data, location costs, goals</li>
+              <li>Weighted priorities per partner's values</li>
+              <li>Decision confidence scores</li>
+            </ul>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">&#x1F4CA;</span>
+            <div class="uc-title">Communication Analyzer</div>
+            <div class="uc-desc">Surfaces what's working and what's being avoided in communication patterns.</div>
+            <ul class="uc-features">
+              <li>Flags communication gaps proactively</li>
+              <li>Weekly Relationship Health Score</li>
+              <li>Trend analysis and actionable tips</li>
+            </ul>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">&#x2728;</span>
+            <div class="uc-title">Date Night Autopilot</div>
+            <div class="uc-desc">Knows interests, budget, location &mdash; plans the perfect evening with one tap.</div>
+            <ul class="uc-features">
+              <li>Unique ideas they haven't tried</li>
+              <li>Books reservations, plans surprises</li>
+              <li>Budget-aware from free to luxurious</li>
+            </ul>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">&#x1F91D;</span>
+            <div class="uc-title">Onboarding Intelligence</div>
+            <div class="uc-desc">AI-powered matching beyond swipes with behavioral and values alignment.</div>
+            <ul class="uc-features">
+              <li>Communication style matching</li>
+              <li>Values alignment deep-dives</li>
+              <li>Compatibility prediction scores</li>
+            </ul>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">&#x1F680;</span>
+            <div class="uc-title">Content & Growth Engine</div>
+            <div class="uc-desc">AI generates personalized content, drives organic traffic, manages social.</div>
+            <ul class="uc-features">
+              <li>Daily personalized tips to couples</li>
+              <li>SEO-optimized relationship content</li>
+              <li>Automated engagement campaigns</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 4: TRIUMPH GYMNASTICS -->
+    <div class="slide" data-slide="3">
+      <div class="slide-inner">
+        <div class="slide-label">For TRIumph Gymnastics</div>
+        <h2 class="slide-title">AI Marketing for NC's Most In-Demand Gym</h2>
+        <div class="slide-accent"></div>
+        <p class="slide-text" style="font-size: 16px; margin-bottom: 12px;">You built TRIumph from 2 competitive gymnasts to a 200+ person waitlist. That's product-market fit. Now AI can turn that waitlist into a growth engine.</p>
+        <div class="uc-grid">
+          <div class="uc-card">
+            <span class="uc-icon">&#x1F4CB;</span>
+            <div class="uc-title">Waitlist-to-Revenue Automation</div>
+            <div class="uc-desc">AI nurtures your 200+ waitlist with personalized updates, milestone alerts, and automated enrollment workflows.</div>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">&#x1F4F1;</span>
+            <div class="uc-title">Social Media That Converts</div>
+            <div class="uc-desc">AI creates content featuring achievements, competition results, and facility highlights. Optimized for local parent audiences.</div>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">&#x2B50;</span>
+            <div class="uc-title">Reputation & Review Engine</div>
+            <div class="uc-desc">Automatically requests Google reviews at the right moments. Responds to reviews. Manages reputation across all platforms.</div>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">&#x1F3E2;</span>
+            <div class="uc-title">Expansion Intelligence</div>
+            <div class="uc-desc">Where are families coming from? What locations reduce drive time? What's the competitive landscape? Data-driven expansion.</div>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">&#x1F4E7;</span>
+            <div class="uc-title">Parent Communication Hub</div>
+            <div class="uc-desc">AI handles schedule changes, weather closures, competition prep, billing. Frees coaches to coach instead of email.</div>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">&#x1F3AF;</span>
+            <div class="uc-title">Local SEO Domination</div>
+            <div class="uc-desc">Optimizes Google Business Profile, generates location-specific content. "Gymnastics near me" leads to TRIumph.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 5: PERSONAL AI FOR JAY (1/2) -->
+    <div class="slide" data-slide="4">
+      <div class="slide-inner">
+        <div class="slide-label">For You, Personally</div>
+        <h2 class="slide-title">What PureBrain Does for YOU, Jay</h2>
+        <div class="slide-accent"></div>
+        <p class="slide-text" style="font-size: 16px; margin-bottom: 12px;">Beyond what AI can do for your companies &mdash; here's what a <span class="highlight">personal PureBrain partner</span> does for a serial entrepreneur running multiple ventures.</p>
+        <div class="uc-grid">
+          <div class="uc-card">
+            <span class="uc-icon">&#x1F3DB;</span>
+            <div class="uc-title">Executive Operating System</div>
+            <div class="uc-desc">One AI that knows ALL your businesses &mdash; Couplify, Equity Engineering, TRIumph, Diamond Piano Method.</div>
+            <ul class="uc-features">
+              <li>Tracks meetings and deadlines across every venture</li>
+              <li>Surfaces conflicts between companies</li>
+              <li>Consolidates action items into one priority feed</li>
+            </ul>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">&#x1F50D;</span>
+            <div class="uc-title">Deal Flow Intelligence</div>
+            <div class="uc-desc">40 years of M&A experience &mdash; now with AI that monitors the landscape while you sleep.</div>
+            <ul class="uc-features">
+              <li>Monitors competitor moves in relationship tech</li>
+              <li>Tracks partners, acquirers, and investors</li>
+              <li>Surfaces patterns from your deal history</li>
+            </ul>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">&#x1F4CA;</span>
+            <div class="uc-title">Board & Investor Prep</div>
+            <div class="uc-desc">AI prepares board decks, investor updates, and financial summaries automatically.</div>
+            <ul class="uc-features">
+              <li>Auto-generates Q2 board decks with metrics</li>
+              <li>Drafts investor update emails with real data</li>
+              <li>Tracks board action items before deadlines</li>
+            </ul>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">&#x1F9E0;</span>
+            <div class="uc-title">Knowledge Compound</div>
+            <div class="uc-desc">Every meeting, email, decision gets captured. Six months in, your PureBrain knows how you think.</div>
+            <ul class="uc-features">
+              <li>Builds compound knowledge from decisions</li>
+              <li>Learns preferences, patterns, blind spots</li>
+              <li>Becomes an extension of your thinking</li>
+            </ul>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">&#x1F310;</span>
+            <div class="uc-title">Network Intelligence</div>
+            <div class="uc-desc">40+ years of contacts &mdash; your AI turns a Rolodex into a living, breathing network.</div>
+            <ul class="uc-features">
+              <li>Tracks relationship health across network</li>
+              <li>Suggests reconnections tied to current needs</li>
+              <li>Remembers conversation context for meetings</li>
+            </ul>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">&#x23F0;</span>
+            <div class="uc-title">Time Architect</div>
+            <div class="uc-desc">Manages your calendar across all ventures &mdash; protecting deep work time and eliminating meeting sprawl.</div>
+            <ul class="uc-features">
+              <li>Blocks and defends deep work time</li>
+              <li>Suggests meeting consolidation by topic</li>
+              <li>Prioritizes by impact, not by who asked</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 6: THE PUREBRAIN ADVANTAGE -->
+    <div class="slide" data-slide="5">
+      <div class="slide-inner">
+        <div class="slide-label">Why PureBrain</div>
+        <h2 class="slide-title">The PureBrain Advantage</h2>
+        <div class="slide-accent"></div>
+        <div class="advantage-grid">
+          <div class="advantage-card">
+            <div class="advantage-icon">&#x1F504;</div>
+            <div class="advantage-title">Always On, Always Learning</div>
+            <div class="advantage-desc">Your AI partner runs 24/7, learns Couplify's business, and compounds its intelligence over time. Not a chatbot &mdash; a persistent intelligence.</div>
+          </div>
+          <div class="advantage-card">
+            <div class="advantage-icon">&#x1F3AF;</div>
+            <div class="advantage-title">Battle-Tested</div>
+            <div class="advantage-desc">Pure Technology runs 13+ AI partners across every department. This isn't theoretical &mdash; it's proven at scale in production today.</div>
+          </div>
+          <div class="advantage-card">
+            <div class="advantage-icon">&#x1F4AA;</div>
+            <div class="advantage-title">Enterprise-Grade Infrastructure</div>
+            <div class="advantage-desc">Cloudflare Workers, D1 databases, R2 storage. Scales from hundreds to millions of users without re-architecture.</div>
+          </div>
+          <div class="advantage-card">
+            <div class="advantage-icon">&#x1F9E9;</div>
+            <div class="advantage-title">Modular Deployment</div>
+            <div class="advantage-desc">Start with one use case (like Decision Helper AI), then expand. Each module integrates seamlessly with the next.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 7: INTERACTIVE DASHBOARD -->
+    <div class="slide" data-slide="6">
+      <div class="slide-inner">
+        <div class="slide-label">What This Looks Like</div>
+        <h2 class="slide-title">Couplify + PureBrain Dashboard</h2>
+        <div class="slide-accent"></div>
+
+        <div class="dashboard" id="dashboard">
+          <div class="dashboard-header">
+            <div class="dashboard-title">Couplify AI Command Center</div>
+            <div class="dashboard-status"><span class="dot"></span> Joy AI &mdash; Online</div>
+          </div>
+
+          <div class="gauge-container">
+            <svg class="gauge-svg" viewBox="0 0 180 100">
+              <defs>
+                <linearGradient id="gaugeGrad" x1="0" y1="0" x2="180" y2="0" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stop-color="#e87975"/>
+                  <stop offset="50%" stop-color="#d4648a"/>
+                  <stop offset="100%" stop-color="#4ade80"/>
+                </linearGradient>
+              </defs>
+              <path class="gauge-bg" d="M 20 90 A 70 70 0 0 1 160 90"/>
+              <path class="gauge-fill" id="gaugeFill" d="M 20 90 A 70 70 0 0 1 160 90"/>
+              <text class="gauge-label" x="90" y="80" id="gaugeValue">0</text>
+              <text class="gauge-sublabel" x="90" y="96">Relationship Health</text>
+            </svg>
+          </div>
+
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-value coral" id="statCouples">0</div>
+              <div class="stat-label">Active Couples</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value blue" id="statInteractions">0</div>
+              <div class="stat-label">Daily AI Interactions</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value warm" id="statConversations">0</div>
+              <div class="stat-label">Active Conversations</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value green" id="statSatisfaction">0%</div>
+              <div class="stat-label">Satisfaction Lift</div>
+            </div>
+          </div>
+
+          <div class="topics" id="topics">
+            <div class="topic-row">
+              <div class="topic-name">Finances</div>
+              <div class="topic-bar-bg"><div class="topic-bar b1" data-width="28"></div></div>
+              <div class="topic-pct">28%</div>
+            </div>
+            <div class="topic-row">
+              <div class="topic-name">Date Planning</div>
+              <div class="topic-bar-bg"><div class="topic-bar b2" data-width="22"></div></div>
+              <div class="topic-pct">22%</div>
+            </div>
+            <div class="topic-row">
+              <div class="topic-name">Communication</div>
+              <div class="topic-bar-bg"><div class="topic-bar b3" data-width="19"></div></div>
+              <div class="topic-pct">19%</div>
+            </div>
+            <div class="topic-row">
+              <div class="topic-name">Household Tasks</div>
+              <div class="topic-bar-bg"><div class="topic-bar b4" data-width="16"></div></div>
+              <div class="topic-pct">16%</div>
+            </div>
+            <div class="topic-row">
+              <div class="topic-name">Shared Goals</div>
+              <div class="topic-bar-bg"><div class="topic-bar b5" data-width="15"></div></div>
+              <div class="topic-pct">15%</div>
+            </div>
+          </div>
+
+          <div class="insight-card">
+            <span class="insight-icon">&#x1F4A1;</span>
+            <div class="insight-text">
+              <strong>AI Insight:</strong> Couples who use Decision Helper 3x/week report <strong>40% higher satisfaction</strong> scores. Recommend promoting this feature in onboarding flow.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 8: ABOUT PURE TECHNOLOGY -->
+    <div class="slide" data-slide="7">
+      <div class="slide-inner">
+        <div class="slide-label">Who We Are</div>
+        <h2 class="slide-title">About Pure Technology</h2>
+        <div class="slide-accent"></div>
+
+        <div class="about-grid">
+          <div class="about-stat">
+            <div class="about-stat-value">30+</div>
+            <div class="about-stat-label">Team Members</div>
+          </div>
+          <div class="about-stat">
+            <div class="about-stat-value">13+</div>
+            <div class="about-stat-label">AI Partners</div>
+          </div>
+          <div class="about-stat">
+            <div class="about-stat-value">34</div>
+            <div class="about-stat-label">Paying Customers</div>
+          </div>
+          <div class="about-stat">
+            <div class="about-stat-value">~150</div>
+            <div class="about-stat-label">Pipeline</div>
+          </div>
+        </div>
+
+        <div class="about-text">
+          <span class="name">Jared Sanborn</span>, CEO & Founder, built Pure Technology on a conviction: AI shouldn't replace people &mdash; it should amplify them. Our AI partners (Aether, Chy, Morphe) don't just execute tasks. They learn, adapt, and compound intelligence for every client they serve.
+        </div>
+        <div class="about-text">
+          We're raising <span class="name">$2.5M at $55M pre-money</span>, with a Series-A term sheet at $105M from MAKR Capital. PureBrain is the platform &mdash; and what you're looking at right now was built by our AI team specifically for this conversation.
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 9: MORE VALUE -->
+    <div class="slide" data-slide="8">
+      <div class="slide-inner left-align">
+        <div class="slide-label">Beyond Marketing</div>
+        <h2 class="slide-title">More Ways PureBrain Delivers Value</h2>
+        <div class="slide-accent"></div>
+        <div class="uc-grid" style="grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:16px">
+          <div class="uc-card">
+            <span class="uc-icon">💰</div>
+            <div class="uc-title">Revenue Intelligence</div>
+            <div class="uc-desc">Track every revenue stream across all your businesses. Spots trends, flags anomalies, projects cash flow.</div>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">📊</div>
+            <div class="uc-title">Competitor Watch</div>
+            <div class="uc-desc">Monitor competitors in couples/dating AND gymnastics. New entrants, pricing changes, feature launches — know first.</div>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">🎯</div>
+            <div class="uc-title">Marketing Firm Replacement</div>
+            <div class="uc-desc">Your current firm gives mediocre results. PureBrain makes any agency 10x better — or replaces them entirely.</div>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">📱</div>
+            <div class="uc-title">App Store Optimization</div>
+            <div class="uc-desc">Couplify launches in May. AI optimizes App Store listing, tracks downloads, A/B tests screenshots.</div>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">🤝</div>
+            <div class="uc-title">Partnership Development</div>
+            <div class="uc-desc">Find partners: marriage counselors for Couplify, school districts for TRIumph. Auto-outreach + tracking.</div>
+          </div>
+          <div class="uc-card">
+            <span class="uc-icon">📝</div>
+            <div class="uc-title">Content That Converts</div>
+            <div class="uc-desc">Blog, email, social — all generated by AI trained on YOUR brand voice. Not generic. Yours.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 10: NEXT STEPS -->
+    <div class="slide" data-slide="9">
+      <div class="slide-inner">
+        <div class="slide-label">Next Steps</div>
+        <h2 class="slide-title">Let's Supercharge Your Marketing</h2>
+        <div class="slide-accent"></div>
+        <p class="slide-text">Ready to explore what a PureBrain partnership could look like? We'd love to show you more.</p>
+        <div class="cta-buttons">
+          <a href="https://purebrain.ai" target="_blank" class="cta-btn primary">See PureBrain in Action</a>
+          <a href="https://purebrain.ai/invest" target="_blank" class="cta-btn secondary">Investor Portal</a>
+        </div>
+        <div class="cta-contact">
+          <a href="mailto:jared@puretechnology.nyc">jared@puretechnology.nyc</a>
+        </div>
+        <div class="ai-badge">
+          This presentation was researched and built by Pure Technology's AI team: <span class="names">Aether, Chy & Morphe</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- NAVIGATION BAR -->
+<div class="nav-bar" id="navBar">
+  <button class="nav-arrow" id="prevBtn" aria-label="Previous slide">&#x2190;</button>
+  <div class="nav-dots" id="navDots"></div>
+  <button class="nav-arrow" id="nextBtn" aria-label="Next slide">&#x2192;</button>
+  <div class="nav-counter" id="navCounter">1 / 10</div>
+</div>
+
+<script>
+// PASSWORD GATE
+const PASS = 'COUPLIFY2026';
+const gate = document.getElementById('gate');
+const deck = document.getElementById('deck');
+const navBar = document.getElementById('navBar');
+const gateInput = document.getElementById('gateInput');
+const gateBtn = document.getElementById('gateBtn');
+const gateError = document.getElementById('gateError');
+
+function unlock() {
+  if (gateInput.value.toUpperCase().trim() === PASS) {
+    gate.classList.add('hidden');
+    deck.classList.add('visible');
+    navBar.classList.add('visible');
+    goToSlide(0);
+  } else {
+    gateError.textContent = 'Invalid access code';
+    gateInput.value = '';
+    gateInput.focus();
+  }
+}
+
+gateBtn.addEventListener('click', unlock);
+gateInput.addEventListener('keydown', e => { if (e.key === 'Enter') unlock(); });
+
+// SLIDE ENGINE
+const container = document.getElementById('slidesContainer');
+const slides = document.querySelectorAll('.slide');
+const totalSlides = slides.length;
+let currentSlide = 0;
+let isAnimating = false;
+let dashboardAnimated = false;
+
+// BUILD NAV DOTS
+const dotsContainer = document.getElementById('navDots');
+for (let i = 0; i < totalSlides; i++) {
+  const dot = document.createElement('button');
+  dot.className = 'nav-dot' + (i === 0 ? ' active' : '');
+  dot.setAttribute('aria-label', 'Go to slide ' + (i + 1));
+  dot.addEventListener('click', () => goToSlide(i));
+  dotsContainer.appendChild(dot);
+}
+
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+const counter = document.getElementById('navCounter');
+
+prevBtn.addEventListener('click', () => goToSlide(currentSlide - 1));
+nextBtn.addEventListener('click', () => goToSlide(currentSlide + 1));
+
+function goToSlide(index) {
+  if (index < 0 || index >= totalSlides || isAnimating) return;
+  isAnimating = true;
+
+  // Remove enter class from previous slide
+  slides[currentSlide].classList.remove('slide-enter');
+
+  currentSlide = index;
+  container.style.transform = `translateX(-${currentSlide * 100}vw)`;
+
+  // Update nav
+  updateNav();
+
+  // Add enter animation to new slide
+  setTimeout(() => {
+    slides[currentSlide].classList.add('slide-enter');
+    triggerSlideAnimations(currentSlide);
+    isAnimating = false;
+  }, 100);
+}
+
+function updateNav() {
+  // Update dots
+  dotsContainer.querySelectorAll('.nav-dot').forEach((dot, i) => {
+    dot.classList.toggle('active', i === currentSlide);
+  });
+
+  // Update counter
+  counter.textContent = (currentSlide + 1) + ' / ' + totalSlides;
+
+  // Update arrows
+  prevBtn.disabled = currentSlide === 0;
+  nextBtn.disabled = currentSlide === totalSlides - 1;
+}
+
+// KEYBOARD NAVIGATION
+document.addEventListener('keydown', e => {
+  if (!gate.classList.contains('hidden')) return;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    goToSlide(currentSlide + 1);
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    goToSlide(currentSlide - 1);
+  }
+});
+
+// TOUCH/SWIPE NAVIGATION
+let touchStartX = 0;
+let touchStartY = 0;
+let touchEndX = 0;
+
+deck.addEventListener('touchstart', e => {
+  touchStartX = e.changedTouches[0].screenX;
+  touchStartY = e.changedTouches[0].screenY;
+}, { passive: true });
+
+deck.addEventListener('touchend', e => {
+  touchEndX = e.changedTouches[0].screenX;
+  const diffX = touchStartX - touchEndX;
+  const diffY = Math.abs(touchStartY - e.changedTouches[0].screenY);
+
+  // Only trigger if horizontal swipe is dominant and significant
+  if (Math.abs(diffX) > 50 && Math.abs(diffX) > diffY) {
+    if (diffX > 0) {
+      goToSlide(currentSlide + 1); // Swipe left = next
+    } else {
+      goToSlide(currentSlide - 1); // Swipe right = prev
+    }
+  }
+}, { passive: true });
+
+// ANIMATED COUNTER
+function animateCounter(el, target, suffix, duration) {
+  suffix = suffix || '';
+  duration = duration || 2000;
+  const start = performance.now();
+  function tick(now) {
+    const progress = Math.min((now - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const current = Math.round(eased * target);
+    el.textContent = current.toLocaleString() + suffix;
+    if (progress < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// GAUGE ANIMATION
+function animateGauge() {
+  const fill = document.getElementById('gaugeFill');
+  const label = document.getElementById('gaugeValue');
+  const targetScore = 87;
+  const targetOffset = 220 - (220 * targetScore / 100);
+  fill.style.strokeDashoffset = targetOffset;
+
+  const start = performance.now();
+  function tick(now) {
+    const progress = Math.min((now - start) / 2000, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    label.textContent = Math.round(eased * targetScore);
+    if (progress < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// TOPIC BARS
+function animateBars() {
+  document.querySelectorAll('.topic-bar').forEach(bar => {
+    const w = bar.dataset.width;
+    setTimeout(() => { bar.style.width = (w / 28 * 100) + '%'; }, 300);
+  });
+}
+
+// TRIGGER ANIMATIONS ON SLIDE ENTER
+function triggerSlideAnimations(index) {
+  // Dashboard slide (index 6)
+  if (index === 6 && !dashboardAnimated) {
+    dashboardAnimated = true;
+    setTimeout(() => {
+      animateCounter(document.getElementById('statCouples'), 12847);
+      animateCounter(document.getElementById('statInteractions'), 34291);
+      animateCounter(document.getElementById('statConversations'), 4200);
+      animateCounter(document.getElementById('statSatisfaction'), 40, '%');
+      animateGauge();
+      animateBars();
+    }, 400);
+  }
+}
+
+// Initialize nav state
+updateNav();
+</script>
+</body>
+</html>
