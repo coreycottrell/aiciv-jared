@@ -602,6 +602,374 @@ Best regards`;
   return json({ ok: true, status_email: statusEmail });
 }
 
+// ─── Invoices Routes ────────────────────────────────────
+
+async function handleCreateInvoice(request, env, sess) {
+  let body;
+  try { body = await request.json(); } catch { return err(400, "Invalid JSON"); }
+
+  const { client_name, project_id, milestone_id, amount, due_date, notes } = body;
+  if (!client_name || !amount) return err(400, "Client name and amount required");
+
+  const result = await env.DB.prepare(
+    "INSERT INTO invoices (user_id, project_id, milestone_id, client_name, amount, due_date, notes) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(sess.user_id, project_id || null, milestone_id || null, client_name, amount, due_date || null, notes || "").run();
+
+  await logActivity(env, sess.user_id, "create", "invoice", result.meta.last_row_id);
+  return json({ ok: true, id: result.meta.last_row_id }, { status: 201 });
+}
+
+async function handleListInvoices(env, sess) {
+  const rows = await env.DB.prepare(
+    "SELECT * FROM invoices WHERE user_id = ? ORDER BY created_at DESC"
+  ).bind(sess.user_id).all();
+  return json({ invoices: rows.results });
+}
+
+async function handleUpdateInvoice(request, env, sess, id) {
+  let body;
+  try { body = await request.json(); } catch { return err(400, "Invalid JSON"); }
+
+  const existing = await env.DB.prepare(
+    "SELECT id FROM invoices WHERE id = ? AND user_id = ?"
+  ).bind(id, sess.user_id).first();
+  if (!existing) return err(404, "Invoice not found");
+
+  const fields = [];
+  const values = [];
+  for (const key of ["client_name", "project_id", "milestone_id", "amount", "status", "due_date", "paid_date", "notes"]) {
+    if (body[key] !== undefined) { fields.push(`${key} = ?`); values.push(body[key]); }
+  }
+  if (fields.length === 0) return err(400, "No fields to update");
+  values.push(id, sess.user_id);
+
+  await env.DB.prepare(
+    `UPDATE invoices SET ${fields.join(", ")} WHERE id = ? AND user_id = ?`
+  ).bind(...values).run();
+
+  await logActivity(env, sess.user_id, "update", "invoice", id);
+  return json({ ok: true });
+}
+
+async function handleSendInvoice(request, env, sess, id) {
+  const existing = await env.DB.prepare(
+    "SELECT id, status FROM invoices WHERE id = ? AND user_id = ?"
+  ).bind(id, sess.user_id).first();
+  if (!existing) return err(404, "Invoice not found");
+
+  await env.DB.prepare(
+    "UPDATE invoices SET status = 'sent' WHERE id = ? AND user_id = ?"
+  ).bind(id, sess.user_id).run();
+
+  await logActivity(env, sess.user_id, "send", "invoice", id);
+  return json({ ok: true, message: "Invoice marked as sent" });
+}
+
+// ─── Expenses Routes ────────────────────────────────────
+
+async function handleCreateExpense(request, env, sess) {
+  let body;
+  try { body = await request.json(); } catch { return err(400, "Invalid JSON"); }
+
+  const { category, amount, description, receipt_url, expense_date } = body;
+  if (!category || !amount) return err(400, "Category and amount required");
+
+  const result = await env.DB.prepare(
+    "INSERT INTO expenses (user_id, category, amount, description, receipt_url, expense_date) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(sess.user_id, category, amount, description || "", receipt_url || "", expense_date || "").run();
+
+  await logActivity(env, sess.user_id, "create", "expense", result.meta.last_row_id);
+  return json({ ok: true, id: result.meta.last_row_id }, { status: 201 });
+}
+
+async function handleListExpenses(env, sess) {
+  const rows = await env.DB.prepare(
+    "SELECT * FROM expenses WHERE user_id = ? ORDER BY expense_date DESC, created_at DESC"
+  ).bind(sess.user_id).all();
+  return json({ expenses: rows.results });
+}
+
+// ─── Cash Flow Route ────────────────────────────────────
+
+async function handleCashFlow(env, sess) {
+  const now = new Date();
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+
+  const [owed, incoming, overdue, paidThisMonth, expensesThisMonth] = await Promise.all([
+    env.DB.prepare("SELECT COALESCE(SUM(amount), 0) as total FROM invoices WHERE user_id = ? AND status IN ('draft','sent')").bind(sess.user_id).first(),
+    env.DB.prepare("SELECT COALESCE(SUM(amount), 0) as total FROM invoices WHERE user_id = ? AND status = 'sent'").bind(sess.user_id).first(),
+    env.DB.prepare("SELECT COALESCE(SUM(amount), 0) as total FROM invoices WHERE user_id = ? AND status IN ('sent','overdue') AND due_date < date('now')").bind(sess.user_id).first(),
+    env.DB.prepare("SELECT COALESCE(SUM(amount), 0) as total FROM invoices WHERE user_id = ? AND status = 'paid' AND paid_date >= ?").bind(sess.user_id, monthStart).first(),
+    env.DB.prepare("SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE user_id = ? AND expense_date >= ?").bind(sess.user_id, monthStart).first(),
+  ]);
+
+  return json({
+    total_owed: owed.total,
+    incoming: incoming.total,
+    overdue: overdue.total,
+    paid_this_month: paidThisMonth.total,
+    expenses_this_month: expensesThisMonth.total,
+    net_this_month: paidThisMonth.total - expensesThisMonth.total,
+  });
+}
+
+// ─── Jobs Routes ────────────────────────────────────────
+
+async function handleCreateJob(request, env, sess) {
+  let body;
+  try { body = await request.json(); } catch { return err(400, "Invalid JSON"); }
+
+  const { title, description, requirements, salary_range } = body;
+  if (!title) return err(400, "Job title required");
+
+  const result = await env.DB.prepare(
+    "INSERT INTO jobs (user_id, title, description, requirements, salary_range) VALUES (?, ?, ?, ?, ?)"
+  ).bind(sess.user_id, title, description || "", requirements || "", salary_range || "").run();
+
+  await logActivity(env, sess.user_id, "create", "job", result.meta.last_row_id);
+  return json({ ok: true, id: result.meta.last_row_id }, { status: 201 });
+}
+
+async function handleListJobs(env, sess) {
+  const rows = await env.DB.prepare(
+    "SELECT j.*, (SELECT COUNT(*) FROM candidates c WHERE c.job_id = j.id) as candidate_count FROM jobs j WHERE j.user_id = ? ORDER BY j.created_at DESC"
+  ).bind(sess.user_id).all();
+  return json({ jobs: rows.results });
+}
+
+async function handleUpdateJob(request, env, sess, id) {
+  let body;
+  try { body = await request.json(); } catch { return err(400, "Invalid JSON"); }
+
+  const existing = await env.DB.prepare(
+    "SELECT id FROM jobs WHERE id = ? AND user_id = ?"
+  ).bind(id, sess.user_id).first();
+  if (!existing) return err(404, "Job not found");
+
+  const fields = [];
+  const values = [];
+  for (const key of ["title", "description", "requirements", "salary_range", "status"]) {
+    if (body[key] !== undefined) { fields.push(`${key} = ?`); values.push(body[key]); }
+  }
+  if (fields.length === 0) return err(400, "No fields to update");
+  values.push(id, sess.user_id);
+
+  await env.DB.prepare(
+    `UPDATE jobs SET ${fields.join(", ")} WHERE id = ? AND user_id = ?`
+  ).bind(...values).run();
+
+  await logActivity(env, sess.user_id, "update", "job", id);
+  return json({ ok: true });
+}
+
+// ─── Candidates Routes ──────────────────────────────────
+
+async function handleCreateCandidate(request, env, sess) {
+  let body;
+  try { body = await request.json(); } catch { return err(400, "Invalid JSON"); }
+
+  const { job_id, name, email, phone, resume_text, notes } = body;
+  if (!job_id || !name) return err(400, "Job ID and candidate name required");
+
+  // Verify job belongs to user
+  const job = await env.DB.prepare("SELECT id FROM jobs WHERE id = ? AND user_id = ?").bind(job_id, sess.user_id).first();
+  if (!job) return err(404, "Job not found");
+
+  const result = await env.DB.prepare(
+    "INSERT INTO candidates (user_id, job_id, name, email, phone, resume_text, notes) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(sess.user_id, job_id, name, email || "", phone || "", resume_text || "", notes || "").run();
+
+  await logActivity(env, sess.user_id, "create", "candidate", result.meta.last_row_id);
+  return json({ ok: true, id: result.meta.last_row_id }, { status: 201 });
+}
+
+async function handleListCandidates(env, sess, url) {
+  const jobId = url.searchParams.get("job_id");
+  let query = "SELECT * FROM candidates WHERE user_id = ?";
+  const params = [sess.user_id];
+  if (jobId) { query += " AND job_id = ?"; params.push(jobId); }
+  query += " ORDER BY created_at DESC";
+
+  const rows = await env.DB.prepare(query).bind(...params).all();
+  return json({ candidates: rows.results });
+}
+
+async function handleUpdateCandidate(request, env, sess, id) {
+  let body;
+  try { body = await request.json(); } catch { return err(400, "Invalid JSON"); }
+
+  const existing = await env.DB.prepare(
+    "SELECT id FROM candidates WHERE id = ? AND user_id = ?"
+  ).bind(id, sess.user_id).first();
+  if (!existing) return err(404, "Candidate not found");
+
+  const fields = [];
+  const values = [];
+  for (const key of ["name", "email", "phone", "resume_text", "status", "rating", "notes", "ai_screening"]) {
+    if (body[key] !== undefined) { fields.push(`${key} = ?`); values.push(body[key]); }
+  }
+  if (fields.length === 0) return err(400, "No fields to update");
+  values.push(id, sess.user_id);
+
+  await env.DB.prepare(
+    `UPDATE candidates SET ${fields.join(", ")} WHERE id = ? AND user_id = ?`
+  ).bind(...values).run();
+
+  await logActivity(env, sess.user_id, "update", "candidate", id);
+  return json({ ok: true });
+}
+
+async function handleScreenCandidate(request, env, sess, id) {
+  const candidate = await env.DB.prepare(
+    "SELECT c.*, j.title as job_title, j.description as job_description, j.requirements as job_requirements FROM candidates c JOIN jobs j ON c.job_id = j.id WHERE c.id = ? AND c.user_id = ?"
+  ).bind(id, sess.user_id).first();
+  if (!candidate) return err(404, "Candidate not found");
+
+  const apiKey = env.ANTHROPIC_API_KEY;
+  if (!apiKey) return err(503, "AI screening not configured");
+
+  const systemPrompt = `You are an HR screening assistant. Evaluate the candidate against the job requirements.
+Provide:
+1. Overall Match Score (1-10)
+2. Key Strengths (matching requirements)
+3. Gaps/Concerns
+4. Recommended Interview Questions (3-5)
+5. Hiring Recommendation (Strong Yes / Yes / Maybe / No)
+Be objective, specific, and concise.`;
+
+  const userPrompt = `Job: ${candidate.job_title}
+Description: ${candidate.job_description || 'N/A'}
+Requirements: ${candidate.job_requirements || 'N/A'}
+
+Candidate: ${candidate.name}
+Resume/Background: ${candidate.resume_text || 'No resume provided'}
+Notes: ${candidate.notes || 'None'}`;
+
+  try {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2048,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userPrompt }],
+      }),
+    });
+
+    if (!resp.ok) return err(502, `AI screening failed: ${resp.status}`);
+
+    const result = await resp.json();
+    const screening = result.content?.[0]?.text || "";
+
+    await env.DB.prepare(
+      "UPDATE candidates SET ai_screening = ? WHERE id = ? AND user_id = ?"
+    ).bind(screening, id, sess.user_id).run();
+
+    await logActivity(env, sess.user_id, "ai_screen", "candidate", id);
+    return json({ ok: true, ai_screening: screening });
+  } catch (e) {
+    return err(502, `AI screening error: ${e.message}`);
+  }
+}
+
+// ─── Onboarding Routes ──────────────────────────────────
+
+async function handleCreateOnboarding(request, env, sess) {
+  let body;
+  try { body = await request.json(); } catch { return err(400, "Invalid JSON"); }
+
+  const { candidate_id, employee_name, position, start_date, checklist } = body;
+  if (!employee_name) return err(400, "Employee name required");
+
+  const checklistStr = checklist || JSON.stringify([
+    { task: "Set up email and accounts", done: false },
+    { task: "Equipment provisioning", done: false },
+    { task: "Welcome meeting with team", done: false },
+    { task: "Review company policies", done: false },
+    { task: "Complete tax/payroll forms", done: false },
+    { task: "First week training plan", done: false },
+  ]);
+
+  const result = await env.DB.prepare(
+    "INSERT INTO onboarding (user_id, candidate_id, employee_name, position, start_date, checklist) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(sess.user_id, candidate_id || null, employee_name, position || "", start_date || "", checklistStr).run();
+
+  await logActivity(env, sess.user_id, "create", "onboarding", result.meta.last_row_id);
+  return json({ ok: true, id: result.meta.last_row_id }, { status: 201 });
+}
+
+async function handleGetOnboarding(env, sess, id) {
+  const row = await env.DB.prepare(
+    "SELECT * FROM onboarding WHERE id = ? AND user_id = ?"
+  ).bind(id, sess.user_id).first();
+  if (!row) return err(404, "Onboarding record not found");
+
+  let checklist = [];
+  try { checklist = JSON.parse(row.checklist || "[]"); } catch { checklist = []; }
+
+  return json({ ...row, checklist_parsed: checklist });
+}
+
+// ─── Reviews Routes ─────────────────────────────────────
+
+async function handleCreateReview(request, env, sess) {
+  let body;
+  try { body = await request.json(); } catch { return err(400, "Invalid JSON"); }
+
+  const { employee_name, position, review_period, rating, strengths, improvements, goals, generate_ai } = body;
+  if (!employee_name) return err(400, "Employee name required");
+
+  let aiDraft = "";
+  if (generate_ai && env.ANTHROPIC_API_KEY) {
+    try {
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 2048,
+          system: "You are an HR professional writing a performance review. Be constructive, specific, and balanced. Format in clean markdown.",
+          messages: [{ role: "user", content: `Write a performance review for:
+Employee: ${employee_name}
+Position: ${position || 'N/A'}
+Review Period: ${review_period || 'Current period'}
+Rating: ${rating || 'N/A'}/5
+Strengths noted: ${strengths || 'N/A'}
+Areas for improvement: ${improvements || 'N/A'}
+Goals: ${goals || 'N/A'}` }],
+        }),
+      });
+      if (resp.ok) {
+        const result = await resp.json();
+        aiDraft = result.content?.[0]?.text || "";
+      }
+    } catch { /* non-critical */ }
+  }
+
+  const result = await env.DB.prepare(
+    "INSERT INTO reviews (user_id, employee_name, position, review_period, rating, strengths, improvements, goals, ai_draft) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(sess.user_id, employee_name, position || "", review_period || "", rating || null, strengths || "", improvements || "", goals || "", aiDraft).run();
+
+  await logActivity(env, sess.user_id, "create", "review", result.meta.last_row_id);
+  return json({ ok: true, id: result.meta.last_row_id, ai_draft: aiDraft }, { status: 201 });
+}
+
+async function handleListReviews(env, sess) {
+  const rows = await env.DB.prepare(
+    "SELECT * FROM reviews WHERE user_id = ? ORDER BY created_at DESC"
+  ).bind(sess.user_id).all();
+  return json({ reviews: rows.results });
+}
+
 // ─── Dashboard ───────────────────────────────────────────
 
 async function handleDashboard(env, sess) {
@@ -727,6 +1095,80 @@ export default {
         // Compliance
         else if (path === "/api/compliance" && method === "GET") {
           response = await handleListCompliance(env, sess);
+        }
+
+        // Invoices
+        else if (path === "/api/invoices" && method === "POST") {
+          response = await handleCreateInvoice(request, env, sess);
+        }
+        else if (path === "/api/invoices" && method === "GET") {
+          response = await handleListInvoices(env, sess);
+        }
+        else if (/^\/api\/invoices\/(\d+)\/send$/.test(path) && method === "POST") {
+          const id = parseInt(path.match(/\/api\/invoices\/(\d+)\/send/)[1]);
+          response = await handleSendInvoice(request, env, sess, id);
+        }
+        else if (/^\/api\/invoices\/(\d+)$/.test(path) && method === "PUT") {
+          const id = parseInt(path.match(/\/api\/invoices\/(\d+)/)[1]);
+          response = await handleUpdateInvoice(request, env, sess, id);
+        }
+
+        // Expenses
+        else if (path === "/api/expenses" && method === "POST") {
+          response = await handleCreateExpense(request, env, sess);
+        }
+        else if (path === "/api/expenses" && method === "GET") {
+          response = await handleListExpenses(env, sess);
+        }
+
+        // Cash Flow
+        else if (path === "/api/cashflow" && method === "GET") {
+          response = await handleCashFlow(env, sess);
+        }
+
+        // Jobs
+        else if (path === "/api/jobs" && method === "POST") {
+          response = await handleCreateJob(request, env, sess);
+        }
+        else if (path === "/api/jobs" && method === "GET") {
+          response = await handleListJobs(env, sess);
+        }
+        else if (/^\/api\/jobs\/(\d+)$/.test(path) && method === "PUT") {
+          const id = parseInt(path.match(/\/api\/jobs\/(\d+)/)[1]);
+          response = await handleUpdateJob(request, env, sess, id);
+        }
+
+        // Candidates
+        else if (path === "/api/candidates" && method === "POST") {
+          response = await handleCreateCandidate(request, env, sess);
+        }
+        else if (path === "/api/candidates" && method === "GET") {
+          response = await handleListCandidates(env, sess, url);
+        }
+        else if (/^\/api\/candidates\/(\d+)\/screen$/.test(path) && method === "POST") {
+          const id = parseInt(path.match(/\/api\/candidates\/(\d+)\/screen/)[1]);
+          response = await handleScreenCandidate(request, env, sess, id);
+        }
+        else if (/^\/api\/candidates\/(\d+)$/.test(path) && method === "PUT") {
+          const id = parseInt(path.match(/\/api\/candidates\/(\d+)/)[1]);
+          response = await handleUpdateCandidate(request, env, sess, id);
+        }
+
+        // Onboarding
+        else if (path === "/api/onboarding" && method === "POST") {
+          response = await handleCreateOnboarding(request, env, sess);
+        }
+        else if (/^\/api\/onboarding\/(\d+)$/.test(path) && method === "GET") {
+          const id = parseInt(path.match(/\/api\/onboarding\/(\d+)/)[1]);
+          response = await handleGetOnboarding(env, sess, id);
+        }
+
+        // Reviews
+        else if (path === "/api/reviews" && method === "POST") {
+          response = await handleCreateReview(request, env, sess);
+        }
+        else if (path === "/api/reviews" && method === "GET") {
+          response = await handleListReviews(env, sess);
         }
 
         // Projects
