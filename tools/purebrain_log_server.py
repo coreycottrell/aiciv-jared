@@ -1026,10 +1026,25 @@ def register_routes(app: Flask) -> None:
                                                 except (ValueError, TypeError):
                                                     pass
 
-                                    # Strategy 5: Match by payer first name in assistant responses
-                                    # The AI often addresses the customer by name during the conversation.
-                                    # Only use names >= 3 chars to avoid false positives.
-                                    if _payer_first_name and len(_payer_first_name) >= 3 and _msg_count >= 3:
+                                    # Strategy 5: Match by payer first name in assistant responses — DISABLED 2026-05-07
+                                    #
+                                    # Was: search assistant messages for payer first-name substring (>= 3 chars).
+                                    # Caused: cross-customer collision when two payers share first name.
+                                    # Specifically: 2026-05-07 11:54 UTC, Sheila / Couplify ($499 Partnered) had her
+                                    # payment fuzzy-matched to Jay Hutton's "Torque" container via shared "Jay"
+                                    # (Whitehurst was the PayPal payer name; Hutton was an unrelated old chat).
+                                    #
+                                    # Per constitutional rule (feedback_seed_flow_never_deviate.md): AI name MUST
+                                    # populate before send. Fuzzy first-name match risks shipping wrong AI name
+                                    # while satisfying the populate-rule numerically (Torque) but not semantically.
+                                    #
+                                    # Replacement: hard-block + Telegram alert + JSONL queue for manual review,
+                                    # implemented after the priority chain below. Feature flag
+                                    # ALLOW_S5_FUZZY_FALLBACK=true can re-enable this strategy in emergency.
+                                    if (
+                                        os.environ.get('ALLOW_S5_FUZZY_FALLBACK', 'false').lower() == 'true'
+                                        and _payer_first_name and len(_payer_first_name) >= 3 and _msg_count >= 3
+                                    ):
                                         for _m in _msgs:
                                             if (_m.get('role') or '') == 'assistant':
                                                 _mc = (_m.get('content') or '').lower()
@@ -1057,9 +1072,14 @@ def register_routes(app: Flask) -> None:
                         elif _best_by_recency and _best_by_recency_count > 0:
                             _best_match = _best_by_recency
                             _match_strategy = f'S4-recentConv ({_best_by_recency_count} msgs, ts={_best_by_recency_ts})'
-                        elif _best_by_name and _best_by_name_count > 0:
+                        elif (
+                            os.environ.get('ALLOW_S5_FUZZY_FALLBACK', 'false').lower() == 'true'
+                            and _best_by_name and _best_by_name_count > 0
+                        ):
+                            # S5 priority entry only fires when feature flag is set.
+                            # Default (flag absent/false): hard-block path below catches the no-match case.
                             _best_match = _best_by_name
-                            _match_strategy = f'S5-payerName ({_best_by_name_count} msgs)'
+                            _match_strategy = f'S5-payerName ({_best_by_name_count} msgs) [FLAG-OVERRIDE]'
 
                         # Log ALL strategy results for debugging — shows which fired and which missed
                         logger.info(
@@ -1095,7 +1115,53 @@ def register_routes(app: Flask) -> None:
 
                             logger.info(f'[payment-seed] Found conversation via {_match_strategy}: {len(_msgs)} messages, AI name: {_ai_name}')
                         else:
-                            logger.warning(f'[payment-seed] No conversation found for order {order_id}, sessionUuid={_page_session_uuid}')
+                            # HARD-BLOCK PATH (2026-05-07): S1-S4 all returned 0; S5 fuzzy fallback
+                            # is disabled by default. Per constitutional seed-flow rule, we will NOT
+                            # guess the chat-payment binding via demographics — block, alert, queue.
+                            logger.critical(
+                                f'[payment-seed] BLOCKED-NO-MATCH: order={order_id} '
+                                f'payer_email={payer_email} payer_name={payer_name} amount={amount} tier={tier}. '
+                                f'S1-S4 empty; S5 fuzzy fallback disabled. Manual review required.'
+                            )
+                            try:
+                                _blocked_record = {
+                                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                                    'order_id': order_id,
+                                    'payer_email': payer_email,
+                                    'payer_name': payer_name,
+                                    'amount': amount,
+                                    'tier': tier,
+                                    'session_uuid': _page_session_uuid,
+                                    'reason': 'S1-S4 all returned 0; S5 fuzzy fallback disabled per constitutional rule',
+                                    'requires_action': 'manual review + manual seed dispatch',
+                                }
+                                _blocked_path = os.path.join(
+                                    os.path.dirname(os.path.abspath(__file__)), '..', 'logs', 'blocked_seeds.jsonl'
+                                )
+                                os.makedirs(os.path.dirname(_blocked_path), exist_ok=True)
+                                with open(_blocked_path, 'a') as _bf:
+                                    _bf.write(_json.dumps(_blocked_record) + '\n')
+                            except Exception as _bjerr:
+                                logger.error(f'[payment-seed] Failed to append blocked_seeds.jsonl: {_bjerr}')
+
+                            try:
+                                _tg_path = os.path.join(
+                                    os.path.dirname(os.path.abspath(__file__)), 'tg_send.sh'
+                                )
+                                _tg_msg = (
+                                    f"🚨 SEED BLOCKED: order={order_id} "
+                                    f"payer={payer_email} amount=${amount} tier={tier}. "
+                                    f"S1-S4 all empty; S5 disabled. Manual review required. "
+                                    f"See logs/blocked_seeds.jsonl"
+                                )
+                                subprocess.run(
+                                    [_tg_path, _tg_msg],
+                                    check=False, timeout=10,
+                                )
+                            except Exception as _tgerr:
+                                logger.error(f'[payment-seed] Telegram alert failed: {_tgerr}')
+
+                            return  # Exit _fire_payment_seed thread — do NOT call Witness/send seed
 
                 except Exception as _conv_err:
                     logger.warning(f'[payment-seed] Conversation lookup failed: {_conv_err}')
