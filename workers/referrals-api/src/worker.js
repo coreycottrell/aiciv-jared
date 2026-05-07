@@ -7,33 +7,58 @@
  *
  *   --- Public / VPS-scoped ---
  *   GET  /health
- *   GET  /referrers?code=PB-XXXX           — full referrer row (minus password_hash)
- *   GET  /referrers?email=foo@bar           — full referrer row
- *   GET  /referrals?referrer_id=N           — list referrals (joined with commission sums)
+ *   GET  /referrers?code=PB-XXXX             — full referrer row (minus password_hash)
+ *   GET  /referrers?email=foo@bar             — full referrer row
+ *   GET  /referrals?referrer_id=N             — list referrals (joined with commission sums)
  *   GET  /commission_payments?referral_id=N
- *   GET  /dashboard?code=PB-XXXX           — aggregated shape matching portal /refer/ frontend
- *   GET  /leaderboard                       — ranked affiliates by completed referrals + earnings
+ *   GET  /dashboard?code=PB-XXXX             — aggregated shape with partner_tier + tier_rate
+ *   GET  /leaderboard                         — ranked affiliates
+ *
+ *   --- Public Application & Payout (partner-self) ---
+ *   POST /partners/apply                      — partner application (creates partner_applications row)
+ *   POST /referrals/complete                  — payment-page onApprove POST (idempotent pending row)
+ *   POST /payouts/request                     — partner-self payout request ($50 min)
  *
  *   --- Admin (X-Admin-Token required) ---
- *   GET  /admin/emails                      — lightweight (email, code) pairs
- *   GET  /admin/affiliates                  — full admin view with stats per affiliate
- *   GET  /admin/payouts                     — list all payout requests
- *   GET  /admin/stats                       — overview stats (totals)
- *   POST /referrers/upsert                  — auto-provision referral code
- *   POST /referrals/complete                — mark a referral as completed
- *   POST /commission_payments               — record a commission payment
- *   POST /admin/payout/mark-paid            — mark a payout request as paid
- *   POST /admin/referral/assign             — manually assign a client to a referrer
- *   PUT  /admin/affiliate/update            — update affiliate details
- *   PUT  /admin/referral/update             — update a referral record
- *   DELETE /admin/affiliate/delete          — delete affiliate + cascade
+ *   GET  /admin/emails                        — lightweight (email, code) pairs
+ *   GET  /admin/affiliates                    — full admin view (incl. partner_tier + split_config)
+ *   GET  /admin/payouts                       — list payout requests (legacy + v2 merged)
+ *   GET  /admin/applications                  — list partner applications (?status= filter)
+ *   GET  /admin/stats                         — overview stats (totals)
+ *   POST /referrers/upsert                    — auto-provision referral code (default tier=silver)
+ *   POST /partners/signup                     — direct admin signup (default tier=silver)
+ *   POST /commission_payments                 — record commission (writes tier_at_write + Support Tier detect)
+ *   POST /admin/payout/mark-paid              — mark a payout request as paid
+ *   POST /admin/referral/assign               — manually assign a client to a referrer
+ *   POST /admin/applications/:id/approve      — approve partner application
+ *   POST /admin/applications/:id/reject       — reject partner application (CTO Edit #8)
+ *   POST /admin/recalc-tier                   — retroactive rate recalc (chunked, idempotent)
+ *   POST /referrals/complete (admin mode)     — mark existing row completed by id
+ *   PUT  /admin/affiliate/update              — update affiliate (incl. partner_tier, split_config)
+ *   PUT  /admin/referral/update               — update a referral record
+ *   DELETE /admin/affiliate/delete            — delete affiliate + cascade
  *
  * Auth model:
- *   - /admin/* and write endpoints require X-Admin-Token header or ?admin_token= query param
- *     matching ADMIN_TOKENS secret (comma-separated).
- *   - Public read endpoints are open (called by portal_server.py behind its own auth).
+ *   - /admin/* and admin write endpoints require X-Admin-Token header or
+ *     ?admin_token= query param matching ADMIN_TOKENS secret (comma-separated).
+ *   - /partners/apply, /referrals/complete (public mode), /payouts/request are
+ *     PUBLIC — called from website frontend. Idempotency from UNIQUE INDEX
+ *     and identity gate (paypal_email match) prevent abuse.
  *
  * D1 binding: env.DB
+ *
+ * Env vars (wrangler.toml + secrets):
+ *   ADMIN_TOKENS           — comma-separated admin tokens (secret, REQUIRED)
+ *   SUPPORT_TIER_PLAN_IDS  — comma-separated PayPal Plan IDs that map to Support
+ *                            Tier 25% (SPEC E1 / CTO Q2). Empty default = no plans.
+ *
+ * Constitutional notes:
+ *   - Commission formula = paymentAmount * rate. NO $35 deduction in Worker
+ *     ($35 ops fee comes off in tools/paypal_auto_split.py per CTO Edit #1).
+ *   - Every commission_payments INSERT MUST set tier_at_write (CTO Edit #2)
+ *     for safe retroactive recalc (CTO §1.3).
+ *   - $50 min payout enforced by DB CHECK on payout_requests_v2.
+ *   - (pb_ref, payment_id) UNIQUE INDEX makes /referrals/complete idempotent.
  */
 
 const REFERRER_PUBLIC_COLS = [
