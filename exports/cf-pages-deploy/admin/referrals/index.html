@@ -1331,17 +1331,52 @@ tr:hover td{background:rgba(42,147,193,0.04)}
       state.clients = (d.clients || []).filter(function(c) { return c.email; });
       console.log('[ensureClientsLoaded] Loaded ' + state.clients.length + ' clients from admin-api');
     }).catch(function(err) {
-      console.warn('[ensureClientsLoaded] admin-api failed (likely CORS on staging):', err.message);
-      /* Fallback for staging: load affiliates as client candidates if admin-api CORS blocks */
-      if (window.location.hostname !== 'portal.purebrain.ai' && state.clients.length === 0) {
-        api('GET', '/api/admin/affiliates').then(function(d) {
-          var affs = d.affiliates || d.partners || [];
-          state.clients = affs.filter(function(a) { return a.email; }).map(function(a) {
-            return { id: a.id, email: a.email, name: a.name || '' };
-          });
-          console.log('[ensureClientsLoaded] Fallback: loaded ' + state.clients.length + ' from referrals-api affiliates');
+      console.warn('[ensureClientsLoaded] admin-api failed (CORS/timeout/auth):', err.message);
+      /* D1 (referral-v1): host-gate REMOVED per audit findings 2026-05-07.
+         Previously this fallback only ran when hostname !== 'portal.purebrain.ai',
+         leaving production with NO autocomplete data when admin-api failed.
+         Now the fallback fires on every host. We also merge affiliates with
+         the partner roster so the dataset is closer to the full client list,
+         and surface a UI hint that the dataset is partial. */
+      if (state.clients.length === 0) {
+        var fbCalls = [
+          api('GET', '/api/admin/affiliates').catch(function() { return {}; }),
+          api('GET', '/api/admin/partners').catch(function() { return {}; })
+        ];
+        Promise.all(fbCalls).then(function(results) {
+          var byEmail = {};
+          var addRows = function(rows, label) {
+            (rows || []).forEach(function(r) {
+              if (!r || !r.email) return;
+              var key = String(r.email).toLowerCase();
+              if (!byEmail[key]) {
+                byEmail[key] = { id: r.id, email: r.email, name: r.name || r.full_name || '', source: label };
+              } else if (!byEmail[key].name && (r.name || r.full_name)) {
+                byEmail[key].name = r.name || r.full_name || '';
+              }
+            });
+          };
+          addRows(results[0].affiliates || results[0].partners || results[0].rows || [], 'affiliate');
+          addRows(results[1].partners || results[1].rows || [], 'partner');
+          state.clients = Object.keys(byEmail).map(function(k) { return byEmail[k]; });
+          console.log('[ensureClientsLoaded] Fallback: loaded ' + state.clients.length +
+                      ' from affiliates+partners merge (admin-api unavailable)');
+          /* UI hint: surface partial-dataset indicator near the autocomplete input */
+          try {
+            var hint = document.getElementById('assignAcFallbackHint');
+            if (!hint) {
+              var input = document.getElementById('assignClientSearch');
+              if (input && input.parentNode) {
+                hint = document.createElement('div');
+                hint.id = 'assignAcFallbackHint';
+                hint.style.cssText = 'font-size:0.75rem;color:#f1c40f;margin-top:0.25rem;';
+                hint.textContent = 'Showing affiliates+partners only — full client list unavailable (admin-api error).';
+                input.parentNode.appendChild(hint);
+              }
+            }
+          } catch (e) { /* hint is best-effort */ }
         }).catch(function(err2) {
-          console.error('[ensureClientsLoaded] Fallback also failed:', err2.message);
+          console.error('[ensureClientsLoaded] Fallback also failed:', err2 && err2.message);
         });
       }
     });
