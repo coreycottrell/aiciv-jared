@@ -176,25 +176,19 @@ export default {
         return new Response(resp.body, { status: resp.status, headers: respHeaders });
       }
       // Admin referral endpoints → referrals-api Worker (D1)
+      // SECURITY (2026-05-07, Phase 0 V-11 fix): X-Admin-Token now sourced from
+      // env.ADMIN_TOKEN secret. Previously hardcoded literal `purebrain-admin-2026`
+      // was leaked in git history; that value is being retired via grace-period
+      // rotation in referrals-api ADMIN_TOKENS.
+      // NOTE: a duplicate of this block was removed in the same commit (it was
+      // dead code — the same `if` condition always matched the first block).
       if (url.pathname.startsWith('/api/admin/affiliat') || url.pathname.startsWith('/api/admin/payout') || url.pathname.startsWith('/api/admin/referral/') || url.pathname === '/api/admin/stats') {
         const workerPath = url.pathname.replace('/api/admin', '/admin');
         const workerUrl = `https://referrals-api.in0v8.workers.dev${workerPath}${url.search}`;
         const proxyHeaders = new Headers(request.headers);
-        proxyHeaders.set('X-Admin-Token', 'purebrain-admin-2026');
-        const resp = await fetch(new Request(workerUrl, {
-          method: request.method, headers: proxyHeaders,
-          body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : null,
-        }));
-        const respHeaders = new Headers(resp.headers);
-        respHeaders.set('Access-Control-Allow-Origin', '*');
-        return new Response(resp.body, { status: resp.status, headers: respHeaders });
-      }
-      // Admin referral endpoints → referrals-api Worker (D1)
-      if (url.pathname.startsWith('/api/admin/affiliat') || url.pathname.startsWith('/api/admin/payout') || url.pathname.startsWith('/api/admin/referral/') || url.pathname === '/api/admin/stats') {
-        const workerPath = url.pathname.replace('/api/admin', '/admin');
-        const proxyHeaders = new Headers(request.headers);
-        proxyHeaders.set('X-Admin-Token', 'purebrain-admin-2026');
-        const workerUrl = `https://referrals-api.in0v8.workers.dev${workerPath}${url.search}`;
+        if (env.ADMIN_TOKEN) {
+          proxyHeaders.set('X-Admin-Token', env.ADMIN_TOKEN);
+        }
         const resp = await fetch(new Request(workerUrl, {
           method: request.method, headers: proxyHeaders,
           body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : null,
