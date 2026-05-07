@@ -206,6 +206,149 @@ export default {
       }
 
       // ─────────────────────────────────────────────
+      // POST /partners/apply — public partner application (SPEC C2)
+      //
+      // Replaces Brevo-only flow. Creates partner_applications row with
+      // status='pending'. Admin reviews via GET /admin/applications and
+      // approves/rejects via /admin/applications/:id/approve|reject.
+      //
+      // 30-day-use enforcement (CTO Q3): clients table currently lives in
+      // purebrain-social D1 (held under domain-isolation rule, May 7).
+      // For v1, applications default to 'pending' and admin verifies
+      // 30d-use manually during review. Admin can stamp 'needs_30d_use'
+      // status with reviewer_override_reason when overriding for partners
+      // who paid via different email.
+      //
+      // Idempotent on email — UNIQUE constraint returns 409 if applied before.
+      // ─────────────────────────────────────────────
+      if (method === "POST" && path === "/partners/apply") {
+        const body = await parseBody(request);
+        if (!body) return err(400, "invalid json");
+
+        const email = String(body.email || "").trim().toLowerCase();
+        const full_name = String(body.full_name || body.name || "").trim();
+        const audience_size = Number.isFinite(Number(body.audience_size))
+          ? Math.max(0, Math.floor(Number(body.audience_size)))
+          : null;
+        if (!email || !email.includes("@")) return err(400, "invalid email");
+        if (!full_name) return err(400, "full_name required");
+
+        // 30-day-use check: deferred to admin review queue (clients table
+        // lives in purebrain-social D1, held under domain-isolation rule).
+        // Future: extract clients to purebrain-clients D1 and add real lookup
+        // that auto-stamps 'needs_30d_use' when applicant lacks 30d client history.
+        const status = "pending";
+
+        const application_data = JSON.stringify({
+          source: body.source || "partners-page",
+          referral_url: body.referral_url || null,
+          notes: body.notes || null,
+          submitted_user_agent: request.headers.get("user-agent") || null,
+        });
+
+        const now = Math.floor(Date.now() / 1000);
+        try {
+          const res = await env.DB.prepare(
+            `INSERT INTO partner_applications (email, full_name, audience_size, application_data, status, applied_at)
+             VALUES (?, ?, ?, ?, ?, ?)
+             RETURNING id, email, full_name, status, applied_at`
+          ).bind(email, full_name, audience_size, application_data, status, now).all();
+          const row = res.results && res.results[0];
+          return json({ ok: true, application: row });
+        } catch (e) {
+          // UNIQUE constraint on email → already applied
+          const msg = String(e && e.message || e);
+          if (msg.includes("UNIQUE")) {
+            return err(409, "application_exists");
+          }
+          return json({ error: "apply_failed", detail: msg }, { status: 500 });
+        }
+      }
+
+      // ─────────────────────────────────────────────
+      // POST /admin/applications/:id/approve  (SPEC C2)
+      // POST /admin/applications/:id/reject   (CTO Edit #8 — companion route)
+      //
+      // approve body: { code, paypal_email?, partner_tier?, reviewed_by?, reviewer_override_reason? }
+      // reject body:  { rejection_reason, reviewed_by? }
+      //
+      // approve: creates active referrer row at chosen tier (default 'silver'),
+      //          stamps application status='approved' with reviewed_at/by.
+      // reject:  stamps application status='rejected' with rejection_reason.
+      //
+      // Both routes use existing X-Admin-Token auth pattern.
+      // ─────────────────────────────────────────────
+      const applicationActionMatch = path.match(/^\/admin\/applications\/(\d+)\/(approve|reject)$/);
+      if (method === "POST" && applicationActionMatch) {
+        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        const appId = Number(applicationActionMatch[1]);
+        const action = applicationActionMatch[2];
+        const body = (await parseBody(request)) || {};
+
+        const reviewed_by = String(body.reviewed_by || "admin").trim();
+        const now = Math.floor(Date.now() / 1000);
+
+        // Load application
+        const appRow = await env.DB.prepare(
+          `SELECT * FROM partner_applications WHERE id = ?`
+        ).bind(appId).first();
+        if (!appRow) return err(404, "application not found");
+        if (appRow.status !== "pending" && appRow.status !== "needs_30d_use") {
+          return err(409, `application already ${appRow.status}`);
+        }
+
+        if (action === "reject") {
+          const rejection_reason = String(body.rejection_reason || "no reason given").slice(0, 500);
+          await env.DB.prepare(
+            `UPDATE partner_applications
+                SET status = 'rejected', reviewed_at = ?, reviewed_by = ?, rejection_reason = ?
+              WHERE id = ?`
+          ).bind(now, reviewed_by, rejection_reason, appId).run();
+          return json({ ok: true, action: "rejected", id: appId, rejection_reason });
+        }
+
+        // approve: create active referrer row, mark application approved
+        const code = String(body.code || "").trim().toUpperCase();
+        const paypal_email = String(body.paypal_email || appRow.email).trim();
+        const partner_tier = String(body.partner_tier || "silver").toLowerCase();
+        const reviewer_override_reason = body.reviewer_override_reason
+          ? String(body.reviewer_override_reason).slice(0, 500)
+          : null;
+        if (!code) return err(400, "code required for approval");
+        if (!TIER_RATES[partner_tier]) {
+          return err(400, `invalid partner_tier (allowed: ${Object.keys(TIER_RATES).join(", ")})`);
+        }
+
+        const isoNow = new Date().toISOString();
+        try {
+          // Create referrer at chosen tier
+          const refRes = await env.DB.prepare(
+            `INSERT INTO referrers (user_name, user_email, referral_code, paypal_email, password_hash, created_at, partner_tier, total_sales)
+             VALUES (?, ?, ?, ?, '', ?, ?, 0)
+             RETURNING id, user_email, referral_code, user_name, partner_tier`
+          ).bind(appRow.full_name, appRow.email, code, paypal_email, isoNow, partner_tier).all();
+          const referrer = refRes.results && refRes.results[0];
+
+          // Mark application approved
+          await env.DB.prepare(
+            `UPDATE partner_applications
+                SET status = 'approved', reviewed_at = ?, reviewed_by = ?, reviewer_override_reason = ?
+              WHERE id = ?`
+          ).bind(now, reviewed_by, reviewer_override_reason, appId).run();
+
+          return json({
+            ok: true,
+            action: "approved",
+            id: appId,
+            referrer,
+            tier_rate: rateForTier(partner_tier),
+          });
+        } catch (e) {
+          return json({ error: "approve_failed", detail: String(e && e.message || e) }, { status: 500 });
+        }
+      }
+
+      // ─────────────────────────────────────────────
       // POST /partners/signup — direct admin signup (SPEC C1)
       // Default partner_tier='silver' (15%), explicit alternative tiers allowed.
       // (Public application path is /partners/apply; this is admin-direct provisioning.)
@@ -771,6 +914,22 @@ export default {
            ORDER BY p.created_at DESC`
         ).all();
         return json({ payouts: results || [], count: (results || []).length });
+      }
+
+      // GET /admin/applications — list partner applications (SPEC C2)
+      // Optional query: ?status=pending|approved|rejected|needs_30d_use
+      if (path === "/admin/applications") {
+        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        const status = (url.searchParams.get("status") || "").trim();
+        const stmt = status
+          ? env.DB.prepare(
+              `SELECT * FROM partner_applications WHERE status = ? ORDER BY applied_at DESC`
+            ).bind(status)
+          : env.DB.prepare(
+              `SELECT * FROM partner_applications ORDER BY applied_at DESC`
+            );
+        const { results } = await stmt.all();
+        return json({ applications: results || [], count: (results || []).length });
       }
 
       // GET /admin/stats — overview stats
