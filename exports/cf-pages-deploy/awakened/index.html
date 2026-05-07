@@ -5304,6 +5304,31 @@ const a=JSON.parse(document.getElementById("wp-emoji-settings").textContent),o=(
     window.paymentTier      = tier;
     window.paymentOrderId   = orderId;
 
+    // B3 (referral-v1, 2026-05-07): pb_ref attribution POST.
+    // If visitor arrived with ?ref=PB-XXXX, fire the pending-row creation
+    // POST to portal-proxy /api/referral/complete (proxy → referrals-api
+    // /referrals/complete). Webhook later upgrades pending → paid.
+    // Fire-and-forget — never blocks redirect.
+    (function() {
+      try {
+        var refCode = typeof window.getPbRef === 'function' ? window.getPbRef() : null;
+        if (!refCode) return;
+        var customerEmail = (payerInfo && payerInfo.email_address) ? payerInfo.email_address : '';
+        fetch('https://portal.purebrain.ai/api/referral/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pb_ref: refCode,
+            payment_id: orderId || '',
+            customer_email: customerEmail,
+            tier: tier || '',
+            source_page: 'awakened'
+          }),
+          keepalive: true
+        }).catch(function() { /* fire-and-forget */ });
+      } catch (e) { /* never block redirect on attribution failure */ }
+    })();
+
     // Close the modal
     closeModal();
 
