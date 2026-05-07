@@ -538,6 +538,84 @@ export default {
         return json({ ok: true, payment: row });
       }
 
+      // ─────────────────────────────────────────────
+      // POST /payouts/request — partner-self payout request (SPEC C4)
+      //
+      // PUBLIC endpoint. Identity gate: { partner_id, paypal_email }
+      //   — must match referrers.referral_code + referrers.paypal_email.
+      //
+      // Body: { partner_id, amount, paypal_email }
+      //
+      // Constraints:
+      //   - amount >= 50 (DB CHECK on payout_requests_v2 enforces this)
+      //   - amount must not exceed (sum of commissions earned) - (sum of approved/paid payouts)
+      //   - partner_id (referral_code) must exist
+      //   - paypal_email must match referrer record (no spoofing)
+      //
+      // Admin approval (manual, via /admin/payout/mark-paid + paypal_auto_split.py)
+      // ─────────────────────────────────────────────
+      if (method === "POST" && path === "/payouts/request") {
+        // Public — identity verified by partner_id + paypal_email match
+        const body = await parseBody(request);
+        if (!body) return err(400, "invalid json");
+
+        const partner_id = String(body.partner_id || body.referral_code || "").trim().toUpperCase();
+        const amount = Number(body.amount || 0);
+        const paypal_email = String(body.paypal_email || "").trim();
+
+        if (!partner_id) return err(400, "partner_id required");
+        if (!paypal_email || !paypal_email.includes("@")) return err(400, "paypal_email required");
+        if (!Number.isFinite(amount) || amount < 50) {
+          return err(400, "amount must be >= 50");
+        }
+
+        // Identity gate: partner exists + paypal_email matches
+        const referrer = await env.DB.prepare(
+          `SELECT id, referral_code, paypal_email FROM referrers WHERE referral_code = ? COLLATE NOCASE`
+        ).bind(partner_id).first();
+        if (!referrer) return err(404, "partner not found");
+        if (referrer.paypal_email && referrer.paypal_email.toLowerCase() !== paypal_email.toLowerCase()) {
+          return err(403, "paypal_email_mismatch");
+        }
+
+        // Verify partner has at least `amount` in unpaid commission earnings
+        const earningsRow = await env.DB.prepare(
+          `SELECT COALESCE(SUM(commission_value), 0) AS earned
+             FROM commission_payments
+            WHERE referrer_id = ?`
+        ).bind(referrer.id).first();
+        const paidRow = await env.DB.prepare(
+          `SELECT COALESCE(SUM(amount), 0) AS paid
+             FROM payout_requests_v2
+            WHERE partner_id = ? COLLATE NOCASE
+              AND status IN ('approved', 'paid')`
+        ).bind(partner_id).first();
+        const available = Math.round(((earningsRow.earned || 0) - (paidRow.paid || 0)) * 100) / 100;
+        if (amount > available) {
+          return err(400, `requested amount ${amount} exceeds available ${available.toFixed(2)}`);
+        }
+
+        const now = Math.floor(Date.now() / 1000);
+        try {
+          // DB CHECK constraint amount >= 50 enforces $50 min
+          // CHECK payout_method = 'paypal' enforces v1 PayPal-only
+          const res = await env.DB.prepare(
+            `INSERT INTO payout_requests_v2
+               (partner_id, amount, payout_method, paypal_email, status, requested_at)
+             VALUES (?, ?, 'paypal', ?, 'requested', ?)
+             RETURNING *`
+          ).bind(partner_id, amount, paypal_email, now).all();
+          const row = res.results && res.results[0];
+          return json({
+            ok: true,
+            payout_request: row,
+            available_after: Math.round((available - amount) * 100) / 100,
+          });
+        } catch (e) {
+          return json({ error: "payout_request_failed", detail: String(e && e.message || e) }, { status: 500 });
+        }
+      }
+
       // POST /admin/payout/mark-paid — mark a payout request as paid
       if (method === "POST" && path === "/admin/payout/mark-paid") {
         if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
@@ -824,6 +902,10 @@ export default {
           await env.DB.prepare(
             `DELETE FROM referral_clicks WHERE referral_code = ? COLLATE NOCASE`
           ).bind(ref.referral_code).run();
+          // C4: also clean v2 payouts (partner_id = referral_code)
+          await env.DB.prepare(
+            `DELETE FROM payout_requests_v2 WHERE partner_id = ? COLLATE NOCASE`
+          ).bind(ref.referral_code).run();
         }
 
         const del = await env.DB.prepare(
@@ -1043,17 +1125,30 @@ export default {
         return json({ affiliates, count: affiliates.length });
       }
 
-      // GET /admin/payouts — list all payout requests
+      // GET /admin/payouts — list all payout requests (legacy + v2 merged)
+      // SPEC C4: v2 table payout_requests_v2 holds partner-self requests with
+      // $50 min CHECK. Legacy payout_requests retained for historical records.
       if (path === "/admin/payouts") {
         if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
-        const { results } = await env.DB.prepare(
-          `SELECT p.*, ref.user_name AS referrer_name, ref.user_email AS referrer_email,
+        const legacyP = env.DB.prepare(
+          `SELECT 'legacy' AS source, p.*, ref.user_name AS referrer_name, ref.user_email AS referrer_email,
                   ref.paypal_email AS referrer_paypal
            FROM payout_requests p
            LEFT JOIN referrers ref ON ref.id = p.referrer_id
            ORDER BY p.created_at DESC`
         ).all();
-        return json({ payouts: results || [], count: (results || []).length });
+        const v2P = env.DB.prepare(
+          `SELECT 'v2' AS source, p2.id, p2.partner_id, p2.amount, p2.payout_method, p2.paypal_email,
+                  p2.status, p2.requested_at, p2.paid_at, p2.paid_via_split_id,
+                  ref.user_name AS referrer_name, ref.user_email AS referrer_email,
+                  ref.paypal_email AS referrer_paypal
+           FROM payout_requests_v2 p2
+           LEFT JOIN referrers ref ON ref.referral_code = p2.partner_id COLLATE NOCASE
+           ORDER BY p2.requested_at DESC`
+        ).all();
+        const [legacy, v2] = await Promise.all([legacyP, v2P]);
+        const merged = [...(legacy.results || []), ...(v2.results || [])];
+        return json({ payouts: merged, count: merged.length });
       }
 
       // GET /admin/applications — list partner applications (SPEC C2)
