@@ -92,7 +92,7 @@ assert_grep_remote() {
     fail "$3 (empty body from $1)"
     return
   fi
-  if echo "$body" | grep -q -- "$2"; then
+  if grep -q -- "$2" <<< "$body"; then
     ok "$3"
   else
     fail "$3 (pattern not found in served HTML at $1)"
@@ -137,7 +137,8 @@ for jsfile in "${JS_FILES[@]}"; do
     url="${LIVE_BASE}/${jsfile}"
     assert_grep_remote "$url" "window.pbSessionUuid" \
       "${jsfile} :: reads window.pbSessionUuid"
-    if curl -sS --max-time 10 "$url" 2>/dev/null | grep -q "(typeof payTestData !== 'undefined' && payTestData.sessionUuid)"; then
+    js_body="$(curl -sS --max-time 10 "$url" 2>/dev/null || true)"
+    if grep -q -- "(typeof payTestData !== 'undefined' && payTestData.sessionUuid)" <<< "$js_body"; then
       fail "${jsfile} :: still has legacy payTestData.sessionUuid cross-scope read (must be migrated)"
     else
       ok "${jsfile} :: no legacy payTestData.sessionUuid cross-scope read"
