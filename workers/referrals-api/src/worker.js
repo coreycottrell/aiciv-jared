@@ -556,6 +556,146 @@ export default {
         return json({ ok: true, payout: row });
       }
 
+      // ─────────────────────────────────────────────
+      // POST /admin/recalc-tier — retroactive rate recalc (SPEC C3 / CTO Q4)
+      //
+      // Strategy: idempotent recalc using tier_at_write column.
+      // Only rows where tier_at_write != target_tier get updated → safe
+      // to call repeatedly; converges to consistent state.
+      //
+      // Body: {
+      //   partner_id: "PB-XXXX",        — referral_code (required)
+      //   trigger_event: "100_referrals" | "1000_referrals" | "manual"  (default "manual")
+      //   force_tier:    "silver"|"gold"|"platinum"|"elite"  (optional override of milestone derivation)
+      // }
+      //
+      // Behavior:
+      //   - Computes target tier (force_tier > milestoneTier(total_sales) > current)
+      //   - Updates referrers.partner_tier
+      //   - Recalculates commission_payments rows where tier_at_write != target_tier
+      //     AND commission_source != 'support_tier' (Support Tier locked at 25%)
+      //   - Chunked at LIMIT 200 per call (CF Worker 30s CPU limit)
+      //   - Returns more=true if rows still need recalc → caller re-invokes
+      //   - Logs to rate_adjustments only on chunks that actually recalculated rows
+      // ─────────────────────────────────────────────
+      if (method === "POST" && path === "/admin/recalc-tier") {
+        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        const body = await parseBody(request);
+        if (!body) return err(400, "invalid json");
+
+        const partner_id = String(body.partner_id || "").trim().toUpperCase();
+        const force_tier = body.force_tier ? String(body.force_tier).toLowerCase() : null;
+        const trigger = String(body.trigger_event || "manual");
+
+        if (!partner_id) return err(400, "partner_id required");
+        if (!["100_referrals", "1000_referrals", "manual"].includes(trigger)) {
+          return err(400, "invalid trigger_event");
+        }
+        if (force_tier && !TIER_RATES[force_tier]) {
+          return err(400, `invalid force_tier (allowed: ${Object.keys(TIER_RATES).join(", ")})`);
+        }
+
+        // Load current partner state
+        const referrer = await env.DB.prepare(
+          `SELECT id, referral_code, partner_tier, total_sales FROM referrers WHERE referral_code = ? COLLATE NOCASE`
+        ).bind(partner_id).first();
+        if (!referrer) return err(404, "partner not found");
+
+        const oldTier = String(referrer.partner_tier || "silver").toLowerCase();
+        const computedTier = milestoneTier(referrer.total_sales);
+        const newTier = String(force_tier || computedTier || oldTier).toLowerCase();
+        if (!TIER_RATES[newTier]) return err(400, `invalid tier ${newTier}`);
+
+        const oldRate = rateForTier(oldTier);
+        const newRate = rateForTier(newTier);
+
+        // No-op if tier unchanged AND no rows need recalc
+        if (newTier === oldTier) {
+          // Still check if any rows have stale tier_at_write
+          const staleRow = await env.DB.prepare(
+            `SELECT COUNT(*) AS c FROM commission_payments
+              WHERE referrer_id = ?
+                AND (tier_at_write IS NULL OR tier_at_write != ?)
+                AND (commission_source IS NULL OR commission_source != 'support_tier')`
+          ).bind(referrer.id, newTier).first();
+          if ((staleRow.c || 0) === 0) {
+            return json({ ok: true, no_change: true, tier: newTier, rate: newRate });
+          }
+        }
+
+        // Update partner_tier on referrer (idempotent — same value if no change)
+        await env.DB.prepare(
+          `UPDATE referrers SET partner_tier = ? WHERE id = ?`
+        ).bind(newTier, referrer.id).run();
+
+        // Chunked recalc: only rows where tier_at_write != newTier
+        // CTO §1.3: tier_at_write is source of truth for safe idempotent recalc.
+        // Skip support_tier rows — those are locked at 25% regardless of partner tier.
+        const CHUNK = 200;
+        const { results: rows } = await env.DB.prepare(
+          `SELECT id, payment_amount, commission_value, tier_at_write
+             FROM commission_payments
+            WHERE referrer_id = ?
+              AND (tier_at_write IS NULL OR tier_at_write != ?)
+              AND (commission_source IS NULL OR commission_source != 'support_tier')
+            ORDER BY id ASC
+            LIMIT ?`
+        ).bind(referrer.id, newTier, CHUNK).all();
+
+        let recalculated = 0;
+        let dollarDelta = 0;
+        for (const r of rows || []) {
+          const amt = Number(r.payment_amount) || 0;
+          const oldVal = Number(r.commission_value) || 0;
+          const newVal = Math.round(amt * newRate * 100) / 100;
+          await env.DB.prepare(
+            `UPDATE commission_payments
+                SET commission_value  = ?,
+                    commission_rate   = ?,
+                    tier              = ?,
+                    tier_at_write     = ?,
+                    commission_source = 'milestone_recalc'
+              WHERE id = ?`
+          ).bind(newVal, newRate, newTier, newTier, r.id).run();
+          recalculated += 1;
+          dollarDelta += (newVal - oldVal);
+        }
+
+        // Check whether more rows remain
+        const moreRow = await env.DB.prepare(
+          `SELECT COUNT(*) AS c FROM commission_payments
+            WHERE referrer_id = ?
+              AND (tier_at_write IS NULL OR tier_at_write != ?)
+              AND (commission_source IS NULL OR commission_source != 'support_tier')`
+        ).bind(referrer.id, newTier).first();
+        const more = (moreRow.c || 0) > 0;
+
+        // Audit log: rate_adjustments (logged per chunk that recalculated)
+        const dollarsRecalculated = Math.round(Math.abs(dollarDelta) * 100) / 100;
+        if (recalculated > 0) {
+          await env.DB.prepare(
+            `INSERT INTO rate_adjustments
+               (partner_id, old_rate, new_rate, trigger_event, affected_commission_count, total_dollars_recalculated, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
+            partner_id, oldRate, newRate, trigger,
+            recalculated, dollarsRecalculated,
+            Math.floor(Date.now() / 1000)
+          ).run();
+        }
+
+        return json({
+          ok: true,
+          partner_id,
+          old_tier: oldTier, new_tier: newTier,
+          old_rate: oldRate, new_rate: newRate,
+          recalculated,
+          dollar_delta: Math.round(dollarDelta * 100) / 100,
+          chunk_size: CHUNK,
+          more,
+        });
+      }
+
       // POST /admin/referral/assign — manually assign a client to a referrer
       if (method === "POST" && path === "/admin/referral/assign") {
         if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
