@@ -1329,7 +1329,22 @@ tr:hover td{background:rgba(42,147,193,0.04)}
     if (state.clients.length > 0) return;
     api('GET', '/api/admin/clients').then(function(d) {
       state.clients = (d.clients || []).filter(function(c) { return c.email; });
-    }).catch(function() { /* non-fatal */ });
+      console.log('[ensureClientsLoaded] Loaded ' + state.clients.length + ' clients from admin-api');
+    }).catch(function(err) {
+      console.warn('[ensureClientsLoaded] admin-api failed (likely CORS on staging):', err.message);
+      /* Fallback for staging: load affiliates as client candidates if admin-api CORS blocks */
+      if (window.location.hostname !== 'portal.purebrain.ai' && state.clients.length === 0) {
+        api('GET', '/api/admin/affiliates').then(function(d) {
+          var affs = d.affiliates || d.partners || [];
+          state.clients = affs.filter(function(a) { return a.email; }).map(function(a) {
+            return { id: a.id, email: a.email, name: a.name || '' };
+          });
+          console.log('[ensureClientsLoaded] Fallback: loaded ' + state.clients.length + ' from referrals-api affiliates');
+        }).catch(function(err2) {
+          console.error('[ensureClientsLoaded] Fallback also failed:', err2.message);
+        });
+      }
+    });
   }
 
   function acSearch(query) {
@@ -1682,6 +1697,19 @@ tr:hover td{background:rgba(42,147,193,0.04)}
   /* Split Rows */
   var splitRowData = [];
 
+  /* Sync DOM input values back into splitRowData before any re-render */
+  function syncSplitRowsFromDOM() {
+    var currentRows = document.querySelectorAll('#splitRows .partner-row');
+    for (var i = 0; i < currentRows.length; i++) {
+      if (!splitRowData[i]) splitRowData[i] = {};
+      splitRowData[i].role = currentRows[i].querySelector('.split-role').value;
+      splitRowData[i].referrer_id = currentRows[i].querySelector('.split-referrer-id').value;
+      splitRowData[i].percentage = Number(currentRows[i].querySelector('.split-pct').value) / 100 || 0;
+      /* Preserve the display name so renderSplitRows can show it */
+      splitRowData[i]._displayName = currentRows[i].querySelector('.split-referrer').value;
+    }
+  }
+
   function renderSplitRows(splits) {
     splitRowData = (splits || []).slice();
     var container = document.getElementById('splitRows');
@@ -1693,8 +1721,8 @@ tr:hover td{background:rgba(42,147,193,0.04)}
     var html = '';
     for (var i = 0; i < splitRowData.length; i++) {
       var s = splitRowData[i];
-      var refName = '';
-      if (s.referrer_id) {
+      var refName = s._displayName || '';
+      if (!refName && s.referrer_id) {
         var refAff = state.affiliates.find(function(a) { return String(a.id) === String(s.referrer_id); });
         refName = refAff ? (refAff.name || refAff.email || '') : '';
       }
@@ -1800,6 +1828,8 @@ tr:hover td{background:rgba(42,147,193,0.04)}
   document.getElementById('splitRows').addEventListener('click', function(e) {
     var btn = e.target.closest('.btn-remove-split');
     if (!btn) return;
+    /* Sync DOM values before removing so other rows keep their values */
+    syncSplitRowsFromDOM();
     var idx = Number(btn.dataset.removeSplit);
     splitRowData.splice(idx, 1);
     renderSplitRows(splitRowData);
@@ -1810,6 +1840,8 @@ tr:hover td{background:rgba(42,147,193,0.04)}
       toast('Maximum 3 splits allowed', 'error');
       return;
     }
+    /* BUG 2 FIX: save current input values before re-rendering */
+    syncSplitRowsFromDOM();
     splitRowData.push({ role: 'originator', referrer_id: '', percentage: 0 });
     renderSplitRows(splitRowData);
   });
@@ -1817,13 +1849,14 @@ tr:hover td{background:rgba(42,147,193,0.04)}
   /* Save Splits (with bug fix: reload from API response) */
   document.getElementById('btnSaveSplits').addEventListener('click', function() {
     var id = document.getElementById('editId').value;
+    /* Sync DOM values before collecting — ensures latest input values are captured */
+    syncSplitRowsFromDOM();
     var splits = collectSplitData();
     this.disabled = true;
     this.textContent = 'Saving...';
     var btn = this;
-    api('PATCH', '/api/admin/partners/' + id + '/splits', {
-      split_config: splits
-    }).then(function(resp) {
+
+    function handleSaveSuccess(resp) {
       toast('Splits saved');
       btn.disabled = false;
       btn.textContent = 'Save Splits';
@@ -1835,10 +1868,29 @@ tr:hover td{background:rgba(42,147,193,0.04)}
       var af = state.affiliates.find(function(x) { return String(x.id) === String(id); });
       if (af) af.split_config = savedSplits;
       loadAffiliates();
-    }).catch(function(err) {
+    }
+
+    function handleSaveError(err) {
+      console.error('[saveSplits] Failed:', err.message);
       toast('Splits save failed: ' + err.message, 'error');
       btn.disabled = false;
       btn.textContent = 'Save Splits';
+    }
+
+    /* Try PATCH first, fallback to PUT if Worker doesn't support PATCH */
+    api('PATCH', '/api/admin/partners/' + id + '/splits', {
+      split_config: splits
+    }).then(handleSaveSuccess).catch(function(err) {
+      console.warn('[saveSplits] PATCH failed, trying PUT fallback:', err.message);
+      api('PUT', '/api/admin/partners/' + id + '/splits', {
+        split_config: splits
+      }).then(handleSaveSuccess).catch(function(err2) {
+        console.warn('[saveSplits] PUT also failed, trying partner update:', err2.message);
+        /* Last resort: update the partner record directly with split_config */
+        api('PUT', '/api/admin/partners/' + id, {
+          split_config: splits
+        }).then(handleSaveSuccess).catch(handleSaveError);
+      });
     });
   });
 
