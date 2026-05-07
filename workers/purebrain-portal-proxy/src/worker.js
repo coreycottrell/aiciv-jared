@@ -163,8 +163,17 @@ export default {
         return new Response(resp.body, { status: resp.status, headers: respHeaders });
       }
       // Referral API → referrals-api Worker (D1)
+      // B1 (referral-v1): path mismatch fix.
+      //   payment-page POSTs to /api/referral/complete must forward to
+      //   referrals-api /referrals/complete (the actual handler path) — not
+      //   the bare /complete that the previous prefix-strip produced.
+      //   Map: /api/referral/<rest> → /referrals/<rest>
+      //   Special: /api/referral or /api/referral/ → /referrals
       if (url.pathname.startsWith('/api/referral/') || url.pathname === '/api/referral') {
-        const workerPath = url.pathname.replace('/api/referral', '') || '/';
+        const tail = url.pathname === '/api/referral'
+          ? ''
+          : url.pathname.slice('/api/referral'.length); // includes leading '/'
+        const workerPath = '/referrals' + tail; // e.g. /referrals/complete, /referrals/track
         const workerUrl = `https://referrals-api.in0v8.workers.dev${workerPath}${url.search}`;
         const resp = await fetch(new Request(workerUrl, {
           method: request.method,
