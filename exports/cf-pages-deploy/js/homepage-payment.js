@@ -454,7 +454,7 @@
       orderId:    orderId,
       tier:       tier,
       payerInfo:  payerInfo,
-      sessionUuid: (typeof payTestData !== 'undefined' && payTestData.sessionUuid) ? payTestData.sessionUuid : (sessionStorage.getItem('pb_sessionUuid') || ''),
+      sessionUuid: window.pbSessionUuid || (sessionStorage.getItem('pb_sessionUuid') || ''),
     });
 
     var controller = new AbortController();
@@ -549,7 +549,7 @@
             return actions.order.create({
               purchase_units: [{
                 description:  'Pure Brain — ' + tier + ' Plan',
-                custom_id:    'PB-' + tier.toUpperCase() + '-' + ((typeof payTestData !== 'undefined' && payTestData.sessionUuid) ? payTestData.sessionUuid : ''),
+                custom_id:    'PB-' + tier.toUpperCase() + '-' + (window.pbSessionUuid || ''),
                 amount: {
                   currency_code: CURRENCY,
                   value:         price,
