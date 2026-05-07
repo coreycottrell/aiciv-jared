@@ -1,0 +1,2159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PureBrain Admin - Referrals &amp; Affiliates</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080a12;--bg2:#0d1017;--bg3:#131620;--bg4:#1a1e2e;
+  --blue:#2a93c1;--orange:#f1420b;--green:#22c55e;--yellow:#eab308;--red:#ef4444;
+  --text:#e8edf5;--dim:#7a8aaa;--border:#1e2333;
+  --radius:8px;
+}
+html{font-size:14px}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* Login */
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:1rem}
+.login-box{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:2.5rem;width:100%;max-width:380px}
+.login-box h1{font-size:1.4rem;margin-bottom:.25rem;text-align:center}
+.login-box .sub{color:var(--dim);text-align:center;margin-bottom:1.5rem;font-size:.85rem}
+.login-box label{display:block;color:var(--dim);font-size:.8rem;margin-bottom:.3rem;margin-top:1rem}
+.login-box input{width:100%;padding:.6rem .75rem;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:.9rem;outline:none}
+.login-box input:focus{border-color:var(--blue)}
+.login-box .err{color:var(--red);font-size:.8rem;margin-top:.5rem;display:none}
+.btn-primary{display:block;width:100%;padding:.7rem;margin-top:1.5rem;background:var(--blue);color:#fff;border:none;border-radius:var(--radius);font-size:.9rem;font-weight:600;cursor:pointer;transition:opacity .2s}
+.btn-primary:hover{opacity:.85}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+
+/* Layout */
+.app{display:none}
+.topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:.75rem 1.5rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+.topbar-left{display:flex;align-items:center;gap:.75rem}
+.topbar h1{font-size:1.1rem;font-weight:600}
+.topbar h1 span{color:var(--blue)}
+.badge-viewer{background:var(--yellow);color:#000;font-size:.65rem;font-weight:700;padding:.15rem .45rem;border-radius:3px;text-transform:uppercase}
+.topbar-right{display:flex;align-items:center;gap:.75rem}
+.btn-assign{padding:.4rem .85rem;background:var(--blue);color:#fff;border:none;border-radius:var(--radius);font-size:.8rem;font-weight:600;cursor:pointer}
+.btn-assign:hover{opacity:.85}
+.btn-logout{padding:.4rem .85rem;background:transparent;color:var(--dim);border:1px solid var(--border);border-radius:var(--radius);font-size:.8rem;cursor:pointer}
+.btn-logout:hover{color:var(--text);border-color:var(--dim)}
+.main{padding:1.25rem 1.5rem;max-width:1400px;margin:0 auto}
+
+/* Stats */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.75rem;margin-bottom:1.25rem}
+.stat-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem}
+.stat-card .label{font-size:.7rem;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:.3rem}
+.stat-card .value{font-size:1.6rem;font-weight:700}
+.stat-card .value.blue{color:var(--blue)}
+.stat-card .value.green{color:var(--green)}
+.stat-card .value.orange{color:var(--orange)}
+.stat-card .value.yellow{color:var(--yellow)}
+
+/* Tabs */
+.tabs{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:1rem}
+.tab{padding:.6rem 1.2rem;font-size:.85rem;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;font-weight:500;transition:color .15s}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+/* Search */
+.toolbar{display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem;flex-wrap:wrap}
+.search-input{padding:.45rem .7rem;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:.85rem;min-width:240px;outline:none}
+.search-input:focus{border-color:var(--blue)}
+.search-input::placeholder{color:var(--dim)}
+.count-label{color:var(--dim);font-size:.8rem;margin-left:auto}
+
+/* Table */
+.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg2)}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{text-align:left;padding:.6rem .75rem;background:var(--bg3);color:var(--dim);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;cursor:pointer;user-select:none;position:sticky;top:0}
+th:hover{color:var(--text)}
+th .sort-arrow{margin-left:4px;font-size:.65rem;opacity:.5}
+th.sorted .sort-arrow{opacity:1;color:var(--blue)}
+td{padding:.55rem .75rem;border-top:1px solid var(--border);vertical-align:middle}
+tr:hover td{background:rgba(42,147,193,0.04)}
+
+/* Status badges */
+.status{display:inline-block;padding:.15rem .5rem;border-radius:3px;font-size:.75rem;font-weight:600}
+.status-completed{background:rgba(34,197,94,.15);color:var(--green)}
+.status-pending{background:rgba(234,179,8,.15);color:var(--yellow)}
+.status-paid{background:rgba(34,197,94,.15);color:var(--green)}
+.status-unpaid{background:rgba(241,66,11,.15);color:var(--orange)}
+
+/* Action buttons */
+.btn-sm{padding:.25rem .55rem;font-size:.75rem;border-radius:4px;border:none;cursor:pointer;font-weight:500;transition:opacity .15s}
+.btn-sm:hover{opacity:.8}
+.btn-edit{background:var(--blue);color:#fff}
+.btn-delete{background:var(--red);color:#fff}
+.btn-expand{background:var(--bg3);color:var(--dim);border:1px solid var(--border)}
+.btn-expand:hover{color:var(--text)}
+.btn-mark-paid{background:var(--green);color:#fff}
+.actions-cell{display:flex;gap:.35rem;flex-wrap:nowrap}
+
+/* Expanded row */
+.detail-row td{background:var(--bg3);padding:0}
+.detail-inner{padding:.75rem 1rem}
+.detail-inner h4{font-size:.85rem;margin-bottom:.5rem;color:var(--blue)}
+.detail-table{width:100%;font-size:.8rem}
+.detail-table th{background:var(--bg4);font-size:.7rem}
+.detail-table td{border-top:1px solid var(--border)}
+
+/* Rank */
+.rank{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;font-weight:700;font-size:.8rem}
+.rank-1{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#000}
+.rank-2{background:linear-gradient(135deg,#94a3b8,#64748b);color:#000}
+.rank-3{background:linear-gradient(135deg,#d97706,#b45309);color:#fff}
+.rank-other{background:var(--bg4);color:var(--dim)}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:100;padding:1rem}
+.modal-overlay.show{display:flex}
+.modal{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);width:100%;max-width:480px;max-height:90vh;overflow-y:auto}
+.modal-header{padding:1rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.modal-header h2{font-size:1rem}
+.modal-close{background:none;border:none;color:var(--dim);font-size:1.2rem;cursor:pointer;padding:.25rem}
+.modal-close:hover{color:var(--text)}
+.modal-body{padding:1.25rem}
+.modal-body label{display:block;color:var(--dim);font-size:.8rem;margin-bottom:.3rem;margin-top:.85rem}
+.modal-body label:first-child{margin-top:0}
+.modal-body input,.modal-body select{width:100%;padding:.5rem .7rem;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:.85rem;outline:none}
+.modal-body input:focus,.modal-body select:focus{border-color:var(--blue)}
+.modal-body select option{background:var(--bg2);color:var(--text)}
+.modal-footer{padding:.75rem 1.25rem;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:.5rem}
+.modal-footer .btn-cancel{padding:.45rem .85rem;background:transparent;color:var(--dim);border:1px solid var(--border);border-radius:var(--radius);font-size:.8rem;cursor:pointer}
+.modal-footer .btn-cancel:hover{color:var(--text)}
+.modal-footer .btn-confirm{padding:.45rem .85rem;background:var(--blue);color:#fff;border:none;border-radius:var(--radius);font-size:.8rem;font-weight:600;cursor:pointer}
+.modal-footer .btn-confirm:hover{opacity:.85}
+.modal-footer .btn-confirm.danger{background:var(--red)}
+.checkbox-row{display:flex;align-items:center;gap:.5rem;margin-top:.75rem}
+.checkbox-row input[type=checkbox]{width:auto;accent-color:var(--blue)}
+.checkbox-row label{margin:0;color:var(--text);font-size:.85rem}
+
+/* Autocomplete */
+.autocomplete-wrap{position:relative}
+.autocomplete-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--bg2);border:1px solid var(--blue);border-radius:var(--radius);z-index:2000;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.5);display:none}
+.autocomplete-dropdown.open{display:block}
+.ac-item{padding:.55rem .75rem;cursor:pointer;border-bottom:1px solid var(--border);transition:background .1s}
+.ac-item:last-child{border-bottom:none}
+.ac-item:hover,.ac-item.ac-selected{background:rgba(42,147,193,.15)}
+.ac-item-name{font-size:.8rem;font-weight:500}
+.ac-item-email{font-size:.7rem;color:var(--dim);margin-top:1px}
+
+/* Inline referral edit */
+.inline-edit-row td{padding:.6rem .75rem;background:rgba(42,147,193,.06)}
+.inline-edit-form{display:flex;flex-wrap:wrap;gap:.6rem;align-items:flex-end}
+.inline-edit-form .field{display:flex;flex-direction:column;gap:.2rem;min-width:140px}
+.inline-edit-form .field label{font-size:.7rem;color:var(--dim);text-transform:uppercase;letter-spacing:.3px}
+.inline-edit-form .field input,.inline-edit-form .field select{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:.4rem .6rem;font-size:.8rem;outline:none}
+.inline-edit-form .field input:focus,.inline-edit-form .field select:focus{border-color:var(--blue)}
+
+/* Toast */
+.toast-container{position:fixed;top:1rem;right:1rem;z-index:200;display:flex;flex-direction:column;gap:.5rem}
+.toast{padding:.65rem 1rem;border-radius:var(--radius);font-size:.85rem;font-weight:500;animation:slideIn .25s ease;max-width:360px}
+@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+.toast-success{background:rgba(34,197,94,.15);border:1px solid var(--green);color:var(--green)}
+.toast-error{background:rgba(239,68,68,.15);border:1px solid var(--red);color:var(--red)}
+
+/* Loading */
+.loading{text-align:center;padding:3rem;color:var(--dim)}
+.spinner{display:inline-block;width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Responsive */
+@media(max-width:768px){
+  .main{padding:1rem .75rem}
+  .stats-grid{grid-template-columns:repeat(2,1fr);gap:.5rem}
+  .stat-card{padding:.75rem}
+  .stat-card .value{font-size:1.25rem}
+  .topbar{padding:.6rem .75rem}
+  .tabs{overflow-x:auto}
+  .tab{padding:.5rem .8rem;font-size:.8rem;white-space:nowrap}
+  .search-input{min-width:160px;flex:1}
+  .toolbar{gap:.5rem}
+  table{font-size:.8rem}
+  th,td{padding:.4rem .5rem}
+}
+@media(max-width:480px){
+  .stats-grid{grid-template-columns:1fr 1fr}
+  .stat-card .value{font-size:1.1rem}
+  .topbar-right{width:100%;justify-content:flex-end}
+}
+
+/* Tier badges */
+.tier-badge{display:inline-block;padding:.12rem .45rem;border-radius:3px;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+.tier-standard{background:rgba(42,147,193,.15);color:var(--blue)}
+.tier-elite{background:rgba(234,179,8,.2);color:var(--yellow);border:1px solid rgba(234,179,8,.3)}
+
+/* Tier filter buttons */
+.filter-group{display:flex;gap:0;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.filter-btn{padding:.35rem .7rem;font-size:.78rem;background:transparent;color:var(--dim);border:none;cursor:pointer;font-weight:500;transition:all .15s;border-right:1px solid var(--border)}
+.filter-btn:last-child{border-right:none}
+.filter-btn:hover{color:var(--text);background:var(--bg3)}
+.filter-btn.active{color:var(--blue);background:rgba(42,147,193,.1)}
+
+/* Partner detail sections in edit modal */
+.partner-section{margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)}
+.partner-section h3{font-size:.85rem;font-weight:600;margin-bottom:.65rem;color:var(--blue)}
+.partner-row{display:flex;gap:.5rem;align-items:flex-end;margin-bottom:.5rem;flex-wrap:wrap}
+.partner-row .field{display:flex;flex-direction:column;gap:.2rem;flex:1;min-width:100px}
+.partner-row .field label{font-size:.7rem;color:var(--dim);text-transform:uppercase;letter-spacing:.3px}
+.partner-row .field input,.partner-row .field select{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:.4rem .6rem;font-size:.8rem;outline:none}
+.partner-row .field input:focus,.partner-row .field select:focus{border-color:var(--blue)}
+.btn-save-sm{padding:.35rem .7rem;font-size:.78rem;background:var(--blue);color:#fff;border:none;border-radius:var(--radius);cursor:pointer;font-weight:500;white-space:nowrap}
+.btn-save-sm:hover{opacity:.85}
+.btn-save-sm:disabled{opacity:.5;cursor:not-allowed}
+.btn-remove-split{padding:.35rem .5rem;font-size:.75rem;background:var(--red);color:#fff;border:none;border-radius:4px;cursor:pointer}
+.btn-remove-split:hover{opacity:.8}
+.btn-add-split{padding:.3rem .6rem;font-size:.75rem;background:var(--bg4);color:var(--dim);border:1px solid var(--border);border-radius:4px;cursor:pointer}
+.btn-add-split:hover{color:var(--text);border-color:var(--dim)}
+.split-validation{font-size:.72rem;color:var(--dim);margin-top:.3rem}
+.split-validation.error{color:var(--red)}
+.split-validation.ok{color:var(--green)}
+.toggle-row{display:flex;align-items:center;gap:.65rem;margin:.5rem 0}
+.toggle-switch{position:relative;width:36px;height:20px;background:var(--bg4);border-radius:10px;cursor:pointer;transition:background .2s;border:1px solid var(--border)}
+.toggle-switch.on{background:var(--blue);border-color:var(--blue)}
+.toggle-switch::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;background:#fff;border-radius:50%;transition:transform .2s}
+.toggle-switch.on::after{transform:translateX(16px)}
+.toggle-label{font-size:.82rem;color:var(--text)}
+
+/* Escalation progress */
+.escalation-bar{margin-top:.5rem}
+.escalation-bar .bar-bg{height:6px;background:var(--bg4);border-radius:3px;overflow:hidden}
+.escalation-bar .bar-fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--yellow));border-radius:3px;transition:width .3s}
+.escalation-text{font-size:.7rem;color:var(--dim);margin-top:.25rem}
+
+/* Commission Report Tab */
+.report-toolbar{display:flex;gap:.75rem;align-items:flex-end;margin-bottom:.75rem;flex-wrap:wrap}
+.report-toolbar .field{display:flex;flex-direction:column;gap:.2rem}
+.report-toolbar .field label{font-size:.7rem;color:var(--dim);text-transform:uppercase;letter-spacing:.3px}
+.report-toolbar .field select,.report-toolbar .field input{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:.4rem .6rem;font-size:.8rem;outline:none;min-width:140px}
+.report-toolbar .field select:focus,.report-toolbar .field input:focus{border-color:var(--blue)}
+.btn-export{padding:.4rem .75rem;font-size:.78rem;background:var(--green);color:#fff;border:none;border-radius:var(--radius);cursor:pointer;font-weight:500}
+.btn-export:hover{opacity:.85}
+.report-totals{display:flex;gap:1rem;margin-top:.75rem;flex-wrap:wrap}
+.report-total{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:.5rem .75rem}
+.report-total .rt-label{font-size:.68rem;color:var(--dim);text-transform:uppercase}
+.report-total .rt-value{font-size:1.1rem;font-weight:700;color:var(--blue)}
+
+/* Manual Payment section */
+.manual-payment-box{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.25rem;margin-top:1rem}
+.manual-payment-box h3{font-size:.9rem;font-weight:600;color:var(--blue);margin-bottom:.75rem}
+.mp-form{display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap}
+.mp-form .field{display:flex;flex-direction:column;gap:.2rem;min-width:140px}
+.mp-form .field label{font-size:.7rem;color:var(--dim);text-transform:uppercase;letter-spacing:.3px}
+.mp-form .field input,.mp-form .field select{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:.4rem .6rem;font-size:.8rem;outline:none}
+.mp-form .field input:focus,.mp-form .field select:focus{border-color:var(--blue)}
+.mp-form .field.wide{flex:2;min-width:200px}
+.mp-ac-wrap{position:relative}
+.mp-ac-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--bg2);border:1px solid var(--blue);border-radius:var(--radius);z-index:2000;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.5);display:none}
+.mp-ac-dropdown.open{display:block}
+.split-ac-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--bg2);border:1px solid var(--blue);border-radius:var(--radius);z-index:2000;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.5);display:none}
+.split-ac-item:hover{background:var(--bg4)}
+</style>
+</head>
+<body>
+
+<!-- Simple Password Gate for Staging -->
+<div id="loginScreen" class="login-wrap">
+  <div class="login-box">
+    <h1>PUREBR<span style="color:#2a93c1">AI</span>N</h1>
+    <p class="sub">Referrals Admin Panel</p>
+    <form id="loginForm">
+      <label>Admin Password</label>
+      <input type="password" id="loginPassword" required autocomplete="current-password" placeholder="Enter admin password">
+      <div id="loginError" class="err"></div>
+      <button type="submit" class="btn-primary" id="loginBtn">Sign In</button>
+    </form>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app" class="app">
+  <div class="topbar">
+    <div class="topbar-left">
+      <h1>PUREBR<span>AI</span>N <span style="color:var(--dim);font-weight:400">/ Referrals</span></h1>
+      <span id="viewerBadge" class="badge-viewer" style="display:none">Viewer</span>
+    </div>
+    <div class="topbar-right">
+      <a href="/admin/clients/" style="color:#2a93c1;text-decoration:none;font-weight:600;font-size:14px;margin-right:16px;padding:6px 14px;border:1px solid #2a93c1;border-radius:6px;">Clients</a>
+      <button class="btn-logout" id="btnLogout">Logout</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <!-- Stats -->
+    <div class="stats-grid" id="statsGrid">
+      <div class="stat-card"><div class="label">Total Affiliates</div><div class="value blue" id="statAffiliates">--</div></div>
+      <div class="stat-card"><div class="label">Total Clicks</div><div class="value" id="statClicks">--</div></div>
+      <div class="stat-card"><div class="label">Total Referrals</div><div class="value" id="statReferrals">--</div></div>
+      <div class="stat-card"><div class="label">Completed</div><div class="value green" id="statCompleted">--</div></div>
+      <div class="stat-card"><div class="label">Pending</div><div class="value yellow" id="statPending">--</div></div>
+      <div class="stat-card"><div class="label">Total Commissions</div><div class="value orange" id="statCommissions">--</div></div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs" id="tabBar">
+      <div class="tab active" data-tab="overview">Overview</div>
+      <div class="tab" data-tab="affiliates">Affiliates</div>
+      <div class="tab" data-tab="referrals">Referrals</div>
+      <div class="tab" data-tab="payouts">Payouts</div>
+      <div class="tab" data-tab="commissions">Commission Report</div>
+      <div class="tab" data-tab="leaderboard">Leaderboard</div>
+    </div>
+
+    <!-- Overview Tab -->
+    <div id="panel-overview" class="tab-panel active">
+      <div class="toolbar">
+        <span class="count-label" id="overviewLabel" style="margin-left:0">Dashboard Summary</span>
+      </div>
+      <div id="overviewTopReferrers" style="margin-bottom:1rem"></div>
+      <div style="margin-bottom:.5rem;font-size:.85rem;font-weight:600;color:var(--blue)">Recent Activity</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Affiliate</th>
+              <th>Referred</th>
+              <th>Status</th>
+              <th>Date</th>
+              <th>Earned</th>
+            </tr>
+          </thead>
+          <tbody id="recentActivityBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Affiliates Tab -->
+    <div id="panel-affiliates" class="tab-panel">
+      <div class="toolbar">
+        <input type="text" class="search-input" id="affiliateSearch" placeholder="Search name, email, or code...">
+        <div class="filter-group" id="tierFilter">
+          <button class="filter-btn active" data-tier="all">All</button>
+          <button class="filter-btn" data-tier="standard">Standard</button>
+          <button class="filter-btn" data-tier="elite">Elite</button>
+        </div>
+        <span class="count-label" id="affiliateCount"></span>
+      </div>
+      <div class="table-wrap">
+        <table id="affiliateTable">
+          <thead>
+            <tr>
+              <th data-sort="name">Name <span class="sort-arrow">&#9650;</span></th>
+              <th data-sort="email">Email <span class="sort-arrow">&#9650;</span></th>
+              <th data-sort="code">Code <span class="sort-arrow">&#9650;</span></th>
+              <th data-sort="partner_tier">Tier <span class="sort-arrow">&#9650;</span></th>
+              <th data-sort="paypal_email">PayPal <span class="sort-arrow">&#9650;</span></th>
+              <th data-sort="clicks">Clicks <span class="sort-arrow">&#9650;</span></th>
+              <th data-sort="completed">Referrals <span class="sort-arrow">&#9650;</span></th>
+              <th data-sort="earnings">Earnings <span class="sort-arrow">&#9650;</span></th>
+              <th data-sort="joined">Joined <span class="sort-arrow">&#9650;</span></th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="affiliateBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Referrals Tab -->
+    <div id="panel-referrals" class="tab-panel">
+      <div class="toolbar">
+        <input type="text" class="search-input" id="referralSearch" placeholder="Search referrals...">
+        <span class="count-label" id="referralCount"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Referrer</th>
+              <th>Referrer Code</th>
+              <th>Referred Name</th>
+              <th>Referred Email</th>
+              <th>Status</th>
+              <th>Date</th>
+              <th>Earnings</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="referralBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Payouts Tab -->
+    <div id="panel-payouts" class="tab-panel">
+      <div class="toolbar">
+        <span class="count-label" id="payoutCount"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Referrer Name</th>
+              <th>Email</th>
+              <th>PayPal</th>
+              <th>Amount</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="payoutBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Commission Report Tab -->
+    <div id="panel-commissions" class="tab-panel">
+      <div class="report-toolbar">
+        <div class="field">
+          <label>Period</label>
+          <select id="commPeriod">
+            <option value="all">All Time</option>
+            <option value="month" selected>This Month</option>
+            <option value="quarter">This Quarter</option>
+            <option value="year">This Year</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Partner</label>
+          <select id="commPartner">
+            <option value="">All Partners</option>
+          </select>
+        </div>
+        <button class="btn-save-sm" id="btnCommLoad" style="margin-bottom:1px">Load Report</button>
+        <button class="btn-export" id="btnCommExport" style="margin-bottom:1px">Export CSV</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Referrer</th>
+              <th>Referred Email</th>
+              <th>Status</th>
+              <th>Commission</th>
+            </tr>
+          </thead>
+          <tbody id="commBody"></tbody>
+        </table>
+      </div>
+      <div class="report-totals" id="commTotals"></div>
+
+      <!-- Manual Payment Section -->
+      <div class="manual-payment-box">
+        <h3>Manual Payment</h3>
+        <div class="mp-form">
+          <div class="field wide">
+            <label>Partner (search by name or email)</label>
+            <div class="mp-ac-wrap" id="mpAcWrap">
+              <input type="text" id="mpPartnerSearch" placeholder="Type to search partners..." autocomplete="off">
+              <div id="mpAcDropdown" class="mp-ac-dropdown"></div>
+            </div>
+            <input type="hidden" id="mpPartnerId">
+          </div>
+          <div class="field">
+            <label>Amount ($)</label>
+            <input type="number" id="mpAmount" placeholder="0.00" step="0.01" min="0">
+          </div>
+          <div class="field">
+            <label>Tier</label>
+            <select id="mpTier">
+              <option value="standard">Standard</option>
+              <option value="elite">Elite</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Order ID</label>
+            <input type="text" id="mpOrderId" placeholder="Optional">
+          </div>
+          <button class="btn-save-sm" id="btnMpSubmit" style="margin-bottom:1px">Submit Payment</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Leaderboard Tab -->
+    <div id="panel-leaderboard" class="tab-panel">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:60px">Rank</th>
+              <th>Name</th>
+              <th>Code</th>
+              <th>Completed</th>
+              <th>Total Referrals</th>
+              <th>Total Earned</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboardBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Assign Referral Modal -->
+<div class="modal-overlay" id="assignModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Assign Client to Referrer</h2>
+      <button class="modal-close" onclick="closeModal('assignModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--dim);font-size:.8rem;margin-bottom:.75rem">Credit an existing client to <strong id="assignAffiliateName"></strong> (<code id="assignAffiliateCode"></code>) retroactively.</p>
+      <label>Search Client by Name or Email</label>
+      <div class="autocomplete-wrap" id="assignAcWrap">
+        <input type="text" id="assignClientSearch" placeholder="Type to search clients..." autocomplete="off">
+        <div id="assignAcDropdown" class="autocomplete-dropdown"></div>
+      </div>
+      <input type="hidden" id="assignClientEmailHidden">
+      <p style="color:var(--dim);font-size:.7rem;margin-top:.25rem">Select from dropdown or type email directly</p>
+      <label>Client Name (auto-filled on selection)</label>
+      <input type="text" id="assignName" placeholder="Auto-filled when client is selected">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('assignModal')">Cancel</button>
+      <button class="btn-confirm" id="btnAssignSubmit">Assign Client</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Affiliate Modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Edit Affiliate</h2>
+      <button class="modal-close" onclick="closeModal('editModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editId">
+      <label>Name</label>
+      <input type="text" id="editName">
+      <label>Email</label>
+      <input type="email" id="editEmail">
+      <label>PayPal Email</label>
+      <input type="email" id="editPaypal">
+      <label>Referral Code</label>
+      <input type="text" id="editCode" readonly style="opacity:.7;cursor:default">
+      <div style="display:flex;gap:1.5rem;margin-top:.85rem">
+        <div><label style="margin-top:0">Created</label><div id="editCreated" style="font-size:.85rem;margin-top:.2rem;color:var(--dim)">--</div></div>
+        <div><label style="margin-top:0">Referrals</label><div id="editReferralCount" style="font-size:.85rem;margin-top:.2rem;color:var(--dim)">--</div></div>
+      </div>
+
+      <!-- Partner Tier Section -->
+      <div class="partner-section">
+        <h3>Partner Tier</h3>
+        <div class="partner-row">
+          <div class="field">
+            <label>Tier</label>
+            <select id="editPartnerTier">
+              <option value="standard">Standard (up to 5%)</option>
+              <option value="elite">Elite (up to 15%)</option>
+            </select>
+          </div>
+          <button class="btn-save-sm" id="btnSaveTier">Save Tier</button>
+        </div>
+      </div>
+
+      <!-- Discount Section (Elite only) -->
+      <div class="partner-section" id="editDiscountSection" style="display:none">
+        <h3>Elite Discount</h3>
+        <div class="toggle-row">
+          <div class="toggle-switch" id="editDiscountToggle"></div>
+          <span class="toggle-label">Discount Enabled</span>
+        </div>
+        <div class="partner-row" id="editDiscountRow" style="display:none;margin-top:.5rem">
+          <div class="field">
+            <label>Discount %</label>
+            <input type="number" id="editDiscountPct" placeholder="10" min="0" max="100" step="1">
+          </div>
+          <button class="btn-save-sm" id="btnSaveDiscount">Save Discount</button>
+        </div>
+      </div>
+
+      <!-- Split Configuration (Elite only) -->
+      <div class="partner-section" id="editSplitSection" style="display:none">
+        <h3>Split Configuration</h3>
+        <div id="splitRows"></div>
+        <div style="display:flex;gap:.5rem;margin-top:.5rem">
+          <button class="btn-add-split" id="btnAddSplit">+ Add Split</button>
+          <button class="btn-save-sm" id="btnSaveSplits">Save Splits</button>
+        </div>
+        <div class="split-validation" id="splitValidation"></div>
+      </div>
+
+      <!-- Tier Escalation Progress (Elite only) -->
+      <div class="partner-section" id="editEscalationSection" style="display:none">
+        <h3>Tier Escalation Progress</h3>
+        <div class="escalation-bar">
+          <div class="bar-bg"><div class="bar-fill" id="escalationFill" style="width:0%"></div></div>
+          <div class="escalation-text" id="escalationText">Loading...</div>
+        </div>
+      </div>
+
+      <!-- Referral List -->
+      <div class="partner-section" id="editReferralListSection">
+        <h3>Referral List</h3>
+        <div id="editReferralList" style="max-height:200px;overflow-y:auto">
+          <div style="color:var(--dim);font-size:.8rem">Loading...</div>
+        </div>
+      </div>
+
+      <!-- Commission History -->
+      <div class="partner-section" id="editCommissionSection">
+        <h3>Commission History</h3>
+        <div id="editCommissionList" style="max-height:200px;overflow-y:auto">
+          <div style="color:var(--dim);font-size:.8rem">Loading...</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('editModal')">Cancel</button>
+      <button class="btn-confirm" id="btnEditSave">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirm Modal -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Delete Affiliate</h2>
+      <button class="modal-close" onclick="closeModal('deleteModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="deletePrompt"></p>
+      <p style="color:var(--dim);font-size:.8rem;margin-top:.5rem">This action cannot be undone.</p>
+      <div class="checkbox-row">
+        <input type="checkbox" id="deleteReferrals">
+        <label for="deleteReferrals">Also delete all referral records for this affiliate</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('deleteModal')">Cancel</button>
+      <button class="btn-confirm danger" id="btnDeleteConfirm">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+(function() {
+  /* === Utilities === */
+  function esc(s){var m={"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;"};m['"']="&quot;";return String(s||"").replace(/[&<>"']/g,function(c){return m[c]||c});}
+
+  function toast(msg, type) {
+    var c = document.getElementById('toastContainer');
+    var d = document.createElement('div');
+    d.className = 'toast toast-' + (type || 'success');
+    d.textContent = msg;
+    c.appendChild(d);
+    setTimeout(function(){ d.remove(); }, 4000);
+  }
+
+  function formatDate(ds) {
+    if (!ds) return '--';
+    var d = new Date(ds);
+    if (isNaN(d.getTime())) return '--';
+    var mo = d.getMonth() + 1;
+    var da = d.getDate();
+    var yr = d.getFullYear();
+    return mo + '/' + da + '/' + yr;
+  }
+
+  function formatMoney(n) {
+    if (n == null || isNaN(n)) return '$0.00';
+    return '$' + Number(n).toFixed(2);
+  }
+
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('show');
+  }
+  window.closeModal = closeModal;
+
+  /* === State === */
+  var state = {
+    token: null,
+    viewerMode: false,
+    affiliates: [],
+    payouts: [],
+    leaderboard: [],
+    clients: [],
+    sortCol: 'name',
+    sortDir: 'asc',
+    expandedRows: {},
+    tierFilter: 'all',
+    commissionData: [],
+    partners: []
+  };
+
+  /* === Auth === */
+  function getToken() {
+    var params = new URLSearchParams(window.location.search);
+    var qt = params.get('admin_token');
+    if (qt) {
+      state.viewerMode = true;
+      return qt;
+    }
+    return localStorage.getItem('pb_admin_token');
+  }
+
+  function setToken(t) {
+    localStorage.setItem('pb_admin_token', t);
+    state.token = t;
+  }
+
+  function logout() {
+    localStorage.removeItem('pb_admin_token');
+    state.token = null;
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('loginScreen').style.display = 'flex';
+  }
+
+  /* === API === */
+  function api(method, path, body) {
+    var isStaging = window.location.hostname !== 'portal.purebrain.ai';
+    var opts = {
+      method: method,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    };
+    if (isStaging) {
+      opts.headers['X-Admin-Token'] = 'purebrain-admin-2026';
+    } else {
+      opts.headers['Authorization'] = 'Bearer ' + state.token;
+    }
+    if (body && method !== 'GET') {
+      opts.body = JSON.stringify(body);
+    }
+    // On staging: call Workers directly. On production: use portal proxy.
+    var base;
+    if (isStaging) {
+      opts.mode = 'cors';
+      if (path.startsWith('/api/admin/clients') || path.startsWith('/api/admin/invite')) {
+        base = 'https://admin-api.in0v8.workers.dev';
+      } else {
+        base = 'https://referrals-api.in0v8.workers.dev';
+        // Map portal proxy paths to referrals-api paths
+        if (path.startsWith('/api/admin/')) path = path.replace('/api/admin/', '/admin/');
+        else if (path.startsWith('/api/referral/')) path = path.replace('/api/referral/', '/');
+        else if (path === '/api/referral/leaderboard') path = '/leaderboard';
+        else path = path.replace('/api/', '/');
+      }
+    } else {
+      base = '';
+    }
+    return fetch(base + path, opts).then(function(r) {
+      if (r.status === 401) {
+        logout();
+        toast('Session expired. Please login again.', 'error');
+        return Promise.reject(new Error('Unauthorized'));
+      }
+      return r.json().then(function(data) {
+        if (!r.ok) {
+          var errMsg = (data && data.error) || ('HTTP ' + r.status);
+          return Promise.reject(new Error(errMsg));
+        }
+        return data;
+      });
+    });
+  }
+
+  /* === Login === */
+  document.getElementById('loginForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var btn = document.getElementById('loginBtn');
+    var errEl = document.getElementById('loginError');
+    var pw = document.getElementById('loginPassword').value;
+    btn.disabled = true;
+    errEl.style.display = 'none';
+
+    if (pw === 'purebrain-admin-2026') {
+      setToken('staging-admin-token');
+      showApp();
+    } else {
+      btn.disabled = false;
+      errEl.textContent = 'Incorrect password';
+      errEl.style.display = 'block';
+    }
+  });
+
+  document.getElementById('btnLogout').addEventListener('click', logout);
+
+  /* === Show App === */
+  function showApp() {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+
+    if (state.viewerMode) {
+      document.getElementById('viewerBadge').style.display = 'inline';
+    }
+    var _assignBtn = document.getElementById('btnAssignOpen');
+    if (_assignBtn) _assignBtn.style.display = state.viewerMode ? 'none' : 'inline-block';
+
+    loadStats();
+    loadAffiliates();
+    loadPayouts();
+    loadLeaderboard();
+    ensureClientsLoaded();
+    loadPartnersList();
+    loadCommissionReport();
+  }
+
+  /* === Stats === */
+  function loadStats() {
+    api('GET', '/api/admin/stats').then(function(d) {
+      document.getElementById('statAffiliates').textContent = d.total_affiliates || 0;
+      document.getElementById('statClicks').textContent = d.total_clicks || 0;
+      document.getElementById('statReferrals').textContent = d.total_referrals || 0;
+      document.getElementById('statCompleted').textContent = d.completed_referrals || 0;
+      document.getElementById('statPending').textContent = d.pending_referrals || 0;
+      document.getElementById('statCommissions').textContent = formatMoney(d.total_commissions || d.total_rewards || 0);
+    }).catch(function(err) {
+      console.error('Stats error:', err);
+    });
+  }
+
+  /* === Affiliates === */
+  function loadAffiliates() {
+    api('GET', '/api/admin/affiliates').then(function(d) {
+      state.affiliates = d.affiliates || [];
+      renderAffiliates();
+      renderAllReferrals();
+      renderOverview();
+    }).catch(function(err) {
+      toast('Failed to load affiliates: ' + err.message, 'error');
+    });
+  }
+
+  function sortData(arr, col, dir) {
+    return arr.slice().sort(function(a, b) {
+      var va = a[col], vb = b[col];
+      if (col === 'joined') {
+        va = va ? new Date(va).getTime() : 0;
+        vb = vb ? new Date(vb).getTime() : 0;
+      }
+      if (typeof va === 'string') va = va.toLowerCase();
+      if (typeof vb === 'string') vb = vb.toLowerCase();
+      if (va == null) va = '';
+      if (vb == null) vb = '';
+      if (va < vb) return dir === 'asc' ? -1 : 1;
+      if (va > vb) return dir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }
+
+  function renderAffiliates() {
+    var search = document.getElementById('affiliateSearch').value.toLowerCase();
+    var tierFilter = state.tierFilter || 'all';
+    var filtered = state.affiliates.filter(function(a) {
+      if (tierFilter !== 'all') {
+        var t = (a.partner_tier || 'standard').toLowerCase();
+        if (t !== tierFilter) return false;
+      }
+      if (!search) return true;
+      return (a.name || '').toLowerCase().indexOf(search) !== -1
+        || (a.email || '').toLowerCase().indexOf(search) !== -1
+        || (a.code || '').toLowerCase().indexOf(search) !== -1;
+    });
+
+    filtered = sortData(filtered, state.sortCol, state.sortDir);
+
+    document.getElementById('affiliateCount').textContent = filtered.length + ' affiliate' + (filtered.length !== 1 ? 's' : '');
+
+    var tbody = document.getElementById('affiliateBody');
+    var rows = [];
+
+    for (var i = 0; i < filtered.length; i++) {
+      var a = filtered[i];
+      var rid = a.id || a.code;
+      var isExpanded = state.expandedRows[rid];
+      var expandIcon = isExpanded ? '&#9660;' : '&#9654;';
+      var tier = (a.partner_tier || 'standard').toLowerCase();
+      var tierCls = tier === 'elite' ? 'tier-elite' : 'tier-standard';
+      var tierLabel = tier === 'elite' ? 'Elite' : 'Standard';
+
+      var row = '<tr>'
+        + '<td>' + esc(a.name) + '</td>'
+        + '<td>' + esc(a.email) + '</td>'
+        + '<td><code>' + esc(a.code) + '</code></td>'
+        + '<td><span class="tier-badge ' + tierCls + '">' + tierLabel + '</span></td>'
+        + '<td>' + esc(a.paypal_email || '--') + '</td>'
+        + '<td>' + (a.clicks || 0) + '</td>'
+        + '<td>' + (a.completed || 0) + '/' + (a.total || 0) + '</td>'
+        + '<td>' + formatMoney(a.earnings) + '</td>'
+        + '<td>' + formatDate(a.joined) + '</td>'
+        + '<td><div class="actions-cell">'
+        + '<button class="btn-sm btn-expand" data-expand="' + esc(String(rid)) + '">' + expandIcon + '</button>';
+
+      if (!state.viewerMode) {
+        row += '<button class="btn-sm btn-edit" data-edit="' + esc(String(a.id)) + '">Edit</button>'
+          + '<button class="btn-sm btn-edit" style="background:rgba(42,147,193,.3)" onclick="openAssignForAffiliate(' + a.id + ');event.stopPropagation();">Assign</button>'
+          + '<button class="btn-sm btn-delete" data-delcode="' + esc(a.code) + '" data-delname="' + esc(a.name) + '">Delete</button>';
+      }
+
+      row += '</div></td></tr>';
+      rows.push(row);
+
+      if (isExpanded) {
+        var detail = '<tr class="detail-row"><td colspan="10"><div class="detail-inner">';
+        detail += '<div style="margin-bottom:.5rem"><strong style="font-size:.75rem;color:var(--dim)">Referral link:</strong> <code style="font-size:.7rem;color:var(--blue);margin-left:.4rem">https://purebrain.ai?ref=' + esc(a.code) + '</code></div>';
+        detail += '<h4>Referral History</h4>';
+        var hist = a.history || [];
+        if (hist.length === 0) {
+          detail += '<p style="color:var(--dim);font-size:.8rem">No referrals yet.</p>';
+        } else {
+          var editColHeader = state.viewerMode ? '' : '<th>Edit</th>';
+          detail += '<table class="detail-table"><thead><tr><th>Referred Name</th><th>Email</th><th>Status</th><th>Date</th><th>Earnings</th>' + editColHeader + '</tr></thead><tbody>';
+          for (var j = 0; j < hist.length; j++) {
+            var h = hist[j];
+            var statusCls = h.status === 'completed' ? 'status-completed' : 'status-pending';
+            var editBtn = state.viewerMode ? '' : '<td><button class="btn-sm btn-edit" data-refedit="' + i + '-' + j + '">Edit</button> <button class="btn-sm" style="background:var(--red);color:#fff" data-refdelete="' + (h.id || '') + '">Delete</button></td>';
+            detail += '<tr id="ref-row-' + i + '-' + j + '">'
+              + '<td>' + esc(h.referred_name) + '</td>'
+              + '<td>' + esc(h.referred_email) + '</td>'
+              + '<td><span class="status ' + statusCls + '">' + esc(h.status) + '</span></td>'
+              + '<td>' + formatDate(h.created_at) + '</td>'
+              + '<td>' + formatMoney(h.earnings) + '</td>'
+              + editBtn
+              + '</tr>';
+            // Inline edit row (hidden by default)
+            if (!state.viewerMode) {
+              var editColspan = 6;
+              detail += '<tr id="ref-edit-row-' + i + '-' + j + '" class="inline-edit-row" style="display:none"><td colspan="' + editColspan + '">'
+                + '<div class="inline-edit-form">'
+                + '<div class="field"><label>Name</label><input id="ref-edit-name-' + i + '-' + j + '" value="' + esc(h.referred_name || '') + '" placeholder="Referred name"></div>'
+                + '<div class="field"><label>Email</label><input id="ref-edit-email-' + i + '-' + j + '" value="' + esc(h.referred_email || '') + '" placeholder="email" type="email"></div>'
+                + '<div class="field"><label>Status</label><select id="ref-edit-status-' + i + '-' + j + '">'
+                + '<option value="">-- keep current --</option>'
+                + '<option value="pending"' + (h.status === 'pending' ? ' selected' : '') + '>pending</option>'
+                + '<option value="completed"' + (h.status === 'completed' ? ' selected' : '') + '>completed</option>'
+                + '<option value="rejected"' + (h.status === 'rejected' ? ' selected' : '') + '>rejected</option>'
+                + '</select></div>'
+                + '<div class="field" style="min-width:auto"><label>&nbsp;</label><div style="display:flex;gap:.3rem">'
+                + '<button class="btn-sm btn-edit" data-refsave="' + i + '-' + j + '-' + (h.id || '') + '">Save</button>'
+                + '<button class="btn-sm btn-expand" data-refcancel="' + i + '-' + j + '">Cancel</button>'
+                + '</div></div>'
+                + '</div>'
+                + '</td></tr>';
+            }
+          }
+          detail += '</tbody></table>';
+        }
+        detail += '</div></td></tr>';
+        rows.push(detail);
+      }
+    }
+
+    tbody.innerHTML = rows.join('');
+  }
+
+  /* Delegate clicks on affiliate table body */
+  document.getElementById('affiliateBody').addEventListener('click', function(e) {
+    var btn = e.target.closest('button');
+    if (!btn) return;
+
+    if (btn.dataset.expand) {
+      var eid = btn.dataset.expand;
+      var numId = Number(eid);
+      var key = isNaN(numId) ? eid : numId;
+      if (state.expandedRows[key]) {
+        delete state.expandedRows[key];
+      } else {
+        state.expandedRows[key] = true;
+      }
+      renderAffiliates();
+    }
+
+    if (btn.dataset.edit) {
+      var editId = Number(btn.dataset.edit);
+      var af = state.affiliates.find(function(x) { return x.id === editId; });
+      if (!af) return;
+      document.getElementById('editId').value = af.id;
+      document.getElementById('editName').value = af.name || '';
+      document.getElementById('editEmail').value = af.email || '';
+      document.getElementById('editPaypal').value = af.paypal_email || '';
+      document.getElementById('editCode').value = af.code || '';
+      document.getElementById('editCreated').textContent = formatDate(af.joined || af.created_at);
+      var hist = af.history || [];
+      document.getElementById('editReferralCount').textContent = (af.completed || 0) + ' completed / ' + (af.total || hist.length) + ' total';
+
+      /* Partner tier */
+      var tier = (af.partner_tier || 'standard').toLowerCase();
+      document.getElementById('editPartnerTier').value = tier;
+      updateEditEliteSections(tier);
+
+      /* Discount */
+      var discOn = af.discount_enabled || false;
+      var discToggle = document.getElementById('editDiscountToggle');
+      discToggle.classList.toggle('on', discOn);
+      document.getElementById('editDiscountRow').style.display = discOn ? 'flex' : 'none';
+      document.getElementById('editDiscountPct').value = af.discount_percentage ? Math.round(af.discount_percentage * 100) : '';
+
+      /* Splits */
+      renderSplitRows(af.split_config || []);
+
+      /* Escalation */
+      updateEscalation(af);
+
+      /* Referral List */
+      var refListEl = document.getElementById('editReferralList');
+      if (hist.length === 0) {
+        refListEl.innerHTML = '<div style="color:var(--dim);font-size:.8rem">No referrals yet.</div>';
+      } else {
+        var rlHtml = '<table class="detail-table"><thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Date</th><th>Earned</th></tr></thead><tbody>';
+        for (var ri = 0; ri < hist.length; ri++) {
+          var rh = hist[ri];
+          var sCls = rh.status === 'completed' ? 'status-completed' : 'status-pending';
+          rlHtml += '<tr><td>' + esc(rh.referred_name) + '</td><td>' + esc(rh.referred_email) + '</td><td><span class="status ' + sCls + '">' + esc(rh.status) + '</span></td><td>' + formatDate(rh.created_at) + '</td><td>' + formatMoney(rh.earnings) + '</td></tr>';
+        }
+        rlHtml += '</tbody></table>';
+        refListEl.innerHTML = rlHtml;
+      }
+
+      /* Commission History */
+      var commEl = document.getElementById('editCommissionList');
+      var commHist = hist.filter(function(h) { return h.earnings > 0; });
+      if (commHist.length === 0) {
+        commEl.innerHTML = '<div style="color:var(--dim);font-size:.8rem">No commissions earned yet.</div>';
+      } else {
+        var chHtml = '<table class="detail-table"><thead><tr><th>Date</th><th>Referred</th><th>Amount</th><th>Status</th></tr></thead><tbody>';
+        var totalComm = 0;
+        for (var ci = 0; ci < commHist.length; ci++) {
+          var ch = commHist[ci];
+          totalComm += ch.earnings || 0;
+          chHtml += '<tr><td>' + formatDate(ch.created_at) + '</td><td>' + esc(ch.referred_name || ch.referred_email) + '</td><td>' + formatMoney(ch.earnings) + '</td><td><span class="status status-completed">Paid</span></td></tr>';
+        }
+        chHtml += '</tbody></table>';
+        chHtml += '<div style="margin-top:.5rem;font-size:.8rem;font-weight:600;color:var(--blue)">Total: ' + formatMoney(totalComm) + '</div>';
+        commEl.innerHTML = chHtml;
+      }
+
+      document.getElementById('editModal').classList.add('show');
+    }
+
+    if (btn.dataset.delcode) {
+      pendingDeleteCode = btn.dataset.delcode;
+      document.getElementById('deletePrompt').textContent = 'Are you sure you want to delete affiliate ' + btn.dataset.delname + ' (' + btn.dataset.delcode + ')?';
+      document.getElementById('deleteReferrals').checked = false;
+      document.getElementById('deleteModal').classList.add('show');
+    }
+
+    /* Referral inline edit - open */
+    if (btn.dataset.refedit) {
+      var key = btn.dataset.refedit;
+      /* Hide all other open edit rows first */
+      var allEditRows = document.querySelectorAll('[id^="ref-edit-row-"]');
+      for (var er = 0; er < allEditRows.length; er++) allEditRows[er].style.display = 'none';
+      var editRow = document.getElementById('ref-edit-row-' + key);
+      if (editRow) editRow.style.display = '';
+    }
+
+    /* Referral inline edit - cancel */
+    if (btn.dataset.refcancel) {
+      var cancelRow = document.getElementById('ref-edit-row-' + btn.dataset.refcancel);
+      if (cancelRow) cancelRow.style.display = 'none';
+    }
+
+    /* Referral inline edit - save */
+    if (btn.dataset.refsave) {
+      var parts = btn.dataset.refsave.split('-');
+      var affIdx = parts[0];
+      var histIdx = parts[1];
+      var refId = parts[2];
+      if (!refId) {
+        toast('No referral ID - cannot save', 'error');
+        return;
+      }
+      var refBody = { referral_id: Number(refId) };
+      var rName = document.getElementById('ref-edit-name-' + affIdx + '-' + histIdx).value.trim();
+      var rEmail = document.getElementById('ref-edit-email-' + affIdx + '-' + histIdx).value.trim();
+      var rStatus = document.getElementById('ref-edit-status-' + affIdx + '-' + histIdx).value;
+      if (rName) refBody.referred_name = rName;
+      if (rEmail) refBody.referred_email = rEmail;
+      if (rStatus) refBody.status = rStatus;
+      if (Object.keys(refBody).length === 1) {
+        toast('No changes to save', 'error');
+        return;
+      }
+      api('PUT', '/api/admin/referral/update', refBody).then(function(d) {
+        toast('Referral updated');
+        loadAffiliates();
+        loadStats();
+      }).catch(function(err) {
+        toast('Update failed: ' + err.message, 'error');
+      });
+    }
+
+    /* Referral delete */
+    if (btn.dataset.refdelete) {
+      var delId = btn.dataset.refdelete;
+      if (!delId) {
+        toast('No referral ID - cannot delete', 'error');
+        return;
+      }
+      if (!confirm('Delete this referral? This cannot be undone.')) return;
+      api('POST', '/api/admin/referral/delete', { referral_id: Number(delId) }).then(function(d) {
+        toast('Referral deleted');
+        loadAffiliates();
+        loadStats();
+      }).catch(function(err) {
+        toast('Delete failed: ' + err.message, 'error');
+      });
+    }
+  });
+
+  /* Sort click handler */
+  document.getElementById('affiliateTable').querySelector('thead').addEventListener('click', function(e) {
+    var th = e.target.closest('th');
+    if (!th || !th.dataset.sort) return;
+    var col = th.dataset.sort;
+    if (state.sortCol === col) {
+      state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      state.sortCol = col;
+      state.sortDir = 'asc';
+    }
+    var ths = th.parentElement.querySelectorAll('th');
+    for (var i = 0; i < ths.length; i++) {
+      ths[i].classList.remove('sorted');
+      var arrow = ths[i].querySelector('.sort-arrow');
+      if (arrow) arrow.innerHTML = '&#9650;';
+    }
+    th.classList.add('sorted');
+    var ar = th.querySelector('.sort-arrow');
+    if (ar) ar.innerHTML = state.sortDir === 'asc' ? '&#9650;' : '&#9660;';
+    renderAffiliates();
+  });
+
+  /* Search handler */
+  document.getElementById('affiliateSearch').addEventListener('input', function() {
+    renderAffiliates();
+  });
+
+  /* Tier filter handler */
+  document.getElementById('tierFilter').addEventListener('click', function(e) {
+    var btn = e.target.closest('.filter-btn');
+    if (!btn) return;
+    var btns = this.querySelectorAll('.filter-btn');
+    for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
+    btn.classList.add('active');
+    state.tierFilter = btn.dataset.tier;
+    renderAffiliates();
+  });
+
+  /* === Edit Affiliate === */
+  document.getElementById('btnEditSave').addEventListener('click', function() {
+    var rid = document.getElementById('editId').value;
+    var body = {
+      referrer_id: Number(rid),
+      user_name: document.getElementById('editName').value,
+      user_email: document.getElementById('editEmail').value,
+      paypal_email: document.getElementById('editPaypal').value
+    };
+    api('PUT', '/api/admin/affiliate/update', body).then(function() {
+      toast('Affiliate updated successfully');
+      closeModal('editModal');
+      loadAffiliates();
+      loadStats();
+    }).catch(function(err) {
+      toast('Update failed: ' + err.message, 'error');
+    });
+  });
+
+  /* === Delete Affiliate === */
+  var pendingDeleteCode = '';
+
+  document.getElementById('btnDeleteConfirm').addEventListener('click', function() {
+    var body = {
+      referral_code: pendingDeleteCode,
+      delete_referrals: document.getElementById('deleteReferrals').checked
+    };
+    api('DELETE', '/api/admin/affiliate/delete', body).then(function() {
+      toast('Affiliate deleted');
+      closeModal('deleteModal');
+      loadAffiliates();
+      loadStats();
+    }).catch(function(err) {
+      toast('Delete failed: ' + err.message, 'error');
+    });
+  });
+
+  /* === Referrals Tab (flat view from affiliate data) === */
+  function renderAllReferrals() {
+    var all = [];
+    for (var i = 0; i < state.affiliates.length; i++) {
+      var a = state.affiliates[i];
+      var hist = a.history || [];
+      for (var j = 0; j < hist.length; j++) {
+        var h = hist[j];
+        all.push({
+          id: h.id,
+          referrer_name: a.name,
+          referrer_code: a.code,
+          referred_name: h.referred_name,
+          referred_email: h.referred_email,
+          status: h.status,
+          created_at: h.created_at,
+          earnings: h.earnings
+        });
+      }
+    }
+
+    var search = document.getElementById('referralSearch').value.toLowerCase();
+    var filtered = all.filter(function(r) {
+      if (!search) return true;
+      return (r.referrer_name || '').toLowerCase().indexOf(search) !== -1
+        || (r.referrer_code || '').toLowerCase().indexOf(search) !== -1
+        || (r.referred_name || '').toLowerCase().indexOf(search) !== -1
+        || (r.referred_email || '').toLowerCase().indexOf(search) !== -1;
+    });
+
+    document.getElementById('referralCount').textContent = filtered.length + ' referral' + (filtered.length !== 1 ? 's' : '');
+
+    var rows = [];
+    for (var k = 0; k < filtered.length; k++) {
+      var r = filtered[k];
+      var statusCls = r.status === 'completed' ? 'status-completed' : 'status-pending';
+      var delBtn = state.viewerMode ? '' : '<td><button class="btn-sm" style="background:var(--red);color:#fff" data-refdelete="' + (r.id || '') + '">Delete</button></td>';
+      rows.push('<tr>'
+        + '<td>' + esc(r.referrer_name) + '</td>'
+        + '<td><code>' + esc(r.referrer_code) + '</code></td>'
+        + '<td>' + esc(r.referred_name) + '</td>'
+        + '<td>' + esc(r.referred_email) + '</td>'
+        + '<td><span class="status ' + statusCls + '">' + esc(r.status) + '</span></td>'
+        + '<td>' + formatDate(r.created_at) + '</td>'
+        + '<td>' + formatMoney(r.earnings) + '</td>'
+        + delBtn
+        + '</tr>');
+    }
+
+    var colCount = state.viewerMode ? 7 : 8;
+    document.getElementById('referralBody').innerHTML = rows.join('') || '<tr><td colspan="' + colCount + '" style="text-align:center;color:var(--dim);padding:2rem">No referrals found</td></tr>';
+  }
+
+  document.getElementById('referralSearch').addEventListener('input', function() {
+    renderAllReferrals();
+  });
+
+  document.getElementById('referralBody').addEventListener('click', function(e) {
+    var btn = e.target.closest('button[data-refdelete]');
+    if (!btn) return;
+    var delId = btn.dataset.refdelete;
+    if (!delId) { toast('No referral ID - cannot delete', 'error'); return; }
+    if (!confirm('Delete this referral? This cannot be undone.')) return;
+    api('POST', '/api/admin/referral/delete', { referral_id: Number(delId) }).then(function(d) {
+      toast('Referral deleted');
+      loadAffiliates();
+      loadStats();
+    }).catch(function(err) {
+      toast('Delete failed: ' + err.message, 'error');
+    });
+  });
+
+  /* === Overview Tab === */
+  function renderOverview() {
+    /* Top referrers summary */
+    var sorted = state.affiliates.slice().sort(function(a, b) {
+      return (b.completed || 0) - (a.completed || 0);
+    });
+    var top = sorted.slice(0, 5);
+    var topHtml = '';
+    if (top.length > 0) {
+      topHtml = '<div style="margin-bottom:.75rem;font-size:.85rem;font-weight:600;color:var(--blue)">Top Referrers</div>';
+      topHtml += '<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem">';
+      for (var t = 0; t < top.length; t++) {
+        var tp = top[t];
+        topHtml += '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:.6rem .85rem;min-width:180px">'
+          + '<div style="font-weight:600;font-size:.85rem">' + esc(tp.name) + '</div>'
+          + '<div style="font-size:.7rem;color:var(--dim)">' + (tp.completed || 0) + ' conversions &middot; ' + formatMoney(tp.earnings) + '</div>'
+          + '</div>';
+      }
+      topHtml += '</div>';
+    }
+    document.getElementById('overviewTopReferrers').innerHTML = topHtml;
+
+    /* Recent activity */
+    var allHist = [];
+    for (var i = 0; i < state.affiliates.length; i++) {
+      var a = state.affiliates[i];
+      var hist = a.history || [];
+      for (var j = 0; j < hist.length; j++) {
+        var h = hist[j];
+        allHist.push({
+          affiliate_name: a.name,
+          affiliate_code: a.code,
+          referred_name: h.referred_name,
+          referred_email: h.referred_email,
+          status: h.status,
+          created_at: h.created_at,
+          earnings: h.earnings
+        });
+      }
+    }
+    allHist.sort(function(a, b) {
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+    var recent = allHist.slice(0, 20);
+    var rows = [];
+    for (var k = 0; k < recent.length; k++) {
+      var r = recent[k];
+      var statusCls = r.status === 'completed' ? 'status-completed' : 'status-pending';
+      rows.push('<tr>'
+        + '<td><code>' + esc(r.affiliate_code) + '</code> ' + esc(r.affiliate_name) + '</td>'
+        + '<td>' + esc(r.referred_name || '--') + ' <span style="color:var(--dim);font-size:.75rem">' + esc(r.referred_email || '') + '</span></td>'
+        + '<td><span class="status ' + statusCls + '">' + esc(r.status) + '</span></td>'
+        + '<td>' + formatDate(r.created_at) + '</td>'
+        + '<td style="color:var(--green)">' + formatMoney(r.earnings) + '</td>'
+        + '</tr>');
+    }
+    document.getElementById('recentActivityBody').innerHTML = rows.join('') || '<tr><td colspan="5" style="text-align:center;color:var(--dim);padding:2rem">No referral activity yet</td></tr>';
+  }
+
+  /* === Client Autocomplete for Assign Modal === */
+  var acSelectedIdx = -1;
+
+  function ensureClientsLoaded() {
+    if (state.clients.length > 0) return;
+    api('GET', '/api/admin/clients').then(function(d) {
+      state.clients = (d.clients || []).filter(function(c) { return c.email; });
+      console.log('[ensureClientsLoaded] Loaded ' + state.clients.length + ' clients from admin-api');
+    }).catch(function(err) {
+      console.warn('[ensureClientsLoaded] admin-api failed (likely CORS on staging):', err.message);
+      /* Fallback for staging: load affiliates as client candidates if admin-api CORS blocks */
+      if (window.location.hostname !== 'portal.purebrain.ai' && state.clients.length === 0) {
+        api('GET', '/api/admin/affiliates').then(function(d) {
+          var affs = d.affiliates || d.partners || [];
+          state.clients = affs.filter(function(a) { return a.email; }).map(function(a) {
+            return { id: a.id, email: a.email, name: a.name || '' };
+          });
+          console.log('[ensureClientsLoaded] Fallback: loaded ' + state.clients.length + ' from referrals-api affiliates');
+        }).catch(function(err2) {
+          console.error('[ensureClientsLoaded] Fallback also failed:', err2.message);
+        });
+      }
+    });
+  }
+
+  function acSearch(query) {
+    var q = query.toLowerCase().trim();
+    if (!q) return [];
+    return state.clients.filter(function(c) {
+      return (c.email || '').toLowerCase().indexOf(q) !== -1
+        || (c.name || '').toLowerCase().indexOf(q) !== -1;
+    }).slice(0, 10);
+  }
+
+  function showAcDropdown(results) {
+    var dd = document.getElementById('assignAcDropdown');
+    if (results.length === 0) { hideAcDropdown(); return; }
+    acSelectedIdx = -1;
+    var html = [];
+    for (var i = 0; i < results.length; i++) {
+      var c = results[i];
+      html.push('<div class="ac-item" data-acidx="' + i + '">'
+        + '<div class="ac-item-name">' + esc(c.name || '(no name)') + '</div>'
+        + '<div class="ac-item-email">' + esc(c.email) + '</div>'
+        + '</div>');
+    }
+    dd.innerHTML = html.join('');
+    dd._results = results;
+    dd.classList.add('open');
+  }
+
+  function hideAcDropdown() {
+    var dd = document.getElementById('assignAcDropdown');
+    if (dd) { dd.classList.remove('open'); dd._results = []; }
+    acSelectedIdx = -1;
+  }
+
+  function acPickClient(idx) {
+    var dd = document.getElementById('assignAcDropdown');
+    var results = dd._results || [];
+    var c = results[idx];
+    if (!c) return;
+    document.getElementById('assignClientSearch').value = c.email;
+    document.getElementById('assignClientEmailHidden').value = c.email;
+    document.getElementById('assignName').value = c.name || '';
+    hideAcDropdown();
+  }
+
+  /* Autocomplete input handler */
+  document.getElementById('assignClientSearch').addEventListener('input', function(e) {
+    document.getElementById('assignClientEmailHidden').value = '';
+    var query = e.target.value.trim();
+    if (!query) { hideAcDropdown(); return; }
+    var results = acSearch(query);
+    showAcDropdown(results);
+  });
+
+  /* Autocomplete keyboard navigation */
+  document.getElementById('assignClientSearch').addEventListener('keydown', function(e) {
+    var dd = document.getElementById('assignAcDropdown');
+    var results = dd._results || [];
+    var items = dd.querySelectorAll('.ac-item');
+    if (!dd.classList.contains('open')) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      acSelectedIdx = Math.min(acSelectedIdx + 1, items.length - 1);
+      for (var i = 0; i < items.length; i++) {
+        items[i].classList.toggle('ac-selected', i === acSelectedIdx);
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      acSelectedIdx = Math.max(acSelectedIdx - 1, 0);
+      for (var i = 0; i < items.length; i++) {
+        items[i].classList.toggle('ac-selected', i === acSelectedIdx);
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (acSelectedIdx >= 0 && results[acSelectedIdx]) {
+        acPickClient(acSelectedIdx);
+      } else {
+        hideAcDropdown();
+      }
+    } else if (e.key === 'Escape') {
+      hideAcDropdown();
+    }
+  });
+
+  /* Autocomplete click on item */
+  document.getElementById('assignAcDropdown').addEventListener('mousedown', function(e) {
+    var item = e.target.closest('.ac-item');
+    if (!item) return;
+    e.preventDefault();
+    var idx = Number(item.dataset.acidx);
+    acPickClient(idx);
+  });
+
+  /* Close autocomplete when clicking outside */
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('#assignAcWrap')) hideAcDropdown();
+  });
+
+  /* === Payouts === */
+  function loadPayouts() {
+    api('GET', '/api/admin/payouts').then(function(d) {
+      state.payouts = d.payouts || [];
+      renderPayouts();
+    }).catch(function(err) {
+      console.error('Payouts error:', err);
+    });
+  }
+
+  function renderPayouts() {
+    var payouts = state.payouts;
+    document.getElementById('payoutCount').textContent = payouts.length + ' payout' + (payouts.length !== 1 ? 's' : '');
+
+    var rows = [];
+    for (var i = 0; i < payouts.length; i++) {
+      var p = payouts[i];
+      var isPaid = p.status === 'paid';
+      var statusCls = isPaid ? 'status-paid' : 'status-unpaid';
+      var actionHtml = '';
+
+      if (!isPaid && !state.viewerMode) {
+        actionHtml = '<button class="btn-sm btn-mark-paid" data-payid="' + esc(String(p.request_id || p.id)) + '">Mark Paid</button>';
+      } else if (isPaid) {
+        actionHtml = '<span style="color:var(--dim);font-size:.75rem">Completed</span>';
+      }
+
+      rows.push('<tr>'
+        + '<td>' + esc(p.referrer_name || p.name) + '</td>'
+        + '<td>' + esc(p.email) + '</td>'
+        + '<td>' + esc(p.paypal_email || p.paypal || '--') + '</td>'
+        + '<td>' + formatMoney(p.amount) + '</td>'
+        + '<td><span class="status ' + statusCls + '">' + esc(p.status) + '</span></td>'
+        + '<td>' + formatDate(p.created_at || p.created) + '</td>'
+        + '<td>' + actionHtml + '</td>'
+        + '</tr>');
+    }
+
+    document.getElementById('payoutBody').innerHTML = rows.join('') || '<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:2rem">No payouts found</td></tr>';
+  }
+
+  /* Delegate payout mark-paid clicks */
+  document.getElementById('payoutBody').addEventListener('click', function(e) {
+    var btn = e.target.closest('button');
+    if (!btn || !btn.dataset.payid) return;
+    var requestId = Number(btn.dataset.payid);
+    btn.disabled = true;
+    btn.textContent = 'Processing...';
+    api('POST', '/api/admin/payout/mark-paid', { request_id: requestId }).then(function() {
+      toast('Payout marked as paid');
+      loadPayouts();
+      loadStats();
+    }).catch(function(err) {
+      toast('Failed to mark paid: ' + err.message, 'error');
+      btn.disabled = false;
+      btn.textContent = 'Mark Paid';
+    });
+  });
+
+  /* === Leaderboard === */
+  function loadLeaderboard() {
+    api('GET', '/api/referral/leaderboard?limit=20').then(function(d) {
+      state.leaderboard = d.leaderboard || [];
+      renderLeaderboard();
+    }).catch(function(err) {
+      console.error('Leaderboard error:', err);
+    });
+  }
+
+  function renderLeaderboard() {
+    var lb = state.leaderboard;
+    var rows = [];
+    for (var i = 0; i < lb.length; i++) {
+      var entry = lb[i];
+      var rank = i + 1;
+      var rankCls = 'rank-other';
+      if (rank === 1) rankCls = 'rank-1';
+      else if (rank === 2) rankCls = 'rank-2';
+      else if (rank === 3) rankCls = 'rank-3';
+
+      rows.push('<tr>'
+        + '<td><span class="rank ' + rankCls + '">' + rank + '</span></td>'
+        + '<td>' + esc(entry.name) + '</td>'
+        + '<td><code>' + esc(entry.code) + '</code></td>'
+        + '<td>' + (entry.completed || 0) + '</td>'
+        + '<td>' + (entry.total_referrals || 0) + '</td>'
+        + '<td>' + formatMoney(entry.total_earned) + '</td>'
+        + '</tr>');
+    }
+
+    document.getElementById('leaderboardBody').innerHTML = rows.join('') || '<tr><td colspan="6" style="text-align:center;color:var(--dim);padding:2rem">No leaderboard data</td></tr>';
+  }
+
+  /* === Assign Referral (per-affiliate, from action button) === */
+  var assignAffiliateCode = '';
+  window.openAssignForAffiliate = function(affId) {
+    var af = state.affiliates.find(function(x) { return x.id === affId; });
+    if (!af) return;
+    assignAffiliateCode = af.code;
+    document.getElementById('assignAffiliateName').textContent = af.name || af.code;
+    document.getElementById('assignAffiliateCode').textContent = af.code;
+    document.getElementById('assignClientSearch').value = '';
+    document.getElementById('assignClientEmailHidden').value = '';
+    document.getElementById('assignName').value = '';
+    hideAcDropdown();
+    document.getElementById('assignModal').classList.add('show');
+    ensureClientsLoaded();
+    setTimeout(function() { document.getElementById('assignClientSearch').focus(); }, 50);
+  };
+
+  /* Top bar assign button - pick first affiliate or prompt */
+  var _topAssignBtn = document.getElementById('btnAssignOpen');
+  if (_topAssignBtn) _topAssignBtn.addEventListener('click', function() {
+    if (state.affiliates.length === 0) {
+      toast('No affiliates loaded yet', 'error');
+      return;
+    }
+    /* Default to first affiliate; user can use per-row assign button for specific one */
+    window.openAssignForAffiliate(state.affiliates[0].id);
+  });
+
+  document.getElementById('btnAssignSubmit').addEventListener('click', function() {
+    var hiddenEmail = document.getElementById('assignClientEmailHidden').value.trim();
+    var typedEmail = document.getElementById('assignClientSearch').value.trim();
+    var email = hiddenEmail || typedEmail;
+    var name = document.getElementById('assignName').value.trim();
+
+    if (!assignAffiliateCode) {
+      toast('No affiliate selected', 'error');
+      return;
+    }
+    if (!email || email.indexOf('@') === -1) {
+      toast('Select or enter a valid client email', 'error');
+      return;
+    }
+
+    var body = {
+      referral_code: assignAffiliateCode,
+      client_email: email
+    };
+    if (name) body.client_name = name;
+
+    api('POST', '/api/admin/referral/assign', body).then(function(d) {
+      toast(d.message || 'Client assigned successfully');
+      closeModal('assignModal');
+      loadAffiliates();
+      loadStats();
+    }).catch(function(err) {
+      toast('Assign failed: ' + err.message, 'error');
+    });
+  });
+
+  /* === Tab Switching === */
+  document.getElementById('tabBar').addEventListener('click', function(e) {
+    var tab = e.target.closest('.tab');
+    if (!tab) return;
+    var name = tab.dataset.tab;
+    if (!document.getElementById('panel-' + name)) return;
+
+    var tabs = document.querySelectorAll('.tab');
+    for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+    tab.classList.add('active');
+
+    var panels = document.querySelectorAll('.tab-panel');
+    for (var j = 0; j < panels.length; j++) panels[j].classList.remove('active');
+    document.getElementById('panel-' + name).classList.add('active');
+  });
+
+  /* === Close modals on overlay click === */
+  var overlays = document.querySelectorAll('.modal-overlay');
+  for (var oi = 0; oi < overlays.length; oi++) {
+    overlays[oi].addEventListener('click', function(e) {
+      if (e.target === this) {
+        this.classList.remove('show');
+      }
+    });
+  }
+
+  /* === Close modals on Escape === */
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      var openModals = document.querySelectorAll('.modal-overlay.show');
+      for (var mi = 0; mi < openModals.length; mi++) {
+        openModals[mi].classList.remove('show');
+      }
+    }
+  });
+
+  /* === Partner Tier / Discount / Splits === */
+  function updateEditEliteSections(tier) {
+    var isElite = tier === 'elite';
+    document.getElementById('editDiscountSection').style.display = isElite ? 'block' : 'none';
+    document.getElementById('editSplitSection').style.display = isElite ? 'block' : 'none';
+    document.getElementById('editEscalationSection').style.display = isElite ? 'block' : 'none';
+  }
+
+  document.getElementById('editPartnerTier').addEventListener('change', function() {
+    updateEditEliteSections(this.value);
+  });
+
+  /* Discount toggle */
+  document.getElementById('editDiscountToggle').addEventListener('click', function() {
+    this.classList.toggle('on');
+    var isOn = this.classList.contains('on');
+    document.getElementById('editDiscountRow').style.display = isOn ? 'flex' : 'none';
+  });
+
+  /* Save Tier */
+  document.getElementById('btnSaveTier').addEventListener('click', function() {
+    var id = document.getElementById('editId').value;
+    var tier = document.getElementById('editPartnerTier').value;
+    this.disabled = true;
+    this.textContent = 'Saving...';
+    var btn = this;
+    api('PATCH', '/api/admin/partners/' + id + '/tier', { tier: tier, partner_tier: tier }).then(function() {
+      toast('Tier updated to ' + tier);
+      btn.disabled = false;
+      btn.textContent = 'Save Tier';
+      updateEditEliteSections(tier);
+      loadAffiliates();
+    }).catch(function(err) {
+      toast('Tier update failed: ' + err.message, 'error');
+      btn.disabled = false;
+      btn.textContent = 'Save Tier';
+    });
+  });
+
+  /* Save Discount */
+  document.getElementById('btnSaveDiscount').addEventListener('click', function() {
+    var id = document.getElementById('editId').value;
+    var enabled = document.getElementById('editDiscountToggle').classList.contains('on');
+    var pctRaw = document.getElementById('editDiscountPct').value;
+    var pct = pctRaw ? Number(pctRaw) / 100 : 0;
+    this.disabled = true;
+    this.textContent = 'Saving...';
+    var btn = this;
+    api('PATCH', '/api/admin/partners/' + id + '/discount', {
+      discount_enabled: enabled,
+      discount_percentage: pct
+    }).then(function() {
+      toast('Discount settings saved');
+      btn.disabled = false;
+      btn.textContent = 'Save Discount';
+      loadAffiliates();
+    }).catch(function(err) {
+      toast('Discount save failed: ' + err.message, 'error');
+      btn.disabled = false;
+      btn.textContent = 'Save Discount';
+    });
+  });
+
+  /* Split Rows */
+  var splitRowData = [];
+
+  /* Sync DOM input values back into splitRowData before any re-render */
+  function syncSplitRowsFromDOM() {
+    var currentRows = document.querySelectorAll('#splitRows .partner-row');
+    for (var i = 0; i < currentRows.length; i++) {
+      if (!splitRowData[i]) splitRowData[i] = {};
+      splitRowData[i].role = currentRows[i].querySelector('.split-role').value;
+      splitRowData[i].referrer_id = currentRows[i].querySelector('.split-referrer-id').value;
+      splitRowData[i].percentage = Number(currentRows[i].querySelector('.split-pct').value) / 100 || 0;
+      /* Preserve the display name so renderSplitRows can show it */
+      splitRowData[i]._displayName = currentRows[i].querySelector('.split-referrer').value;
+    }
+  }
+
+  function renderSplitRows(splits) {
+    splitRowData = (splits || []).slice();
+    var container = document.getElementById('splitRows');
+    if (splitRowData.length === 0) {
+      container.innerHTML = '<div style="color:var(--dim);font-size:.8rem">No splits configured.</div>';
+      updateSplitValidation();
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < splitRowData.length; i++) {
+      var s = splitRowData[i];
+      var refName = s._displayName || '';
+      if (!refName && s.referrer_id) {
+        var refAff = state.affiliates.find(function(a) { return String(a.id) === String(s.referrer_id); });
+        refName = refAff ? (refAff.name || refAff.email || '') : '';
+      }
+      html += '<div class="partner-row" data-split-idx="' + i + '">'
+        + '<div class="field"><label>Role</label><select class="split-role">'
+        + '<option value="originator"' + (s.role === 'originator' ? ' selected' : '') + '>Originator</option>'
+        + '<option value="closer"' + (s.role === 'closer' ? ' selected' : '') + '>Closer</option>'
+        + '<option value="relationship_manager"' + (s.role === 'relationship_manager' ? ' selected' : '') + '>Relationship Manager</option>'
+        + '</select></div>'
+        + '<div class="field" style="position:relative"><label>Referrer</label><input type="text" class="split-referrer" value="' + esc(refName) + '" placeholder="Type 2+ chars to search..." autocomplete="off">'
+        + '<div class="split-ac-dropdown"></div>'
+        + '<input type="hidden" class="split-referrer-id" value="' + esc(String(s.referrer_id || '')) + '"></div>'
+        + '<div class="field" style="max-width:80px"><label>%</label><input type="number" class="split-pct" value="' + (s.percentage ? Math.round(s.percentage * 100) : '') + '" min="0" max="100" step="1"></div>'
+        + '<button class="btn-remove-split" data-remove-split="' + i + '">X</button>'
+        + '</div>';
+    }
+    container.innerHTML = html;
+    updateSplitValidation();
+    bindSplitReferrerInputs();
+  }
+
+  function bindSplitReferrerInputs() {
+    var inputs = document.querySelectorAll('.split-referrer');
+    for (var i = 0; i < inputs.length; i++) {
+      setupSplitAutocomplete(inputs[i], inputs[i].parentElement.querySelector('.split-referrer-id'));
+    }
+  }
+
+  function setupSplitAutocomplete(input, hiddenInput) {
+    var dropdown = input.parentElement.querySelector('.split-ac-dropdown');
+
+    input.addEventListener('input', function() {
+      var q = this.value.toLowerCase().trim();
+      if (q.length < 2) { dropdown.style.display = 'none'; return; }
+      var matches = state.affiliates.filter(function(a) {
+        return (a.name||'').toLowerCase().indexOf(q) !== -1 || (a.email||'').toLowerCase().indexOf(q) !== -1;
+      }).slice(0, 8);
+      if (matches.length === 0) { dropdown.style.display = 'none'; return; }
+      dropdown.innerHTML = matches.map(function(m) {
+        return '<div class="split-ac-item" data-id="'+m.id+'" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:.85rem;color:var(--text);">'
+          + '<div style="font-weight:500">'+esc(m.name||'(no name)')+'</div>'
+          + '<div style="color:var(--dim);font-size:.75rem">'+esc(m.email||'')+'</div></div>';
+      }).join('');
+      dropdown.style.display = 'block';
+    });
+
+    dropdown.addEventListener('mousedown', function(e) {
+      var item = e.target.closest('.split-ac-item');
+      if (!item) return;
+      e.preventDefault();
+      input.value = item.querySelector('div').textContent;
+      hiddenInput.value = item.dataset.id;
+      dropdown.style.display = 'none';
+    });
+
+    input.addEventListener('blur', function() {
+      setTimeout(function() { dropdown.style.display = 'none'; }, 200);
+    });
+  }
+
+  function collectSplitData() {
+    var rows = document.querySelectorAll('#splitRows .partner-row');
+    var splits = [];
+    for (var i = 0; i < rows.length; i++) {
+      var role = rows[i].querySelector('.split-role').value;
+      var refId = rows[i].querySelector('.split-referrer-id').value;
+      var pctRaw = rows[i].querySelector('.split-pct').value;
+      var pct = pctRaw ? Number(pctRaw) / 100 : 0;
+      if (refId && pct > 0) {
+        splits.push({ referrer_id: refId, role: role, percentage: pct });
+      }
+    }
+    return splits;
+  }
+
+  function updateSplitValidation() {
+    var rows = document.querySelectorAll('#splitRows .partner-row');
+    var total = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var pctRaw = rows[i].querySelector('.split-pct');
+      if (pctRaw) total += Number(pctRaw.value) || 0;
+    }
+    var el = document.getElementById('splitValidation');
+    if (rows.length === 0) {
+      el.textContent = '';
+      el.className = 'split-validation';
+    } else if (total === 0) {
+      el.textContent = 'Enter percentages (whole numbers, e.g. 5 = 5%)';
+      el.className = 'split-validation';
+    } else if (total > 100) {
+      el.textContent = 'Total: ' + total + '% — exceeds 100%';
+      el.className = 'split-validation error';
+    } else {
+      el.textContent = 'Total: ' + total + '%';
+      el.className = 'split-validation ok';
+    }
+  }
+
+  document.getElementById('splitRows').addEventListener('input', function() {
+    updateSplitValidation();
+  });
+
+  document.getElementById('splitRows').addEventListener('click', function(e) {
+    var btn = e.target.closest('.btn-remove-split');
+    if (!btn) return;
+    /* Sync DOM values before removing so other rows keep their values */
+    syncSplitRowsFromDOM();
+    var idx = Number(btn.dataset.removeSplit);
+    splitRowData.splice(idx, 1);
+    renderSplitRows(splitRowData);
+  });
+
+  document.getElementById('btnAddSplit').addEventListener('click', function() {
+    if (splitRowData.length >= 3) {
+      toast('Maximum 3 splits allowed', 'error');
+      return;
+    }
+    /* BUG 2 FIX: save current input values before re-rendering */
+    syncSplitRowsFromDOM();
+    splitRowData.push({ role: 'originator', referrer_id: '', percentage: 0 });
+    renderSplitRows(splitRowData);
+  });
+
+  /* Save Splits (with bug fix: reload from API response) */
+  document.getElementById('btnSaveSplits').addEventListener('click', function() {
+    var id = document.getElementById('editId').value;
+    /* Sync DOM values before collecting — ensures latest input values are captured */
+    syncSplitRowsFromDOM();
+    var splits = collectSplitData();
+    this.disabled = true;
+    this.textContent = 'Saving...';
+    var btn = this;
+
+    function handleSaveSuccess(resp) {
+      toast('Splits saved');
+      btn.disabled = false;
+      btn.textContent = 'Save Splits';
+      /* Bug fix: reload split data from API response — handle nested partner object + JSON string */
+      var rawSplits = (resp && resp.partner && resp.partner.split_config) || (resp && resp.split_config) || splits;
+      var savedSplits = typeof rawSplits === 'string' ? JSON.parse(rawSplits) : rawSplits;
+      renderSplitRows(savedSplits);
+      /* Also update the affiliate in state */
+      var af = state.affiliates.find(function(x) { return String(x.id) === String(id); });
+      if (af) af.split_config = savedSplits;
+      loadAffiliates();
+    }
+
+    function handleSaveError(err) {
+      console.error('[saveSplits] Failed:', err.message);
+      toast('Splits save failed: ' + err.message, 'error');
+      btn.disabled = false;
+      btn.textContent = 'Save Splits';
+    }
+
+    /* Try PATCH first, fallback to PUT if Worker doesn't support PATCH */
+    api('PATCH', '/api/admin/partners/' + id + '/splits', {
+      split_config: splits
+    }).then(handleSaveSuccess).catch(function(err) {
+      console.warn('[saveSplits] PATCH failed, trying PUT fallback:', err.message);
+      api('PUT', '/api/admin/partners/' + id + '/splits', {
+        split_config: splits
+      }).then(handleSaveSuccess).catch(function(err2) {
+        console.warn('[saveSplits] PUT also failed, trying partner update:', err2.message);
+        /* Last resort: update the partner record directly with split_config */
+        api('PUT', '/api/admin/partners/' + id, {
+          split_config: splits
+        }).then(handleSaveSuccess).catch(handleSaveError);
+      });
+    });
+  });
+
+  /* Escalation Progress */
+  function updateEscalation(af) {
+    var sales = af.total_sales || af.completed || 0;
+    var threshold = 10; /* Example: 10 sales for elite eligibility */
+    var pct = Math.min(Math.round((sales / threshold) * 100), 100);
+    document.getElementById('escalationFill').style.width = pct + '%';
+    var tier = (af.partner_tier || 'standard').toLowerCase();
+    if (tier === 'elite') {
+      document.getElementById('escalationText').textContent = 'Elite tier active. ' + sales + ' total sales.';
+    } else {
+      document.getElementById('escalationText').textContent = sales + '/' + threshold + ' sales toward Elite eligibility (' + pct + '%)';
+    }
+  }
+
+  /* === Commission Report === */
+  function loadPartnersList() {
+    api('GET', '/api/admin/partners').then(function(d) {
+      state.partners = d.partners || d.affiliates || [];
+      var sel = document.getElementById('commPartner');
+      var opts = '<option value="">All Partners</option>';
+      for (var i = 0; i < state.partners.length; i++) {
+        var p = state.partners[i];
+        opts += '<option value="' + esc(String(p.id)) + '">' + esc(p.name || p.email) + '</option>';
+      }
+      sel.innerHTML = opts;
+    }).catch(function() { /* non-fatal */ });
+  }
+
+  function loadCommissionReport() {
+    var period = document.getElementById('commPeriod').value;
+    var partnerId = document.getElementById('commPartner').value;
+    var params = '?period=' + period;
+    if (partnerId) params += '&partner_id=' + partnerId;
+
+    api('GET', '/api/admin/commission-report' + params).then(function(d) {
+      state.commissionData = d.commissions || d.data || [];
+      renderCommissionReport();
+    }).catch(function(err) {
+      /* Fallback: build from affiliates data */
+      buildCommissionFromAffiliates();
+    });
+  }
+
+  function buildCommissionFromAffiliates() {
+    /* Fix: only show commissions for affiliates who have referrals */
+    var partnerId = document.getElementById('commPartner').value;
+    var period = document.getElementById('commPeriod').value;
+    var now = new Date();
+    var all = [];
+    for (var i = 0; i < state.affiliates.length; i++) {
+      var a = state.affiliates[i];
+      if (partnerId && String(a.id) !== partnerId) continue;
+      var hist = a.history || [];
+      if (hist.length === 0) continue; /* Fix: skip affiliates with no referrals */
+      for (var j = 0; j < hist.length; j++) {
+        var h = hist[j];
+        /* Period filter */
+        if (period !== 'all' && h.created_at) {
+          var d = new Date(h.created_at);
+          if (period === 'month' && (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear())) continue;
+          if (period === 'quarter') {
+            var cq = Math.floor(now.getMonth() / 3);
+            var hq = Math.floor(d.getMonth() / 3);
+            if (hq !== cq || d.getFullYear() !== now.getFullYear()) continue;
+          }
+          if (period === 'year' && d.getFullYear() !== now.getFullYear()) continue;
+        }
+        all.push({
+          created_at: h.created_at,
+          referrer_name: a.name,
+          payer_email: h.referred_email,
+          status: h.status,
+          commission: h.earnings || 0
+        });
+      }
+    }
+    state.commissionData = all;
+    renderCommissionReport();
+  }
+
+  function renderCommissionReport() {
+    var data = state.commissionData;
+    var rows = [];
+    var totalComm = 0;
+    var countCompleted = 0;
+    for (var i = 0; i < data.length; i++) {
+      var c = data[i];
+      var statusCls = (c.status === 'completed') ? 'status-completed' : 'status-pending';
+      totalComm += Number(c.commission || c.amount || 0);
+      if (c.status === 'completed') countCompleted++;
+      rows.push('<tr>'
+        + '<td>' + formatDate(c.created_at || c.date) + '</td>'
+        + '<td>' + esc(c.referrer_name || c.partner_name || '--') + '</td>'
+        + '<td>' + esc(c.payer_email || c.referred_email || '--') + '</td>'
+        + '<td><span class="status ' + statusCls + '">' + esc(c.status || '--') + '</span></td>'
+        + '<td>' + formatMoney(c.commission || c.amount) + '</td>'
+        + '</tr>');
+    }
+    document.getElementById('commBody').innerHTML = rows.join('') || '<tr><td colspan="5" style="text-align:center;color:var(--dim);padding:2rem">No commission data</td></tr>';
+
+    document.getElementById('commTotals').innerHTML =
+      '<div class="report-total"><div class="rt-label">Total Commissions</div><div class="rt-value">' + formatMoney(totalComm) + '</div></div>'
+      + '<div class="report-total"><div class="rt-label">Records</div><div class="rt-value">' + data.length + '</div></div>'
+      + '<div class="report-total"><div class="rt-label">Completed</div><div class="rt-value" style="color:var(--green)">' + countCompleted + '</div></div>';
+  }
+
+  document.getElementById('btnCommLoad').addEventListener('click', function() {
+    loadCommissionReport();
+  });
+
+  /* CSV Export */
+  document.getElementById('btnCommExport').addEventListener('click', function() {
+    var data = state.commissionData;
+    if (!data.length) { toast('No data to export', 'error'); return; }
+    var csv = 'Date,Referrer,Referred Email,Status,Commission\n';
+    for (var i = 0; i < data.length; i++) {
+      var c = data[i];
+      csv += '"' + formatDate(c.created_at || c.date) + '","' + (c.referrer_name || c.partner_name || '') + '","' + (c.payer_email || c.referred_email || '') + '","' + (c.status || '') + '",' + (c.commission || c.amount || 0) + '\n';
+    }
+    var blob = new Blob([csv], { type: 'text/csv' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'commission-report-' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('CSV downloaded');
+  });
+
+  /* === Manual Payment === */
+  var mpAcSelectedIdx = -1;
+
+  function mpAcSearch(query) {
+    var q = query.toLowerCase().trim();
+    if (!q) return [];
+    return state.affiliates.filter(function(a) {
+      return (a.name || '').toLowerCase().indexOf(q) !== -1
+        || (a.email || '').toLowerCase().indexOf(q) !== -1;
+    }).slice(0, 10);
+  }
+
+  function showMpAcDropdown(results) {
+    var dd = document.getElementById('mpAcDropdown');
+    if (results.length === 0) { hideMpAcDropdown(); return; }
+    mpAcSelectedIdx = -1;
+    var html = [];
+    for (var i = 0; i < results.length; i++) {
+      var a = results[i];
+      html.push('<div class="ac-item" data-mpidx="' + i + '">'
+        + '<div class="ac-item-name">' + esc(a.name || '(no name)') + '</div>'
+        + '<div class="ac-item-email">' + esc(a.email) + '</div>'
+        + '</div>');
+    }
+    dd.innerHTML = html.join('');
+    dd._results = results;
+    dd.classList.add('open');
+  }
+
+  function hideMpAcDropdown() {
+    var dd = document.getElementById('mpAcDropdown');
+    if (dd) { dd.classList.remove('open'); dd._results = []; }
+    mpAcSelectedIdx = -1;
+  }
+
+  function mpPickPartner(idx) {
+    var dd = document.getElementById('mpAcDropdown');
+    var results = dd._results || [];
+    var a = results[idx];
+    if (!a) return;
+    document.getElementById('mpPartnerSearch').value = a.name + ' (' + a.email + ')';
+    document.getElementById('mpPartnerId').value = a.id;
+    var tier = (a.partner_tier || 'standard').toLowerCase();
+    document.getElementById('mpTier').value = tier;
+    hideMpAcDropdown();
+  }
+
+  document.getElementById('mpPartnerSearch').addEventListener('input', function(e) {
+    document.getElementById('mpPartnerId').value = '';
+    var query = e.target.value.trim();
+    if (query.length < 2) { hideMpAcDropdown(); return; }
+    var results = mpAcSearch(query);
+    showMpAcDropdown(results);
+  });
+
+  document.getElementById('mpPartnerSearch').addEventListener('keydown', function(e) {
+    var dd = document.getElementById('mpAcDropdown');
+    var results = dd._results || [];
+    var items = dd.querySelectorAll('.ac-item');
+    if (!dd.classList.contains('open')) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      mpAcSelectedIdx = Math.min(mpAcSelectedIdx + 1, items.length - 1);
+      for (var i = 0; i < items.length; i++) items[i].classList.toggle('ac-selected', i === mpAcSelectedIdx);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      mpAcSelectedIdx = Math.max(mpAcSelectedIdx - 1, 0);
+      for (var i = 0; i < items.length; i++) items[i].classList.toggle('ac-selected', i === mpAcSelectedIdx);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (mpAcSelectedIdx >= 0 && results[mpAcSelectedIdx]) mpPickPartner(mpAcSelectedIdx);
+      else hideMpAcDropdown();
+    } else if (e.key === 'Escape') {
+      hideMpAcDropdown();
+    }
+  });
+
+  document.getElementById('mpAcDropdown').addEventListener('mousedown', function(e) {
+    var item = e.target.closest('.ac-item');
+    if (!item) return;
+    e.preventDefault();
+    mpPickPartner(Number(item.dataset.mpidx));
+  });
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('#mpAcWrap')) hideMpAcDropdown();
+  });
+
+  document.getElementById('btnMpSubmit').addEventListener('click', function() {
+    var refId = document.getElementById('mpPartnerId').value;
+    var amount = document.getElementById('mpAmount').value;
+    var tier = document.getElementById('mpTier').value;
+    var orderId = document.getElementById('mpOrderId').value.trim();
+
+    if (!refId) { toast('Select a partner first', 'error'); return; }
+    if (!amount || Number(amount) <= 0) { toast('Enter a valid amount', 'error'); return; }
+
+    var body = {
+      referrer_id: refId,
+      payment_amount: Number(amount),
+      tier: tier
+    };
+    if (orderId) body.order_id = orderId;
+
+    this.disabled = true;
+    this.textContent = 'Submitting...';
+    var btn = this;
+    api('POST', '/api/admin/payments/manual', body).then(function(d) {
+      toast(d.message || 'Payment recorded');
+      btn.disabled = false;
+      btn.textContent = 'Submit Payment';
+      document.getElementById('mpPartnerSearch').value = '';
+      document.getElementById('mpPartnerId').value = '';
+      document.getElementById('mpAmount').value = '';
+      document.getElementById('mpOrderId').value = '';
+      loadPayouts();
+      loadStats();
+    }).catch(function(err) {
+      toast('Payment failed: ' + err.message, 'error');
+      btn.disabled = false;
+      btn.textContent = 'Submit Payment';
+    });
+  });
+
+  /* === Init === */
+  var token = getToken();
+  if (token) {
+    state.token = token;
+    showApp();
+  }
+})();
+</script>
+</body>
+</html>

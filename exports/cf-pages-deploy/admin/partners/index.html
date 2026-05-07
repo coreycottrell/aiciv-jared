@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PUREBRAIN Partner Admin</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #080a12;
+    --bg2:       #0d1120;
+    --bg3:       #131929;
+    --border:    #1e2a40;
+    --blue:      #2a93c1;
+    --blue-dim:  #1c6a8f;
+    --orange:    #f1420b;
+    --orange-dim:#b03209;
+    --text:      #e8edf5;
+    --text-dim:  #7a8aaa;
+    --green:     #22c55e;
+    --yellow:    #f59e0b;
+    --red:       #ef4444;
+    --gold:      #d4a017;
+  }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* -- Auth Gate -- */
+  #auth-gate {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 9999;
+  }
+  #auth-gate.hidden { display: none; }
+  .auth-box {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 40px;
+    width: 100%;
+    max-width: 420px;
+    text-align: center;
+  }
+  .auth-box .logo { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+  .auth-box .logo .blue  { color: var(--blue); }
+  .auth-box .logo .orange { color: var(--orange); }
+  .auth-box p { color: var(--text-dim); margin-bottom: 24px; font-size: 13px; }
+  .auth-box input {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 10px 14px;
+    font-size: 14px;
+    margin-bottom: 12px;
+    outline: none;
+  }
+  .auth-box input:focus { border-color: var(--blue); }
+  .auth-box .err { color: var(--red); font-size: 12px; margin-bottom: 8px; min-height: 16px; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: opacity .15s, transform .1s;
+  }
+  .btn:hover { opacity: .88; }
+  .btn:active { transform: scale(.97); }
+  .btn-blue    { background: var(--blue);    color: #fff; }
+  .btn-orange  { background: var(--orange);  color: #fff; }
+  .btn-ghost   { background: var(--bg3);     color: var(--text); border: 1px solid var(--border); }
+  .btn-green   { background: var(--green);   color: #000; }
+  .btn-yellow  { background: var(--yellow);  color: #000; }
+  .btn-red     { background: var(--red);     color: #fff; }
+  .btn-sm      { padding: 6px 12px; font-size: 12px; }
+  .btn-full    { width: 100%; }
+
+  /* -- Layout -- */
+  #app { display: none; flex-direction: column; min-height: 100vh; }
+  #app.visible { display: flex; }
+
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 56px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-logo { font-size: 18px; font-weight: 700; }
+  .header-logo .blue   { color: var(--blue); }
+  .header-logo .orange { color: var(--orange); }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .header-link {
+    font-size: 12px; color: var(--text-dim); text-decoration: none;
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 10px;
+    transition: color .15s, border-color .15s;
+  }
+  .header-link:hover { color: var(--blue); border-color: var(--blue); }
+
+  main { flex: 1; padding: 24px; max-width: 1400px; margin: 0 auto; width: 100%; }
+
+  /* -- Tabs -- */
+  .tabs {
+    display: flex; gap: 4px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px;
+    margin-bottom: 24px;
+    width: fit-content;
+  }
+  .tab {
+    padding: 8px 18px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-dim);
+    transition: all .15s;
+    border: none; background: transparent;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: var(--blue); color: #fff; }
+
+  /* -- Stats -- */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .stat-label { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+  .stat-value { font-size: 28px; font-weight: 700; }
+  .stat-value.blue   { color: var(--blue); }
+  .stat-value.orange { color: var(--orange); }
+  .stat-value.green  { color: var(--green); }
+  .stat-value.gold   { color: var(--gold); }
+
+  /* -- Panels -- */
+  .panel {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+  .panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .panel-title { font-size: 14px; font-weight: 600; }
+  .panel-body  { padding: 0; }
+
+  /* -- Filter bar -- */
+  .filter-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .filter-bar input, .filter-bar select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 7px 12px;
+    font-size: 13px;
+    outline: none;
+  }
+  .filter-bar input { min-width: 220px; }
+  .filter-bar input:focus, .filter-bar select:focus { border-color: var(--blue); }
+  .filter-bar select option { background: var(--bg2); }
+
+  /* -- Table -- */
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  thead { background: var(--bg3); }
+  th {
+    padding: 10px 16px;
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    vertical-align: middle;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(42,147,193,.04); }
+  tr.clickable { cursor: pointer; }
+
+  /* -- Tier chips -- */
+  .tier-chip {
+    display: inline-block;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: capitalize;
+  }
+  .tier-standard { background: rgba(42,147,193,.2); color: var(--blue); }
+  .tier-elite    { background: rgba(212,160,23,.2); color: var(--gold); }
+
+  /* -- Toggle -- */
+  .toggle {
+    position: relative;
+    width: 36px; height: 20px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background .2s;
+  }
+  .toggle.on { background: var(--green); border-color: var(--green); }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 14px; height: 14px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform .2s;
+  }
+  .toggle.on::after { transform: translateX(16px); }
+
+  /* -- Slide Panel -- */
+  .slide-panel {
+    position: fixed;
+    top: 0; right: -520px;
+    width: 520px;
+    height: 100vh;
+    background: var(--bg2);
+    border-left: 1px solid var(--border);
+    z-index: 200;
+    overflow-y: auto;
+    transition: right .25s ease;
+    box-shadow: -4px 0 20px rgba(0,0,0,.4);
+  }
+  .slide-panel.open { right: 0; }
+  .slide-panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0;
+    background: var(--bg2);
+    z-index: 10;
+  }
+  .slide-panel-body { padding: 24px; }
+  .slide-panel-close {
+    background: none; border: none; color: var(--text-dim);
+    font-size: 20px; cursor: pointer;
+  }
+  .slide-panel-close:hover { color: var(--text); }
+
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.5);
+    z-index: 190;
+    display: none;
+  }
+  .overlay.show { display: block; }
+
+  /* -- Form fields in panel -- */
+  .field { margin-bottom: 20px; }
+  .field label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+  .field input, .field select, .field textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 8px 12px;
+    font-size: 13px;
+    outline: none;
+  }
+  .field input:focus, .field select:focus { border-color: var(--blue); }
+  .field select option { background: var(--bg2); }
+
+  .field-row {
+    display: flex; gap: 10px; align-items: flex-end;
+    margin-bottom: 8px;
+  }
+  .field-row .field { margin-bottom: 0; flex: 1; }
+  .field-row .btn-sm { flex-shrink: 0; margin-bottom: 0; }
+
+  /* -- Progress bar -- */
+  .progress-bar {
+    background: var(--bg3);
+    border-radius: 6px;
+    height: 8px;
+    overflow: hidden;
+    margin-top: 6px;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 6px;
+    transition: width .3s;
+  }
+  .progress-fill.blue { background: var(--blue); }
+  .progress-fill.gold { background: var(--gold); }
+
+  /* -- Section dividers in panel -- */
+  .section-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .section-title:first-child { border-top: none; padding-top: 0; }
+
+  /* -- Commission report table -- */
+  .report-totals {
+    background: var(--bg3);
+    padding: 12px 16px;
+    font-weight: 600;
+    font-size: 13px;
+    border-top: 2px solid var(--border);
+  }
+
+  /* -- Tab views -- */
+  .tab-view { display: none; }
+  .tab-view.active { display: block; }
+
+  /* -- Toast -- */
+  .toast {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    background: var(--green);
+    color: #000;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    z-index: 9999;
+    transform: translateY(100px);
+    opacity: 0;
+    transition: all .3s;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.error { background: var(--red); color: #fff; }
+
+  /* -- Responsive -- */
+  @media (max-width: 768px) {
+    .slide-panel { width: 100%; right: -100%; }
+    .filter-bar input { min-width: 150px; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<!-- Auth Gate -->
+<div id="auth-gate">
+  <div class="auth-box">
+    <div class="logo">PURE<span class="blue">BR</span><span class="orange">AI</span><span class="blue">N</span></div>
+    <p>Partner Admin Panel</p>
+    <input type="password" id="auth-pw" placeholder="Admin password" autocomplete="off">
+    <div class="err" id="auth-err"></div>
+    <button class="btn btn-blue btn-full" onclick="doAuth()">Enter</button>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app">
+  <header>
+    <div class="header-logo">PURE<span class="blue">BR</span><span class="orange">AI</span><span class="blue">N</span> <span style="color:var(--text-dim);font-weight:400;font-size:13px;margin-left:6px;">Partner Admin</span></div>
+    <div class="header-right">
+      <a class="header-link" href="/admin/clients/">Clients</a>
+      <a class="header-link" href="/admin/referrals/" style="display:none;">Referrals</a>
+      <button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="partners">Partners</button>
+      <button class="tab" data-tab="commissions">Commission Report</button>
+      <button class="tab" data-tab="payments">Manual Payment</button>
+    </div>
+
+    <!-- Partners Tab -->
+    <div class="tab-view active" id="view-partners">
+      <div class="stats-grid" id="partner-stats"></div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">All Partners</div>
+          <button class="btn btn-blue btn-sm" onclick="refreshPartners()">Refresh</button>
+        </div>
+        <div class="filter-bar">
+          <input type="text" id="partner-search" placeholder="Search name or email...">
+          <select id="partner-tier-filter">
+            <option value="">All Tiers</option>
+            <option value="standard">Standard</option>
+            <option value="elite">Elite</option>
+          </select>
+        </div>
+        <div class="panel-body">
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Code</th>
+                  <th>Tier</th>
+                  <th>Total Sales</th>
+                  <th>Discount</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="partner-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Commission Report Tab -->
+    <div class="tab-view" id="view-commissions">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Commission Report</div>
+          <button class="btn btn-ghost btn-sm" onclick="exportCSV()">Export CSV</button>
+        </div>
+        <div class="filter-bar">
+          <select id="report-period">
+            <option value="month">This Month</option>
+            <option value="quarter">This Quarter</option>
+            <option value="year">This Year</option>
+            <option value="all">All Time</option>
+          </select>
+          <select id="report-partner">
+            <option value="">All Partners</option>
+          </select>
+          <button class="btn btn-blue btn-sm" onclick="loadReport()">Apply</button>
+        </div>
+        <div class="panel-body">
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Partner</th>
+                  <th>Referral</th>
+                  <th>Payment</th>
+                  <th>Rate</th>
+                  <th>Commission</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="report-tbody"></tbody>
+            </table>
+          </div>
+          <div class="report-totals" id="report-totals" style="display:none;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Manual Payment Tab -->
+    <div class="tab-view" id="view-payments">
+      <div class="panel" style="max-width:600px;">
+        <div class="panel-header">
+          <div class="panel-title">Record Manual Payment</div>
+        </div>
+        <div style="padding:24px;">
+          <div class="field">
+            <label>Partner</label>
+            <select id="pay-partner"></select>
+          </div>
+          <div class="field">
+            <label>Payment Amount ($)</label>
+            <input type="number" id="pay-amount" step="0.01" min="0" placeholder="149.00">
+          </div>
+          <div class="field">
+            <label>Tier</label>
+            <select id="pay-tier">
+              <option value="awakened">Awakened ($149)</option>
+              <option value="partnered">Partnered ($499)</option>
+              <option value="unified">Unified ($999)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Order ID / Description</label>
+            <input type="text" id="pay-order" placeholder="PAYPAL-123 or description">
+          </div>
+          <button class="btn btn-orange" onclick="submitPayment()">Record Payment</button>
+          <div id="pay-result" style="margin-top:12px;font-size:13px;"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Detail Slide Panel -->
+<div class="overlay" id="overlay" onclick="closePanel()"></div>
+<div class="slide-panel" id="detail-panel">
+  <div class="slide-panel-header">
+    <div style="font-weight:700;font-size:16px;" id="panel-name">Partner Detail</div>
+    <button class="slide-panel-close" onclick="closePanel()">&times;</button>
+  </div>
+  <div class="slide-panel-body" id="panel-body"></div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+(function() {
+  'use strict';
+
+  const API_BASE = '/api/referrals';
+  const DIRECT_API = 'https://referrals-api.in0v8.workers.dev';
+  let TOKEN = '';
+  let partners = [];
+
+  // --- Auth ---
+  function doAuth() {
+    const pw = document.getElementById('auth-pw').value;
+    if (pw === 'purebrain-admin-2026') {
+      TOKEN = pw;
+      sessionStorage.setItem('admin-token', pw);
+      document.getElementById('auth-gate').classList.add('hidden');
+      document.getElementById('app').classList.add('visible');
+      init();
+    } else {
+      document.getElementById('auth-err').textContent = 'Invalid password';
+    }
+  }
+  window.doAuth = doAuth;
+
+  document.getElementById('auth-pw').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doAuth();
+  });
+
+  function logout() {
+    sessionStorage.removeItem('admin-token');
+    location.reload();
+  }
+  window.logout = logout;
+
+  // Check stored session
+  const stored = sessionStorage.getItem('admin-token');
+  if (stored === 'purebrain-admin-2026') {
+    TOKEN = stored;
+    document.getElementById('auth-gate').classList.add('hidden');
+    document.getElementById('app').classList.add('visible');
+    setTimeout(init, 50);
+  }
+
+  // --- API Helpers ---
+  async function api(path, opts = {}) {
+    const url = DIRECT_API + path;
+    const headers = { 'Content-Type': 'application/json', 'X-Admin-Token': TOKEN };
+    const res = await fetch(url, { ...opts, headers: { ...headers, ...(opts.headers || {}) } });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err || `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  // --- Tabs ---
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-view').forEach(v => v.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('view-' + tab.dataset.tab).classList.add('active');
+    });
+  });
+
+  // --- Init ---
+  async function init() {
+    await refreshPartners();
+  }
+
+  // --- Partners List ---
+  async function refreshPartners() {
+    try {
+      const data = await api('/admin/partners');
+      partners = (data.partners || []).map(p => ({
+        ...p,
+        name: p.user_name || p.name || '',
+        email: p.user_email || p.email || '',
+        split_config: typeof p.split_config === 'string' ? JSON.parse(p.split_config || '[]') : (p.split_config || []),
+        discount_enabled: !!p.discount_enabled
+      }));
+      renderPartners();
+      renderStats();
+      populatePartnerDropdowns();
+    } catch (e) {
+      showToast('Failed to load partners: ' + e.message, true);
+    }
+  }
+  window.refreshPartners = refreshPartners;
+
+  function renderStats() {
+    const total = partners.length;
+    const elite = partners.filter(p => p.partner_tier === 'elite').length;
+    const standard = total - elite;
+    const totalSales = partners.reduce((s, p) => s + (p.total_sales || 0), 0);
+
+    document.getElementById('partner-stats').innerHTML = `
+      <div class="stat-card"><div class="stat-label">Total Partners</div><div class="stat-value blue">${total}</div></div>
+      <div class="stat-card"><div class="stat-label">Standard Tier</div><div class="stat-value blue">${standard}</div></div>
+      <div class="stat-card"><div class="stat-label">Elite Tier</div><div class="stat-value gold">${elite}</div></div>
+      <div class="stat-card"><div class="stat-label">Total Sales</div><div class="stat-value green">${totalSales}</div></div>
+    `;
+  }
+
+  function renderPartners() {
+    const search = document.getElementById('partner-search').value.toLowerCase();
+    const tierFilter = document.getElementById('partner-tier-filter').value;
+
+    const filtered = partners.filter(p => {
+      if (tierFilter && p.partner_tier !== tierFilter) return false;
+      if (search) {
+        const haystack = `${p.name || ''} ${p.email || ''}`.toLowerCase();
+        if (!haystack.includes(search)) return false;
+      }
+      return true;
+    });
+
+    const tbody = document.getElementById('partner-tbody');
+    if (filtered.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:40px;">No partners found</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = filtered.map(p => `
+      <tr class="clickable" onclick="openPartner(${p.id})">
+        <td style="font-weight:500;">${esc(p.name || 'Unknown')}</td>
+        <td>${esc(p.email || '')}</td>
+        <td style="font-family:monospace;font-size:12px;">${esc(p.referral_code || '')}</td>
+        <td><span class="tier-chip tier-${p.partner_tier || 'standard'}">${p.partner_tier || 'standard'}</span></td>
+        <td>${p.total_sales || 0}</td>
+        <td>${p.discount_enabled ? '<span style="color:var(--green);">ON</span>' : '<span style="color:var(--text-dim);">OFF</span>'}</td>
+        <td><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openPartner(${p.id})">Details</button></td>
+      </tr>
+    `).join('');
+  }
+
+  // Filters
+  document.getElementById('partner-search').addEventListener('input', renderPartners);
+  document.getElementById('partner-tier-filter').addEventListener('change', renderPartners);
+
+  // --- Partner Detail Panel ---
+  function openPartner(id) {
+    const p = partners.find(x => x.id === id);
+    if (!p) return;
+
+    document.getElementById('panel-name').textContent = p.name || 'Partner Detail';
+    document.getElementById('overlay').classList.add('show');
+    document.getElementById('detail-panel').classList.add('open');
+
+    const tierProgress = Math.min((p.total_sales || 0), 100);
+    const tierMax = p.partner_tier === 'elite' ? 20 : (p.partner_tier === 'standard' ? 15 : 15);
+    const splitConfig = p.split_config || [];
+
+    document.getElementById('panel-body').innerHTML = `
+      <div class="section-title" style="border-top:none;padding-top:0;">Partner Info</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
+        <div><span style="color:var(--text-dim);font-size:11px;display:block;">Name</span>${esc(p.name || '')}</div>
+        <div><span style="color:var(--text-dim);font-size:11px;display:block;">Email</span>${esc(p.email || '')}</div>
+        <div><span style="color:var(--text-dim);font-size:11px;display:block;">Code</span><span style="font-family:monospace;">${esc(p.referral_code || '')}</span></div>
+        <div><span style="color:var(--text-dim);font-size:11px;display:block;">Company</span>${esc(p.company || 'N/A')}</div>
+        <div><span style="color:var(--text-dim);font-size:11px;display:block;">Created</span>${p.created_at ? new Date(p.created_at).toLocaleDateString() : 'N/A'}</div>
+        <div><span style="color:var(--text-dim);font-size:11px;display:block;">Total Sales</span>${p.total_sales || 0}</div>
+      </div>
+
+      <div class="section-title">Tier Management</div>
+      <div class="field">
+        <label>Partner Tier</label>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <select id="edit-tier" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 12px;font-size:13px;">
+            <option value="standard" ${p.partner_tier === 'standard' ? 'selected' : ''}>Standard (up to 15%)</option>
+            <option value="elite" ${p.partner_tier === 'elite' ? 'selected' : ''}>Elite (up to 20%)</option>
+          </select>
+          <button class="btn btn-blue btn-sm" onclick="saveTier(${p.id})">Save</button>
+        </div>
+      </div>
+      <div style="margin-bottom:20px;">
+        <span style="font-size:11px;color:var(--text-dim);">Tier Progress: ${p.total_sales || 0} / 100 sales to Elite</span>
+        <div class="progress-bar">
+          <div class="progress-fill ${p.partner_tier === 'elite' ? 'gold' : 'blue'}" style="width:${tierProgress}%"></div>
+        </div>
+      </div>
+
+      <div class="section-title">Discount</div>
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;">
+        <div class="toggle ${p.discount_enabled ? 'on' : ''}" id="discount-toggle" onclick="toggleDiscount(${p.id})"></div>
+        <span style="font-size:13px;">${p.discount_enabled ? 'Enabled' : 'Disabled'}</span>
+        <div class="field" style="margin-bottom:0;flex:1;">
+          <input type="number" id="discount-pct" value="${((p.discount_percentage || 0.10) * 100).toFixed(0)}" min="1" max="25" step="1" style="width:80px;display:inline-block;" placeholder="10">
+          <span style="font-size:12px;color:var(--text-dim);margin-left:4px;">%</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="saveDiscount(${p.id})">Save</button>
+      </div>
+
+      <div class="section-title">Split Configuration</div>
+      <div id="splits-container">
+        ${renderSplitsEditor(splitConfig, p.id)}
+      </div>
+
+      <div class="section-title">Commission History</div>
+      <div id="partner-commissions" style="font-size:12px;color:var(--text-dim);">Loading...</div>
+    `;
+
+    loadPartnerCommissions(p.id);
+  }
+  window.openPartner = openPartner;
+
+  function renderSplitsEditor(splits, partnerId) {
+    let html = '<div id="split-rows">';
+    if (splits.length === 0) {
+      html += renderSplitRow(0, {role:'originator', referrer_id:'', percentage:''});
+    } else {
+      splits.forEach((s, i) => {
+        html += renderSplitRow(i, s);
+      });
+    }
+    html += '</div>';
+    html += `<div style="margin-top:10px;display:flex;gap:8px;">
+      <button class="btn btn-ghost btn-sm" onclick="addSplitRow()">+ Add Row</button>
+      <button class="btn btn-blue btn-sm" onclick="saveSplits(${partnerId})">Save Splits</button>
+    </div>
+    <div style="font-size:11px;color:var(--text-dim);margin-top:6px;">Total must not exceed tier max (Standard: 15%, Elite: 20%)</div>`;
+    return html;
+  }
+
+  function renderSplitRow(idx, s) {
+    const partnerOpts = partners.map(p => `<option value="${p.id}" ${p.id == s.referrer_id ? 'selected' : ''}>${esc(p.name || p.email || 'ID:'+p.id)}</option>`).join('');
+    return `<div class="field-row" data-split-row="${idx}">
+      <div class="field">
+        <select class="split-role">
+          <option value="originator" ${s.role === 'originator' ? 'selected' : ''}>Originator</option>
+          <option value="closer" ${s.role === 'closer' ? 'selected' : ''}>Closer</option>
+          <option value="relationship_manager" ${s.role === 'relationship_manager' ? 'selected' : ''}>RM</option>
+        </select>
+      </div>
+      <div class="field">
+        <input type="text" class="split-referrer-search" list="plist-${idx}" placeholder="Type name..." value="${s.referrer_id ? esc((partners.find(p=>p.id==s.referrer_id)||{}).name||'') : ''}" data-id="${s.referrer_id||''}">
+        <datalist id="plist-${idx}">${partnerOpts}</datalist>
+        <input type="hidden" class="split-referrer" value="${s.referrer_id||''}">
+      </div>
+      <div class="field" style="max-width:80px;">
+        <input type="number" class="split-pct" value="${s.percentage ? (s.percentage > 1 ? s.percentage : Math.round(s.percentage * 100)) : ''}" min="1" max="20" step="0.5" placeholder="%">
+      </div>
+      <button class="btn btn-red btn-sm" onclick="this.closest('.field-row').remove()">X</button>
+    </div>`;
+  }
+
+  function addSplitRow() {
+    const container = document.getElementById('split-rows');
+    const idx = container.querySelectorAll('.field-row').length;
+    container.insertAdjacentHTML('beforeend', renderSplitRow(idx, {role:'originator', referrer_id:'', percentage:''}));
+  }
+  window.addSplitRow = addSplitRow;
+
+  // --- Save Actions ---
+  async function saveTier(id) {
+    const tier = document.getElementById('edit-tier').value;
+    try {
+      await api(`/admin/partners/${id}/tier`, {
+        method: 'PATCH',
+        body: JSON.stringify({ partner_tier: tier })
+      });
+      showToast('Tier updated');
+      await refreshPartners();
+      openPartner(id);
+    } catch (e) {
+      showToast('Error: ' + e.message, true);
+    }
+  }
+  window.saveTier = saveTier;
+
+  async function toggleDiscount(id) {
+    const toggle = document.getElementById('discount-toggle');
+    const isOn = toggle.classList.contains('on');
+    const pct = parseInt(document.getElementById('discount-pct').value) || 10;
+    try {
+      await api(`/admin/partners/${id}/discount`, {
+        method: 'PATCH',
+        body: JSON.stringify({ discount_enabled: !isOn, discount_percentage: pct / 100 })
+      });
+      showToast(isOn ? 'Discount disabled' : 'Discount enabled');
+      await refreshPartners();
+      openPartner(id);
+    } catch (e) {
+      showToast('Error: ' + e.message, true);
+    }
+  }
+  window.toggleDiscount = toggleDiscount;
+
+  async function saveDiscount(id) {
+    const toggle = document.getElementById('discount-toggle');
+    const isOn = toggle.classList.contains('on');
+    const pct = parseInt(document.getElementById('discount-pct').value) || 10;
+    try {
+      await api(`/admin/partners/${id}/discount`, {
+        method: 'PATCH',
+        body: JSON.stringify({ discount_enabled: isOn, discount_percentage: pct / 100 })
+      });
+      showToast('Discount saved');
+      await refreshPartners();
+      openPartner(id);
+    } catch (e) {
+      showToast('Error: ' + e.message, true);
+    }
+  }
+  window.saveDiscount = saveDiscount;
+
+  async function saveSplits(id) {
+    const rows = document.querySelectorAll('#split-rows .field-row');
+    const splits = [];
+    rows.forEach(row => {
+      const role = row.querySelector('.split-role').value;
+      const referrer_id = parseInt(row.querySelector('.split-referrer').value);
+      const pctRaw = parseFloat(row.querySelector('.split-pct').value);
+      const percentage = pctRaw > 1 ? pctRaw / 100 : pctRaw; // Convert 5 → 0.05, leave 0.05 as-is
+      if (referrer_id && percentage) {
+        splits.push({ referrer_id: String(referrer_id), role, percentage });
+      }
+    });
+
+    const partner = partners.find(p => p.id === id);
+    const maxPct = partner && partner.partner_tier === 'elite' ? 0.20 : 0.05;
+    const total = splits.reduce((s, x) => s + x.percentage, 0);
+    if (total > maxPct + 0.001) {
+      showToast(`Total ${(total * 100).toFixed(1)}% exceeds tier max ${(maxPct * 100)}%`, true);
+      return;
+    }
+
+    try {
+      await api(`/admin/partners/${id}/splits`, {
+        method: 'PATCH',
+        body: JSON.stringify({ split_config: splits })
+      });
+      showToast('Splits saved');
+      await refreshPartners();
+      openPartner(id);
+    } catch (e) {
+      showToast('Error: ' + e.message, true);
+    }
+  }
+  window.saveSplits = saveSplits;
+
+  // --- Commission Report ---
+  async function loadReport() {
+    const period = document.getElementById('report-period').value;
+    const partnerId = document.getElementById('report-partner').value;
+    let url = `/admin/commission-report?period=${period}`;
+    if (partnerId) url += `&partner_id=${partnerId}`;
+
+    try {
+      const data = await api(url);
+      const report = data.report || [];
+      const tbody = document.getElementById('report-tbody');
+      const totals = document.getElementById('report-totals');
+
+      if (report.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-dim);padding:40px;">No commission data found</td></tr>';
+        totals.style.display = 'none';
+        return;
+      }
+
+      let totalCommission = 0;
+      let totalPayment = 0;
+
+      tbody.innerHTML = report.map(r => {
+        totalCommission += r.commission_value || 0;
+        totalPayment += r.payment_amount || 0;
+        return `<tr>
+          <td>${r.created_at ? new Date(r.created_at).toLocaleDateString() : 'N/A'}</td>
+          <td>${esc(r.referrer_name || r.partner_name || '')}</td>
+          <td>${esc(r.payer_email || r.client_name || '')}</td>
+          <td>$${(r.payment_amount || 0).toFixed(2)}</td>
+          <td>${((r.commission_rate || 0) * 100).toFixed(1)}%</td>
+          <td style="font-weight:600;color:var(--green);">$${(r.commission_value || 0).toFixed(2)}</td>
+          <td>${esc(r.tier || '')}</td>
+          <td>${esc(r.partner_tier || 'standard')}</td>
+        </tr>`;
+      }).join('');
+
+      totals.innerHTML = `Total: $${totalPayment.toFixed(2)} payments | $${totalCommission.toFixed(2)} commissions | ${report.length} entries`;
+      totals.style.display = 'block';
+    } catch (e) {
+      showToast('Failed to load report: ' + e.message, true);
+    }
+  }
+  window.loadReport = loadReport;
+
+  function exportCSV() {
+    const rows = document.querySelectorAll('#report-tbody tr');
+    if (rows.length === 0) { showToast('No data to export', true); return; }
+
+    let csv = 'Date,Partner,Referral,Payment,Rate,Commission,Role,Status\n';
+    rows.forEach(row => {
+      const cells = row.querySelectorAll('td');
+      csv += Array.from(cells).map(c => '"' + c.textContent.replace(/"/g, '""') + '"').join(',') + '\n';
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'commission-report-' + new Date().toISOString().slice(0,10) + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  window.exportCSV = exportCSV;
+
+  // --- Manual Payment ---
+  async function submitPayment() {
+    const referrer_id = parseInt(document.getElementById('pay-partner').value);
+    const payment_amount = parseFloat(document.getElementById('pay-amount').value);
+    const tier = document.getElementById('pay-tier').value;
+    const order_id = document.getElementById('pay-order').value.trim();
+
+    if (!referrer_id || !payment_amount || !tier) {
+      showToast('Please fill all required fields', true);
+      return;
+    }
+
+    try {
+      const data = await api('/admin/payments/manual', {
+        method: 'POST',
+        body: JSON.stringify({ referrer_id, payment_amount, tier, order_id })
+      });
+      document.getElementById('pay-result').innerHTML = '<span style="color:var(--green);">Payment recorded successfully.</span>';
+      document.getElementById('pay-amount').value = '';
+      document.getElementById('pay-order').value = '';
+      showToast('Payment recorded');
+    } catch (e) {
+      document.getElementById('pay-result').innerHTML = `<span style="color:var(--red);">Error: ${esc(e.message)}</span>`;
+    }
+  }
+  window.submitPayment = submitPayment;
+
+  // --- Partner Commissions in Panel ---
+  async function loadPartnerCommissions(id) {
+    try {
+      const data = await api(`/admin/commission-report?partner_id=${id}`);
+      const report = data.report || [];
+      const el = document.getElementById('partner-commissions');
+      if (report.length === 0) {
+        el.innerHTML = '<div style="padding:8px 0;">No commission history yet.</div>';
+        return;
+      }
+      el.innerHTML = '<table style="width:100%;font-size:12px;"><thead><tr><th>Date</th><th>Amount</th><th>Commission</th><th>Status</th></tr></thead><tbody>' +
+        report.slice(0, 20).map(r => `<tr>
+          <td style="padding:6px 8px;">${r.date ? new Date(r.date).toLocaleDateString() : 'N/A'}</td>
+          <td style="padding:6px 8px;">$${(r.payment_amount || 0).toFixed(2)}</td>
+          <td style="padding:6px 8px;color:var(--green);">$${(r.commission_value || 0).toFixed(2)}</td>
+          <td style="padding:6px 8px;">${r.status || 'pending'}</td>
+        </tr>`).join('') + '</tbody></table>';
+    } catch (e) {
+      document.getElementById('partner-commissions').innerHTML = '<div style="color:var(--red);">Failed to load</div>';
+    }
+  }
+
+  // --- Helpers ---
+  function populatePartnerDropdowns() {
+    const opts = partners.map(p => `<option value="${p.id}">${esc(p.name || p.email || 'ID:'+p.id)}</option>`).join('');
+    document.getElementById('report-partner').innerHTML = '<option value="">All Partners</option>' + opts;
+    document.getElementById('pay-partner').innerHTML = '<option value="">Select partner...</option>' + opts;
+  }
+
+  function closePanel() {
+    document.getElementById('overlay').classList.remove('show');
+    document.getElementById('detail-panel').classList.remove('open');
+  }
+  window.closePanel = closePanel;
+
+  function showToast(msg, isError) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (isError ? ' error' : '');
+    setTimeout(() => t.className = 'toast', 3000);
+  }
+
+  function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+})();
+</script>
+</body>
+</html>
