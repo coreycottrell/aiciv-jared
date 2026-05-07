@@ -1447,6 +1447,220 @@ async function handleContentStats(env, sess) {
   return json({ stats });
 }
 
+// ─── Delete Handlers ────────────────────────────────────
+
+async function handleDelete(env, sess, table, id) {
+  const existing = await env.DB.prepare(
+    `SELECT id FROM ${table} WHERE id = ? AND user_id = ?`
+  ).bind(id, sess.user_id).first();
+  if (!existing) return err(404, "Not found");
+
+  await env.DB.prepare(
+    `DELETE FROM ${table} WHERE id = ? AND user_id = ?`
+  ).bind(id, sess.user_id).run();
+
+  await logActivity(env, sess.user_id, "delete", table, id);
+  return json({ ok: true, deleted: id });
+}
+
+async function handleDeleteJob(env, sess, id) {
+  const existing = await env.DB.prepare(
+    "SELECT id FROM jobs WHERE id = ? AND user_id = ?"
+  ).bind(id, sess.user_id).first();
+  if (!existing) return err(404, "Not found");
+
+  // Delete associated candidates first
+  await env.DB.prepare(
+    "DELETE FROM candidates WHERE job_id = ? AND user_id = ?"
+  ).bind(id, sess.user_id).run();
+
+  await env.DB.prepare(
+    "DELETE FROM jobs WHERE id = ? AND user_id = ?"
+  ).bind(id, sess.user_id).run();
+
+  await logActivity(env, sess.user_id, "delete", "jobs", id);
+  return json({ ok: true, deleted: id });
+}
+
+async function handleDeleteContentCalendar(env, sess, id) {
+  const existing = await env.DB.prepare(
+    "SELECT id FROM content_calendar WHERE id = ? AND user_id = ?"
+  ).bind(id, sess.user_id).first();
+  if (!existing) return err(404, "Not found");
+
+  await env.DB.prepare(
+    "DELETE FROM content_calendar WHERE id = ? AND user_id = ?"
+  ).bind(id, sess.user_id).run();
+
+  await logActivity(env, sess.user_id, "delete", "content_calendar", id);
+  return json({ ok: true, deleted: id });
+}
+
+// ─── Demo Seed ──────────────────────────────────────────
+
+async function handleDemoSeed(env, sess) {
+  const uid = sess.user_id;
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  const inDays = (d) => {
+    const dt = new Date(now);
+    dt.setDate(dt.getDate() + d);
+    return dt.toISOString().split('T')[0];
+  };
+
+  // 3 proposals
+  await env.DB.prepare(
+    "INSERT INTO proposals (user_id, client_name, project_type, scope, pricing, status, brief, ai_draft) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "Maple Ridge Construction", "Consulting", "Complete IT infrastructure review and recommendations for new office build-out. Includes network architecture, security assessment, and vendor evaluation.", 12500, "won", "IT infrastructure consulting for new office construction", "# IT Infrastructure Proposal\n\n## Executive Summary\nWe propose a comprehensive IT infrastructure review for Maple Ridge Construction's new office build-out...\n\n## Scope of Work\n- Network architecture design\n- Security assessment\n- Vendor evaluation and selection\n- Implementation timeline\n\n## Timeline\n6 weeks from project start\n\n## Investment\n$12,500 CAD + HST").run();
+
+  await env.DB.prepare(
+    "INSERT INTO proposals (user_id, client_name, project_type, scope, pricing, status, brief) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "Northern Lights Dental", "Marketing", "Digital marketing strategy including website redesign, SEO audit, and social media content plan for Q3-Q4 2026.", 8000, "sent", "Full digital marketing overhaul for dental practice").run();
+
+  await env.DB.prepare(
+    "INSERT INTO proposals (user_id, client_name, project_type, scope, pricing, status, brief) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "Ottawa Valley Brewing Co.", "Development", "E-commerce platform development with inventory management, online ordering, and delivery zone mapping.", 22000, "draft", "Custom e-commerce platform for craft brewery").run();
+
+  // 2 projects (1 from won proposal, 1 standalone)
+  const proposalRow = await env.DB.prepare(
+    "SELECT id FROM proposals WHERE user_id = ? AND client_name = 'Maple Ridge Construction'"
+  ).bind(uid).first();
+
+  await env.DB.prepare(
+    "INSERT INTO projects (user_id, proposal_id, name, client_name, budget, actual_spend, start_date, end_date, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(uid, proposalRow?.id || null, "Maple Ridge IT Build-Out", "Maple Ridge Construction", 12500, 4200, inDays(-14), inDays(28), "active").run();
+
+  const proj1 = await env.DB.prepare("SELECT id FROM projects WHERE user_id = ? AND name = 'Maple Ridge IT Build-Out'").bind(uid).first();
+
+  await env.DB.prepare(
+    "INSERT INTO projects (user_id, name, client_name, budget, actual_spend, start_date, end_date, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "Office Automation Upgrade", "Internal", 5000, 1800, inDays(-7), inDays(45), "active").run();
+
+  // Milestones for project 1
+  if (proj1) {
+    await env.DB.prepare(
+      "INSERT INTO milestones (project_id, title, due_date, status, notes) VALUES (?, ?, ?, ?, ?)"
+    ).bind(proj1.id, "Network Assessment Complete", inDays(-7), "completed", "Site survey and current infrastructure audit done").run();
+
+    await env.DB.prepare(
+      "INSERT INTO milestones (project_id, title, due_date, status, notes) VALUES (?, ?, ?, ?, ?)"
+    ).bind(proj1.id, "Security Review", inDays(7), "in_progress", "Penetration testing and vulnerability scan").run();
+
+    await env.DB.prepare(
+      "INSERT INTO milestones (project_id, title, due_date, status, notes) VALUES (?, ?, ?, ?, ?)"
+    ).bind(proj1.id, "Vendor Selection", inDays(21), "pending", "Evaluate and select hardware/software vendors").run();
+
+    await env.DB.prepare(
+      "INSERT INTO milestones (project_id, title, due_date, status, notes) VALUES (?, ?, ?, ?, ?)"
+    ).bind(proj1.id, "Final Report & Handoff", inDays(28), "pending", "Deliver final documentation and recommendations").run();
+  }
+
+  // 5 tasks
+  await env.DB.prepare(
+    "INSERT INTO tasks (user_id, title, description, due_date, priority, status, recurrence) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "Follow up with Northern Lights Dental", "Check on proposal status, schedule call if needed", inDays(2), "high", "pending", "none").run();
+
+  await env.DB.prepare(
+    "INSERT INTO tasks (user_id, title, description, due_date, priority, status, recurrence) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "Review monthly financials", "Pull P&L, check AR/AP, update cash flow forecast", inDays(5), "medium", "pending", "monthly").run();
+
+  await env.DB.prepare(
+    "INSERT INTO tasks (user_id, title, description, due_date, priority, status, recurrence) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "Update company website", "Add new case studies and client testimonials", inDays(10), "low", "pending", "none").run();
+
+  await env.DB.prepare(
+    "INSERT INTO tasks (user_id, title, description, due_date, priority, status, recurrence) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "Submit GST/HST filing", "Quarterly GST/HST return due to CRA", inDays(-3), "high", "pending", "quarterly").run();
+
+  await env.DB.prepare(
+    "INSERT INTO tasks (user_id, title, description, due_date, priority, status, recurrence) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "Team standup prep", "Prepare agenda for weekly team sync", inDays(1), "medium", "in_progress", "weekly").run();
+
+  // 2 SOPs
+  await env.DB.prepare(
+    "INSERT INTO sops (user_id, title, content, category) VALUES (?, ?, ?, ?)"
+  ).bind(uid, "Office Opening & Closing Procedure", "## Daily Opening\n1. Disarm security system (code: see manager)\n2. Turn on lights and HVAC\n3. Check phone messages and email\n4. Review daily calendar for meetings\n5. Unlock front entrance at 8:30 AM\n\n## Daily Closing\n1. Lock front entrance\n2. Shut down shared workstations\n3. Turn off lights (leave emergency lighting)\n4. Arm security system\n5. Lock deadbolt on exit", "operations").run();
+
+  await env.DB.prepare(
+    "INSERT INTO sops (user_id, title, content, category) VALUES (?, ?, ?, ?)"
+  ).bind(uid, "New Client Onboarding Checklist", "## Before First Meeting\n- [ ] Send welcome email with company overview\n- [ ] Create client folder in file system\n- [ ] Set up project in management tool\n\n## First Meeting\n- [ ] Review scope of work together\n- [ ] Confirm billing terms and payment schedule\n- [ ] Establish communication preferences\n- [ ] Introduce key team members\n\n## After Meeting\n- [ ] Send meeting notes within 24 hours\n- [ ] Create initial project timeline\n- [ ] Set up recurring check-in meetings\n- [ ] Add to newsletter/update distribution list", "customer-service").run();
+
+  // 2 vendors
+  await env.DB.prepare(
+    "INSERT INTO vendors (user_id, name, contact_email, phone, contract_end, notes) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "Bennett & Associates CPA", "sarah@bennettcpa.ca", "613-555-0142", inDays(180), "Annual retainer for bookkeeping and tax prep. Renewal in Q4.").run();
+
+  await env.DB.prepare(
+    "INSERT INTO vendors (user_id, name, contact_email, phone, contract_end, notes) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "Staples Business Advantage", "orders@staplesba.ca", "1-800-668-4200", inDays(90), "Office supplies and equipment. Volume discount agreement.").run();
+
+  // 3 compliance items
+  await env.DB.prepare(
+    "INSERT INTO compliance_items (user_id, title, deadline, category, status, reminder_days) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "Business Licence Renewal", inDays(45), "Regulatory", "active", 30).run();
+
+  await env.DB.prepare(
+    "INSERT INTO compliance_items (user_id, title, deadline, category, status, reminder_days) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "Commercial General Liability Insurance", inDays(120), "Insurance", "active", 60).run();
+
+  await env.DB.prepare(
+    "INSERT INTO compliance_items (user_id, title, deadline, category, status, reminder_days) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "T2 Corporate Tax Filing", inDays(75), "Financial", "active", 45).run();
+
+  // 2 invoices
+  await env.DB.prepare(
+    "INSERT INTO invoices (user_id, client_name, amount, due_date, status, paid_date, notes) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "Maple Ridge Construction", 6250, inDays(-5), "paid", inDays(-3), "First milestone payment - Network Assessment").run();
+
+  await env.DB.prepare(
+    "INSERT INTO invoices (user_id, client_name, amount, due_date, status, notes) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "Maple Ridge Construction", 6250, inDays(14), "sent", "Second milestone payment - Security Review & Final Report").run();
+
+  // 1 job posting + 2 candidates
+  await env.DB.prepare(
+    "INSERT INTO jobs (user_id, title, description, requirements, salary_range, status) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "Junior IT Consultant", "Join our growing team to help deliver IT consulting projects for SME clients across Eastern Ontario. Mix of on-site and remote work.", "- 1-3 years IT experience\n- CompTIA A+ or equivalent\n- Strong communication skills\n- Valid driver's licence\n- Experience with networking and security a plus", "$45,000 - $55,000", "open").run();
+
+  const jobRow = await env.DB.prepare(
+    "SELECT id FROM jobs WHERE user_id = ? AND title = 'Junior IT Consultant'"
+  ).bind(uid).first();
+
+  if (jobRow) {
+    await env.DB.prepare(
+      "INSERT INTO candidates (user_id, job_id, name, email, phone, resume_text, status, rating, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(uid, jobRow.id, "Alex Chen", "alex.chen@email.com", "613-555-0198", "B.Sc. Computer Science, Carleton University 2024. 2 years helpdesk experience at local MSP. CompTIA A+ certified. Familiar with Cisco networking.", "screening", 4, "Strong technical background, good culture fit from phone screen").run();
+
+    await env.DB.prepare(
+      "INSERT INTO candidates (user_id, job_id, name, email, phone, resume_text, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(uid, jobRow.id, "Priya Sharma", "priya.sharma@email.com", "343-555-0267", "Algonquin College IT diploma 2023. 1 year co-op at federal government IT department. Strong documentation skills.", "applied", "Just applied, needs initial review").run();
+  }
+
+  // 3 content calendar entries
+  await env.DB.prepare(
+    "INSERT INTO content_calendar (user_id, type, title, topic, audience, brand_voice, scheduled_date, channel, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "blog", "5 IT Security Mistakes Canadian SMEs Make", "Common security vulnerabilities in small businesses and how to fix them", "Small business owners, IT managers", "professional", inDays(7), "Website", "draft").run();
+
+  await env.DB.prepare(
+    "INSERT INTO content_calendar (user_id, type, title, topic, audience, brand_voice, scheduled_date, channel, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "social", "Client Success Story: Maple Ridge", "Highlight the IT infrastructure project win and early results", "LinkedIn connections, potential clients", "friendly", inDays(3), "LinkedIn", "scheduled").run();
+
+  await env.DB.prepare(
+    "INSERT INTO content_calendar (user_id, type, title, topic, audience, brand_voice, scheduled_date, channel, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(uid, "newsletter", "Q2 2026 Business Tech Roundup", "Quarterly newsletter with industry trends, tips, and company updates", "Email subscribers, existing clients", "conversational", inDays(14), "Email list", "idea").run();
+
+  await logActivity(env, uid, "demo_seed", "system", 0);
+
+  return json({
+    ok: true,
+    message: "Demo data seeded successfully",
+    seeded: {
+      proposals: 3, projects: 2, milestones: 4, tasks: 5,
+      sops: 2, vendors: 2, compliance: 3, invoices: 2,
+      jobs: 1, candidates: 2, content: 3,
+    },
+  });
+}
+
 // ─── Dashboard ───────────────────────────────────────────
 
 async function handleDashboard(env, sess) {
@@ -1680,6 +1894,45 @@ export default {
         else if (/^\/api\/content\/calendar\/(\d+)$/.test(path) && method === "PUT") {
           const id = parseInt(path.match(/\/api\/content\/calendar\/(\d+)/)[1]);
           response = await handleUpdateContent(request, env, sess, id);
+        }
+
+        // Demo Seed
+        else if (path === "/api/demo/seed" && method === "POST") {
+          response = await handleDemoSeed(env, sess);
+        }
+
+        // Delete endpoints
+        else if (/^\/api\/proposals\/(\d+)$/.test(path) && method === "DELETE") {
+          const id = parseInt(path.match(/\/api\/proposals\/(\d+)/)[1]);
+          response = await handleDelete(env, sess, "proposals", id);
+        }
+        else if (/^\/api\/tasks\/(\d+)$/.test(path) && method === "DELETE") {
+          const id = parseInt(path.match(/\/api\/tasks\/(\d+)/)[1]);
+          response = await handleDelete(env, sess, "tasks", id);
+        }
+        else if (/^\/api\/sops\/(\d+)$/.test(path) && method === "DELETE") {
+          const id = parseInt(path.match(/\/api\/sops\/(\d+)/)[1]);
+          response = await handleDelete(env, sess, "sops", id);
+        }
+        else if (/^\/api\/vendors\/(\d+)$/.test(path) && method === "DELETE") {
+          const id = parseInt(path.match(/\/api\/vendors\/(\d+)/)[1]);
+          response = await handleDelete(env, sess, "vendors", id);
+        }
+        else if (/^\/api\/invoices\/(\d+)$/.test(path) && method === "DELETE") {
+          const id = parseInt(path.match(/\/api\/invoices\/(\d+)/)[1]);
+          response = await handleDelete(env, sess, "invoices", id);
+        }
+        else if (/^\/api\/expenses\/(\d+)$/.test(path) && method === "DELETE") {
+          const id = parseInt(path.match(/\/api\/expenses\/(\d+)/)[1]);
+          response = await handleDelete(env, sess, "expenses", id);
+        }
+        else if (/^\/api\/jobs\/(\d+)$/.test(path) && method === "DELETE") {
+          const id = parseInt(path.match(/\/api\/jobs\/(\d+)/)[1]);
+          response = await handleDeleteJob(env, sess, id);
+        }
+        else if (/^\/api\/content\/calendar\/(\d+)$/.test(path) && method === "DELETE") {
+          const id = parseInt(path.match(/\/api\/content\/calendar\/(\d+)/)[1]);
+          response = await handleDeleteContentCalendar(env, sess, id);
         }
 
         // Projects
