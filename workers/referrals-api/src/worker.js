@@ -38,9 +38,73 @@
 
 const REFERRER_PUBLIC_COLS = [
   "id", "user_name", "user_email", "referral_code",
-  "paypal_email", "created_at"
+  "paypal_email", "created_at", "partner_tier", "total_sales", "split_config"
   // Note: password_hash intentionally excluded.
 ];
+
+/* ---------- tier rate lookup (CTO Edit #2 + SPEC C1/C3) ---------- */
+
+// Authoritative tier→rate map. Source of truth for commission calculations.
+// 'silver' is the new default for /partners/signup (was 'standard' 5%).
+// 'elite' kept for legacy partners (e.g., founder-tier); admin-only.
+const TIER_RATES = Object.freeze({
+  standard: 0.05,   // legacy — 5% — DO NOT assign to new partners
+  silver:   0.15,   // default for new signups (CTO Edit #2 / SPEC C1)
+  gold:     0.17,   // 100+ referrals milestone (SPEC C3)
+  platinum: 0.20,   // 1000+ referrals milestone (SPEC C3)
+  elite:    0.25,   // legacy founder-tier; matches Support Tier numerically
+});
+
+const SUPPORT_TIER_RATE = 0.25; // SPEC E1
+
+function rateForTier(tier) {
+  const t = String(tier || "silver").toLowerCase();
+  return TIER_RATES[t] !== undefined ? TIER_RATES[t] : TIER_RATES.silver;
+}
+
+// Milestone thresholds (SPEC C3)
+function milestoneTier(totalSales) {
+  const n = Number(totalSales) || 0;
+  if (n >= 1000) return "platinum";
+  if (n >= 100)  return "gold";
+  return null; // no milestone reached
+}
+
+// SPEC E1: detect Support Tier subscription via PayPal Plan ID allowlist
+function isSupportTierPlan(planId, env) {
+  if (!planId) return false;
+  const allow = (env.SUPPORT_TIER_PLAN_IDS || "")
+    .split(",").map(s => s.trim()).filter(Boolean);
+  return allow.includes(String(planId).trim());
+}
+
+/**
+ * Constitutional commission formula (SPEC A3 / CTO Edit #1):
+ *   commission = paymentAmount * rate
+ *
+ * NO $35 deduction in Worker — the $35 ops fee is taken in
+ * tools/paypal_auto_split.py at payout time, NOT here.
+ *
+ * SPEC E1: if planId matches SUPPORT_TIER_PLAN_IDS, override to 25%.
+ *
+ * Returns { value, rate, source } where source ∈ {'standard','support_tier'}.
+ */
+function computeCommission({ paymentAmount, partnerTier, planId, env }) {
+  const amt = Number(paymentAmount) || 0;
+  if (isSupportTierPlan(planId, env)) {
+    return {
+      value: Math.round(amt * SUPPORT_TIER_RATE * 100) / 100,
+      rate:  SUPPORT_TIER_RATE,
+      source: "support_tier",
+    };
+  }
+  const rate = rateForTier(partnerTier);
+  return {
+    value: Math.round(amt * rate * 100) / 100,
+    rate,
+    source: "standard",
+  };
+}
 
 /* ---------- helpers ---------- */
 
@@ -161,19 +225,65 @@ export default {
         const body = await parseBody(request);
         if (!body) return err(400, "invalid json");
 
-        const { referrer_id, referral_id, payer_email, order_id, payment_amount, commission_rate, commission_value, tier } = body;
+        const {
+          referrer_id, referral_id, payer_email, order_id,
+          payment_amount,
+          // Legacy: caller can pass pre-computed values (paypal-webhook backwards-compat)
+          commission_rate: legacyRate, commission_value: legacyValue, tier: legacyTier,
+          // New: caller passes plan_id; Worker computes rate via TIER_RATES + Support Tier
+          plan_id,
+        } = body;
         if (!referrer_id || !referral_id) return err(400, "referrer_id and referral_id required");
+
+        // Look up partner_tier for tier_at_write audit + rate computation
+        const refRow = await env.DB.prepare(
+          `SELECT partner_tier FROM referrers WHERE id = ?`
+        ).bind(referrer_id).first();
+        const partner_tier = (refRow && refRow.partner_tier) || legacyTier || "silver";
+
+        // SPEC A3 (CTO Edit #1): commission = paymentAmount * rate. NO $35 deduction here.
+        // The $35 ops fee is taken in tools/paypal_auto_split.py at payout time.
+        // SPEC E1: if plan_id is in SUPPORT_TIER_PLAN_IDS, override to 25%.
+        let commission_value, commission_rate, commission_source;
+        if (legacyValue !== undefined && legacyRate !== undefined) {
+          // Legacy path: caller pre-computed (paypal-webhook with custom logic)
+          commission_value = Number(legacyValue);
+          commission_rate  = Number(legacyRate);
+          commission_source = isSupportTierPlan(plan_id, env) ? "support_tier" : "standard";
+        } else {
+          // New path: Worker computes from payment_amount + partner_tier (+ plan_id)
+          const computed = computeCommission({
+            paymentAmount: payment_amount,
+            partnerTier: partner_tier,
+            planId: plan_id,
+            env,
+          });
+          commission_value = computed.value;
+          commission_rate  = computed.rate;
+          commission_source = computed.source;
+        }
+
+        // CTO Edit #2: tier_at_write MUST be set on every commission_payments INSERT
+        // for safe idempotent retroactive recalc.
+        const tier_at_write = String(partner_tier);
 
         const now = new Date().toISOString();
         const res = await env.DB.prepare(
-          `INSERT INTO commission_payments (referrer_id, referral_id, payer_email, order_id, payment_amount, commission_rate, commission_value, tier, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `INSERT INTO commission_payments
+             (referrer_id, referral_id, payer_email, order_id,
+              payment_amount, commission_rate, commission_value, tier,
+              tier_at_write, commission_source, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            RETURNING *`
         ).bind(
           referrer_id, referral_id,
           payer_email || "", order_id || "",
-          payment_amount || 0, commission_rate || 0, commission_value || 0,
-          tier || "standard", now
+          Number(payment_amount) || 0,
+          commission_rate, commission_value,
+          tier_at_write, // legacy `tier` col mirrors tier_at_write for backwards compat
+          tier_at_write,
+          commission_source,
+          now
         ).all();
         const row = res.results && res.results[0];
         return json({ ok: true, payment: row });
@@ -375,7 +485,8 @@ export default {
         if (!referralId) return err(400, "missing referral_id");
         const { results } = await env.DB.prepare(
           `SELECT id, referrer_id, referral_id, payer_email, order_id,
-                  payment_amount, commission_rate, commission_value, tier, created_at
+                  payment_amount, commission_rate, commission_value, tier,
+                  tier_at_write, commission_source, created_at
              FROM commission_payments
             WHERE referral_id = ?
          ORDER BY created_at DESC`
