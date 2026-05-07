@@ -1028,6 +1028,10 @@ export default {
           email: referrer.user_email,
           name: referrer.user_name,
           paypal_email: referrer.paypal_email,
+          // C1/D2: surface tier + rate for partner dashboard
+          partner_tier: referrer.partner_tier || "silver",
+          tier_rate: rateForTier(referrer.partner_tier),
+          total_sales: referrer.total_sales || 0,
           total_referrals: totalQ.c,
           completed: completedQ.c,
           pending: pendingQ.c,
@@ -1114,11 +1118,25 @@ export default {
           });
         }
 
+        // SPEC D2: parse split_config JSON for frontend renderSplitRows().
+        // Accept array, pre-stringified JSON, or null/empty → []
+        function parseSplit(s) {
+          if (!s) return [];
+          if (Array.isArray(s)) return s;
+          try { return JSON.parse(s); } catch (_e) { return []; }
+        }
+
         const affiliates = (referrers || []).map(r => ({
           id: r.id, name: r.user_name, email: r.user_email, code: r.referral_code,
           paypal_email: r.paypal_email || "", clicks: r.clicks || 0,
           total: r.total || 0, completed: r.completed || 0, pending: r.pending || 0,
           earnings: r.earnings || 0, joined: r.created_at,
+          // SPEC D2 + C1: include partner_tier + split_config in response
+          // so frontend renderSplitRows() can populate split rows.
+          partner_tier: r.partner_tier || "silver",
+          tier_rate: rateForTier(r.partner_tier),
+          total_sales: r.total_sales || 0,
+          split_config: parseSplit(r.split_config),
           history: histMap[r.id] || []
         }));
 
