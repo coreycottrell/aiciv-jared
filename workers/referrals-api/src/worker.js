@@ -203,21 +203,84 @@ export default {
         }
       }
 
+      // ─────────────────────────────────────────────
+      // POST /referrals/complete (SPEC B2 + CTO Q1)
+      //
+      // Two modes:
+      //   1) Admin mode (legacy): { referral_id } → mark existing referral completed.
+      //   2) Public mode (B2):    { pb_ref, payment_id, customer_email, ... }
+      //      → INSERT OR IGNORE pending row (idempotent via UNIQUE INDEX
+      //        uniq_referrals_pbref_payment on (pb_ref, payment_id)).
+      //      Called from PayPal onApprove handlers on /awakened/, /insiders/,
+      //      /partnered/, /unified/, homepage, home-test variants.
+      //      No admin token required — idempotency from UNIQUE INDEX prevents abuse.
+      //
+      // Per CTO Q1: pending row created here (at payment-page onApprove time),
+      // NOT at click-track time. Keeps referral_clicks separate from paid intent.
+      // ─────────────────────────────────────────────
       if (method === "POST" && path === "/referrals/complete") {
-        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
         const body = await parseBody(request);
         if (!body) return err(400, "invalid json");
 
-        const referral_id = body.referral_id;
-        if (!referral_id) return err(400, "referral_id required");
+        // Mode 1: admin legacy path — mark existing referral completed by id
+        if (body.referral_id !== undefined && !body.pb_ref) {
+          if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+          const referral_id = body.referral_id;
+          const now = new Date().toISOString();
+          const res = await env.DB.prepare(
+            `UPDATE referrals SET status = 'completed', completed_at = ? WHERE id = ? RETURNING *`
+          ).bind(now, referral_id).all();
+          const row = res.results && res.results[0];
+          if (!row) return err(404, "referral not found");
+          return json({ ok: true, referral: row, mode: "admin_complete" });
+        }
+
+        // Mode 2: public payment-page POST — INSERT OR IGNORE pending row
+        const pb_ref = String(body.pb_ref || body.referral_code || "").trim().toUpperCase();
+        const payment_id = String(body.payment_id || body.order_id || "").trim();
+        const customer_email = String(body.customer_email || body.email || "").trim().toLowerCase();
+        const referred_name = String(body.referred_name || body.name || customer_email).trim();
+
+        if (!pb_ref) return err(400, "pb_ref required");
+        if (!payment_id) return err(400, "payment_id required");
+        if (!customer_email || !customer_email.includes("@")) return err(400, "customer_email required");
+
+        // Look up referrer by code (must exist for attribution)
+        const referrer = await env.DB.prepare(
+          `SELECT id, referral_code, partner_tier FROM referrers WHERE referral_code = ? COLLATE NOCASE`
+        ).bind(pb_ref).first();
+        if (!referrer) {
+          // Unknown ref code — webhook can still attribute via customer_email separately.
+          return json({ ok: false, error: "unknown_referral_code", pb_ref }, { status: 404 });
+        }
 
         const now = new Date().toISOString();
-        const res = await env.DB.prepare(
-          `UPDATE referrals SET status = 'completed', completed_at = ? WHERE id = ? RETURNING *`
-        ).bind(now, referral_id).all();
-        const row = res.results && res.results[0];
-        if (!row) return err(404, "referral not found");
-        return json({ ok: true, referral: row });
+
+        // INSERT OR IGNORE: UNIQUE INDEX uniq_referrals_pbref_payment makes this idempotent.
+        // CTO Edit #4 / SPEC §3: page reload, network retry, double-click all collapse to 1 row.
+        try {
+          const insertRes = await env.DB.prepare(
+            `INSERT OR IGNORE INTO referrals
+                (referrer_id, referred_email, referred_name, status, created_at, pb_ref, payment_id)
+             VALUES (?, ?, ?, 'pending', ?, ?, ?)
+             RETURNING *`
+          ).bind(
+            referrer.id, customer_email, referred_name, now, pb_ref, payment_id
+          ).all();
+          const row = insertRes.results && insertRes.results[0];
+
+          if (row) {
+            return json({ ok: true, referral: row, idempotent: false, mode: "pending_create" });
+          }
+
+          // INSERT IGNORED → row already exists for (pb_ref, payment_id)
+          const existing = await env.DB.prepare(
+            `SELECT * FROM referrals WHERE pb_ref = ? AND payment_id = ? LIMIT 1`
+          ).bind(pb_ref, payment_id).first();
+          return json({ ok: true, referral: existing, idempotent: true, mode: "pending_create" });
+        } catch (e) {
+          return json({ error: "complete_failed", detail: String(e && e.message || e) }, { status: 500 });
+        }
       }
 
       if (method === "POST" && path === "/commission_payments") {
