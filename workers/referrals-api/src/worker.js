@@ -188,18 +188,61 @@ export default {
 
         const now = new Date().toISOString();
         try {
+          // SPEC C1: NEW upsert rows default to partner_tier='silver' (15%)
+          // Existing rows preserve their partner_tier on conflict.
           const res = await env.DB.prepare(
-            `INSERT INTO referrers (user_name, user_email, referral_code, paypal_email, password_hash, created_at)
-             VALUES (?, ?, ?, ?, '', ?)
+            `INSERT INTO referrers (user_name, user_email, referral_code, paypal_email, password_hash, created_at, partner_tier, total_sales)
+             VALUES (?, ?, ?, ?, '', ?, 'silver', 0)
              ON CONFLICT(user_email) DO UPDATE SET
                user_name    = CASE WHEN referrers.user_name = '' THEN excluded.user_name ELSE referrers.user_name END,
                paypal_email = CASE WHEN referrers.paypal_email = '' THEN excluded.paypal_email ELSE referrers.paypal_email END
-             RETURNING id, user_email, referral_code, user_name, paypal_email, created_at`
+             RETURNING id, user_email, referral_code, user_name, paypal_email, created_at, partner_tier, total_sales`
           ).bind(name, email, code, paypal_email, now).all();
           const row = res.results && res.results[0];
           return json({ ok: true, referrer: row, provisioned: !!row });
         } catch (e) {
           return json({ error: "upsert_failed", detail: String(e && e.message || e) }, { status: 500 });
+        }
+      }
+
+      // ─────────────────────────────────────────────
+      // POST /partners/signup — direct admin signup (SPEC C1)
+      // Default partner_tier='silver' (15%), explicit alternative tiers allowed.
+      // (Public application path is /partners/apply; this is admin-direct provisioning.)
+      // ─────────────────────────────────────────────
+      if (method === "POST" && path === "/partners/signup") {
+        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        const body = await parseBody(request);
+        if (!body) return err(400, "invalid json");
+
+        const email        = String(body.email || "").trim().toLowerCase();
+        const name         = String(body.name || "").trim();
+        const code         = String(body.code || "").trim().toUpperCase();
+        const paypal_email = String(body.paypal_email || "").trim();
+        // SPEC C1: default 'silver' (15%); admin can override
+        const partner_tier = String(body.partner_tier || "silver").toLowerCase();
+
+        if (!email || !email.includes("@")) return err(400, "invalid email");
+        if (!code) return err(400, "code required");
+        if (!TIER_RATES[partner_tier]) {
+          return err(400, `invalid partner_tier (allowed: ${Object.keys(TIER_RATES).join(", ")})`);
+        }
+
+        const now = new Date().toISOString();
+        try {
+          const res = await env.DB.prepare(
+            `INSERT INTO referrers (user_name, user_email, referral_code, paypal_email, password_hash, created_at, partner_tier, total_sales)
+             VALUES (?, ?, ?, ?, '', ?, ?, 0)
+             RETURNING id, user_email, referral_code, user_name, paypal_email, created_at, partner_tier, total_sales`
+          ).bind(name, email, code, paypal_email, now, partner_tier).all();
+          const row = res.results && res.results[0];
+          return json({
+            ok: true,
+            referrer: row,
+            tier_rate: rateForTier(partner_tier),
+          });
+        } catch (e) {
+          return json({ error: "signup_failed", detail: String(e && e.message || e) }, { status: 500 });
         }
       }
 
@@ -399,7 +442,7 @@ export default {
         const body = await parseBody(request);
         if (!body) return err(400, "invalid json");
 
-        const { referrer_id, user_name, user_email, paypal_email } = body;
+        const { referrer_id, user_name, user_email, paypal_email, partner_tier, split_config } = body;
         if (!referrer_id) return err(400, "referrer_id required");
 
         // Build dynamic SET clause for only provided fields
@@ -408,6 +451,17 @@ export default {
         if (user_name !== undefined) { sets.push("user_name = ?"); binds.push(user_name); }
         if (user_email !== undefined) { sets.push("user_email = ?"); binds.push(user_email.trim().toLowerCase()); }
         if (paypal_email !== undefined) { sets.push("paypal_email = ?"); binds.push(paypal_email.trim()); }
+        // SPEC C1: admin can change partner_tier (validated against TIER_RATES)
+        if (partner_tier !== undefined) {
+          const t = String(partner_tier).toLowerCase();
+          if (!TIER_RATES[t]) return err(400, `invalid partner_tier (allowed: ${Object.keys(TIER_RATES).join(", ")})`);
+          sets.push("partner_tier = ?"); binds.push(t);
+        }
+        // SPEC D2: admin can update split_config (accepts array or pre-stringified JSON)
+        if (split_config !== undefined) {
+          const sc = typeof split_config === "string" ? split_config : JSON.stringify(split_config);
+          sets.push("split_config = ?"); binds.push(sc);
+        }
 
         if (sets.length === 0) return err(400, "no fields to update");
 
