@@ -1120,7 +1120,7 @@ def register_routes(app: Flask) -> None:
                             # guess the chat-payment binding via demographics — block, alert, queue.
                             logger.critical(
                                 f'[payment-seed] BLOCKED-NO-MATCH: order={order_id} '
-                                f'payer_email={payer_email} payer_name={payer_name} amount={amount} tier={tier}. '
+                                f'payer_email={payer_email} payer_name={payer_name} amount={_seed_amount} tier={_seed_tier}. '
                                 f'S1-S4 empty; S5 fuzzy fallback disabled. Manual review required.'
                             )
                             try:
@@ -1129,8 +1129,8 @@ def register_routes(app: Flask) -> None:
                                     'order_id': order_id,
                                     'payer_email': payer_email,
                                     'payer_name': payer_name,
-                                    'amount': amount,
-                                    'tier': tier,
+                                    'amount': _seed_amount,
+                                    'tier': _seed_tier,
                                     'session_uuid': _page_session_uuid,
                                     'reason': 'S1-S4 all returned 0; S5 fuzzy fallback disabled per constitutional rule',
                                     'requires_action': 'manual review + manual seed dispatch',
@@ -1150,7 +1150,7 @@ def register_routes(app: Flask) -> None:
                                 )
                                 _tg_msg = (
                                     f"🚨 SEED BLOCKED: order={order_id} "
-                                    f"payer={payer_email} amount=${amount} tier={tier}. "
+                                    f"payer={payer_email} amount=${_seed_amount} tier={_seed_tier}. "
                                     f"S1-S4 all empty; S5 disabled. Manual review required. "
                                     f"See logs/blocked_seeds.jsonl"
                                 )
