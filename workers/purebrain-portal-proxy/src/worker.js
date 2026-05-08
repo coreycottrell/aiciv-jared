@@ -219,7 +219,7 @@ export default {
       // CTO pre-build approved 2026-05-08: HTTP+token (NOT Service Bindings — admin-api deletion ~2 weeks).
       if (
         url.pathname.startsWith('/api/admin/clients') ||
-        url.pathname === '/api/admin/invite' ||
+        url.pathname.startsWith('/api/admin/invite') ||
         url.pathname.startsWith('/api/admin/invites') ||
         url.pathname === '/api/admin/validate-token'
       ) {
