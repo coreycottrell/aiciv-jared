@@ -177,9 +177,9 @@ export default {
       }
       // Admin referral endpoints → referrals-api Worker (D1)
       // SECURITY (2026-05-07, Phase 0 V-11 fix): X-Admin-Token now sourced from
-      // env.ADMIN_TOKEN secret. Previously hardcoded literal `purebrain-admin-2026`
-      // was leaked in git history; that value is being retired via grace-period
-      // rotation in referrals-api ADMIN_TOKENS.
+      // env.ADMIN_TOKEN secret. Previously a hardcoded literal was leaked in git
+      // history; that value was retired 2026-05-08 via removal from ADMIN_TOKENS
+      // CSV in referrals-api after closing the grace period.
       // NOTE: a duplicate of this block was removed in the same commit (it was
       // dead code — the same `if` condition always matched the first block).
       if (url.pathname.startsWith('/api/admin/affiliat') || url.pathname.startsWith('/api/admin/payout') || url.pathname.startsWith('/api/admin/referral/') || url.pathname === '/api/admin/stats') {

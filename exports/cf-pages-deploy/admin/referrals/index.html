@@ -731,7 +731,7 @@ tr:hover td{background:rgba(42,147,193,0.04)}
       }
     };
     if (isStaging) {
-      opts.headers['X-Admin-Token'] = 'purebrain-admin-2026';
+      opts.headers['X-Admin-Token'] = state.token || '';
     } else {
       opts.headers['Authorization'] = 'Bearer ' + state.token;
     }
@@ -780,14 +780,31 @@ tr:hover td{background:rgba(42,147,193,0.04)}
     btn.disabled = true;
     errEl.style.display = 'none';
 
-    if (pw === 'purebrain-admin-2026') {
-      setToken('staging-admin-token');
-      showApp();
-    } else {
+    if (!pw) {
       btn.disabled = false;
-      errEl.textContent = 'Incorrect password';
+      errEl.textContent = 'Enter password';
       errEl.style.display = 'block';
+      return;
     }
+    // Validate password against API (server has authoritative ADMIN_TOKENS allowlist)
+    setToken(pw);
+    fetch('https://referrals-api.in0v8.workers.dev/admin/stats', {
+      headers: { 'X-Admin-Token': pw }
+    }).then(function(r) {
+      if (r.ok) {
+        showApp();
+      } else {
+        logout();
+        btn.disabled = false;
+        errEl.textContent = 'Incorrect password';
+        errEl.style.display = 'block';
+      }
+    }).catch(function() {
+      logout();
+      btn.disabled = false;
+      errEl.textContent = 'Network error';
+      errEl.style.display = 'block';
+    });
   });
 
   document.getElementById('btnLogout').addEventListener('click', logout);
