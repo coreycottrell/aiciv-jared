@@ -206,7 +206,10 @@ async function handleGetClients(request, env, url) {
 }
 
 async function handleUpdateClientByEmail(request, env, clientEmail) {
-  // No auth — internal endpoint (proxy controls access)
+  const { error: authErr, sess } = await requireAuth(request, env);
+  if (authErr) return authErr;
+  if (sess.role !== "leader") return err(403, "leader only");
+
   const body = await request.json();
   const updates = [];
   const params = [];
