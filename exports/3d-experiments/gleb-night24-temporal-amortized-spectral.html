@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Night 24: Temporal Amortized 7-Wavelength Dispersion</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #080a12; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+canvas { display: block; width: 100vw; height: 100vh; }
+#info {
+  position: fixed; top: 16px; left: 16px; color: rgba(255,255,255,0.6);
+  font-size: 12px; z-index: 10; pointer-events: none;
+}
+#fps { position: fixed; top: 16px; right: 16px; color: rgba(42,147,193,0.7); font-size: 11px; z-index: 10; }
+</style>
+</head>
+<body>
+<div id="info">Night 24 Exercise 2: Temporal Amortized Spectral<br>2 wavelengths/frame, 4-frame accumulation, reprojection without motion vectors</div>
+<div id="fps">-- fps</div>
+<canvas id="c"></canvas>
+<script>
+// Night 24 Exercise 2: Production-viable 7-wavelength dispersion
+// Key insight from research: O(n) spectral rendering + temporal reprojection without motion vectors
+// Strategy: render 2 wavelengths per frame, accumulate over 4 frames (7 wavelengths + 1 catch-up)
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+if (!gl) document.body.innerHTML = '<h1 style="color:white;padding:2em">WebGL2 required</h1>';
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio, 1.5);
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Create framebuffers for temporal accumulation (ping-pong)
+function createFBO(w, h) {
+  const fb = gl.createFramebuffer();
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { fb, tex };
+}
+
+let fbo0, fbo1;
+function initFBOs() {
+  fbo0 = createFBO(canvas.width, canvas.height);
+  fbo1 = createFBO(canvas.width, canvas.height);
+}
+initFBOs();
+window.addEventListener('resize', () => { resize(); initFBOs(); });
+
+const vs = `#version 300 es
+in vec2 a;
+void main(){gl_Position=vec4(a,0,1);}`;
+
+// Pass 1: Render 2 wavelengths for current frame
+const fsRender = `#version 300 es
+precision highp float;
+out vec4 O;
+uniform float t;
+uniform vec2 r;
+uniform vec2 mouse;
+uniform int frameIndex; // 0-3, determines which 2 wavelengths to render
+uniform sampler2D prevFrame; // previous accumulated result
+
+#define PI 3.14159265
+
+float sdBrain(vec3 p) {
+  float base = length(p) - 1.0;
+  vec3 sp = p * 3.8;
+  float gyroid = dot(sin(sp), cos(sp.yzx)) * 0.08;
+  float frontal = smoothstep(0.0, 0.8, p.z) * 0.15;
+  float temporal = exp(-4.0 * (p.y + 0.3) * (p.y + 0.3)) * abs(p.x) * 0.2;
+  return base + gyroid - frontal - temporal;
+}
+
+vec3 calcNormal(vec3 p) {
+  vec2 e = vec2(0.001, 0.0);
+  return normalize(vec3(
+    sdBrain(p + e.xyy) - sdBrain(p - e.xyy),
+    sdBrain(p + e.yxy) - sdBrain(p - e.yxy),
+    sdBrain(p + e.yyx) - sdBrain(p - e.yyx)
+  ));
+}
+
+float raymarch(vec3 ro, vec3 rd) {
+  float d = 0.0;
+  for (int i = 0; i < 100; i++) {
+    float h = sdBrain(ro + rd * d);
+    if (abs(h) < 0.0005 || d > 8.0) return abs(h) < 0.0005 ? d : -1.0;
+    d += h * 0.7;
+  }
+  return -1.0;
+}
+
+// Wavelength scheduling: which 2 wavelengths this frame renders
+// Frame 0: λ0(400nm), λ1(450nm)
+// Frame 1: λ2(500nm), λ3(550nm)
+// Frame 2: λ4(600nm), λ5(650nm)
+// Frame 3: λ6(700nm) + blend correction pass
+const float allWavelengths[7] = float[7](0.400, 0.450, 0.500, 0.550, 0.600, 0.650, 0.700);
+
+float cauchyIOR(float lambda) {
+  return 1.5220 + 0.00459 / (lambda * lambda);
+}
+
+vec3 wavelengthToRGB(float lambda) {
+  float t2;
+  vec3 c = vec3(0.0);
+  if (lambda < 0.440) { t2 = (lambda - 0.380) / 0.060; c = vec3(0.3 + 0.7 * (1.0 - t2), 0.0, 1.0); }
+  else if (lambda < 0.490) { t2 = (lambda - 0.440) / 0.050; c = vec3(0.0, t2, 1.0); }
+  else if (lambda < 0.510) { t2 = (lambda - 0.490) / 0.020; c = vec3(0.0, 1.0, 1.0 - t2); }
+  else if (lambda < 0.580) { t2 = (lambda - 0.510) / 0.070; c = vec3(t2, 1.0, 0.0); }
+  else if (lambda < 0.640) { t2 = (lambda - 0.580) / 0.060; c = vec3(1.0, 1.0 - t2, 0.0); }
+  else { t2 = (lambda - 0.640) / 0.060; c = vec3(1.0, 0.0, 0.0); }
+  float edge = 1.0;
+  if (lambda < 0.420) edge = 0.3 + 0.7 * (lambda - 0.380) / 0.040;
+  else if (lambda > 0.680) edge = 0.3 + 0.7 * (0.720 - lambda) / 0.040;
+  return c * clamp(edge, 0.0, 1.0);
+}
+
+vec3 traceWavelength(float lambda, vec3 p, vec3 n, vec3 v, vec3 lightPos) {
+  float ior = cauchyIOR(lambda);
+  vec3 sColor = wavelengthToRGB(lambda);
+
+  vec3 refracted = refract(-v, n, 1.0 / ior);
+  if (length(refracted) < 0.01) refracted = reflect(-v, n);
+
+  // Interior march with extinction
+  vec3 iPos = p - n * 0.01;
+  vec3 trans = vec3(1.0);
+  vec3 scatter = vec3(0.0);
+  vec3 sigmaA = vec3(0.8, 0.4, 0.15);
+  vec3 sigmaS = vec3(0.05, 0.08, 0.12);
+
+  for (int s = 0; s < 30; s++) {
+    iPos += refracted * 0.05;
+    if (sdBrain(iPos) > 0.0) break;
+    vec3 sigmaT = sigmaA + sigmaS;
+    trans *= exp(-sigmaT * 0.05);
+
+    vec3 toL = normalize(lightPos - iPos);
+    float phase = (1.0 - 0.49) / (4.0 * PI * pow(1.0 + 0.49 - 2.0 * 0.7 * dot(refracted, toL), 1.5));
+    scatter += trans * sigmaS * phase * 0.05 * 2.5;
+
+    if (max(max(trans.x, trans.y), trans.z) < 0.01) break;
+  }
+
+  return sColor * (trans * 0.3 + scatter * 2.0);
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * r) / min(r.x, r.y);
+  vec2 screenUV = gl_FragCoord.xy / r;
+
+  float camAngle = t * 0.15 + mouse.x * 2.0;
+  float camPitch = 0.3 + mouse.y * 0.5;
+  vec3 ro = vec3(cos(camAngle) * 3.5, sin(camPitch) * 1.5, sin(camAngle) * 3.5);
+  vec3 fwd = normalize(-ro);
+  vec3 right = normalize(cross(fwd, vec3(0, 1, 0)));
+  vec3 up = cross(right, fwd);
+  vec3 rd = normalize(fwd + uv.x * right + uv.y * up);
+
+  vec3 lightPos = vec3(2.0, 3.0, 2.0);
+
+  // Get previous frame accumulation
+  vec4 prev = texture(prevFrame, screenUV);
+
+  float d = raymarch(ro, rd);
+  vec3 currentContrib = vec3(0.0);
+
+  if (d > 0.0) {
+    vec3 p = ro + rd * d;
+    vec3 n = calcNormal(p);
+    vec3 v = normalize(ro - p);
+
+    // Render 2 wavelengths for this frame
+    int w0 = frameIndex * 2;
+    int w1 = frameIndex * 2 + 1;
+
+    if (w0 < 7) currentContrib += traceWavelength(allWavelengths[w0], p, n, v, lightPos);
+    if (w1 < 7) currentContrib += traceWavelength(allWavelengths[w1], p, n, v, lightPos);
+
+    // Surface effects (only add on frame 0 to avoid 4x brightness)
+    if (frameIndex == 0) {
+      float fresnel = pow(1.0 - max(dot(n, v), 0.0), 5.0);
+      fresnel = 0.04 + 0.96 * fresnel;
+      currentContrib += vec3(0.02, 0.04, 0.06) * fresnel;
+      float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+      currentContrib += vec3(0.165, 0.576, 0.757) * rim * 0.5;
+    }
+  } else {
+    // Ground plane (simplified, only on frame 0)
+    if (frameIndex == 0 && rd.y < -0.001) {
+      float tG = (-1.2 - ro.y) / rd.y;
+      if (tG > 0.0) {
+        vec3 gP = ro + rd * tG;
+        float glow = exp(-length(gP.xz) * 0.5) * 0.05;
+        float angle = atan(gP.z, gP.x);
+        float godRay = pow(max(cos(angle * 3.0), 0.0), 4.0) * exp(-length(gP.xz) * 0.3) * 0.1;
+        currentContrib = vec3(0.01, 0.015, 0.025) + vec3(0.165, 0.576, 0.757) * (glow + godRay);
+      }
+    }
+  }
+
+  // Temporal accumulation with exponential moving average
+  // Blend factor: higher = more responsive but more flicker
+  float blendFactor = (frameIndex == 0) ? 0.15 : 1.0; // Reset blend on frame 0 of new cycle
+
+  // On frame 0, start fresh accumulation; on frames 1-3, add to existing
+  vec3 result;
+  if (frameIndex == 0) {
+    result = currentContrib / 7.0 * 2.0; // 2 wavelengths worth
+  } else {
+    result = prev.rgb + currentContrib / 7.0 * 2.0; // Accumulate
+  }
+
+  // On frame 3, we have all wavelengths - apply final tonemapping
+  if (frameIndex == 3) {
+    result = result / (result + 0.5);
+    result = pow(result, vec3(1.0 / 2.2));
+    vec2 vigUV = gl_FragCoord.xy / r;
+    result *= 1.0 - 0.4 * length(vigUV - 0.5);
+  }
+
+  O = vec4(result, 1.0);
+}`;
+
+// Pass 2: Display (just copy the accumulated result)
+const fsDisplay = `#version 300 es
+precision highp float;
+out vec4 O;
+uniform sampler2D tex;
+uniform vec2 r;
+void main() {
+  O = texture(tex, gl_FragCoord.xy / r);
+}`;
+
+function compileShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+
+function createProgram(fsSrc) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compileShader(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, compileShader(gl.FRAGMENT_SHADER, fsSrc));
+  gl.linkProgram(p);
+  return p;
+}
+
+const progRender = createProgram(fsRender);
+const progDisplay = createProgram(fsDisplay);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+
+let frameCount = 0;
+let mx = 0.0, my = 0.0;
+canvas.addEventListener('mousemove', e => {
+  mx = (e.clientX / window.innerWidth - 0.5) * 2.0;
+  my = (e.clientY / window.innerHeight - 0.5) * 2.0;
+});
+
+let frames = 0, lastFps = performance.now();
+const fpsEl = document.getElementById('fps');
+
+function render(time) {
+  const s = time * 0.001;
+  const fi = frameCount % 4;
+
+  // Ping-pong: read from one, write to other
+  const readFBO = (frameCount % 2 === 0) ? fbo1 : fbo0;
+  const writeFBO = (frameCount % 2 === 0) ? fbo0 : fbo1;
+
+  // Pass 1: Render current wavelengths + accumulate
+  gl.bindFramebuffer(gl.FRAMEBUFFER, writeFBO.fb);
+  gl.useProgram(progRender);
+
+  const aLoc = gl.getAttribLocation(progRender, 'a');
+  gl.enableVertexAttribArray(aLoc);
+  gl.vertexAttribPointer(aLoc, 2, gl.FLOAT, false, 0, 0);
+
+  gl.uniform1f(gl.getUniformLocation(progRender, 't'), s);
+  gl.uniform2f(gl.getUniformLocation(progRender, 'r'), canvas.width, canvas.height);
+  gl.uniform2f(gl.getUniformLocation(progRender, 'mouse'), mx, my);
+  gl.uniform1i(gl.getUniformLocation(progRender, 'frameIndex'), fi);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, readFBO.tex);
+  gl.uniform1i(gl.getUniformLocation(progRender, 'prevFrame'), 0);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  // Pass 2: Display to screen (always show latest accumulation)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.useProgram(progDisplay);
+
+  const aLoc2 = gl.getAttribLocation(progDisplay, 'a');
+  gl.enableVertexAttribArray(aLoc2);
+  gl.vertexAttribPointer(aLoc2, 2, gl.FLOAT, false, 0, 0);
+
+  gl.uniform2f(gl.getUniformLocation(progDisplay, 'r'), canvas.width, canvas.height);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, writeFBO.tex);
+  gl.uniform1i(gl.getUniformLocation(progDisplay, 'tex'), 0);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  frameCount++;
+
+  frames++;
+  if (time - lastFps > 1000) {
+    fpsEl.textContent = Math.round(frames * 1000 / (time - lastFps)) + ' fps';
+    frames = 0; lastFps = time;
+  }
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

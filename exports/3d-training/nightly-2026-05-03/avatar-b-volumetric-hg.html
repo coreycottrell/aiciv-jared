@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Variation B — Volumetric Raymarching with Henyey-Greenstein</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:-apple-system,system-ui,sans-serif;color:#888}
+  #info{position:fixed;top:12px;left:12px;font-size:11px;line-height:1.5;letter-spacing:0.05em;text-transform:uppercase;opacity:0.45;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="info">Variation B · Volumetric raymarching · HG phase function · Beer's law absorption</div>
+<script type="importmap">
+{"imports":{
+  "three":"https://unpkg.com/three@0.158.0/build/three.module.js",
+  "three/addons/":"https://unpkg.com/three@0.158.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0, 0, 1);
+
+// Fullscreen quad — the volumetric sphere is raymarched in the fragment shader
+const volMaterial = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime:        { value: 0 },
+    uResolution:  { value: new THREE.Vector2(innerWidth, innerHeight) },
+    uAniso:       { value: 0.55 },        // HG g — forward scattering bias
+    uAbsorption:  { value: 0.7 },         // Beer's law coefficient
+    uDensityScale:{ value: 1.4 },         // overall opacity
+    uMarchSize:   { value: 0.04 },        // primary raymarch step
+    uLightSteps:  { value: 6 },           // light raymarch steps
+    uColorA:      { value: new THREE.Color('#2a93c1') },  // PureBrain blue (deep)
+    uColorB:      { value: new THREE.Color('#f1420b') },  // PureBrain orange (rim)
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main(){
+      vUv = uv;
+      gl_Position = vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    precision highp float;
+    varying vec2 vUv;
+    uniform float uTime;
+    uniform vec2  uResolution;
+    uniform float uAniso;
+    uniform float uAbsorption;
+    uniform float uDensityScale;
+    uniform float uMarchSize;
+    uniform int   uLightSteps;
+    uniform vec3  uColorA;
+    uniform vec3  uColorB;
+
+    #define PI 3.14159265359
+    #define MAX_STEPS 64
+
+    // 3D simplex-style hash noise (cheap)
+    float hash(vec3 p){
+      p = fract(p * vec3(443.8975, 397.2973, 491.1871));
+      p += dot(p, p.yxz + 19.19);
+      return fract(p.x * p.y * p.z);
+    }
+    float noise(vec3 p){
+      vec3 i = floor(p);
+      vec3 f = fract(p);
+      f = f*f*(3.0 - 2.0*f);
+      float n = mix(
+        mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x),
+            mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+        mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+            mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y),
+        f.z);
+      return n;
+    }
+    float fbm(vec3 p){
+      float v = 0.0;
+      float a = 0.5;
+      for (int i = 0; i < 4; i++){
+        v += a * noise(p);
+        p *= 2.05;
+        a *= 0.5;
+      }
+      return v;
+    }
+
+    // Sphere SDF + density modulation
+    float volumeDensity(vec3 p){
+      float r = length(p);
+      float shell = smoothstep(1.0, 0.5, r);          // soft sphere shell
+      vec3  q = p * 2.4 + vec3(0.0, uTime * 0.18, uTime * 0.05);
+      float n = fbm(q);
+      // Carve clouds inside the shell
+      float d = shell * smoothstep(0.45, 0.85, n);
+      return d * uDensityScale;
+    }
+
+    // Henyey-Greenstein phase function
+    float phaseHG(float g, float mu){
+      float gg = g * g;
+      return (1.0 / (4.0 * PI)) * ((1.0 - gg) / pow(1.0 + gg - 2.0 * g * mu, 1.5));
+    }
+
+    float beersLaw(float dist, float absorption){
+      return exp(-dist * absorption);
+    }
+
+    // Light march toward a fixed sun direction — accumulates shadow density
+    float lightMarch(vec3 p, vec3 lightDir){
+      float stepLen = 0.12;
+      float total = 0.0;
+      vec3 q = p;
+      for (int i = 0; i < 6; i++){
+        q += lightDir * stepLen;
+        total += volumeDensity(q) * stepLen;
+      }
+      return beersLaw(total, uAbsorption);
+    }
+
+    // Ray-sphere intersection (return near, far)
+    vec2 raySphere(vec3 ro, vec3 rd, float radius){
+      float b = dot(ro, rd);
+      float c = dot(ro, ro) - radius * radius;
+      float h = b*b - c;
+      if (h < 0.0) return vec2(-1.0);
+      h = sqrt(h);
+      return vec2(-b - h, -b + h);
+    }
+
+    void main(){
+      vec2 uv = (gl_FragCoord.xy / uResolution.xy) * 2.0 - 1.0;
+      uv.x *= uResolution.x / uResolution.y;
+
+      // Build camera ray
+      vec3 ro = vec3(0.0, 0.0, 3.0);
+      vec3 rd = normalize(vec3(uv, -1.5));
+
+      // Sun position (slightly upper-right)
+      vec3 lightDir = normalize(vec3(0.6, 0.7, 0.5));
+      float mu = dot(rd, lightDir);
+      float phase = phaseHG(uAniso, mu);
+
+      // Find sphere intersection (radius slightly larger than density shell)
+      vec2 hit = raySphere(ro, rd, 1.2);
+      vec3 col = vec3(0.04, 0.04, 0.06);  // dark ambient bg
+
+      if (hit.x > 0.0){
+        float t = max(hit.x, 0.0);
+        float tEnd = hit.y;
+        float transmittance = 1.0;
+        vec3  accLight = vec3(0.0);
+
+        for (int i = 0; i < MAX_STEPS; i++){
+          if (t >= tEnd) break;
+          vec3 p = ro + rd * t;
+          float d = volumeDensity(p);
+          if (d > 0.001){
+            float lt = lightMarch(p, lightDir);
+            // Color by light-direction agreement: lit faces blue, dark faces orange rim
+            vec3 sampleColor = mix(uColorB, uColorA, smoothstep(0.0, 1.0, lt));
+            accLight += transmittance * d * uMarchSize * lt * phase * sampleColor * 18.0;
+            transmittance *= beersLaw(d * uMarchSize, uAbsorption);
+            if (transmittance < 0.01) break;
+          }
+          t += uMarchSize;
+        }
+        col = mix(col, accLight, 1.0 - transmittance);
+        // Add an emissive core glow (centered at origin)
+        float core = exp(-length(uv) * 4.0) * 0.18;
+        col += core * uColorA;
+      }
+
+      // Subtle vignette
+      float vig = smoothstep(1.6, 0.4, length(uv));
+      col *= 0.65 + 0.35 * vig;
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `,
+  depthTest: false, depthWrite: false
+});
+
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), volMaterial);
+scene.add(quad);
+
+// Bloom pulls highlights into atmospheric glow
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.7, 0.9, 0.6);
+composer.addPass(bloom);
+
+addEventListener('resize', () => {
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+  volMaterial.uniforms.uResolution.value.set(innerWidth, innerHeight);
+});
+
+const clock = new THREE.Clock();
+function animate(){
+  const t = clock.getElapsedTime();
+  volMaterial.uniforms.uTime.value = t;
+  // Modulate anisotropy slightly — breathes the scattering quality
+  volMaterial.uniforms.uAniso.value = 0.55 + Math.sin(t * 0.4) * 0.1;
+  composer.render();
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
+</body>
+</html>

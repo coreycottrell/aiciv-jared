@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Avatar v3 — Caustic Light (Gleb Training 2026-05-05)</title>
+<style>
+  html,body{margin:0;height:100%;background:#060606;overflow:hidden;font-family:system-ui,sans-serif;color:#fff}
+  #info{position:fixed;left:14px;bottom:12px;font-size:11px;letter-spacing:.04em;color:#7f8c97;z-index:10}
+  #info b{color:#2a93c1}
+</style>
+</head>
+<body>
+<div id="info"><b>v3</b> · Caustic Light · voronoi 3x3 cell search, projected onto figure</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script>
+// ==========================================================================
+// Avatar v3 — Caustic Light (focus: voronoi caustic projection on figure)
+// Notes from study (2026-05-05):
+//  - Book of Shaders Ch.12 — voronoi via 3x3 cell-neighbor search.
+//    `random2(i_st)` -> minimum distance -> distance field.
+//  - For caustics: take m_dist, invert with 1.0-m_dist, raise to power
+//    (pow(x, 8.0)) to get sharp caustic LINES instead of soft cells.
+//  - Sangil Lee 2025: edge-based voronoi (perpendicular bisector) gives
+//    cleaner caustic edges — but for a 30min sketch the 3x3 power-of-dist
+//    method is the right tradeoff.
+//  - Project caustics in WORLD space (not UV) so the figure swims through
+//    the light field as it rotates — this is the move that sells it.
+// ==========================================================================
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050810);
+
+const camera = new THREE.PerspectiveCamera(40, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0, 0.4, 4.6);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+document.body.appendChild(renderer.domElement);
+
+// --- Caustic shader material (the centerpiece) -----------------------------
+// Applied to the figure — it's a base PBR-ish reflection PLUS additive caustic
+// projected from above in world space.
+const causticMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 },
+    uCausticScale: { value: 4.5 },
+    uCausticSharp: { value: 8.0 },     // power exponent — higher = sharper
+    uCausticIntensity: { value: 1.4 },
+    uColorA: { value: new THREE.Color(0x2a93c1) },  // PureBrain blue
+    uColorB: { value: new THREE.Color(0xeaf6ff) },  // cool white
+    uBaseColor: { value: new THREE.Color(0x080d18) }
+  },
+  vertexShader: `
+    varying vec3 vWorldPos;
+    varying vec3 vNormalW;
+    void main(){
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      vWorldPos = wp.xyz;
+      vNormalW = normalize(mat3(modelMatrix) * normal);
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    uniform float uCausticScale;
+    uniform float uCausticSharp;
+    uniform float uCausticIntensity;
+    uniform vec3 uColorA;
+    uniform vec3 uColorB;
+    uniform vec3 uBaseColor;
+    varying vec3 vWorldPos;
+    varying vec3 vNormalW;
+
+    vec2 random2(vec2 p){
+      return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453);
+    }
+
+    // Voronoi 3x3 cell search — Book of Shaders Ch.12
+    // Returns (minDist, secondMinDist) — second helps with edge sharpness
+    vec2 voronoi(vec2 st){
+      vec2 i_st = floor(st);
+      vec2 f_st = fract(st);
+      float m1 = 1.0, m2 = 1.0;
+      for(int y = -1; y <= 1; y++){
+        for(int x = -1; x <= 1; x++){
+          vec2 neighbor = vec2(float(x), float(y));
+          vec2 point = random2(i_st + neighbor);
+          // animate cell points — gives flowing caustic motion
+          point = 0.5 + 0.5 * sin(uTime * 0.8 + 6.2831 * point);
+          vec2 diff = neighbor + point - f_st;
+          float d = length(diff);
+          if(d < m1){ m2 = m1; m1 = d; } else if(d < m2){ m2 = d; }
+        }
+      }
+      return vec2(m1, m2);
+    }
+
+    // Sample caustics at a world-space slice — project from above (Y axis)
+    float causticField(vec3 worldPos){
+      // Two scrolling layers, slightly different scales — kills repetition
+      vec2 uv1 = worldPos.xz * uCausticScale + uTime * 0.15;
+      vec2 uv2 = worldPos.xz * uCausticScale * 1.7 - uTime * 0.21;
+      vec2 v1 = voronoi(uv1);
+      vec2 v2 = voronoi(uv2);
+      // Caustic sharpness: invert distance + power
+      float c1 = pow(1.0 - v1.x, uCausticSharp);
+      float c2 = pow(1.0 - v2.x, uCausticSharp * 0.7);
+      // Edge term — cleaner caustic lines (Sangil Lee 2025 inspiration)
+      float edge1 = smoothstep(0.0, 0.05, v1.y - v1.x);
+      return (c1 * 0.65 + c2 * 0.45) * edge1;
+    }
+
+    void main(){
+      vec3 N = normalize(vNormalW);
+      vec3 V = normalize(cameraPosition - vWorldPos);
+      float NdotV = clamp(dot(N, V), 0.0, 1.0);
+      float fresnel = pow(1.0 - NdotV, 3.0);
+
+      // Caustic projected from "above" — sample with a slight normal-offset
+      // so the field "drapes" the figure rather than slicing flat through it
+      vec3 sampPos = vWorldPos + N * 0.15;
+      float caustic = causticField(sampPos);
+
+      // Top-down attenuation — caustic strongest on upward-facing surfaces
+      float topMask = smoothstep(-0.3, 0.9, N.y);
+
+      // Color the caustic — bright cool white with brand-blue underbody
+      vec3 causticCol = mix(uColorA, uColorB, smoothstep(0.0, 0.6, caustic));
+
+      vec3 col = uBaseColor;
+      col += uColorA * 0.18 * fresnel;                          // brand rim
+      col += causticCol * caustic * topMask * uCausticIntensity; // primary caustic
+      col += uColorA * caustic * (1.0 - topMask) * 0.3;         // soft underbelly bounce
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `
+});
+
+// Figure: torus knot reads as "abstract avatar form" — complex topology
+// makes the caustic projection vary dramatically with rotation
+const figureGeo = new THREE.TorusKnotGeometry(0.85, 0.30, 200, 32, 2, 3);
+const figure = new THREE.Mesh(figureGeo, causticMat);
+scene.add(figure);
+
+// Floor plane catches caustic too — gives spatial anchor
+const floorMat = new THREE.ShaderMaterial({
+  uniforms: causticMat.uniforms,  // share same caustic field
+  vertexShader: causticMat.vertexShader,
+  fragmentShader: `
+    uniform float uTime;
+    uniform float uCausticScale;
+    uniform float uCausticSharp;
+    uniform vec3 uColorA;
+    uniform vec3 uColorB;
+    varying vec3 vWorldPos;
+    varying vec3 vNormalW;
+
+    vec2 random2(vec2 p){
+      return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453);
+    }
+    vec2 voronoi(vec2 st){
+      vec2 i_st = floor(st); vec2 f_st = fract(st);
+      float m1 = 1.0, m2 = 1.0;
+      for(int y=-1;y<=1;y++) for(int x=-1;x<=1;x++){
+        vec2 nb = vec2(float(x), float(y));
+        vec2 p = random2(i_st + nb);
+        p = 0.5 + 0.5 * sin(uTime * 0.8 + 6.2831 * p);
+        float d = length(nb + p - f_st);
+        if(d < m1){ m2 = m1; m1 = d; } else if(d < m2){ m2 = d; }
+      }
+      return vec2(m1, m2);
+    }
+
+    void main(){
+      vec2 uv1 = vWorldPos.xz * uCausticScale + uTime * 0.15;
+      vec2 uv2 = vWorldPos.xz * uCausticScale * 1.7 - uTime * 0.21;
+      vec2 v1 = voronoi(uv1); vec2 v2 = voronoi(uv2);
+      float c = pow(1.0 - v1.x, uCausticSharp) * 0.7 + pow(1.0 - v2.x, uCausticSharp*0.7) * 0.4;
+      // radial fade so floor doesn't reach forever
+      float r = length(vWorldPos.xz);
+      float fade = smoothstep(8.0, 1.5, r);
+      vec3 col = vec3(0.01) + mix(uColorA, uColorB, smoothstep(0.0, 0.5, c)) * c * 0.9 * fade;
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `,
+  transparent: false
+});
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(20, 20, 1, 1), floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = -1.6;
+scene.add(floor);
+
+// --- Postprocessing: caustic peaks should bloom strongly -------------------
+const composer = new THREE.EffectComposer(renderer);
+composer.addPass(new THREE.RenderPass(scene, camera));
+const bloom = new THREE.UnrealBloomPass(
+  new THREE.Vector2(innerWidth, innerHeight),
+  0.85,    // strong — caustic peaks ARE the visual story
+  0.9,
+  0.45     // low threshold — let caustic lines feed bloom
+);
+composer.addPass(bloom);
+
+const clock = new THREE.Clock();
+function animate(){
+  const t = clock.getElapsedTime();
+  causticMat.uniforms.uTime.value = t;
+  figure.rotation.y = t * 0.25;
+  figure.rotation.x = Math.sin(t * 0.4) * 0.15;
+  composer.render();
+  requestAnimationFrame(animate);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

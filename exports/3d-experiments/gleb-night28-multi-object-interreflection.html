@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 28 Ex.2: Multi-Object Glass Interreflection</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #080a12; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  .info { position: fixed; top: 16px; left: 16px; color: rgba(255,255,255,0.5); font: 12px/1.4 monospace; z-index: 10; pointer-events: none; }
+  #fps { position: fixed; top: 16px; right: 16px; color: rgba(42,147,193,0.6); font: 11px monospace; z-index: 10; }
+</style>
+</head>
+<body>
+<div class="info">Night 28 / Exercise 2<br>Multi-Object Glass Interreflection<br>3 glass objects casting colored light on each other + ground<br>Per-object IOR + absorption color</div>
+<div id="fps">--</div>
+<canvas id="c"></canvas>
+<script>
+// Night 28 Exercise 2: Multi-Object Glass Scene
+// Techniques:
+// 1. Three distinct glass objects with different IOR and absorption
+// 2. Inter-object caustics: light refracted through one hits another
+// 3. Color-coded absorption: blue orb, orange torus, cyan lens
+// 4. Shared ground plane collecting all caustic patterns
+// 5. Secondary bounce approximation (one extra refraction step)
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
+if (!gl) { document.body.innerHTML = '<p style="color:#fff;padding:40px">WebGL2 required</p>'; throw ''; }
+
+let W, H;
+function resize() {
+    const dpr = Math.min(devicePixelRatio, 1.5);
+    W = canvas.width = innerWidth * dpr | 0;
+    H = canvas.height = innerHeight * dpr | 0;
+    gl.viewport(0, 0, W, H);
+}
+resize();
+addEventListener('resize', resize);
+
+let mx = 0.5, my = 0.5;
+addEventListener('mousemove', e => { mx = e.clientX / innerWidth; my = e.clientY / innerHeight; });
+
+const vs = `#version 300 es
+in vec2 p;
+void main() { gl_Position = vec4(p, 0, 1); }`;
+
+const fs = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform float t;
+uniform vec2 mouse;
+uniform vec2 res;
+
+#define PI 3.14159265
+
+// -- Noise --
+float hash(vec3 p) {
+    p = fract(p * vec3(443.897, 397.297, 491.187));
+    p += dot(p, p.yzx + 19.19);
+    return fract((p.x + p.y) * p.z);
+}
+
+float noise3(vec3 p) {
+    vec3 i = floor(p), f = fract(p);
+    f = f*f*(3.0-2.0*f);
+    float a = hash(i), b = hash(i+vec3(1,0,0)),
+          c = hash(i+vec3(0,1,0)), d = hash(i+vec3(1,1,0)),
+          e = hash(i+vec3(0,0,1)), f2= hash(i+vec3(1,0,1)),
+          g = hash(i+vec3(0,1,1)), h = hash(i+vec3(1,1,1));
+    return mix(mix(mix(a,b,f.x),mix(c,d,f.x),f.y),
+               mix(mix(e,f2,f.x),mix(g,h,f.x),f.y), f.z);
+}
+
+// -- SDFs --
+float sdSphere(vec3 p, float r) { return length(p) - r; }
+float sdTorus(vec3 p, vec2 t2) { vec2 q = vec2(length(p.xz) - t2.x, p.y); return length(q) - t2.y; }
+float sdRoundBox(vec3 p, vec3 b, float r) { vec3 q = abs(p) - b; return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0) - r; }
+
+// Object positions (orbiting slowly)
+vec3 objPos(int id) {
+    float a = float(id) * 2.094 + t * 0.15;
+    float r = 1.6;
+    float y = sin(t * 0.3 + float(id) * 1.5) * 0.2;
+    return vec3(sin(a) * r, y, cos(a) * r);
+}
+
+// Scene with 3 objects + ground
+struct Hit { float d; int id; };
+
+Hit scene(vec3 p) {
+    Hit h = Hit(1e9, -1);
+
+    // Object 0: Blue glass sphere (PureBrain blue)
+    vec3 p0 = p - objPos(0);
+    float d0 = sdSphere(p0, 0.55);
+    if (d0 < h.d) { h.d = d0; h.id = 0; }
+
+    // Object 1: Orange glass torus
+    vec3 p1 = p - objPos(1);
+    // Tilt torus
+    float ta = t * 0.2;
+    float cs = cos(ta), sn = sin(ta);
+    p1.yz = mat2(cs, -sn, sn, cs) * p1.yz;
+    float d1 = sdTorus(p1, vec2(0.4, 0.18));
+    if (d1 < h.d) { h.d = d1; h.id = 1; }
+
+    // Object 2: Cyan glass lens (rounded box, thin)
+    vec3 p2 = p - objPos(2);
+    float ta2 = t * 0.15 + 1.0;
+    float cs2 = cos(ta2), sn2 = sin(ta2);
+    p2.xy = mat2(cs2, -sn2, sn2, cs2) * p2.xy;
+    float d2 = sdRoundBox(p2, vec3(0.5, 0.5, 0.08), 0.06);
+    if (d2 < h.d) { h.d = d2; h.id = 2; }
+
+    // Ground
+    float ground = p.y + 1.5;
+    if (ground < h.d) { h.d = ground; h.id = 3; }
+
+    return h;
+}
+
+float sceneDist(vec3 p) { return scene(p).d; }
+
+vec3 calcNormal(vec3 p) {
+    vec2 e = vec2(0.001, 0.0);
+    return normalize(vec3(
+        sceneDist(p+e.xyy) - sceneDist(p-e.xyy),
+        sceneDist(p+e.yxy) - sceneDist(p-e.yxy),
+        sceneDist(p+e.yyx) - sceneDist(p-e.yyx)
+    ));
+}
+
+// Material properties per object
+vec3 getAbsorption(int id) {
+    if (id == 0) return vec3(0.8, 0.2, 0.1);   // absorbs red -> transmits blue
+    if (id == 1) return vec3(0.1, 0.5, 0.9);   // absorbs blue -> transmits orange
+    return vec3(0.5, 0.1, 0.15);                // absorbs red somewhat -> transmits cyan
+}
+
+float getIOR(int id) {
+    if (id == 0) return 1.52;  // crown glass
+    if (id == 1) return 1.62;  // flint glass
+    return 1.45;               // optical glass
+}
+
+vec3 getColor(int id) {
+    if (id == 0) return vec3(0.165, 0.576, 0.757); // PureBrain blue
+    if (id == 1) return vec3(0.945, 0.259, 0.043); // PureBrain orange
+    return vec3(0.2, 0.8, 0.9);                    // cyan
+}
+
+// Thin-film for iridescence
+vec3 thinFilm(float cosTheta, float thickness, float ior) {
+    float delta = 2.0 * ior * thickness * cosTheta;
+    return vec3(
+        0.5 + 0.5 * cos(2.0 * PI * delta / 0.650),
+        0.5 + 0.5 * cos(2.0 * PI * delta / 0.532),
+        0.5 + 0.5 * cos(2.0 * PI * delta / 0.473)
+    );
+}
+
+void main() {
+    vec2 p = (gl_FragCoord.xy - res * 0.5) / min(res.x, res.y) * 2.0;
+
+    float camAngle = t * 0.1 + (mouse.x - 0.5) * 2.0;
+    float camY = 1.2 + (mouse.y - 0.5) * 1.5;
+    vec3 ro = vec3(sin(camAngle) * 5.0, camY, cos(camAngle) * 5.0);
+    vec3 target = vec3(0, -0.2, 0);
+    vec3 fwd = normalize(target - ro);
+    vec3 right = normalize(cross(fwd, vec3(0,1,0)));
+    vec3 up = cross(right, fwd);
+    vec3 rd = normalize(fwd + p.x * right + p.y * up);
+
+    vec3 light1 = vec3(2.0, 3.0, 1.5);
+    vec3 light2 = vec3(-1.5, 2.0, -2.5);
+
+    vec3 col = vec3(0.0);
+
+    // Primary raymarch
+    float tRay = 0.0;
+    Hit hit;
+    for (int i = 0; i < 100; i++) {
+        hit = scene(ro + rd * tRay);
+        if (abs(hit.d) < 0.001) break;
+        if (tRay > 20.0) { hit.id = -1; break; }
+        tRay += hit.d * 0.8;
+    }
+
+    if (hit.id >= 0 && hit.id < 3) {
+        // Glass object hit
+        vec3 pos = ro + rd * tRay;
+        vec3 N = calcNormal(pos);
+        vec3 V = normalize(ro - pos);
+        int id = hit.id;
+
+        float ior = getIOR(id);
+        vec3 absCoeff = getAbsorption(id);
+        vec3 objCol = getColor(id);
+
+        // Fresnel (Schlick)
+        float cosI = max(dot(N, V), 0.0);
+        float f0 = pow((ior - 1.0) / (ior + 1.0), 2.0);
+        float fresnel = f0 + (1.0 - f0) * pow(1.0 - cosI, 5.0);
+
+        // Reflection
+        vec3 reflDir = reflect(-V, N);
+        // Trace reflection for inter-object bounce
+        float reflT = 0.0;
+        Hit reflHit;
+        vec3 reflCol = vec3(0.02, 0.04, 0.08); // dark env default
+        for (int i = 0; i < 60; i++) {
+            reflHit = scene(pos + N * 0.01 + reflDir * reflT);
+            if (abs(reflHit.d) < 0.002) break;
+            if (reflT > 10.0) { reflHit.id = -1; break; }
+            reflT += reflHit.d;
+        }
+        if (reflHit.id >= 0 && reflHit.id < 3 && reflHit.id != id) {
+            // Reflected another glass object: pick up its color
+            vec3 reflPos = pos + N * 0.01 + reflDir * reflT;
+            vec3 reflN = calcNormal(reflPos);
+            float reflFresnel = pow(1.0 - max(dot(reflN, -reflDir), 0.0), 5.0);
+            reflCol = getColor(reflHit.id) * (0.3 + reflFresnel * 0.5);
+        } else if (reflHit.id == 3) {
+            // Reflected ground
+            reflCol = vec3(0.01, 0.015, 0.02);
+        } else {
+            // Sky gradient
+            float sky = reflDir.y * 0.5 + 0.5;
+            reflCol = mix(vec3(0.02, 0.03, 0.06), vec3(0.04, 0.08, 0.14), sky);
+        }
+
+        // Refraction with Beer-Lambert
+        vec3 refrDir = refract(-V, N, 1.0 / ior);
+        if (length(refrDir) < 0.01) refrDir = reflect(-V, N);
+
+        // Interior march
+        float intDist = 0.0;
+        for (int j = 0; j < 30; j++) {
+            vec3 ip = pos - N * 0.005 + refrDir * intDist;
+            float id2 = sceneDist(ip);
+            if (id2 > 0.001) break;
+            intDist += max(abs(id2), 0.005) * 0.8;
+        }
+        vec3 absorbed = exp(-absCoeff * intDist);
+
+        // Exit refraction: trace what's behind
+        vec3 exitPos = pos - N * 0.005 + refrDir * intDist;
+        vec3 exitN = -calcNormal(exitPos);
+        vec3 exitRay = refract(refrDir, exitN, ior);
+        if (length(exitRay) < 0.01) exitRay = reflect(refrDir, exitN);
+
+        // Trace exit ray for inter-object transmission (secondary bounce)
+        float exitT = 0.0;
+        Hit exitHit;
+        vec3 transCol = vec3(0.0);
+        for (int i = 0; i < 50; i++) {
+            exitHit = scene(exitPos + exitN * 0.01 + exitRay * exitT);
+            if (abs(exitHit.d) < 0.002) break;
+            if (exitT > 10.0) { exitHit.id = -1; break; }
+            exitT += exitHit.d;
+        }
+        if (exitHit.id >= 0 && exitHit.id < 3 && exitHit.id != id) {
+            // Light passed through one object and hit another
+            vec3 hitPos2 = exitPos + exitN * 0.01 + exitRay * exitT;
+            vec3 hitN2 = calcNormal(hitPos2);
+            vec3 col2 = getColor(exitHit.id);
+            float nDot = max(dot(hitN2, -exitRay), 0.0);
+            transCol = col2 * absorbed * nDot * 0.5;
+        } else if (exitHit.id == 3) {
+            // Hit ground through glass
+            vec3 gp = exitPos + exitN * 0.01 + exitRay * exitT;
+            transCol = vec3(0.01, 0.015, 0.02) * absorbed;
+        } else {
+            // Sky through glass
+            float sky = exitRay.y * 0.5 + 0.5;
+            transCol = mix(vec3(0.01, 0.02, 0.04), vec3(0.03, 0.06, 0.1), sky) * absorbed;
+        }
+
+        // Thin film
+        float filmThick = 0.00025 + 0.00015 * sin(pos.x * 12.0 + pos.z * 8.0 + t * 0.5);
+        vec3 film = thinFilm(cosI, filmThick, 1.38);
+
+        // Specular highlights
+        vec3 L1 = normalize(light1 - pos);
+        vec3 H1 = normalize(L1 + V);
+        float spec1 = pow(max(dot(N, H1), 0.0), 128.0);
+        vec3 L2 = normalize(light2 - pos);
+        vec3 H2 = normalize(L2 + V);
+        float spec2 = pow(max(dot(N, H2), 0.0), 96.0);
+
+        // Rim
+        float rim = pow(1.0 - cosI, 3.0);
+
+        // Combine
+        col = reflCol * fresnel
+            + transCol * (1.0 - fresnel)
+            + film * fresnel * 0.3
+            + vec3(1.0, 0.97, 0.92) * spec1 * 0.5
+            + vec3(0.9, 0.85, 0.8) * spec2 * 0.3
+            + objCol * rim * 0.4;
+
+    } else if (hit.id == 3) {
+        // Ground plane
+        vec3 gp = ro + rd * tRay;
+        float falloff = exp(-length(gp.xz) * 0.15);
+
+        // Collect caustics from all 3 objects
+        vec3 caustics = vec3(0.0);
+        for (int obj = 0; obj < 3; obj++) {
+            vec3 oPos = objPos(obj);
+            float ior = getIOR(obj);
+            vec3 oCol = getColor(obj);
+
+            // Distance from ground point to object projection
+            float dist = length(gp.xz - oPos.xz);
+
+            // Caustic ring pattern per object
+            float causticR = ior * 0.8;
+            float ring = exp(-abs(dist - causticR) * 6.0);
+
+            // Animated noise modulation
+            float noiseVal = noise3(vec3(gp.xz * ior * 4.0, t * 0.2 + float(obj)));
+            noiseVal = pow(noiseVal, 2.5);
+
+            // Angle-dependent color spread (chromatic dispersion on ground)
+            float angle = atan(gp.z - oPos.z, gp.x - oPos.x);
+            float spread = 0.5 + 0.5 * sin(angle * 6.0 + t * 0.5);
+
+            caustics += oCol * (ring * 0.6 + noiseVal * 0.4) * spread * 0.4;
+        }
+
+        // Base ground
+        col = vec3(0.008, 0.012, 0.02) * falloff;
+
+        // Hex grid
+        vec2 hexUV = gp.xz * 1.5;
+        float hexGrid = abs(fract(hexUV.x + hexUV.y * 0.577) - 0.5);
+        hexGrid = min(hexGrid, abs(fract(hexUV.x - hexUV.y * 0.577) - 0.5));
+        hexGrid = min(hexGrid, abs(fract(hexUV.y * 1.155) - 0.5));
+        float hexLine = smoothstep(0.02, 0.0, hexGrid - 0.46);
+        col += vec3(0.015, 0.03, 0.045) * hexLine * 0.2 * falloff;
+
+        col += caustics * falloff;
+
+        // Shadow from all objects
+        vec3 L = normalize(light1 - gp);
+        float shadow = 1.0;
+        float sT = 0.01;
+        for (int i = 0; i < 40; i++) {
+            float sd = sceneDist(gp + L * sT);
+            if (sd < 0.005) { shadow = 0.2; break; }
+            sT += sd;
+            if (sT > 6.0) break;
+        }
+        col *= shadow;
+
+    } else {
+        // Background: subtle gradient
+        float sky = rd.y * 0.5 + 0.5;
+        col = mix(vec3(0.015, 0.02, 0.04), vec3(0.03, 0.05, 0.08), sky);
+
+        // Atmospheric glow from all objects
+        float scanT = 0.0, closest = 1e5;
+        for (int i = 0; i < 30; i++) {
+            float sd = abs(sceneDist(ro + rd * scanT));
+            closest = min(closest, sd);
+            scanT += max(sd, 0.08);
+            if (scanT > 10.0) break;
+        }
+        col += vec3(0.165, 0.576, 0.757) * exp(-closest * 3.0) * 0.05;
+    }
+
+    // Volumetric from light1
+    {
+        vec3 vol = vec3(0.0);
+        for (int i = 0; i < 16; i++) {
+            float vt = float(i) * 0.4 + 0.3;
+            if (vt > tRay && hit.id >= 0) continue;
+            vec3 sp = ro + rd * vt;
+            vec3 toL = light1 - sp;
+            float ld = length(toL);
+            float cosA = max(dot(rd, toL / ld), 0.0);
+            float mie = 0.1 + 0.9 * pow(cosA, 8.0);
+
+            // Color volumetrics: tint near each object
+            vec3 volCol = vec3(0.08, 0.12, 0.18);
+            for (int obj = 0; obj < 3; obj++) {
+                float dObj = length(sp - objPos(obj));
+                volCol += getColor(obj) * exp(-dObj * 2.0) * 0.3;
+            }
+
+            vol += volCol * mie / (ld * ld + 1.0) * 0.003;
+        }
+        col += vol;
+    }
+
+    // Vignette
+    vec2 vigUV = gl_FragCoord.xy / res;
+    col *= 1.0 - 0.35 * dot(vigUV - 0.5, vigUV - 0.5) * 2.0;
+
+    // ACES tonemap
+    col = col * (2.51 * col + 0.03) / (col * (2.43 * col + 0.59) + 0.14);
+
+    // Film grain
+    col += (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)) + t) * 43758.5453) - 0.5) * 0.018;
+
+    fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}`;
+
+function createShader(src, type) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+    return s;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, createShader(vs, gl.VERTEX_SHADER));
+gl.attachShader(prog, createShader(fs, gl.FRAGMENT_SHADER));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+const pLoc = gl.getAttribLocation(prog, 'p');
+gl.enableVertexAttribArray(pLoc);
+gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
+
+const uT = gl.getUniformLocation(prog, 't');
+const uMouse = gl.getUniformLocation(prog, 'mouse');
+const uRes = gl.getUniformLocation(prog, 'res');
+
+let frames = 0, lastFps = performance.now();
+const fpsEl = document.getElementById('fps');
+const start = performance.now();
+
+function frame(now) {
+    gl.uniform1f(uT, (now - start) * 0.001);
+    gl.uniform2f(uMouse, mx, my);
+    gl.uniform2f(uRes, W, H);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    frames++;
+    if (now - lastFps > 1000) {
+        fpsEl.textContent = Math.round(frames * 1000 / (now - lastFps)) + ' fps';
+        frames = 0; lastFps = now;
+    }
+    requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

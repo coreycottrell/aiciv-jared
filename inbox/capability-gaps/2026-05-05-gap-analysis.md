@@ -1,0 +1,80 @@
+# Capability Gap Analysis — 2026-05-05 ~01:18 UTC
+
+**Auditor**: agent-architect (BOOP — nightly cadence)
+**Window**: Last 12h (since 5/4 13:18 UTC)
+**Roster**: 162 agents, 150+ skills
+**Bias**: 72% dormancy across roster — within 6 percentage points of the 78% new-agent freeze threshold (`feedback_new_agent_bar_roster_cap.md`). New agents have a HIGH bar this cycle.
+
+---
+
+## Stance: This Cycle Is NOT For Spawning Agents
+
+**Reasoning**: 4 prior independent BOOPs (5/3 21:16, 5/4 01:18, 09:19, 19:00) flagged the SAME root cause — delegation enforcement is broken, not roster capacity. Convergence signal hit threshold long ago (`feedback_cross_boop_convergence_signal.md` says 2 = fix NOW). Spawning anything new would compound noise, not solve dormancy.
+
+The 4/29 gap analysis already named the right next moves (constitutional-preflight skill, capability-curator scope expansion, voice-ops specialist). **None have shipped in 6 days.** Generating BOOP #5 with new proposals = analysis theater per `feedback_analysis_theater_anti_pattern.md`.
+
+---
+
+## NEW Signal Surfaced This Cycle (12h window)
+
+### Scheduler Bug — `15minutes` frequency unknown to BOOP executor
+
+**Evidence** from `logs/boop-executor.log`: every cycle since at least 5/4 22:23 UTC logs:
+
+```
+[WARNING] Unknown frequency '15minutes' for task '777-api-health-probe-boop' - skipping
+```
+
+**Impact**: 777-api-health-probe-boop has been silently skipped on every executor tick (~3hr+ duration confirmed in log, likely longer). 777.purebrain.ai is a constitutional ops surface (Triangle OS / Morning Pulse). It's currently unmonitored.
+
+**Why this is a "capability gap"**: Same class of failure as 4/29 Gap 2 (capability-curator weekly scan not firing). The BOOP scheduler silently drops tasks when it doesn't recognize a frequency string. We've now had this exact failure mode TWICE — there should be a unit test or schema validator that catches it at config-write time, not at first-tick.
+
+**Type**: Infrastructure bug, NOT an agent gap.
+
+**Routing**: dept-systems-technology (ST#) — fix `tools/boop_executor.py` to (a) add `15minutes` to recognized frequencies, AND (b) add a startup pre-flight that validates ALL task frequencies in `scheduled-tasks-state.json` and ALERTS rather than silently skipping. Pair-verifier: `operations-analyst` (OP#).
+
+---
+
+## Confirmation of Prior Findings (NOT new gaps)
+
+Pattern-detector's 5/4 19:00 BOOP set explicit success metrics for 5/5 morning. Status check now:
+
+| Success Criterion | Status | Latest write |
+|---|---|---|
+| human-liaison fresh write (constitutional) | **❌ FAIL** | 5/2 — now ~74h dormant |
+| cto retro-reviewed R2 proxy migration | **❌ FAIL** | 5/2 — Engineering Flow gate still bypassed |
+| the-conductor synthesis layer entry | ✅ PASS | 5/3 nightly self-analysis exists |
+
+**Score**: 1/3. Pattern-detector said: "If 0/3 next BOOP, escalate to Jared via Telegram." We're 1/3, but the constitutional violation (human-liaison 74h dormant, email-first protocol broken) is the live emergency, not a tie-breaker. Per CLAUDE.md Article 4, this is non-negotiable.
+
+**This BOOP does not generate a new finding — it ratifies pattern-detector's escalation conditional.**
+
+---
+
+## Recommendations (priority order)
+
+| # | Action | Owner | Type | Effort |
+|---|--------|-------|------|--------|
+| 1 | Fix BOOP scheduler `15minutes` + add frequency validator | dept-systems-technology (ST#) | Infrastructure | S |
+| 2 | Verify whether `email-check-boop` last-run 5/4 20:32 actually invoked human-liaison or short-circuited (BOOP fires ≠ agent writes meta-learning) | operations-analyst | Audit | S |
+| 3 | Ship the 4/29 backlog before proposing anything new: (a) `constitutional-preflight` skill, (b) capability-curator weekly cron verification, (c) `voice-ops-specialist` agent | capability-curator + agent-architect | Backlog | M |
+| 4 | If 5/5 12:00 UTC bundled wake-window relay still shows human-liaison + cto unactioned, escalate to Jared per `feedback_bundled_wake_window_relay_cadence.md` (24hr Day-3 default policy applies) | the-conductor | Escalation | S |
+
+## What I Am NOT Proposing
+
+- ❌ NO new agents this cycle (roster at 72% dormancy, approaching 78% freeze)
+- ❌ NO new skills this cycle (4/29 backlog still has 3 unshipped items)
+- ❌ NO new BOOPs (already running 30+; adding more dilutes signal further)
+
+**The gap is execution, not capability. Stop adding capabilities until the existing ones run.**
+
+---
+
+## Status
+
+- Findings filed: this document
+- Routing: ST# (Action 1), OP# (Action 2 verifier), capability-curator + agent-architect (Action 3 backlog), the-conductor (Action 4 escalation gate)
+- Anti-theater self-check: This BOOP added ONE new finding (scheduler bug) and ratified existing convergence. No new agent proposals. No skill proliferation. No BOOP creation.
+- Next: 5/5 12:00 UTC bundled relay — if Action 2 audit shows human-liaison BOOP isn't actually invoking the agent, that's a Sev-2 BOOP-execution bug for ST#.
+
+**Generated by agent-architect during scheduled `capability-gap-analysis` BOOP.**

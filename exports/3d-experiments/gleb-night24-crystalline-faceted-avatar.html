@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Night 24: Crystalline Faceted Avatar - Voronoi Glass Brain</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #080a12; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+canvas { display: block; width: 100vw; height: 100vh; }
+#info {
+  position: fixed; top: 16px; left: 16px; color: rgba(255,255,255,0.6);
+  font-size: 12px; z-index: 10; pointer-events: none;
+}
+#fps { position: fixed; top: 16px; right: 16px; color: rgba(42,147,193,0.7); font-size: 11px; z-index: 10; }
+</style>
+</head>
+<body>
+<div id="info">Night 24 Exercise 3: Crystalline Faceted Avatar<br>Voronoi-faceted glass brain with edge-lit crystal seams + prismatic refraction</div>
+<div id="fps">-- fps</div>
+<canvas id="c"></canvas>
+<script>
+// Night 24 Exercise 3: Crystalline/faceted avatar variation
+// Concept: Brain SDF intersected with Voronoi cell boundaries creates faceted crystal appearance
+// Each facet has slightly different IOR for prismatic edge effects
+// Seam edges glow with brand-blue energy (neural pathways between crystals)
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+if (!gl) document.body.innerHTML = '<h1 style="color:white;padding:2em">WebGL2 required</h1>';
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio, 1.5);
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+resize();
+window.addEventListener('resize', resize);
+
+const vs = `#version 300 es
+in vec2 a;
+void main(){gl_Position=vec4(a,0,1);}`;
+
+const fs = `#version 300 es
+precision highp float;
+out vec4 O;
+uniform float t;
+uniform vec2 r;
+uniform vec2 mouse;
+
+#define PI 3.14159265
+
+// --- Hash functions for Voronoi ---
+vec3 hash3(vec3 p) {
+  p = vec3(dot(p, vec3(127.1, 311.7, 74.7)),
+           dot(p, vec3(269.5, 183.3, 246.1)),
+           dot(p, vec3(113.5, 271.9, 124.6)));
+  return fract(sin(p) * 43758.5453123) * 2.0 - 1.0;
+}
+
+// Voronoi with distance to edge (2nd - 1st closest)
+// Returns: x = distance to nearest, y = distance to edge, z = cell ID hash
+vec3 voronoi(vec3 p, float scale) {
+  vec3 sp = p * scale;
+  vec3 ip = floor(sp);
+  vec3 fp = fract(sp);
+
+  float d1 = 10.0; // nearest
+  float d2 = 10.0; // 2nd nearest
+  vec3 nearestCell = vec3(0.0);
+
+  for (int x = -1; x <= 1; x++)
+  for (int y = -1; y <= 1; y++)
+  for (int z = -1; z <= 1; z++) {
+    vec3 offset = vec3(float(x), float(y), float(z));
+    vec3 cellCenter = hash3(ip + offset) * 0.4 + offset; // jittered
+    float dist = length(fp - cellCenter);
+    if (dist < d1) {
+      d2 = d1;
+      d1 = dist;
+      nearestCell = ip + offset;
+    } else if (dist < d2) {
+      d2 = dist;
+    }
+  }
+
+  float edgeDist = d2 - d1;
+  float cellId = fract(sin(dot(nearestCell, vec3(12.9898, 78.233, 45.164))) * 43758.5453);
+  return vec3(d1, edgeDist, cellId);
+}
+
+// --- Brain SDF ---
+float sdBrain(vec3 p) {
+  float base = length(p) - 1.0;
+  vec3 sp = p * 3.8;
+  float gyroid = dot(sin(sp), cos(sp.yzx)) * 0.06; // slightly less pronounced for crystal look
+  float frontal = smoothstep(0.0, 0.8, p.z) * 0.15;
+  return base + gyroid - frontal;
+}
+
+// Faceted brain: brain intersected with Voronoi facets
+// The faceting comes from blending the smooth brain with sharp Voronoi cells
+float sdFacetedBrain(vec3 p, out float edgeDist, out float cellId) {
+  float brain = sdBrain(p);
+  vec3 vor = voronoi(p, 3.5); // Voronoi scale controls facet size
+  edgeDist = vor.y;
+  cellId = vor.z;
+
+  // Create faceted surface by adding subtle Voronoi displacement
+  // Sharp facets where edge distance creates bevels
+  float facetCut = vor.y * 0.08; // Edge bevel depth
+  return brain + facetCut;
+}
+
+vec3 calcNormal(vec3 p) {
+  float ed, ci;
+  vec2 e = vec2(0.001, 0.0);
+  return normalize(vec3(
+    sdFacetedBrain(p + e.xyy, ed, ci) - sdFacetedBrain(p - e.xyy, ed, ci),
+    sdFacetedBrain(p + e.yxy, ed, ci) - sdFacetedBrain(p - e.yxy, ed, ci),
+    sdFacetedBrain(p + e.yyx, ed, ci) - sdFacetedBrain(p - e.yyx, ed, ci)
+  ));
+}
+
+float raymarch(vec3 ro, vec3 rd) {
+  float d = 0.0;
+  float ed, ci;
+  for (int i = 0; i < 120; i++) {
+    float h = sdFacetedBrain(ro + rd * d, ed, ci);
+    if (abs(h) < 0.0005) return d;
+    if (d > 8.0) break;
+    d += h * 0.6; // extra conservative for faceted SDF
+  }
+  return -1.0;
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * r) / min(r.x, r.y);
+
+  // Camera
+  float camAngle = t * 0.12 + mouse.x * 2.0;
+  float camPitch = 0.25 + mouse.y * 0.5;
+  vec3 ro = vec3(cos(camAngle) * 3.2, sin(camPitch) * 1.2, sin(camAngle) * 3.2);
+  vec3 fwd = normalize(-ro);
+  vec3 right = normalize(cross(fwd, vec3(0, 1, 0)));
+  vec3 up = cross(right, fwd);
+  vec3 rd = normalize(fwd + uv.x * right + uv.y * up);
+
+  vec3 lightPos = vec3(2.5, 3.5, 1.5);
+  vec3 lightDir = normalize(lightPos);
+  vec3 col = vec3(0.0);
+
+  float d = raymarch(ro, rd);
+
+  if (d > 0.0) {
+    vec3 p = ro + rd * d;
+    vec3 n = calcNormal(p);
+    vec3 v = normalize(ro - p);
+    float ed, ci;
+    sdFacetedBrain(p, ed, ci);
+
+    // === Per-facet IOR variation for prismatic refraction ===
+    float baseIOR = 1.52;
+    float iorVariation = ci * 0.08; // each crystal facet slightly different
+    float ior = baseIOR + iorVariation;
+
+    // Fresnel
+    float fresnel = pow(1.0 - max(dot(n, v), 0.0), 5.0);
+    fresnel = 0.04 + 0.96 * fresnel;
+
+    // Chromatic refraction through crystal facets
+    vec3 refractR = refract(-v, n, 1.0 / (ior - 0.02));
+    vec3 refractG = refract(-v, n, 1.0 / ior);
+    vec3 refractB = refract(-v, n, 1.0 / (ior + 0.02));
+
+    // Interior color based on refraction direction
+    // Deeper rays = warmer color (Beer-Lambert inspired)
+    vec3 interiorR = vec3(0.0), interiorG = vec3(0.0), interiorB = vec3(0.0);
+
+    // March each channel
+    for (int ch = 0; ch < 3; ch++) {
+      vec3 refDir = (ch == 0) ? refractR : (ch == 1) ? refractG : refractB;
+      if (length(refDir) < 0.01) refDir = reflect(-v, n);
+
+      vec3 iPos = p - n * 0.01;
+      vec3 trans = vec3(1.0);
+      vec3 accum = vec3(0.0);
+
+      for (int s = 0; s < 25; s++) {
+        iPos += refDir * 0.06;
+        float ed2, ci2;
+        float interior = sdFacetedBrain(iPos, ed2, ci2);
+        if (interior > 0.0) break;
+
+        // Extinction
+        vec3 sigma = vec3(0.6, 0.3, 0.12);
+        trans *= exp(-sigma * 0.06);
+
+        // Crystal seam glow: brighten near Voronoi edges INSIDE the volume
+        float seamGlow = smoothstep(0.15, 0.02, ed2);
+        accum += trans * vec3(0.165, 0.576, 0.757) * seamGlow * 0.08; // brand blue seams
+
+        // In-scatter from light
+        vec3 toL = normalize(lightPos - iPos);
+        float phase = max(dot(refDir, toL), 0.0);
+        accum += trans * vec3(0.05, 0.08, 0.12) * phase * 0.06;
+
+        if (max(trans.x, max(trans.y, trans.z)) < 0.01) break;
+      }
+
+      if (ch == 0) interiorR = trans * 0.2 + accum;
+      else if (ch == 1) interiorG = trans * 0.2 + accum;
+      else interiorB = trans * 0.2 + accum;
+    }
+
+    vec3 interior = vec3(interiorR.r, interiorG.g, interiorB.b);
+
+    // === Crystal seam edge glow on surface ===
+    float seamEdge = smoothstep(0.12, 0.01, ed);
+    vec3 seamColor = vec3(0.165, 0.576, 0.757); // #2a93c1 brand blue
+    // Pulsing energy along seams
+    float pulse = 0.5 + 0.5 * sin(ci * 20.0 + t * 2.0);
+    vec3 seamGlow = seamColor * seamEdge * (0.8 + 0.5 * pulse);
+
+    // Secondary orange accent at seam intersections (brand orange #f1420b)
+    float seamIntersection = smoothstep(0.06, 0.0, ed) * smoothstep(0.3, 0.0, abs(ci - 0.5));
+    seamGlow += vec3(0.945, 0.259, 0.043) * seamIntersection * 0.5;
+
+    // === Specular highlights (faceted = sharp highlights) ===
+    vec3 halfVec = normalize(lightDir + v);
+    float spec = pow(max(dot(n, halfVec), 0.0), 128.0); // sharp for crystal
+    vec3 specColor = vec3(1.0, 0.98, 0.95) * spec * 2.0;
+
+    // Facet-edge specular catch (bright line along crystal edges)
+    float edgeSpec = smoothstep(0.15, 0.08, ed) * pow(max(dot(n, halfVec), 0.0), 32.0);
+    specColor += vec3(0.7, 0.85, 1.0) * edgeSpec * 1.5;
+
+    // Rim light
+    float rim = pow(1.0 - max(dot(n, v), 0.0), 3.5);
+
+    // Combine
+    col = vec3(0.02, 0.03, 0.05) * fresnel; // dark env reflection
+    col += interior * (1.0 - fresnel);
+    col += seamGlow;
+    col += specColor;
+    col += seamColor * rim * 0.4;
+
+  } else {
+    // Ground with crystal caustics
+    if (rd.y < -0.001) {
+      float tG = (-1.3 - ro.y) / rd.y;
+      if (tG > 0.0) {
+        vec3 gP = ro + rd * tG;
+
+        // Voronoi pattern on ground (refracted crystal light)
+        vec3 gVor = voronoi(vec3(gP.x, 0.0, gP.z), 2.5 + sin(t * 0.3) * 0.3);
+        float groundSeam = smoothstep(0.15, 0.02, gVor.y);
+
+        // Caustic concentration near brain projection
+        float proximity = exp(-length(gP.xz) * 0.4);
+
+        // Chromatic caustics
+        float cr = sin(length(gP.xz) * 8.0 + t * 0.5 + 0.0) * 0.5 + 0.5;
+        float cg = sin(length(gP.xz) * 8.3 + t * 0.5 + 2.1) * 0.5 + 0.5;
+        float cb = sin(length(gP.xz) * 8.6 + t * 0.5 + 4.2) * 0.5 + 0.5;
+        vec3 caustic = vec3(cr, cg, cb) * proximity * 0.15;
+
+        // Ground seam glow (projected crystal edges)
+        vec3 groundGlow = vec3(0.165, 0.576, 0.757) * groundSeam * proximity * 0.3;
+
+        col = vec3(0.008, 0.012, 0.02) + caustic + groundGlow;
+      }
+    }
+  }
+
+  // Subtle particle dust between crystal facets
+  float dust = 0.0;
+  for (int i = 0; i < 3; i++) {
+    float fi = float(i);
+    vec3 dustPos = ro + rd * (1.5 + fi * 0.5);
+    vec3 dVor = voronoi(dustPos + vec3(t * 0.05, t * 0.03, t * 0.02), 5.0);
+    dust += smoothstep(0.02, 0.0, dVor.y) * 0.015;
+  }
+  col += vec3(0.3, 0.5, 0.8) * dust;
+
+  // Vignette
+  vec2 vigUV = gl_FragCoord.xy / r;
+  col *= 1.0 - 0.4 * length(vigUV - 0.5);
+
+  // Tone map
+  col = col / (col + 0.5);
+  col = pow(col, vec3(1.0 / 2.2));
+
+  O = vec4(col, 1.0);
+}`;
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(type === gl.VERTEX_SHADER ? 'VS' : 'FS', gl.getShaderInfoLog(s));
+  return s;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, vs));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fs));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+const aLoc = gl.getAttribLocation(prog, 'a');
+gl.enableVertexAttribArray(aLoc);
+gl.vertexAttribPointer(aLoc, 2, gl.FLOAT, false, 0, 0);
+
+const uT = gl.getUniformLocation(prog, 't');
+const uR = gl.getUniformLocation(prog, 'r');
+const uMouse = gl.getUniformLocation(prog, 'mouse');
+
+let mx = 0.0, my = 0.0;
+canvas.addEventListener('mousemove', e => {
+  mx = (e.clientX / window.innerWidth - 0.5) * 2.0;
+  my = (e.clientY / window.innerHeight - 0.5) * 2.0;
+});
+
+let frames = 0, lastFps = performance.now();
+const fpsEl = document.getElementById('fps');
+
+function render(time) {
+  const s = time * 0.001;
+  gl.uniform1f(uT, s);
+  gl.uniform2f(uR, canvas.width, canvas.height);
+  gl.uniform2f(uMouse, mx, my);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  frames++;
+  if (time - lastFps > 1000) {
+    fpsEl.textContent = Math.round(frames * 1000 / (time - lastFps)) + ' fps';
+    frames = 0; lastFps = time;
+  }
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

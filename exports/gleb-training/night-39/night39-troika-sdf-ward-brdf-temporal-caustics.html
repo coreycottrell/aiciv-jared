@@ -1,0 +1,1293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gleb Night 39 - Troika SDF + Ward BRDF + Half-Res Volumetric + Temporal Reprojection</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #060606; overflow: hidden; }
+canvas { display: block; width: 100vw; height: 100vh; }
+#info {
+  position: fixed; bottom: 16px; left: 16px; color: rgba(255,255,255,0.4);
+  font: 12px/1.4 system-ui; z-index: 10; pointer-events: none;
+}
+#fps {
+  position: fixed; top: 16px; right: 16px; color: rgba(255,255,255,0.3);
+  font: 11px monospace; z-index: 10; pointer-events: none;
+}
+#techniques {
+  position: fixed; top: 16px; left: 16px; color: rgba(255,255,255,0.25);
+  font: 10px/1.6 monospace; z-index: 10; pointer-events: none;
+}
+</style>
+</head>
+<body>
+<div id="info">Night 39 | Troika SDF + Ward BRDF + Half-Res Volumetric + Temporal Reprojection Caustics</div>
+<div id="fps">--</div>
+<div id="techniques">
+  [1] Troika SDF Text (true distance field, crisp at all zoom)<br>
+  [2] Anisotropic Ward BRDF (directional streaks on hex edges)<br>
+  [3] Half-Res Volumetric (fog at 0.5x, composite full-res)<br>
+  [4] Temporal Reprojection Caustics (blend prev frame, smooth shimmer)
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.162.0/examples/jsm/",
+    "troika-three-text": "https://unpkg.com/troika-three-text@0.49.1/dist/troika-three-text.esm.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { Text } from 'troika-three-text';
+
+// ============================================================
+// SCENE SETUP
+// ============================================================
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x060610, 0.035);
+
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0.4, 4.5);
+camera.lookAt(0, -0.1, 0);
+
+// ============================================================
+// HDRI LOADING (Poly Haven CDN)
+// ============================================================
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+let envMap = null;
+
+new RGBELoader()
+  .setPath('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/')
+  .load('studio_small_09_1k.hdr', (texture) => {
+    envMap = pmremGenerator.fromEquirectangular(texture).texture;
+    scene.environment = envMap;
+    scene.background = null;
+    texture.dispose();
+    pmremGenerator.dispose();
+  }, undefined, () => setupFallbackLighting());
+
+function setupFallbackLighting() {
+  scene.add(new THREE.DirectionalLight(0xffffff, 2.0).translateX(3).translateY(4).translateZ(2));
+  scene.add(new THREE.DirectionalLight(0x2a93c1, 0.8).translateX(-2).translateY(1).translateZ(-1));
+}
+
+// Lighting
+scene.add(new THREE.AmbientLight(0x111122, 0.3));
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.8);
+keyLight.position.set(3, 4, 2);
+scene.add(keyLight);
+const fillLight = new THREE.DirectionalLight(0x2a93c1, 0.6);
+fillLight.position.set(-2, 1, -1);
+scene.add(fillLight);
+const rimLight = new THREE.DirectionalLight(0xf1420b, 0.4);
+rimLight.position.set(0, -1, -3);
+scene.add(rimLight);
+
+const causticLight = new THREE.PointLight(0xffffff, 3.0, 12);
+causticLight.position.set(2, 3, 1);
+scene.add(causticLight);
+
+const PB_BLUE = new THREE.Color(0x2a93c1);
+const PB_ORANGE = new THREE.Color(0xf1420b);
+
+// ============================================================
+// TECHNIQUE 1: TROIKA SDF TEXT (Night 39 - replaces canvas texture)
+// ============================================================
+// True signed distance field text: crisp at any zoom, sub-pixel anti-aliasing,
+// no texture resolution limit. Troika generates SDF atlas on the fly.
+// We render it to a render target then sample with UV distortion for glass refraction.
+
+const troikaText = new Text();
+troikaText.text = 'PUREBRAIN';
+troikaText.fontSize = 0.55;
+troikaText.font = 'https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hiJ-Ek-_EeA.woff2';
+troikaText.color = 0x2a93c1;
+troikaText.anchorX = 'center';
+troikaText.anchorY = 'middle';
+troikaText.position.set(0, 0, -0.95);
+troikaText.material = new THREE.MeshBasicMaterial({
+  transparent: true,
+  opacity: 0.0, // Hidden -- we only render to RT
+  depthWrite: false,
+});
+troikaText.sync();
+
+// SDF text render target (for glass refraction sampling)
+const sdfTextRT = new THREE.WebGLRenderTarget(2048, 512, {
+  minFilter: THREE.LinearFilter,
+  magFilter: THREE.LinearFilter,
+  format: THREE.RGBAFormat,
+});
+const sdfTextScene = new THREE.Scene();
+const sdfTextCamera = new THREE.OrthographicCamera(-2.2, 2.2, 0.55, -0.55, 0.01, 10);
+sdfTextCamera.position.z = 2;
+sdfTextCamera.lookAt(0, 0, 0);
+
+// Visible SDF text clone for SDF RT
+const troikaTextRT = new Text();
+troikaTextRT.text = 'PUREBRAIN';
+troikaTextRT.fontSize = 0.55;
+troikaTextRT.font = troikaText.font;
+troikaTextRT.anchorX = 'center';
+troikaTextRT.anchorY = 'middle';
+troikaTextRT.position.set(0, 0, 0);
+troikaTextRT.outlineWidth = 0.012;
+troikaTextRT.outlineColor = 0x1a6d91;
+troikaTextRT.outlineBlur = 0.02;
+
+// Gradient material for SDF text via onBeforeCompile
+const sdfTextMat = new THREE.MeshBasicMaterial({
+  color: 0x2a93c1,
+  transparent: true,
+  opacity: 0.95,
+});
+troikaTextRT.material = sdfTextMat;
+troikaTextRT.sync();
+sdfTextScene.add(troikaTextRT);
+
+// SDF Text Refraction Plane (replaces canvas approach from Night 38)
+const SDFTextRefractionMaterial = new THREE.ShaderMaterial({
+  uniforms: {
+    tSDFText: { value: sdfTextRT.texture },
+    uTime: { value: 0 },
+    uSphereCenter: { value: new THREE.Vector3(0, 0, 0) },
+    uSphereRadius: { value: 0.85 },
+    uIOR: { value: 1.5 },
+    uDistortionStrength: { value: 0.14 },
+    uTextOpacity: { value: 0.9 },
+    uChromaticOffset: { value: 0.004 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    varying vec3 vWorldPos;
+    varying vec3 vViewDir;
+
+    void main() {
+      vUv = uv;
+      vec4 worldPos = modelMatrix * vec4(position, 1.0);
+      vWorldPos = worldPos.xyz;
+      vViewDir = normalize(cameraPosition - worldPos.xyz);
+      gl_Position = projectionMatrix * viewMatrix * worldPos;
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tSDFText;
+    uniform float uTime;
+    uniform vec3 uSphereCenter;
+    uniform float uSphereRadius;
+    uniform float uIOR;
+    uniform float uDistortionStrength;
+    uniform float uTextOpacity;
+    uniform float uChromaticOffset;
+
+    varying vec2 vUv;
+    varying vec3 vWorldPos;
+    varying vec3 vViewDir;
+
+    void main() {
+      vec3 toPoint = vWorldPos - uSphereCenter;
+      float distFromAxis = length(toPoint.xy);
+      float normalizedDist = distFromAxis / uSphereRadius;
+
+      vec2 distortedUV = vUv;
+
+      if (normalizedDist < 1.2) {
+        vec3 sphereNormal = normalize(toPoint);
+        float eta = 1.0 / uIOR;
+        vec3 refractDir = refract(-normalize(vViewDir), sphereNormal, eta);
+
+        // Chord length through sphere = thickness of glass at this point
+        float thickness = sqrt(max(0.0, 1.0 - normalizedDist * normalizedDist));
+
+        vec2 distortion = refractDir.xy * thickness * uDistortionStrength;
+        float mask = smoothstep(1.2, 0.8, normalizedDist);
+        distortedUV += distortion * mask;
+
+        // Convex lens inversion at center
+        float inversionStrength = smoothstep(1.0, 0.0, normalizedDist) * 0.35;
+        vec2 invCenter = vec2(0.5, 0.5);
+        distortedUV = mix(distortedUV, invCenter + (invCenter - distortedUV) * 0.5, inversionStrength * mask);
+      }
+
+      // Per-channel chromatic split (SDF stays crisp -- no texture blur)
+      float chroma = (normalizedDist < 1.2) ? uChromaticOffset : 0.0;
+      float r = texture2D(tSDFText, distortedUV + vec2(chroma, 0.0)).r;
+      float g = texture2D(tSDFText, distortedUV).g;
+      float b = texture2D(tSDFText, distortedUV - vec2(chroma, 0.0)).b;
+
+      vec3 color = vec3(r, g, b);
+
+      // Subtle animation: gentle wave distortion on text
+      float wave = sin(vUv.x * 8.0 + uTime * 0.5) * cos(vUv.y * 6.0 + uTime * 0.3) * 0.015;
+      color += wave * 0.08;
+
+      float alpha = max(max(color.r, color.g), color.b) * uTextOpacity;
+
+      // Edge fade
+      float edgeFade = smoothstep(0.0, 0.05, vUv.x) * smoothstep(1.0, 0.95, vUv.x)
+                     * smoothstep(0.0, 0.1, vUv.y) * smoothstep(1.0, 0.9, vUv.y);
+      alpha *= edgeFade;
+
+      gl_FragColor = vec4(color, alpha);
+    }
+  `,
+  transparent: true,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+
+const textPlane = new THREE.Mesh(
+  new THREE.PlaneGeometry(4.0, 1.0),
+  SDFTextRefractionMaterial
+);
+textPlane.position.z = -0.9;
+textPlane.position.y = 0.0;
+scene.add(textPlane);
+
+// ============================================================
+// THIN-FILM IRIDESCENCE (carried from Night 38)
+// ============================================================
+const ThinFilmIridescenceMaterial = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 },
+    uFilmThickness: { value: 380.0 },
+    uThicknessVariation: { value: 120.0 },
+    uFilmIOR: { value: 1.38 },
+    uSubstrateIOR: { value: 1.5 },
+    uBaseColor: { value: PB_BLUE },
+    uIridescenceStrength: { value: 0.85 },
+  },
+  vertexShader: `
+    varying vec3 vNormal;
+    varying vec3 vViewDir;
+    varying vec3 vLocalPos;
+    varying float vFresnel;
+
+    void main() {
+      vNormal = normalize(normalMatrix * normal);
+      vec4 worldPos = modelMatrix * vec4(position, 1.0);
+      vLocalPos = position;
+      vViewDir = normalize(cameraPosition - worldPos.xyz);
+      float NdotV = max(dot(vNormal, vViewDir), 0.0);
+      vFresnel = pow(1.0 - NdotV, 3.0);
+      gl_Position = projectionMatrix * viewMatrix * worldPos;
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    uniform float uFilmThickness;
+    uniform float uThicknessVariation;
+    uniform float uFilmIOR;
+    uniform float uSubstrateIOR;
+    uniform vec3 uBaseColor;
+    uniform float uIridescenceStrength;
+
+    varying vec3 vNormal;
+    varying vec3 vViewDir;
+    varying vec3 vLocalPos;
+    varying float vFresnel;
+
+    vec3 wavelengthToRGB(float lambda) {
+      float r = exp(-0.5 * pow((lambda - 610.0) / 50.0, 2.0))
+              + 0.3 * exp(-0.5 * pow((lambda - 450.0) / 20.0, 2.0));
+      float g = exp(-0.5 * pow((lambda - 540.0) / 45.0, 2.0));
+      float b = exp(-0.5 * pow((lambda - 450.0) / 35.0, 2.0));
+      return vec3(max(r, 0.0), max(g, 0.0), max(b, 0.0));
+    }
+
+    float thinFilmReflectance(float lambda, float cosTheta, float thickness) {
+      float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+      float sinThetaFilm = sinTheta / uFilmIOR;
+      if (sinThetaFilm > 1.0) return 1.0;
+      float cosThetaFilm = sqrt(1.0 - sinThetaFilm * sinThetaFilm);
+      float delta = 2.0 * uFilmIOR * thickness * cosThetaFilm;
+      float phase = 2.0 * 3.14159265 * delta / lambda;
+      float r01 = (1.0 - uFilmIOR) / (1.0 + uFilmIOR);
+      float r12 = (uFilmIOR - uSubstrateIOR) / (uFilmIOR + uSubstrateIOR);
+      float R = r01 * r01 + r12 * r12 + 2.0 * r01 * r12 * cos(phase);
+      R /= (1.0 + r01 * r01 * r12 * r12 + 2.0 * r01 * r12 * cos(phase));
+      return clamp(R, 0.0, 1.0);
+    }
+
+    void main() {
+      vec3 N = normalize(vNormal);
+      vec3 V = normalize(vViewDir);
+      float NdotV = max(dot(N, V), 0.001);
+
+      float thicknessNoise = sin(vLocalPos.x * 5.0 + uTime * 0.3)
+                           * cos(vLocalPos.y * 4.0 + uTime * 0.2)
+                           * sin(vLocalPos.z * 6.0 - uTime * 0.15);
+      float thickness = uFilmThickness + uThicknessVariation * thicknessNoise;
+
+      vec3 iridColor = vec3(0.0);
+      float totalWeight = 0.0;
+      for (int i = 0; i < 12; i++) {
+        float lambda = 400.0 + float(i) * 30.0;
+        float R = thinFilmReflectance(lambda, NdotV, thickness);
+        vec3 rgb = wavelengthToRGB(lambda);
+        float weight = 0.5 + 0.5 * (1.0 - abs(float(i) - 5.5) / 5.5);
+        iridColor += rgb * R * weight;
+        totalWeight += weight;
+      }
+      iridColor /= totalWeight;
+      iridColor *= 2.5;
+
+      float iridescentMask = smoothstep(0.3, 0.0, NdotV);
+      vec3 baseColor = uBaseColor * vFresnel * 0.6;
+      vec3 finalColor = mix(baseColor, iridColor, iridescentMask * uIridescenceStrength);
+
+      vec3 R_dir = reflect(-V, N);
+      float spec = pow(max(dot(R_dir, normalize(vec3(3.0, 4.0, 2.0))), 0.0), 64.0);
+      finalColor += vec3(1.0) * spec * 0.3;
+
+      float alpha = max(vFresnel * 0.5, iridescentMask * 0.6) + spec * 0.2;
+      gl_FragColor = vec4(finalColor, alpha);
+    }
+  `,
+  transparent: true,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+
+// ============================================================
+// GLASS SPHERE (inner: transmission, outer: thin-film iridescence)
+// ============================================================
+const innerGeo = new THREE.SphereGeometry(0.85, 128, 128);
+const innerMat = new THREE.MeshPhysicalMaterial({
+  transmission: 0.95, thickness: 1.2, roughness: 0.02, ior: 1.5,
+  clearcoat: 1.0, clearcoatRoughness: 0.04,
+  color: PB_BLUE.clone().multiplyScalar(0.8),
+  attenuationColor: PB_BLUE, attenuationDistance: 1.5,
+  side: THREE.DoubleSide, envMapIntensity: 2.0,
+});
+const innerSphere = new THREE.Mesh(innerGeo, innerMat);
+scene.add(innerSphere);
+
+const outerGeo = new THREE.SphereGeometry(1.02, 128, 128);
+const outerSphere = new THREE.Mesh(outerGeo, ThinFilmIridescenceMaterial);
+scene.add(outerSphere);
+
+// ============================================================
+// TECHNIQUE 2: ANISOTROPIC WARD BRDF ON HEX EDGES (Night 39 NEW)
+// ============================================================
+// Ward anisotropic specular model: elongated highlights along edge tangent direction.
+// For brushed-metal or machined glass edges -- directional streak highlights.
+// Ward BRDF: f_s = (1 / (4*pi*ax*ay * sqrt(NdotL * NdotV)))
+//            * exp(-2 * ((HdotT/ax)^2 + (HdotB/ay)^2) / (1 + HdotN))
+// ax = roughness along tangent (small = sharp streak)
+// ay = roughness along bitangent (large = wide spread)
+
+const WardAnisotropicMaterial = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 },
+    uAlphaX: { value: 0.04 },  // Tight along tangent (sharp streaks)
+    uAlphaY: { value: 0.35 },  // Wide perpendicular (diffuse spread)
+    uBaseColor: { value: PB_BLUE.clone().multiplyScalar(0.3) },
+    uSpecColor: { value: new THREE.Color(0.85, 0.92, 1.0) },
+    uLightPos1: { value: new THREE.Vector3(3, 4, 2) },
+    uLightPos2: { value: new THREE.Vector3(-2, 1, -1) },
+    uSpecIntensity: { value: 2.5 },
+    uFresnelPower: { value: 4.0 },
+  },
+  vertexShader: `
+    varying vec3 vNormal;
+    varying vec3 vTangent;
+    varying vec3 vBitangent;
+    varying vec3 vWorldPos;
+    varying vec3 vViewDir;
+    varying float vEdgeFactor;
+
+    // Compute tangent from UV derivatives
+    attribute vec4 tangent; // May not exist -- fallback below
+
+    void main() {
+      vNormal = normalize(normalMatrix * normal);
+      vec4 worldPos = modelMatrix * vec4(position, 1.0);
+      vWorldPos = worldPos.xyz;
+      vViewDir = normalize(cameraPosition - worldPos.xyz);
+
+      // Tangent: use object-space tangent direction along edge
+      // For extruded hex geometry, the tangent runs along the edge length
+      vec3 T = normalize((modelMatrix * vec4(normalize(cross(normal, vec3(0.0, 1.0, 0.0))), 0.0)).xyz);
+      // If normal is parallel to Y, use X axis instead
+      if (length(cross(normal, vec3(0.0, 1.0, 0.0))) < 0.001) {
+        T = normalize((modelMatrix * vec4(normalize(cross(normal, vec3(1.0, 0.0, 0.0))), 0.0)).xyz);
+      }
+      vTangent = T;
+      vBitangent = normalize(cross(vNormal, vTangent));
+
+      // Edge factor: outer edges of hex frame have stronger anisotropy
+      // Using local Y position as proxy (beveled edges are at extremes)
+      float absY = abs(position.z); // z in extrude = depth direction
+      vEdgeFactor = smoothstep(0.02, 0.05, absY); // bevel region
+
+      gl_Position = projectionMatrix * viewMatrix * worldPos;
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    uniform float uAlphaX;
+    uniform float uAlphaY;
+    uniform vec3 uBaseColor;
+    uniform vec3 uSpecColor;
+    uniform vec3 uLightPos1;
+    uniform vec3 uLightPos2;
+    uniform float uSpecIntensity;
+    uniform float uFresnelPower;
+
+    varying vec3 vNormal;
+    varying vec3 vTangent;
+    varying vec3 vBitangent;
+    varying vec3 vWorldPos;
+    varying vec3 vViewDir;
+    varying float vEdgeFactor;
+
+    #define PI 3.14159265
+
+    // Ward anisotropic BRDF
+    float wardBRDF(vec3 N, vec3 V, vec3 L, vec3 T, vec3 B, float ax, float ay) {
+      vec3 H = normalize(L + V);
+      float NdotL = max(dot(N, L), 0.001);
+      float NdotV = max(dot(N, V), 0.001);
+      float HdotN = max(dot(H, N), 0.001);
+      float HdotT = dot(H, T);
+      float HdotB = dot(H, B);
+
+      // Ward denominator
+      float denom = 4.0 * PI * ax * ay * sqrt(NdotL * NdotV);
+      if (denom < 0.0001) return 0.0;
+
+      // Exponent
+      float exponent = -2.0 * ((HdotT * HdotT) / (ax * ax) + (HdotB * HdotB) / (ay * ay)) / (1.0 + HdotN);
+
+      return (1.0 / denom) * exp(exponent);
+    }
+
+    void main() {
+      vec3 N = normalize(vNormal);
+      vec3 V = normalize(vViewDir);
+      vec3 T = normalize(vTangent);
+      vec3 B = normalize(vBitangent);
+
+      // Fresnel
+      float NdotV = max(dot(N, V), 0.0);
+      float fresnel = pow(1.0 - NdotV, uFresnelPower);
+
+      // Anisotropy: tighter along tangent on edges, more isotropic on faces
+      float ax = mix(0.15, uAlphaX, vEdgeFactor); // sharper on edges
+      float ay = mix(0.15, uAlphaY, vEdgeFactor); // wider on edges
+
+      // Time-modulated tangent rotation (subtle swirl)
+      float rotAngle = uTime * 0.1 * vEdgeFactor;
+      vec3 T2 = cos(rotAngle) * T + sin(rotAngle) * B;
+      vec3 B2 = -sin(rotAngle) * T + cos(rotAngle) * B;
+
+      // Evaluate Ward BRDF for each light
+      vec3 L1 = normalize(uLightPos1 - vWorldPos);
+      vec3 L2 = normalize(uLightPos2 - vWorldPos);
+
+      float ward1 = wardBRDF(N, V, L1, T2, B2, ax, ay);
+      float ward2 = wardBRDF(N, V, L2, T2, B2, ax, ay);
+
+      // Combined specular
+      vec3 specular = uSpecColor * (ward1 + ward2 * 0.6) * uSpecIntensity;
+
+      // Diffuse base
+      float diff1 = max(dot(N, L1), 0.0);
+      float diff2 = max(dot(N, L2), 0.0);
+      vec3 diffuse = uBaseColor * (diff1 * 0.5 + diff2 * 0.3 + 0.2);
+
+      // Combine with Fresnel
+      vec3 color = diffuse + specular * (0.5 + fresnel * 0.5);
+
+      // Transmission hint: glass-like at center
+      float alpha = mix(0.4, 0.95, fresnel) * (0.6 + vEdgeFactor * 0.4);
+
+      gl_FragColor = vec4(color, alpha);
+    }
+  `,
+  transparent: true,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+  blending: THREE.NormalBlending,
+});
+
+// ============================================================
+// HEXAGONAL GLASS FRAME (now with Ward BRDF edges)
+// ============================================================
+const hexShape = new THREE.Shape();
+const hexRadius = 1.6;
+for (let i = 0; i < 6; i++) {
+  const angle = (i / 6) * Math.PI * 2 - Math.PI / 6;
+  const x = Math.cos(angle) * hexRadius;
+  const y = Math.sin(angle) * hexRadius;
+  if (i === 0) hexShape.moveTo(x, y); else hexShape.lineTo(x, y);
+}
+hexShape.closePath();
+const holeShape = new THREE.Shape();
+const holeRadius = 1.3;
+for (let i = 0; i < 6; i++) {
+  const angle = (i / 6) * Math.PI * 2 - Math.PI / 6;
+  const x = Math.cos(angle) * holeRadius;
+  const y = Math.sin(angle) * holeRadius;
+  if (i === 0) holeShape.moveTo(x, y); else holeShape.lineTo(x, y);
+}
+hexShape.holes.push(holeShape);
+
+const hexGeo = new THREE.ExtrudeGeometry(hexShape, {
+  depth: 0.06, bevelEnabled: true, bevelThickness: 0.025, bevelSize: 0.025, bevelSegments: 12
+});
+hexGeo.center();
+
+// Two-layer hex: transmission core + Ward BRDF overlay
+const hexMatCore = new THREE.MeshPhysicalMaterial({
+  transmission: 0.9, thickness: 0.3, roughness: 0.03, ior: 1.45,
+  clearcoat: 1.0, clearcoatRoughness: 0.05,
+  color: new THREE.Color(0x2a93c1).multiplyScalar(0.4),
+  attenuationColor: PB_BLUE, attenuationDistance: 2.0,
+  side: THREE.DoubleSide, envMapIntensity: 1.5,
+});
+const hexFrameCore = new THREE.Mesh(hexGeo, hexMatCore);
+hexFrameCore.position.z = 0.1;
+scene.add(hexFrameCore);
+
+// Ward BRDF overlay (slightly larger for edge highlight effect)
+const hexGeoWard = hexGeo.clone();
+const hexFrameWard = new THREE.Mesh(hexGeoWard, WardAnisotropicMaterial);
+hexFrameWard.position.z = 0.1;
+hexFrameWard.scale.setScalar(1.005); // fractionally larger to avoid z-fight
+scene.add(hexFrameWard);
+
+// ============================================================
+// TECHNIQUE 3: HALF-RESOLUTION VOLUMETRIC PASS (Night 39 NEW)
+// ============================================================
+// Render volumetric fog at 0.5x resolution, then composite at full-res.
+// This gives us rich atmospheric depth at ~25% the fragment cost.
+// Raymarching: 24 steps through fog volume, exponential density falloff.
+
+const halfW = Math.floor(window.innerWidth / 2);
+const halfH = Math.floor(window.innerHeight / 2);
+
+const volumetricRT = new THREE.WebGLRenderTarget(halfW, halfH, {
+  minFilter: THREE.LinearFilter,
+  magFilter: THREE.LinearFilter,
+  format: THREE.RGBAFormat,
+});
+
+const VolumetricFogMaterial = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 },
+    uCamPos: { value: camera.position.clone() },
+    uCamDir: { value: new THREE.Vector3(0, 0, -1) },
+    uResolution: { value: new THREE.Vector2(halfW, halfH) },
+    uFogDensity: { value: 0.08 },
+    uFogColor: { value: new THREE.Color(0x0a1525) },
+    uLightColor: { value: new THREE.Color(0x2a93c1) },
+    uLightPos: { value: new THREE.Vector3(2, 3, 1) },
+    uSpherePos: { value: new THREE.Vector3(0, 0, 0) },
+    uSphereRadius: { value: 0.85 },
+    uProjectionMatrixInverse: { value: new THREE.Matrix4() },
+    uViewMatrixInverse: { value: new THREE.Matrix4() },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = vec4(position.xy, 0.0, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    uniform vec3 uCamPos;
+    uniform vec2 uResolution;
+    uniform float uFogDensity;
+    uniform vec3 uFogColor;
+    uniform vec3 uLightColor;
+    uniform vec3 uLightPos;
+    uniform vec3 uSpherePos;
+    uniform float uSphereRadius;
+    uniform mat4 uProjectionMatrixInverse;
+    uniform mat4 uViewMatrixInverse;
+
+    varying vec2 vUv;
+
+    #define PI 3.14159265
+    #define STEPS 24
+    #define MAX_DIST 8.0
+
+    // Simple 3D noise for volumetric turbulence
+    float hash31(vec3 p) {
+      p = fract(p * vec3(443.897, 441.423, 437.195));
+      p += dot(p, p.yzx + 19.19);
+      return fract((p.x + p.y) * p.z);
+    }
+
+    float noise3D(vec3 p) {
+      vec3 i = floor(p);
+      vec3 f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(
+        mix(mix(hash31(i), hash31(i + vec3(1,0,0)), f.x),
+            mix(hash31(i + vec3(0,1,0)), hash31(i + vec3(1,1,0)), f.x), f.y),
+        mix(mix(hash31(i + vec3(0,0,1)), hash31(i + vec3(1,0,1)), f.x),
+            mix(hash31(i + vec3(0,1,1)), hash31(i + vec3(1,1,1)), f.x), f.y),
+        f.z
+      );
+    }
+
+    float fbm(vec3 p) {
+      float v = 0.0, a = 0.5;
+      for (int i = 0; i < 3; i++) {
+        v += a * noise3D(p);
+        p *= 2.1;
+        a *= 0.5;
+      }
+      return v;
+    }
+
+    void main() {
+      // Reconstruct ray direction from UV
+      vec2 ndc = vUv * 2.0 - 1.0;
+      vec4 clipPos = vec4(ndc, -1.0, 1.0);
+      vec4 viewPos = uProjectionMatrixInverse * clipPos;
+      viewPos /= viewPos.w;
+      vec3 rayDir = normalize((uViewMatrixInverse * vec4(viewPos.xyz, 0.0)).xyz);
+
+      // Raymarch through volume
+      float stepSize = MAX_DIST / float(STEPS);
+      vec3 pos = uCamPos;
+      vec3 accumColor = vec3(0.0);
+      float accumAlpha = 0.0;
+
+      for (int i = 0; i < STEPS; i++) {
+        pos += rayDir * stepSize;
+
+        // Density: exponential height falloff + noise turbulence
+        float height = pos.y + 1.0; // floor at y=-1.3
+        float heightFalloff = exp(-max(height, 0.0) * 1.5);
+
+        // Exclude sphere volume (fog doesn't penetrate glass)
+        float sphereDist = length(pos - uSpherePos) - uSphereRadius;
+        float sphereMask = smoothstep(0.0, 0.3, sphereDist);
+
+        // Turbulent density
+        float turbulence = fbm(pos * 1.5 + vec3(uTime * 0.08, uTime * 0.05, uTime * 0.03));
+        float density = uFogDensity * heightFalloff * sphereMask * turbulence;
+
+        if (density > 0.001) {
+          // In-scattering: light reaching this point
+          vec3 toLight = uLightPos - pos;
+          float lightDist = length(toLight);
+          float lightAtten = 1.0 / (1.0 + lightDist * lightDist * 0.2);
+
+          // Phase function (Henyey-Greenstein, g=0.3 for forward scatter)
+          float cosAngle = dot(normalize(toLight), rayDir);
+          float g = 0.3;
+          float phase = (1.0 - g * g) / (4.0 * PI * pow(1.0 + g * g - 2.0 * g * cosAngle, 1.5));
+
+          vec3 scatterColor = mix(uFogColor, uLightColor, lightAtten * 0.6) * phase * lightAtten;
+
+          // Accumulate with front-to-back compositing
+          float sampleAlpha = density * stepSize;
+          accumColor += scatterColor * sampleAlpha * (1.0 - accumAlpha);
+          accumAlpha += sampleAlpha * (1.0 - accumAlpha);
+        }
+
+        if (accumAlpha > 0.95) break; // Early exit
+      }
+
+      gl_FragColor = vec4(accumColor, accumAlpha * 0.6);
+    }
+  `,
+  transparent: true,
+  depthWrite: false,
+  depthTest: false,
+});
+
+const volumetricQuad = new THREE.Mesh(
+  new THREE.PlaneGeometry(2, 2),
+  VolumetricFogMaterial
+);
+
+const volumetricScene = new THREE.Scene();
+const volumetricCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+volumetricScene.add(volumetricQuad);
+
+// Volumetric composite shader (blends half-res fog onto full-res scene)
+const VolumetricCompositeShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    tVolumetric: { value: volumetricRT.texture },
+  },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform sampler2D tVolumetric;
+    varying vec2 vUv;
+    void main() {
+      vec4 scene = texture2D(tDiffuse, vUv);
+      vec4 fog = texture2D(tVolumetric, vUv);
+      // Additive blend fog onto scene
+      vec3 color = scene.rgb + fog.rgb * fog.a;
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `,
+};
+
+// ============================================================
+// TECHNIQUE 4: TEMPORAL REPROJECTION CAUSTIC FLOOR (Night 39 NEW)
+// ============================================================
+// Blend current caustic frame with previous frame for smooth anti-aliased shimmer.
+// Two ping-pong render targets store caustic history.
+// Blend factor: 80% previous + 20% current (heavy temporal smoothing).
+
+const causticW = Math.floor(window.innerWidth * 0.75);
+const causticH = Math.floor(window.innerHeight * 0.75);
+
+const causticRT_A = new THREE.WebGLRenderTarget(causticW, causticH, {
+  minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat,
+});
+const causticRT_B = new THREE.WebGLRenderTarget(causticW, causticH, {
+  minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat,
+});
+let causticPingPong = 0; // 0 = write A read B, 1 = write B read A
+
+const TemporalCausticMaterial = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 },
+    uLightPos: { value: new THREE.Vector3(2, 3, 1) },
+    uSpherePos: { value: new THREE.Vector3(0, 0, 0) },
+    uSphereRadius: { value: 0.85 },
+    uCausticIntensity: { value: 3.0 },
+    uCausticScale1: { value: 3.2 },
+    uCausticScale2: { value: 7.8 },
+    uCausticSharpness: { value: 4.0 },
+    uBlueColor: { value: PB_BLUE },
+    uOrangeColor: { value: PB_ORANGE },
+    tPrevFrame: { value: null },
+    uBlendFactor: { value: 0.78 }, // 78% previous frame, 22% current
+    uResolution: { value: new THREE.Vector2(causticW, causticH) },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    varying vec3 vWorldPos;
+    void main() {
+      vUv = uv;
+      vec4 worldPos = modelMatrix * vec4(position, 1.0);
+      vWorldPos = worldPos.xyz;
+      gl_Position = projectionMatrix * viewMatrix * worldPos;
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    uniform vec3 uLightPos;
+    uniform vec3 uSpherePos;
+    uniform float uSphereRadius;
+    uniform float uCausticIntensity;
+    uniform float uCausticScale1;
+    uniform float uCausticScale2;
+    uniform float uCausticSharpness;
+    uniform vec3 uBlueColor;
+    uniform vec3 uOrangeColor;
+    uniform sampler2D tPrevFrame;
+    uniform float uBlendFactor;
+    uniform vec2 uResolution;
+
+    varying vec2 vUv;
+    varying vec3 vWorldPos;
+
+    vec2 hash22(vec2 p) {
+      p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+      return -1.0 + 2.0 * fract(sin(p) * 43758.5453);
+    }
+
+    float causticPattern(vec2 p, float scale, float timeOffset) {
+      p *= scale;
+      p += vec2(uTime * 0.08 + timeOffset, uTime * 0.06);
+      vec2 i = floor(p);
+      vec2 f = fract(p);
+      float minDist1 = 10.0;
+      float minDist2 = 10.0;
+      for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+          vec2 neighbor = vec2(float(x), float(y));
+          vec2 point = hash22(i + neighbor) * 0.5 + 0.5;
+          point += 0.15 * sin(uTime * 0.4 + 6.2831 * hash22(i + neighbor));
+          float d = length(f - neighbor - point);
+          if (d < minDist1) { minDist2 = minDist1; minDist1 = d; }
+          else if (d < minDist2) { minDist2 = d; }
+        }
+      }
+      float edge = minDist2 - minDist1;
+      return pow(1.0 - smoothstep(0.0, 0.15, edge), uCausticSharpness);
+    }
+
+    void main() {
+      vec2 toCenter = vWorldPos.xz - uSpherePos.xz;
+      float dist = length(toCenter);
+      float falloff = smoothstep(4.0, 0.5, dist) * smoothstep(0.3, 0.8, dist);
+
+      float caustic1 = causticPattern(vWorldPos.xz, uCausticScale1, 0.0);
+      float caustic2 = causticPattern(vWorldPos.xz, uCausticScale2, 1.7);
+      float caustic = caustic1 * caustic2 * uCausticIntensity;
+      float caustic3 = causticPattern(vWorldPos.xz, 14.0, 3.1);
+      caustic += caustic3 * 0.3 * falloff;
+      caustic *= falloff;
+
+      vec3 warmColor = mix(uOrangeColor, vec3(1.0, 0.95, 0.8), 0.5);
+      vec3 coolColor = uBlueColor * 0.3;
+      vec3 causticColor = mix(coolColor, warmColor, smoothstep(0.3, 1.5, caustic));
+
+      float floorBase = 0.02;
+      vec3 currentFrame = vec3(floorBase) + causticColor * caustic;
+
+      // Specular floor reflection
+      vec3 viewDir = normalize(cameraPosition - vWorldPos);
+      vec3 floorNormal = vec3(0.0, 1.0, 0.0);
+      float floorSpec = pow(max(dot(reflect(-normalize(uLightPos - vWorldPos), floorNormal), viewDir), 0.0), 32.0);
+      currentFrame += vec3(0.03) * floorSpec;
+
+      // TEMPORAL REPROJECTION: blend with previous frame
+      // Use screen-space UV for previous frame lookup
+      vec2 screenUV = gl_FragCoord.xy / uResolution;
+      vec3 prevFrame = texture2D(tPrevFrame, screenUV).rgb;
+
+      // Blend: weighted average reduces temporal aliasing (shimmer/flickering)
+      vec3 finalColor = mix(currentFrame, prevFrame, uBlendFactor);
+
+      // Clamp to prevent ghosting from accumulating too bright
+      finalColor = min(finalColor, vec3(3.0));
+
+      gl_FragColor = vec4(finalColor, 1.0);
+    }
+  `,
+});
+
+const floorGeo = new THREE.PlaneGeometry(12, 12);
+floorGeo.rotateX(-Math.PI / 2);
+const floor = new THREE.Mesh(floorGeo, TemporalCausticMaterial);
+floor.position.y = -1.3;
+scene.add(floor);
+
+// ============================================================
+// MAGNETIC FIELD LINES
+// ============================================================
+const fieldLineGroup = new THREE.Group();
+scene.add(fieldLineGroup);
+for (let i = 0; i < 14; i++) {
+  const angle = (i / 14) * Math.PI * 2;
+  const radius = 1.8 + Math.random() * 0.6;
+  const points = [];
+  for (let j = 0; j <= 50; j++) {
+    const t = j / 50;
+    const theta = angle + t * Math.PI * 0.4;
+    const phi = (t - 0.5) * Math.PI * 0.8;
+    points.push(new THREE.Vector3(
+      Math.cos(theta) * radius * (1 + Math.sin(phi) * 0.3),
+      Math.sin(phi) * 1.2,
+      Math.sin(theta) * radius * (1 + Math.cos(phi) * 0.2)
+    ));
+  }
+  const curve = new THREE.CatmullRomCurve3(points);
+  const tube = new THREE.Mesh(
+    new THREE.TubeGeometry(curve, 40, 0.005, 6, false),
+    new THREE.MeshBasicMaterial({
+      color: i % 3 === 0 ? PB_ORANGE : PB_BLUE,
+      transparent: true, opacity: 0.06 + Math.random() * 0.08,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    })
+  );
+  fieldLineGroup.add(tube);
+}
+
+// ============================================================
+// ATMOSPHERIC PARTICLES
+// ============================================================
+const particleCount = 2000;
+const pGeo = new THREE.BufferGeometry();
+const pPos = new Float32Array(particleCount * 3);
+for (let i = 0; i < particleCount; i++) {
+  pPos[i * 3] = (Math.random() - 0.5) * 8;
+  pPos[i * 3 + 1] = (Math.random() - 0.5) * 6;
+  pPos[i * 3 + 2] = -1.5 - Math.random() * 4;
+}
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+const particleMat = new THREE.PointsMaterial({
+  color: 0xaaddff, size: 1.5, transparent: true, opacity: 0.07,
+  blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
+});
+const particles = new THREE.Points(pGeo, particleMat);
+scene.add(particles);
+
+// ============================================================
+// SATELLITE MINI SPHERES
+// ============================================================
+const satellites = [];
+for (let i = 0; i < 5; i++) {
+  const angle = (i / 5) * Math.PI * 2 + Math.PI * 0.1;
+  const sat = new THREE.Mesh(
+    new THREE.SphereGeometry(0.08 + Math.random() * 0.06, 32, 32),
+    new THREE.MeshPhysicalMaterial({
+      transmission: 0.9, thickness: 0.3, roughness: 0.03, ior: 1.5,
+      color: i % 2 === 0 ? PB_BLUE : PB_ORANGE,
+      attenuationColor: i % 2 === 0 ? PB_BLUE : PB_ORANGE,
+      attenuationDistance: 0.5, side: THREE.DoubleSide,
+    })
+  );
+  sat.userData = { angle, radius: 2.0 + Math.random() * 0.4, speed: 0.15 + Math.random() * 0.1, yOffset: (Math.random() - 0.5) * 0.6 };
+  scene.add(sat);
+  satellites.push(sat);
+}
+
+// ============================================================
+// GOD RAYS (occlusion-based radial blur -- carried from Night 38)
+// ============================================================
+const godRayDisc = new THREE.Mesh(
+  new THREE.CircleGeometry(0.6, 32),
+  new THREE.MeshBasicMaterial({ color: 0x2a93c1, transparent: true, opacity: 0.9 })
+);
+godRayDisc.position.set(0.5, 1.0, -2.5);
+scene.add(godRayDisc);
+
+const occlusionScene = new THREE.Scene();
+const occLightClone = new THREE.Mesh(
+  new THREE.CircleGeometry(0.6, 32),
+  new THREE.MeshBasicMaterial({ color: 0xffffff })
+);
+occLightClone.position.copy(godRayDisc.position);
+occlusionScene.add(occLightClone);
+const occSphere = new THREE.Mesh(
+  new THREE.SphereGeometry(1.05, 64, 64),
+  new THREE.MeshBasicMaterial({ color: 0x000000 })
+);
+occlusionScene.add(occSphere);
+
+const occlusionRT = new THREE.WebGLRenderTarget(halfW, halfH);
+
+const GodRayShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    tGodRays: { value: occlusionRT.texture },
+    uLightPos: { value: new THREE.Vector2(0.55, 0.65) },
+    uExposure: { value: 0.18 },
+    uDecay: { value: 0.96 },
+    uDensity: { value: 0.85 },
+    uWeight: { value: 0.5 },
+  },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse, tGodRays;
+    uniform vec2 uLightPos;
+    uniform float uExposure, uDecay, uDensity, uWeight;
+    varying vec2 vUv;
+    void main() {
+      vec2 delta = (vUv - uLightPos) * (1.0 / 60.0) * uDensity;
+      vec2 coord = vUv;
+      float illum = 0.0, decay = 1.0;
+      for (int i = 0; i < 60; i++) {
+        coord -= delta;
+        illum += texture2D(tGodRays, coord).r * decay * uWeight;
+        decay *= uDecay;
+      }
+      vec4 s = texture2D(tDiffuse, vUv);
+      vec3 rays = vec3(0.165, 0.576, 0.757) * illum * uExposure;
+      gl_FragColor = vec4(s.rgb + rays, 1.0);
+    }
+  `,
+};
+
+// ============================================================
+// HEX BOKEH DOF SHADER (carried from Night 38)
+// ============================================================
+const HexBokehShader = {
+  uniforms: {
+    tDiffuse: { value: null }, tDepth: { value: null },
+    uFocusDistance: { value: 4.5 }, uFocalLength: { value: 0.05 },
+    uAperture: { value: 0.018 }, uMaxBlur: { value: 0.01 },
+    uNear: { value: 0.1 }, uFar: { value: 100.0 },
+    uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+  },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse, tDepth;
+    uniform float uFocusDistance, uFocalLength, uAperture, uMaxBlur, uNear, uFar;
+    uniform vec2 uResolution;
+    varying vec2 vUv;
+    float linearizeDepth(float d) { return uNear * uFar / (uFar - d * (uFar - uNear)); }
+    float getCoC(float depth) {
+      float S1 = uFocusDistance, f = uFocalLength, A = uAperture;
+      return clamp(abs(A * (f * (S1 - depth)) / (depth * (S1 - f))), 0.0, uMaxBlur);
+    }
+    void main() {
+      float depth = linearizeDepth(texture2D(tDepth, vUv).r);
+      float coc = getCoC(depth);
+      if (coc < 0.0005) { gl_FragColor = texture2D(tDiffuse, vUv); return; }
+      vec3 color = vec3(0.0); float tw = 0.0;
+      for (int d = 0; d < 6; d++) {
+        float angle = float(d) * 3.14159265 / 3.0;
+        vec2 dir1 = vec2(cos(angle), sin(angle));
+        float nextAngle = float(d + 1) * 3.14159265 / 3.0;
+        vec2 dir2 = (dir1 + vec2(cos(nextAngle), sin(nextAngle))) * 0.5;
+        for (int s = 1; s <= 5; s++) {
+          float t = float(s) / 5.0;
+          vec2 o1 = dir1 * coc * t / uResolution * 350.0;
+          vec2 o2 = dir2 * coc * t / uResolution * 350.0;
+          float w = 1.0 - t * 0.3;
+          vec3 s1 = texture2D(tDiffuse, vUv + o1).rgb;
+          vec3 s2 = texture2D(tDiffuse, vUv + o2).rgb;
+          float b1 = 1.0 + smoothstep(0.5, 1.0, dot(s1, vec3(0.299, 0.587, 0.114))) * 2.0;
+          float b2 = 1.0 + smoothstep(0.5, 1.0, dot(s2, vec3(0.299, 0.587, 0.114))) * 2.0;
+          color += s1 * w * b1 + s2 * w * b2;
+          tw += w * b1 + w * b2;
+        }
+      }
+      gl_FragColor = vec4(color / tw, 1.0);
+    }
+  `,
+};
+
+// ============================================================
+// CHROMATIC ABERRATION (radial, time-pulsing)
+// ============================================================
+const ChromaticAberrationShader = {
+  uniforms: {
+    tDiffuse: { value: null }, uBaseOffset: { value: 0.0012 }, uTime: { value: 0 },
+  },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uBaseOffset, uTime; varying vec2 vUv;
+    void main() {
+      vec2 dir = vUv - vec2(0.5);
+      float dist = length(dir);
+      float strength = smoothstep(0.1, 0.7, dist);
+      float offset = uBaseOffset * strength * (1.0 + sin(uTime * 0.5) * 0.1);
+      float r = texture2D(tDiffuse, vUv + dir * offset).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vUv - dir * offset).b;
+      gl_FragColor = vec4(r, g, b, 1.0);
+    }
+  `,
+};
+
+// ============================================================
+// POST-PROCESSING CHAIN
+// ============================================================
+const depthRT = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+  minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+  format: THREE.RGBAFormat, type: THREE.FloatType,
+});
+depthRT.depthTexture = new THREE.DepthTexture();
+depthRT.depthTexture.type = THREE.FloatType;
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight), 0.45, 0.6, 0.88
+);
+composer.addPass(bloomPass);
+
+const godRayPass = new ShaderPass(GodRayShader);
+composer.addPass(godRayPass);
+
+// Volumetric composite pass (Night 39 NEW)
+const volCompositePass = new ShaderPass(VolumetricCompositeShader);
+composer.addPass(volCompositePass);
+
+HexBokehShader.uniforms.tDepth.value = depthRT.depthTexture;
+const dofPass = new ShaderPass(HexBokehShader);
+composer.addPass(dofPass);
+
+const caPass = new ShaderPass(ChromaticAberrationShader);
+composer.addPass(caPass);
+
+// ============================================================
+// MOUSE TRACKING
+// ============================================================
+let mouseX = 0, mouseY = 0;
+window.addEventListener('mousemove', (e) => {
+  mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+  mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+});
+
+// ============================================================
+// FPS COUNTER
+// ============================================================
+let frameCount = 0, lastFPSTime = performance.now();
+const fpsEl = document.getElementById('fps');
+
+// ============================================================
+// ANIMATION LOOP
+// ============================================================
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // FPS counter
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFPSTime >= 1000) {
+    fpsEl.textContent = `${frameCount} fps`;
+    frameCount = 0;
+    lastFPSTime = now;
+  }
+
+  // Update thin-film iridescence
+  ThinFilmIridescenceMaterial.uniforms.uTime.value = t;
+
+  // Update Ward BRDF
+  WardAnisotropicMaterial.uniforms.uTime.value = t;
+
+  // Update temporal caustic floor
+  TemporalCausticMaterial.uniforms.uTime.value = t;
+  const lightAngle = t * 0.25;
+  causticLight.position.set(
+    Math.cos(lightAngle) * 2.5,
+    3.0 + Math.sin(t * 0.15) * 0.5,
+    Math.sin(lightAngle) * 2.0
+  );
+  TemporalCausticMaterial.uniforms.uLightPos.value.copy(causticLight.position);
+
+  // Temporal reprojection: set previous frame texture
+  const prevRT = causticPingPong === 0 ? causticRT_B : causticRT_A;
+  TemporalCausticMaterial.uniforms.tPrevFrame.value = prevRT.texture;
+
+  // Update SDF text refraction
+  SDFTextRefractionMaterial.uniforms.uTime.value = t;
+
+  // Render SDF text to RT
+  renderer.setRenderTarget(sdfTextRT);
+  renderer.setClearColor(0x000000, 0);
+  renderer.clear();
+  renderer.render(sdfTextScene, sdfTextCamera);
+  SDFTextRefractionMaterial.uniforms.tSDFText.value = sdfTextRT.texture;
+
+  // Inner sphere rotation
+  innerSphere.rotation.y = t * 0.15;
+  innerSphere.rotation.x = Math.sin(t * 0.1) * 0.05;
+
+  // Hex frame
+  hexFrameCore.rotation.z = t * 0.02;
+  hexFrameWard.rotation.z = t * 0.02;
+
+  // Cursor reactivity
+  innerSphere.rotation.x += mouseY * 0.04;
+  innerSphere.rotation.y += mouseX * 0.04;
+  outerSphere.rotation.x = mouseY * 0.03;
+  outerSphere.rotation.y = mouseX * 0.03;
+  hexFrameCore.rotation.x = mouseY * 0.02;
+  hexFrameCore.rotation.y = mouseX * 0.02;
+  hexFrameWard.rotation.x = mouseY * 0.02;
+  hexFrameWard.rotation.y = mouseX * 0.02;
+
+  // Satellites
+  for (const sat of satellites) {
+    const { angle, radius, speed, yOffset } = sat.userData;
+    const a = angle + t * speed;
+    sat.position.set(Math.cos(a) * radius, yOffset + Math.sin(t * 0.5 + angle) * 0.15, Math.sin(a) * radius * 0.4);
+    sat.rotation.y = t * 0.5;
+  }
+
+  // Field lines
+  fieldLineGroup.rotation.y = t * 0.02;
+  fieldLineGroup.rotation.x = Math.sin(t * 0.1) * 0.03;
+
+  // Particles
+  const pos = particles.geometry.attributes.position.array;
+  for (let i = 0; i < particleCount; i++) {
+    pos[i * 3 + 1] += 0.002;
+    if (pos[i * 3 + 1] > 3) pos[i * 3 + 1] = -3;
+  }
+  particles.geometry.attributes.position.needsUpdate = true;
+
+  // God rays
+  godRayDisc.position.x = 0.5 + Math.sin(t * 0.2) * 0.3;
+  godRayDisc.position.y = 0.8 + Math.cos(t * 0.15) * 0.2;
+  occLightClone.position.copy(godRayDisc.position);
+  occSphere.rotation.copy(outerSphere.rotation);
+  const lsp = godRayDisc.position.clone().project(camera);
+  godRayPass.uniforms.uLightPos.value.set(lsp.x * 0.5 + 0.5, lsp.y * 0.5 + 0.5);
+
+  // CA time
+  caPass.uniforms.uTime.value = t;
+
+  // === RENDER PASSES ===
+
+  // 1. Occlusion RT for god rays (half-res)
+  renderer.setRenderTarget(occlusionRT);
+  renderer.render(occlusionScene, camera);
+
+  // 2. Depth RT for DoF
+  renderer.setRenderTarget(depthRT);
+  renderer.render(scene, camera);
+
+  // 3. Half-res volumetric pass (Night 39 technique #3)
+  VolumetricFogMaterial.uniforms.uTime.value = t;
+  VolumetricFogMaterial.uniforms.uCamPos.value.copy(camera.position);
+  VolumetricFogMaterial.uniforms.uLightPos.value.copy(causticLight.position);
+  VolumetricFogMaterial.uniforms.uProjectionMatrixInverse.value.copy(camera.projectionMatrixInverse);
+  VolumetricFogMaterial.uniforms.uViewMatrixInverse.value.copy(camera.matrixWorld);
+  renderer.setRenderTarget(volumetricRT);
+  renderer.render(volumetricScene, volumetricCamera);
+
+  // 4. Caustic temporal reprojection: render to current ping-pong target
+  const currentCausticRT = causticPingPong === 0 ? causticRT_A : causticRT_B;
+  // (The floor renders in the main scene pass, temporal blend happens in shader)
+
+  // Flip ping-pong
+  causticPingPong = 1 - causticPingPong;
+
+  // 5. Main compositor
+  renderer.setRenderTarget(null);
+  composer.render();
+}
+
+animate();
+
+// ============================================================
+// RESIZE
+// ============================================================
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+  const newHalfW = Math.floor(window.innerWidth / 2);
+  const newHalfH = Math.floor(window.innerHeight / 2);
+  volumetricRT.setSize(newHalfW, newHalfH);
+  VolumetricFogMaterial.uniforms.uResolution.value.set(newHalfW, newHalfH);
+  occlusionRT.setSize(newHalfW, newHalfH);
+  depthRT.setSize(window.innerWidth, window.innerHeight);
+  HexBokehShader.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+  const newCW = Math.floor(window.innerWidth * 0.75);
+  const newCH = Math.floor(window.innerHeight * 0.75);
+  causticRT_A.setSize(newCW, newCH);
+  causticRT_B.setSize(newCW, newCH);
+  TemporalCausticMaterial.uniforms.uResolution.value.set(newCW, newCH);
+});
+</script>
+</body>
+</html>

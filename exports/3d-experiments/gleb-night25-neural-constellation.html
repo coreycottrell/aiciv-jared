@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Night 25: Neural Constellation - Emergent Intelligence</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #050710; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+canvas { display: block; width: 100vw; height: 100vh; }
+#info {
+  position: fixed; bottom: 20px; left: 20px; color: rgba(255,255,255,0.3);
+  font-size: 10px; z-index: 10; pointer-events: none; letter-spacing: 0.1em;
+}
+#fps { position: fixed; top: 16px; right: 16px; color: rgba(42,147,193,0.4); font-size: 11px; z-index: 10; }
+</style>
+</head>
+<body>
+<div id="info">NEURAL CONSTELLATION // Move cursor to influence the field</div>
+<div id="fps">-- fps</div>
+<canvas id="c"></canvas>
+<script>
+// Night 25 Exercise 3: Neural Constellation - Original Creative Piece
+//
+// Concept: Intelligence is not a thing -- it's a pattern that emerges
+// from connections. This piece visualizes that idea:
+//
+// - 7 glass nodes (neurons) orbit in 3D space
+// - Between them, luminous synaptic connections form and dissolve
+// - Each connection carries spectral energy (visible dispersion along the link)
+// - A central "consciousness field" -- a volumetric glow that intensifies
+//   as more connections are active
+// - Mouse proximity activates nearby nodes, triggering cascade connections
+// - The whole system breathes with a cardiac rhythm
+// - Voronoi cell boundaries represent potential connection paths
+// - When a connection fires, it creates a spectral pulse that travels
+//   the link and blooms at the receiving node
+//
+// Techniques combined: SDF, spectral dispersion, Beer-Lambert,
+// thin-film on nodes, volumetric scattering, Voronoi topology,
+// temporal pulse animation
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias: false });
+if (!gl) { document.body.innerHTML = '<h1 style="color:#fff;padding:2em">WebGL2 required</h1>'; }
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio, 1.5);
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+resize();
+window.addEventListener('resize', resize);
+
+let mx = 0.0, my = 0.0, tmx = 0.0, tmy = 0.0;
+document.addEventListener('mousemove', e => {
+  tmx = (e.clientX / window.innerWidth) * 2.0 - 1.0;
+  tmy = -(e.clientY / window.innerHeight) * 2.0 + 1.0;
+});
+document.addEventListener('touchmove', e => {
+  tmx = (e.touches[0].clientX / window.innerWidth) * 2.0 - 1.0;
+  tmy = -(e.touches[0].clientY / window.innerHeight) * 2.0 + 1.0;
+}, { passive: true });
+
+const vs = `#version 300 es
+in vec2 a;
+void main(){gl_Position=vec4(a,0,1);}`;
+
+const fs = `#version 300 es
+precision highp float;
+out vec4 O;
+uniform float t;
+uniform vec2 r;
+uniform vec2 mouse;
+
+#define PI 3.14159265
+#define TAU 6.28318530
+#define NUM_NODES 7
+#define NUM_CONNECTIONS 12
+
+// ========== UTILITY ==========
+mat2 rot2(float a) { float c=cos(a),s=sin(a); return mat2(c,-s,s,c); }
+
+float hash(float n) { return fract(sin(n)*43758.5453123); }
+float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+
+// ========== SDF ==========
+float sdSphere(vec3 p, float r) { return length(p) - r; }
+float sdCapsule(vec3 p, vec3 a, vec3 b, float r) {
+  vec3 ab = b-a, ap = p-a;
+  float tt = clamp(dot(ap,ab)/dot(ab,ab), 0.0, 1.0);
+  return length(p - (a + tt*ab)) - r;
+}
+
+// ========== NODE POSITIONS ==========
+// 7 nodes in a 3D constellation pattern
+vec3 nodePos(int i, float time) {
+  float fi = float(i);
+  // Base positions on a golden-ratio spiral in 3D
+  float goldenAngle = 2.399963; // PI * (3 - sqrt(5))
+  float theta = goldenAngle * fi;
+  float phi = acos(1.0 - 2.0 * (fi + 0.5) / float(NUM_NODES));
+  float rad = 1.5 + 0.3 * sin(time * 0.2 + fi * 1.7);
+
+  vec3 basePos = rad * vec3(
+    sin(phi) * cos(theta),
+    sin(phi) * sin(theta),
+    cos(phi)
+  );
+
+  // Organic drift
+  basePos.x += 0.15 * sin(time * 0.3 + fi * 2.1);
+  basePos.y += 0.1 * cos(time * 0.25 + fi * 1.4);
+  basePos.z += 0.12 * sin(time * 0.35 + fi * 0.9);
+
+  // Mouse influence: nodes near cursor are attracted
+  vec2 nodeScreen = basePos.xy / (basePos.z * 0.2 + 3.0);
+  float mouseDist = length(mouse - nodeScreen);
+  float attraction = exp(-mouseDist * 3.0) * 0.3;
+  basePos.xy += (mouse - nodeScreen) * attraction;
+
+  return basePos;
+}
+
+// ========== CONNECTION TOPOLOGY ==========
+// Pre-defined connections (pairs of node indices)
+// Stored as: (nodeA * 10 + nodeB) for int encoding
+const int CONNS[12] = int[12](
+  01, 02, 03, 12, 13, 14, 23, 24, 25, 34, 45, 56
+);
+
+// Connection activity (pulsing based on time + distance)
+float connectionActivity(int connIdx, float time) {
+  float fi = float(connIdx);
+  // Cascade firing pattern
+  float baseFreq = 0.3 + 0.1 * hash(fi);
+  float phase = hash(fi * 7.3) * TAU;
+  float fire = smoothstep(0.0, 0.15, fract(time * baseFreq + phase))
+             * smoothstep(0.4, 0.15, fract(time * baseFreq + phase));
+  return fire;
+}
+
+// ========== THIN-FILM ==========
+vec3 thinFilmNode(float cosTheta, float thickness) {
+  vec3 col = vec3(0.0);
+  for (int i = 0; i < 5; i++) {
+    float lam = 0.40 + 0.075 * float(i);
+    float n1 = 1.38;
+    float cosT = sqrt(max(0.0, 1.0-(1.0/n1/n1)*(1.0-cosTheta*cosTheta)));
+    float delta = TAU * n1 * thickness * cosT / lam;
+    float r01 = (cosTheta - n1*cosT)/(cosTheta + n1*cosT);
+    float refl = 2.0 * r01 * r01 * (1.0 + cos(delta));
+    float x = (lam - 0.40) / 0.30;
+    vec3 sc;
+    if (x < 0.25) sc = mix(vec3(0.5,0,1), vec3(0,0.4,1), x*4.0);
+    else if (x < 0.5) sc = mix(vec3(0,0.4,1), vec3(0,1,0.3), (x-0.25)*4.0);
+    else if (x < 0.75) sc = mix(vec3(0,1,0.3), vec3(1,0.8,0), (x-0.5)*4.0);
+    else sc = mix(vec3(1,0.8,0), vec3(1,0.1,0), (x-0.75)*4.0);
+    col += sc * refl;
+  }
+  return col / 5.0;
+}
+
+// ========== SPECTRAL PULSE COLOR ==========
+vec3 spectralPulse(float progress) {
+  // Color shifts through spectrum as pulse travels
+  float lam = 0.40 + 0.30 * progress;
+  float x = progress;
+  vec3 c;
+  if (x < 0.2) c = mix(vec3(0.4,0,1), vec3(0,0.3,1), x*5.0);
+  else if (x < 0.4) c = mix(vec3(0,0.3,1), vec3(0,1,0.5), (x-0.2)*5.0);
+  else if (x < 0.6) c = mix(vec3(0,1,0.5), vec3(0.5,1,0), (x-0.4)*5.0);
+  else if (x < 0.8) c = mix(vec3(0.5,1,0), vec3(1,0.5,0), (x-0.6)*5.0);
+  else c = mix(vec3(1,0.5,0), vec3(1,0.1,0), (x-0.8)*5.0);
+  return c;
+}
+
+// ========== MAIN ==========
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * r) / r.y;
+
+  // Camera: slow orbit with mouse parallax
+  float camAngle = t * 0.08;
+  vec3 ro = vec3(sin(camAngle)*4.5 + mouse.x*0.5, mouse.y*0.4 + 0.2, cos(camAngle)*4.5);
+  vec3 ta = vec3(0.0);
+  vec3 ww = normalize(ta - ro);
+  vec3 uu = normalize(cross(ww, vec3(0,1,0)));
+  vec3 vv = cross(uu, ww);
+  vec3 rd = normalize(uv.x*uu + uv.y*vv + 2.0*ww);
+
+  // Precompute all node positions
+  vec3 nodes[7];
+  for (int i = 0; i < NUM_NODES; i++) {
+    nodes[i] = nodePos(i, t);
+  }
+
+  // ========== BACKGROUND: Deep space with subtle nebula ==========
+  vec3 col = vec3(0.0);
+  {
+    // Gradient
+    float bgY = uv.y * 0.5 + 0.5;
+    col = mix(vec3(0.015, 0.01, 0.03), vec3(0.005, 0.008, 0.02), bgY);
+
+    // Nebula noise
+    vec2 nuv = uv * 1.5 + t * 0.01;
+    float nebula = 0.0;
+    float amp = 0.5;
+    for (int i = 0; i < 4; i++) {
+      nebula += hash2(nuv) * amp;
+      nuv *= 2.1;
+      amp *= 0.5;
+    }
+    nebula = smoothstep(0.3, 0.7, nebula);
+    col += vec3(0.02, 0.005, 0.03) * nebula * 0.3;
+
+    // Distant stars
+    for (int i = 0; i < 40; i++) {
+      float fi = float(i);
+      vec2 starPos = vec2(hash(fi*1.1), hash(fi*2.3)) * 2.0 - 1.0;
+      starPos.x *= r.x / r.y;
+      float twinkle = 0.5 + 0.5 * sin(t * (1.0 + hash(fi*3.7)) + fi);
+      float starD = length(uv - starPos);
+      col += twinkle * 0.3 * exp(-starD * starD * 8000.0) * vec3(0.8, 0.85, 1.0);
+    }
+  }
+
+  // ========== RAYMARCH NODES ==========
+  float totalD = 0.0;
+  int hitId = -1;
+  float minD = 999.0;
+
+  for (int step = 0; step < 48; step++) {
+    vec3 p = ro + rd * totalD;
+    float closest = 999.0;
+    int closestId = -1;
+
+    // Check each node
+    for (int i = 0; i < NUM_NODES; i++) {
+      float nodeSize = 0.12 + 0.02 * sin(t * 0.5 + float(i) * 1.3);
+      float d = sdSphere(p - nodes[i], nodeSize);
+      if (d < closest) { closest = d; closestId = i; }
+    }
+
+    if (closest < 0.001) { hitId = closestId; break; }
+    if (totalD > 15.0) break;
+    totalD += closest;
+  }
+
+  // ========== SHADE NODES ==========
+  if (hitId >= 0) {
+    vec3 pos = ro + rd * totalD;
+    vec3 nodeCenter = nodes[hitId];
+    vec3 N = normalize(pos - nodeCenter);
+    vec3 V = -rd;
+    float NdV = max(dot(N, V), 0.001);
+    float fi = float(hitId);
+
+    // Thin-film iridescence
+    float filmThick = 0.00035 + 0.00008 * sin(t * 0.4 + fi * 2.0);
+    vec3 film = thinFilmNode(NdV, filmThick);
+
+    // Glass body
+    float fresnel = pow(1.0 - NdV, 5.0);
+    fresnel = mix(0.04, 1.0, fresnel);
+
+    // Internal glow: brighter when receiving a synaptic pulse
+    float receivingPulse = 0.0;
+    for (int c = 0; c < NUM_CONNECTIONS; c++) {
+      int conn = CONNS[c];
+      int nA = conn / 10, nB = conn - nA * 10;
+      if (nB == hitId || nA == hitId) {
+        receivingPulse += connectionActivity(c, t) * 0.5;
+      }
+    }
+    receivingPulse = min(receivingPulse, 1.0);
+
+    vec3 innerGlow = mix(
+      vec3(0.165, 0.576, 0.757),  // PureBrain blue
+      vec3(0.945, 0.259, 0.043),  // PureBrain orange
+      receivingPulse * 0.6
+    ) * (0.3 + receivingPulse * 1.5);
+
+    // Specular
+    vec3 L = normalize(vec3(2.0, 2.0, 3.0) - pos);
+    vec3 H = normalize(L + V);
+    float spec = pow(max(dot(N, H), 0.0), 128.0);
+
+    // Combine
+    col = film * fresnel * 0.7 + innerGlow * (1.0 - fresnel * 0.3) + spec * 0.5;
+
+    // Rim
+    float rim = pow(1.0 - NdV, 3.0);
+    col += rim * vec3(0.165, 0.576, 0.757) * 0.5;
+  }
+
+  // ========== SYNAPTIC CONNECTIONS ==========
+  {
+    for (int c = 0; c < NUM_CONNECTIONS; c++) {
+      int conn = CONNS[c];
+      int nA = conn / 10, nB = conn - nA * 10;
+      vec3 posA = nodes[nA];
+      vec3 posB = nodes[nB];
+
+      float activity = connectionActivity(c, t);
+      if (activity < 0.01) continue;
+
+      // Project connection line to screen and check ray proximity
+      // Approximate: check capsule SDF along the ray
+      float bestD = 999.0;
+      float bestT = 0.0;
+      float linkLen = length(posB - posA);
+
+      for (int s = 0; s < 16; s++) {
+        float tt = float(s) / 15.0 * min(totalD > 0.0 ? totalD : 8.0, 8.0);
+        vec3 p = ro + rd * tt;
+        float d = sdCapsule(p, posA, posB, 0.008);
+        if (d < bestD) { bestD = d; bestT = tt; }
+      }
+
+      if (bestD < 0.08) {
+        // Find position along the link for spectral coloring
+        vec3 hitP = ro + rd * bestT;
+        vec3 ab = posB - posA;
+        float along = clamp(dot(hitP - posA, ab) / dot(ab, ab), 0.0, 1.0);
+
+        // Pulse traveling along the connection
+        float fc = float(c);
+        float baseFreq = 0.3 + 0.1 * hash(fc);
+        float phase = hash(fc * 7.3) * TAU;
+        float pulsePos = fract(t * baseFreq * 2.0 + phase);
+        float pulseDist = abs(along - pulsePos);
+        float pulseGlow = exp(-pulseDist * pulseDist * 50.0) * activity;
+
+        // Spectral color shifts along link
+        vec3 linkCol = spectralPulse(along) * 0.5 + vec3(0.165, 0.576, 0.757) * 0.3;
+
+        float glow = exp(-bestD * 60.0) * activity * 0.6;
+        glow += pulseGlow * 1.5;
+
+        col += linkCol * glow;
+
+        // Bloom halo around connection
+        float halo = exp(-bestD * 15.0) * activity * 0.08;
+        col += vec3(0.165, 0.576, 0.757) * halo;
+      }
+    }
+  }
+
+  // ========== CONSCIOUSNESS FIELD (central volumetric glow) ==========
+  {
+    // Total network activity
+    float totalActivity = 0.0;
+    for (int c = 0; c < NUM_CONNECTIONS; c++) {
+      totalActivity += connectionActivity(c, t);
+    }
+    totalActivity /= float(NUM_CONNECTIONS);
+
+    // Volumetric glow around center proportional to activity
+    float centerDist = length(uv);
+    float fieldGlow = exp(-centerDist * centerDist * 2.5) * totalActivity;
+
+    vec3 fieldCol = mix(
+      vec3(0.05, 0.1, 0.2),
+      vec3(0.165, 0.576, 0.757),
+      totalActivity
+    );
+    col += fieldCol * fieldGlow * 0.4;
+
+    // Heartbeat modulation
+    float heartbeat = smoothstep(0.0, 0.1, fract(t*0.8)) * smoothstep(0.2, 0.1, fract(t*0.8))
+                    + smoothstep(0.3, 0.4, fract(t*0.8)) * smoothstep(0.5, 0.4, fract(t*0.8));
+    col *= 1.0 + heartbeat * 0.08 * totalActivity;
+  }
+
+  // ========== NODE GLOW HALOS ==========
+  {
+    for (int i = 0; i < NUM_NODES; i++) {
+      // Project node to screen
+      vec3 toNode = nodes[i] - ro;
+      float depth = dot(toNode, ww);
+      if (depth < 0.1) continue;
+      vec2 nodeScreen = vec2(dot(toNode, uu), dot(toNode, vv)) / depth * 2.0;
+
+      float nd = length(uv - nodeScreen);
+      float halo = exp(-nd * nd * 30.0) * 0.12;
+
+      // Activity-based color
+      float nodeActivity = 0.0;
+      for (int c = 0; c < NUM_CONNECTIONS; c++) {
+        int conn = CONNS[c];
+        int nA = conn / 10, nB = conn - nA * 10;
+        if (nA == i || nB == i) nodeActivity += connectionActivity(c, t);
+      }
+      nodeActivity = min(nodeActivity, 2.0) / 2.0;
+
+      vec3 haloCol = mix(
+        vec3(0.1, 0.2, 0.4),
+        vec3(0.165, 0.576, 0.757),
+        nodeActivity
+      );
+      // Active nodes get orange accent
+      haloCol = mix(haloCol, vec3(0.945, 0.259, 0.043), nodeActivity * 0.2);
+
+      col += haloCol * halo;
+    }
+  }
+
+  // ========== POST-PROCESSING ==========
+  // Chromatic aberration (subtle)
+  {
+    vec2 dir = uv * 0.003;
+    // We approximate by shifting color channels
+    float rShift = length(uv + dir);
+    float bShift = length(uv - dir);
+    col.r *= 1.0 + (rShift - length(uv)) * 0.5;
+    col.b *= 1.0 + (bShift - length(uv)) * 0.5;
+  }
+
+  // Vignette
+  vec2 vuv = gl_FragCoord.xy / r;
+  float vig = 1.0 - 0.45 * pow(length(vuv - 0.5) * 1.5, 2.0);
+  col *= vig;
+
+  // Tone mapping (ACES)
+  col = col * (2.51 * col + 0.03) / (col * (2.43 * col + 0.59) + 0.14);
+
+  // Film grain
+  float grain = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)) + t) * 43758.5453) * 0.018;
+  col += grain - 0.009;
+
+  col = clamp(col, 0.0, 1.0);
+  O = vec4(col, 1.0);
+}`;
+
+function createShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error('Shader error:', gl.getShaderInfoLog(s));
+    return null;
+  }
+  return s;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, createShader(gl.VERTEX_SHADER, vs));
+gl.attachShader(prog, createShader(gl.FRAGMENT_SHADER, fs));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+const aLoc = gl.getAttribLocation(prog, 'a');
+gl.enableVertexAttribArray(aLoc);
+gl.vertexAttribPointer(aLoc, 2, gl.FLOAT, false, 0, 0);
+
+const uT = gl.getUniformLocation(prog, 't');
+const uR = gl.getUniformLocation(prog, 'r');
+const uM = gl.getUniformLocation(prog, 'mouse');
+
+let frames = 0, lastFps = performance.now();
+const fpsEl = document.getElementById('fps');
+
+function render(time) {
+  mx += (tmx - mx) * 0.04;
+  my += (tmy - my) * 0.04;
+
+  gl.uniform1f(uT, time * 0.001);
+  gl.uniform2f(uR, canvas.width, canvas.height);
+  gl.uniform2f(uM, mx, my);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  frames++;
+  if (time - lastFps > 1000) {
+    fpsEl.textContent = Math.round(frames * 1000 / (time - lastFps)) + ' fps';
+    frames = 0;
+    lastFps = time;
+  }
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

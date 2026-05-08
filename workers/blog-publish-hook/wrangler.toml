@@ -1,0 +1,54 @@
+# blog-publish-hook — CF Worker that watches purebrain.ai/blog/ and queues
+# Bluesky thread drafts into social.purebrain.ai kanban.
+#
+# Spec: .claude/memory/departments/systems-technology/2026-05-02--bsky-publish-hook-spec.md (v2)
+# CTO sign-off: APPROVED-WITH-AMENDMENTS (A1-A6 applied in BUILD)
+# Deploy via `wrangler deploy` (Workers, not Pages — A6 confirms this is approved;
+# constitutional ban is on `wrangler pages deploy` only).
+#
+# Secrets to set BEFORE first deploy (not committed):
+#   wrangler secret put SOCIAL_API_SYSTEM_TOKEN     # value = social-api ROUTER_API_KEY
+#   wrangler secret put BLOG_HOOK_HOUSE_ACCOUNT_ID  # social_accounts.id of @purebrain.ai bsky row
+#
+# Optional secrets:
+#   wrangler secret put TG_BOT_TOKEN     # Telegram bot for failure alerts (off by default)
+#   wrangler secret put TG_CHAT_ID       # Jared's chat id
+
+name = "blog-publish-hook"
+main = "src/worker.js"
+compatibility_date = "2026-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "purebrain-social"
+database_id = "625dde70-0a60-45e7-bf81-e18e5ac4d854"
+
+[vars]
+# Public, non-secret config. Override for staging via env block below.
+BLOG_INDEX_URL    = "https://purebrain.ai/blog/"
+SOCIAL_API_BASE   = "https://social-api.purebrain.ai"
+HOUSE_PLATFORM    = "bluesky"
+MAX_RETRIES       = "3"
+
+[triggers]
+# Every 10 minutes per spec. CF cron tick budget: 144/day (well under 100k/day free tier).
+crons = ["*/10 * * * *"]
+
+# Staging environment — point at staging social-api when ready.
+[env.staging]
+name = "blog-publish-hook-staging"
+
+[env.staging.vars]
+BLOG_INDEX_URL  = "https://staging.purebrain.ai/blog/"
+SOCIAL_API_BASE = "https://social-api.purebrain.ai"   # social-api has no staging twin yet
+HOUSE_PLATFORM  = "bluesky"
+MAX_RETRIES     = "3"
+
+[[env.staging.d1_databases]]
+binding       = "DB"
+database_name = "purebrain-social"
+database_id   = "625dde70-0a60-45e7-bf81-e18e5ac4d854"
+
+[env.staging.triggers]
+# Disable cron in staging; invoke manually with `wrangler dev --test-scheduled`.
+crons = []

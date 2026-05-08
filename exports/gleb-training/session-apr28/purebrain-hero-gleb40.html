@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PureBrain Hero - Gleb Session 40: God Rays + Organic Particles + Camera Easing</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #080a12; overflow: hidden; font-family: system-ui, sans-serif; }
+canvas { display: block; width: 100vw; height: 100vh; }
+#info {
+  position: fixed; bottom: 16px; left: 16px; color: rgba(255,255,255,0.35);
+  font: 11px/1.5 monospace; z-index: 10; pointer-events: none;
+}
+#fps {
+  position: fixed; top: 16px; right: 16px; color: rgba(255,255,255,0.25);
+  font: 11px monospace; z-index: 10; pointer-events: none;
+}
+#techniques {
+  position: fixed; top: 16px; left: 16px; color: rgba(255,255,255,0.22);
+  font: 9px/1.8 monospace; z-index: 10; pointer-events: none; max-width: 320px;
+}
+</style>
+</head>
+<body>
+<div id="info">Session 40 | PureBrain Hero | God Rays + Organic Particles + Camera Easing + Chromatic Glass + Full Post Stack</div>
+<div id="fps">--</div>
+<div id="techniques">
+  [1] Advanced Glass Refraction + Chromatic Aberration (per-channel IOR)<br>
+  [2] Volumetric God Rays (radial blur, occlusion map, 64 samples)<br>
+  [3] Organic Curl-Noise Particles (3D FBM advection, size attenuation)<br>
+  [4] Smooth Camera Transitions (cubic bezier easing, orbit drift)<br>
+  [5] Full Post Stack (bloom + vignette + film grain + chromatic shift)
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+// ============================================================
+// BRAND CONSTANTS
+// ============================================================
+const BRAND = {
+  dark: 0x080a12,
+  blue: 0x2a93c1,
+  orange: 0xf1420b,
+  blueVec: new THREE.Color(0x2a93c1),
+  orangeVec: new THREE.Color(0xf1420b),
+};
+
+// ============================================================
+// RENDERER
+// ============================================================
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+// ============================================================
+// SCENE + CAMERA
+// ============================================================
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(BRAND.dark);
+scene.fog = new THREE.FogExp2(BRAND.dark, 0.025);
+
+const camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0.3, 5.0);
+
+// ============================================================
+// CAMERA EASING SYSTEM (Focus Area 4)
+// Cubic bezier easing with smooth orbit drift
+// ============================================================
+class CameraEasing {
+  constructor(camera) {
+    this.camera = camera;
+    this.basePos = camera.position.clone();
+    this.targetPos = camera.position.clone();
+    this.lookTarget = new THREE.Vector3(0, -0.05, 0);
+    this.time = 0;
+    this.orbitRadius = 0.15;
+    this.orbitSpeed = 0.12;
+    this.breatheAmp = 0.03;
+    this.breatheSpeed = 0.4;
+    // Transition state
+    this.transitioning = false;
+    this.transitionStart = 0;
+    this.transitionDur = 3.0;
+    this.fromPos = new THREE.Vector3();
+    this.toPos = new THREE.Vector3();
+  }
+
+  // Cubic bezier easing (0.25, 0.1, 0.25, 1.0) - CSS ease equivalent
+  cubicBezierEase(t) {
+    // Attempt approximation of cubic-bezier(0.25, 0.1, 0.25, 1.0)
+    const t2 = t * t;
+    const t3 = t2 * t;
+    return 3.0 * (1 - t) * (1 - t) * t * 0.1 + 3.0 * (1 - t) * t2 * 0.25 + t3;
+  }
+
+  // Smooth step with overshooting (spring-like)
+  springEase(t, damping = 0.7) {
+    const w = 2.0 * Math.PI;
+    return 1.0 - Math.exp(-damping * 6.0 * t) * Math.cos(w * t * 0.5);
+  }
+
+  transitionTo(target, duration = 3.0) {
+    this.transitioning = true;
+    this.transitionStart = this.time;
+    this.transitionDur = duration;
+    this.fromPos.copy(this.camera.position);
+    this.toPos.copy(target);
+  }
+
+  update(dt) {
+    this.time += dt;
+
+    if (this.transitioning) {
+      const elapsed = this.time - this.transitionStart;
+      let t = Math.min(elapsed / this.transitionDur, 1.0);
+      t = this.springEase(t, 0.8);
+
+      this.camera.position.lerpVectors(this.fromPos, this.toPos, t);
+      if (elapsed >= this.transitionDur) {
+        this.transitioning = false;
+        this.basePos.copy(this.toPos);
+      }
+    } else {
+      // Idle orbit drift
+      const orbitX = Math.sin(this.time * this.orbitSpeed) * this.orbitRadius;
+      const orbitY = Math.cos(this.time * this.orbitSpeed * 0.7) * this.orbitRadius * 0.5;
+      // Breathing (Z axis)
+      const breathe = Math.sin(this.time * this.breatheSpeed) * this.breatheAmp;
+
+      this.camera.position.x = this.basePos.x + orbitX;
+      this.camera.position.y = this.basePos.y + orbitY;
+      this.camera.position.z = this.basePos.z + breathe;
+    }
+
+    this.camera.lookAt(this.lookTarget);
+  }
+}
+
+const cameraEasing = new CameraEasing(camera);
+
+// Auto-transition sequence for demo (every 8 seconds)
+const cameraPositions = [
+  new THREE.Vector3(0, 0.3, 5.0),
+  new THREE.Vector3(1.2, 0.6, 4.2),
+  new THREE.Vector3(-0.8, -0.2, 4.8),
+  new THREE.Vector3(0.3, 0.8, 3.8),
+  new THREE.Vector3(0, 0.3, 5.0),
+];
+let camPosIdx = 0;
+setInterval(() => {
+  camPosIdx = (camPosIdx + 1) % cameraPositions.length;
+  cameraEasing.transitionTo(cameraPositions[camPosIdx], 4.0);
+}, 8000);
+
+// ============================================================
+// HDRI ENVIRONMENT
+// ============================================================
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+let envMap = null;
+
+new RGBELoader()
+  .setPath('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/')
+  .load('studio_small_09_1k.hdr', (texture) => {
+    envMap = pmremGenerator.fromEquirectangular(texture).texture;
+    scene.environment = envMap;
+    texture.dispose();
+    pmremGenerator.dispose();
+  });
+
+// ============================================================
+// HEXAGONAL GLASS (Focus Area 1: Advanced Chromatic Refraction)
+// Custom shader with per-channel IOR offset
+// ============================================================
+const hexGlassVertexShader = `
+  varying vec3 vWorldPos;
+  varying vec3 vWorldNormal;
+  varying vec3 vViewDir;
+  varying vec2 vUv;
+
+  void main() {
+    vec4 worldPos = modelMatrix * vec4(position, 1.0);
+    vWorldPos = worldPos.xyz;
+    vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+    vViewDir = normalize(cameraPosition - worldPos.xyz);
+    vUv = uv;
+    gl_Position = projectionMatrix * viewMatrix * worldPos;
+  }
+`;
+
+const hexGlassFragmentShader = `
+  uniform float time;
+  uniform samplerCube envMapCube;
+  uniform vec3 brandBlue;
+  uniform vec3 brandOrange;
+  uniform float iorBase;
+  uniform float chromaticSpread;
+  uniform float thickness;
+  uniform float roughness;
+
+  varying vec3 vWorldPos;
+  varying vec3 vWorldNormal;
+  varying vec3 vViewDir;
+  varying vec2 vUv;
+
+  // Fresnel (Schlick approximation)
+  float fresnel(vec3 viewDir, vec3 normal, float f0) {
+    float cosTheta = max(dot(viewDir, normal), 0.0);
+    return f0 + (1.0 - f0) * pow(1.0 - cosTheta, 5.0);
+  }
+
+  // Per-channel refraction (chromatic aberration through glass)
+  vec3 chromaticRefraction(vec3 viewDir, vec3 normal, float ior, float spread) {
+    float iorR = ior - spread;
+    float iorG = ior;
+    float iorB = ior + spread;
+
+    vec3 refractR = refract(-viewDir, normal, 1.0 / iorR);
+    vec3 refractG = refract(-viewDir, normal, 1.0 / iorG);
+    vec3 refractB = refract(-viewDir, normal, 1.0 / iorB);
+
+    float r = textureCube(envMapCube, refractR).r;
+    float g = textureCube(envMapCube, refractG).g;
+    float b = textureCube(envMapCube, refractB).b;
+
+    return vec3(r, g, b);
+  }
+
+  // Absorption through glass thickness (Beer's law)
+  vec3 absorption(vec3 color, float dist) {
+    vec3 absorbColor = mix(brandBlue, brandOrange, sin(time * 0.3) * 0.5 + 0.5);
+    return color * exp(-absorbColor * dist * 0.5);
+  }
+
+  void main() {
+    vec3 N = normalize(vWorldNormal);
+    vec3 V = normalize(vViewDir);
+
+    // Chromatic refraction
+    vec3 refracted = chromaticRefraction(V, N, iorBase, chromaticSpread);
+
+    // Apply absorption
+    float glassThickness = thickness * (1.0 + 0.3 * sin(vUv.x * 6.28 + time));
+    refracted = absorption(refracted, glassThickness);
+
+    // Reflection
+    vec3 reflectDir = reflect(-V, N);
+    vec3 reflected = textureCube(envMapCube, reflectDir).rgb;
+
+    // Fresnel blend
+    float f = fresnel(V, N, 0.04);
+
+    // Rim glow (PureBrain blue)
+    float rim = 1.0 - max(dot(V, N), 0.0);
+    vec3 rimColor = brandBlue * pow(rim, 3.0) * 0.6;
+
+    // Combine
+    vec3 color = mix(refracted, reflected, f * 0.7) + rimColor;
+
+    // Internal scattering (subsurface glow)
+    float scatter = pow(max(dot(-V, N), 0.0), 4.0) * 0.15;
+    color += brandBlue * scatter;
+
+    gl_FragColor = vec4(color, 0.92);
+  }
+`;
+
+// Create hexagonal prism geometry
+function createHexGeometry(radius, depth, segments = 6) {
+  const shape = new THREE.Shape();
+  for (let i = 0; i < segments; i++) {
+    const angle = (i / segments) * Math.PI * 2 - Math.PI / 2;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    if (i === 0) shape.moveTo(x, y);
+    else shape.lineTo(x, y);
+  }
+  shape.closePath();
+
+  const extrudeSettings = {
+    depth: depth,
+    bevelEnabled: true,
+    bevelThickness: 0.02,
+    bevelSize: 0.02,
+    bevelOffset: 0,
+    bevelSegments: 4
+  };
+
+  const geom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+  geom.center();
+  geom.computeVertexNormals();
+  return geom;
+}
+
+// Main hex (large, centered)
+const hexGeom = createHexGeometry(1.1, 0.35);
+const hexMaterial = new THREE.ShaderMaterial({
+  vertexShader: hexGlassVertexShader,
+  fragmentShader: hexGlassFragmentShader,
+  uniforms: {
+    time: { value: 0 },
+    envMapCube: { value: null },
+    brandBlue: { value: new THREE.Vector3(0.165, 0.576, 0.757) },
+    brandOrange: { value: new THREE.Vector3(0.945, 0.259, 0.043) },
+    iorBase: { value: 1.45 },
+    chromaticSpread: { value: 0.06 },
+    thickness: { value: 0.8 },
+    roughness: { value: 0.05 },
+  },
+  transparent: true,
+  side: THREE.DoubleSide,
+});
+const hexMesh = new THREE.Mesh(hexGeom, hexMaterial);
+hexMesh.rotation.x = Math.PI * 0.08;
+hexMesh.castShadow = true;
+scene.add(hexMesh);
+
+// Secondary smaller hexes (orbiting)
+const smallHexes = [];
+for (let i = 0; i < 5; i++) {
+  const smallGeom = createHexGeometry(0.25 + Math.random() * 0.15, 0.1);
+  const smallMat = hexMaterial.clone();
+  smallMat.uniforms = {
+    time: { value: 0 },
+    envMapCube: { value: null },
+    brandBlue: { value: new THREE.Vector3(0.165, 0.576, 0.757) },
+    brandOrange: { value: new THREE.Vector3(0.945, 0.259, 0.043) },
+    iorBase: { value: 1.5 + Math.random() * 0.1 },
+    chromaticSpread: { value: 0.04 + Math.random() * 0.04 },
+    thickness: { value: 0.5 },
+    roughness: { value: 0.03 },
+  };
+  const mesh = new THREE.Mesh(smallGeom, smallMat);
+  mesh.userData = {
+    orbitAngle: (i / 5) * Math.PI * 2,
+    orbitRadius: 1.8 + Math.random() * 0.5,
+    orbitSpeed: 0.15 + Math.random() * 0.1,
+    orbitY: (Math.random() - 0.5) * 0.6,
+    rotSpeed: new THREE.Vector3(
+      (Math.random() - 0.5) * 0.5,
+      (Math.random() - 0.5) * 0.5,
+      (Math.random() - 0.5) * 0.3
+    ),
+  };
+  scene.add(mesh);
+  smallHexes.push(mesh);
+}
+
+// ============================================================
+// ORGANIC PARTICLE SYSTEM (Focus Area 3: Curl-Noise Advection)
+// ============================================================
+const PARTICLE_COUNT = 2000;
+
+// Curl noise particle shader
+const particleVertexShader = `
+  attribute float size;
+  attribute float alpha;
+  attribute vec3 customColor;
+  varying float vAlpha;
+  varying vec3 vColor;
+
+  void main() {
+    vAlpha = alpha;
+    vColor = customColor;
+    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = size * (300.0 / -mvPos.z);
+    gl_Position = projectionMatrix * mvPos;
+  }
+`;
+
+const particleFragmentShader = `
+  varying float vAlpha;
+  varying vec3 vColor;
+
+  void main() {
+    // Soft circular particle
+    vec2 center = gl_PointCoord - 0.5;
+    float dist = length(center);
+    if (dist > 0.5) discard;
+
+    // Soft falloff
+    float strength = 1.0 - smoothstep(0.0, 0.5, dist);
+    strength = pow(strength, 1.5);
+
+    gl_FragColor = vec4(vColor, strength * vAlpha);
+  }
+`;
+
+// Initialize particles
+const particlePositions = new Float32Array(PARTICLE_COUNT * 3);
+const particleSizes = new Float32Array(PARTICLE_COUNT);
+const particleAlphas = new Float32Array(PARTICLE_COUNT);
+const particleColors = new Float32Array(PARTICLE_COUNT * 3);
+const particleVelocities = new Float32Array(PARTICLE_COUNT * 3);
+const particleLifetimes = new Float32Array(PARTICLE_COUNT);
+const particleMaxLifetimes = new Float32Array(PARTICLE_COUNT);
+
+function resetParticle(i) {
+  // Spawn near the hex surface
+  const angle = Math.random() * Math.PI * 2;
+  const radius = 0.8 + Math.random() * 0.5;
+  const y = (Math.random() - 0.5) * 1.2;
+
+  particlePositions[i * 3] = Math.cos(angle) * radius;
+  particlePositions[i * 3 + 1] = y;
+  particlePositions[i * 3 + 2] = Math.sin(angle) * radius + (Math.random() - 0.5) * 0.3;
+
+  particleSizes[i] = 1.5 + Math.random() * 3.0;
+  particleAlphas[i] = 0.0;
+
+  // Color: mix between blue and orange particles (80/20 split)
+  const isOrange = Math.random() < 0.2;
+  if (isOrange) {
+    particleColors[i * 3] = 0.945;
+    particleColors[i * 3 + 1] = 0.259 + Math.random() * 0.1;
+    particleColors[i * 3 + 2] = 0.043;
+  } else {
+    particleColors[i * 3] = 0.165 + Math.random() * 0.1;
+    particleColors[i * 3 + 1] = 0.576 + Math.random() * 0.1;
+    particleColors[i * 3 + 2] = 0.757 + Math.random() * 0.1;
+  }
+
+  particleVelocities[i * 3] = 0;
+  particleVelocities[i * 3 + 1] = 0;
+  particleVelocities[i * 3 + 2] = 0;
+
+  particleLifetimes[i] = 0;
+  particleMaxLifetimes[i] = 3.0 + Math.random() * 5.0;
+}
+
+for (let i = 0; i < PARTICLE_COUNT; i++) {
+  resetParticle(i);
+  // Stagger initial lifetimes so they don't all spawn at once
+  particleLifetimes[i] = Math.random() * particleMaxLifetimes[i];
+}
+
+const particleGeometry = new THREE.BufferGeometry();
+particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+particleGeometry.setAttribute('size', new THREE.BufferAttribute(particleSizes, 1));
+particleGeometry.setAttribute('alpha', new THREE.BufferAttribute(particleAlphas, 1));
+particleGeometry.setAttribute('customColor', new THREE.BufferAttribute(particleColors, 3));
+
+const particleMaterial = new THREE.ShaderMaterial({
+  vertexShader: particleVertexShader,
+  fragmentShader: particleFragmentShader,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+
+const particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+scene.add(particleSystem);
+
+// 3D Curl noise implementation for organic movement
+function noise3D(x, y, z) {
+  // Simplex-like noise approximation using sin combinations
+  return Math.sin(x * 1.3 + y * 0.7) * Math.cos(y * 1.1 + z * 0.9) *
+         Math.sin(z * 0.8 + x * 1.2) * 0.5 +
+         Math.sin(x * 2.7 + z * 1.4) * Math.cos(y * 2.3 + x * 0.6) * 0.25 +
+         Math.sin(x * 5.1 + y * 3.7 + z * 4.2) * 0.125;
+}
+
+function curlNoise(x, y, z, time) {
+  const eps = 0.01;
+  const t = time * 0.3;
+
+  // Partial derivatives using finite differences
+  const dnoise_dy = (noise3D(x, y + eps, z + t) - noise3D(x, y - eps, z + t)) / (2.0 * eps);
+  const dnoise_dz = (noise3D(x, y, z + eps + t) - noise3D(x, y, z - eps + t)) / (2.0 * eps);
+  const dnoise_dx = (noise3D(x + eps, y, z + t) - noise3D(x - eps, y, z + t)) / (2.0 * eps);
+
+  // Curl = cross product of gradient components
+  return {
+    x: dnoise_dy - dnoise_dz,
+    y: dnoise_dz - dnoise_dx,
+    z: dnoise_dx - dnoise_dy,
+  };
+}
+
+function updateParticles(dt, time) {
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    particleLifetimes[i] += dt;
+
+    if (particleLifetimes[i] >= particleMaxLifetimes[i]) {
+      resetParticle(i);
+      continue;
+    }
+
+    const lifeRatio = particleLifetimes[i] / particleMaxLifetimes[i];
+
+    // Fade in/out (smooth)
+    let alpha;
+    if (lifeRatio < 0.1) {
+      alpha = lifeRatio / 0.1; // fade in
+    } else if (lifeRatio > 0.8) {
+      alpha = (1.0 - lifeRatio) / 0.2; // fade out
+    } else {
+      alpha = 1.0;
+    }
+    particleAlphas[i] = alpha * 0.6;
+
+    // Get curl noise velocity
+    const px = particlePositions[i * 3];
+    const py = particlePositions[i * 3 + 1];
+    const pz = particlePositions[i * 3 + 2];
+
+    const curl = curlNoise(px * 0.8, py * 0.8, pz * 0.8, time);
+
+    // Apply curl noise + gentle upward drift + attraction toward hex center
+    const toCenterX = -px * 0.02;
+    const toCenterY = 0.015; // gentle rise
+    const toCenterZ = -pz * 0.02;
+
+    particleVelocities[i * 3] = curl.x * 0.15 + toCenterX;
+    particleVelocities[i * 3 + 1] = curl.y * 0.15 + toCenterY;
+    particleVelocities[i * 3 + 2] = curl.z * 0.15 + toCenterZ;
+
+    // Update position
+    particlePositions[i * 3] += particleVelocities[i * 3] * dt;
+    particlePositions[i * 3 + 1] += particleVelocities[i * 3 + 1] * dt;
+    particlePositions[i * 3 + 2] += particleVelocities[i * 3 + 2] * dt;
+
+    // Size pulsing (organic breathing)
+    particleSizes[i] = (1.5 + Math.random() * 0.5) * (1.0 + Math.sin(time * 2.0 + i) * 0.2);
+  }
+
+  particleGeometry.attributes.position.needsUpdate = true;
+  particleGeometry.attributes.size.needsUpdate = true;
+  particleGeometry.attributes.alpha.needsUpdate = true;
+}
+
+// ============================================================
+// GOD RAYS (Focus Area 2: Volumetric Light via Radial Blur)
+// Technique: Render occlusion map, then radial blur toward light source
+// ============================================================
+const godRayOcclusionRT = new THREE.WebGLRenderTarget(
+  Math.floor(window.innerWidth * 0.5),
+  Math.floor(window.innerHeight * 0.5)
+);
+const godRayOcclusionScene = new THREE.Scene();
+const godRayOcclusionCamera = camera.clone();
+
+// Light source (visible glow orb behind hex)
+const godRayLightPos = new THREE.Vector3(0.5, 0.8, -1.5);
+const godRayLightGeom = new THREE.SphereGeometry(0.25, 32, 32);
+const godRayLightMat = new THREE.MeshBasicMaterial({
+  color: 0xffffff,
+});
+const godRayLightMesh = new THREE.Mesh(godRayLightGeom, godRayLightMat);
+godRayLightMesh.position.copy(godRayLightPos);
+scene.add(godRayLightMesh);
+
+// Occluding object in occlusion scene (black hex blocks white light)
+const occluderGeom = createHexGeometry(1.15, 0.4);
+const occluderMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+const occluderMesh = new THREE.Mesh(occluderGeom, occluderMat);
+occluderMesh.rotation.x = Math.PI * 0.08;
+godRayOcclusionScene.add(occluderMesh);
+
+// White light source in occlusion scene
+const occLightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+const occLightMesh = new THREE.Mesh(godRayLightGeom.clone(), occLightMat);
+occLightMesh.position.copy(godRayLightPos);
+godRayOcclusionScene.add(occLightMesh);
+godRayOcclusionScene.background = new THREE.Color(0x000000);
+
+// God Ray radial blur shader (64 samples)
+const godRayShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    tOcclusion: { value: godRayOcclusionRT.texture },
+    lightPositionOnScreen: { value: new THREE.Vector2(0.5, 0.6) },
+    exposure: { value: 0.22 },
+    decay: { value: 0.96 },
+    density: { value: 0.85 },
+    weight: { value: 0.4 },
+    samples: { value: 64 },
+    godRayColor: { value: new THREE.Vector3(0.165, 0.576, 0.757) }, // PureBrain blue
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform sampler2D tOcclusion;
+    uniform vec2 lightPositionOnScreen;
+    uniform float exposure;
+    uniform float decay;
+    uniform float density;
+    uniform float weight;
+    uniform int samples;
+    uniform vec3 godRayColor;
+    varying vec2 vUv;
+
+    void main() {
+      vec4 sceneColor = texture2D(tDiffuse, vUv);
+
+      // Radial blur from light source position
+      vec2 deltaUV = (vUv - lightPositionOnScreen) * (1.0 / float(samples)) * density;
+      vec2 sampleUV = vUv;
+      float illuminationDecay = 1.0;
+      vec3 godRays = vec3(0.0);
+
+      for (int i = 0; i < 64; i++) {
+        sampleUV -= deltaUV;
+        vec3 occSample = texture2D(tOcclusion, sampleUV).rgb;
+        occSample *= illuminationDecay * weight;
+        godRays += occSample;
+        illuminationDecay *= decay;
+      }
+
+      godRays *= exposure;
+
+      // Tint god rays with brand color
+      godRays *= godRayColor * 2.5;
+
+      // Additive blend
+      gl_FragColor = vec4(sceneColor.rgb + godRays, sceneColor.a);
+    }
+  `,
+};
+
+// ============================================================
+// VIGNETTE + FILM GRAIN SHADER (Focus Area 5)
+// ============================================================
+const vignetteGrainShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    time: { value: 0 },
+    vignetteIntensity: { value: 0.45 },
+    vignetteRadius: { value: 0.75 },
+    grainIntensity: { value: 0.04 },
+    grainSize: { value: 1.5 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float time;
+    uniform float vignetteIntensity;
+    uniform float vignetteRadius;
+    uniform float grainIntensity;
+    uniform float grainSize;
+    varying vec2 vUv;
+
+    // High-quality film grain
+    float random(vec2 co) {
+      return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+    }
+
+    float grain(vec2 uv, float t) {
+      vec2 grainUV = uv * grainSize + t;
+      return random(grainUV) * 2.0 - 1.0;
+    }
+
+    void main() {
+      vec4 color = texture2D(tDiffuse, vUv);
+
+      // Vignette (smooth circular darkening)
+      vec2 center = vUv - 0.5;
+      float dist = length(center);
+      float vignette = 1.0 - smoothstep(vignetteRadius, vignetteRadius + 0.4, dist) * vignetteIntensity;
+      color.rgb *= vignette;
+
+      // Film grain (temporal variation)
+      float g = grain(vUv, time * 7.3) * grainIntensity;
+      color.rgb += vec3(g);
+
+      // Subtle color grading (slight teal shadows, warm highlights)
+      color.rgb = pow(color.rgb, vec3(1.0 / 1.05)); // slight lift
+      float lum = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
+      vec3 shadows = vec3(0.05, 0.08, 0.12); // teal
+      vec3 highlights = vec3(1.02, 0.99, 0.95); // warm
+      color.rgb = mix(color.rgb * mix(vec3(1.0), shadows * 2.0, 0.15), color.rgb * highlights, lum);
+
+      gl_FragColor = color;
+    }
+  `,
+};
+
+// ============================================================
+// CHROMATIC ABERRATION SHADER (Focus Area 1 - Post-process layer)
+// ============================================================
+const chromaticAbShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    distortion: { value: 0.003 },
+    focusCenter: { value: new THREE.Vector2(0.5, 0.5) },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float distortion;
+    uniform vec2 focusCenter;
+    varying vec2 vUv;
+
+    void main() {
+      vec2 dir = vUv - focusCenter;
+      float dist = length(dir);
+
+      // Radial chromatic aberration (stronger at edges)
+      float aberration = dist * dist * distortion;
+
+      vec2 uvR = vUv + dir * aberration;
+      vec2 uvG = vUv;
+      vec2 uvB = vUv - dir * aberration;
+
+      float r = texture2D(tDiffuse, uvR).r;
+      float g = texture2D(tDiffuse, uvG).g;
+      float b = texture2D(tDiffuse, uvB).b;
+
+      gl_FragColor = vec4(r, g, b, 1.0);
+    }
+  `,
+};
+
+// ============================================================
+// POST-PROCESSING COMPOSER (Focus Area 5: Full Stack)
+// ============================================================
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+// Bloom (tuned for subtlety)
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.6,   // strength
+  0.4,   // radius
+  0.88   // threshold
+);
+composer.addPass(bloomPass);
+
+// God rays pass
+const godRayPass = new ShaderPass(godRayShader);
+composer.addPass(godRayPass);
+
+// Chromatic aberration
+const chromaticPass = new ShaderPass(chromaticAbShader);
+composer.addPass(chromaticPass);
+
+// Vignette + Film grain (always last)
+const vignettePass = new ShaderPass(vignetteGrainShader);
+composer.addPass(vignettePass);
+
+// ============================================================
+// LIGHTING
+// ============================================================
+const ambientLight = new THREE.AmbientLight(0x111122, 0.3);
+scene.add(ambientLight);
+
+const mainLight = new THREE.DirectionalLight(0xffffff, 1.2);
+mainLight.position.set(2, 3, 4);
+mainLight.castShadow = true;
+mainLight.shadow.mapSize.set(1024, 1024);
+scene.add(mainLight);
+
+// PureBrain blue fill light
+const fillLight = new THREE.PointLight(BRAND.blue, 1.5, 8);
+fillLight.position.set(-2, 1, 3);
+scene.add(fillLight);
+
+// Orange accent light
+const accentLight = new THREE.PointLight(BRAND.orange, 0.8, 6);
+accentLight.position.set(2, -1, 2);
+scene.add(accentLight);
+
+// God ray source light (visible glow)
+const godRayLight = new THREE.PointLight(0x4488cc, 2.0, 5);
+godRayLight.position.copy(godRayLightPos);
+scene.add(godRayLight);
+
+// ============================================================
+// FLOOR (Subtle reflective plane)
+// ============================================================
+const floorGeom = new THREE.PlaneGeometry(20, 20);
+const floorMat = new THREE.MeshStandardMaterial({
+  color: 0x080a12,
+  roughness: 0.7,
+  metalness: 0.3,
+});
+const floor = new THREE.Mesh(floorGeom, floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = -1.8;
+floor.receiveShadow = true;
+scene.add(floor);
+
+// ============================================================
+// ANIMATION LOOP
+// ============================================================
+const clock = new THREE.Clock();
+let frameCount = 0;
+let fpsAccum = 0;
+const fpsEl = document.getElementById('fps');
+
+// Wait for envMap
+function updateEnvMaps() {
+  if (envMap) {
+    // Convert equirectangular envMap to cube map for shader
+    const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(256);
+    const cubeCamera = new THREE.CubeCamera(0.1, 100, cubeRenderTarget);
+    // Use a simple approach: just assign the pmrem texture
+    hexMaterial.uniforms.envMapCube.value = envMap;
+    smallHexes.forEach(h => {
+      h.material.uniforms.envMapCube.value = envMap;
+    });
+  }
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const elapsed = clock.getElapsedTime();
+
+  // Update camera easing
+  cameraEasing.update(dt);
+
+  // Update hex rotation (slow idle spin)
+  hexMesh.rotation.y = elapsed * 0.08;
+  hexMesh.rotation.z = Math.sin(elapsed * 0.15) * 0.05;
+
+  // Update small hexes orbit
+  smallHexes.forEach(h => {
+    const d = h.userData;
+    d.orbitAngle += d.orbitSpeed * dt;
+    h.position.x = Math.cos(d.orbitAngle) * d.orbitRadius;
+    h.position.y = d.orbitY + Math.sin(elapsed * 0.5 + d.orbitAngle) * 0.1;
+    h.position.z = Math.sin(d.orbitAngle) * d.orbitRadius * 0.4;
+    h.rotation.x += d.rotSpeed.x * dt;
+    h.rotation.y += d.rotSpeed.y * dt;
+    h.rotation.z += d.rotSpeed.z * dt;
+  });
+
+  // Update shader uniforms
+  hexMaterial.uniforms.time.value = elapsed;
+  smallHexes.forEach(h => {
+    h.material.uniforms.time.value = elapsed;
+  });
+
+  // Update particles (curl noise advection)
+  updateParticles(dt, elapsed);
+
+  // Update god ray light screen position
+  const lightScreenPos = godRayLightPos.clone().project(camera);
+  godRayPass.uniforms.lightPositionOnScreen.value.set(
+    lightScreenPos.x * 0.5 + 0.5,
+    lightScreenPos.y * 0.5 + 0.5
+  );
+
+  // Animate god ray light subtle movement
+  godRayLightMesh.position.x = godRayLightPos.x + Math.sin(elapsed * 0.3) * 0.2;
+  godRayLightMesh.position.y = godRayLightPos.y + Math.cos(elapsed * 0.25) * 0.15;
+  occLightMesh.position.copy(godRayLightMesh.position);
+  godRayLight.position.copy(godRayLightMesh.position);
+
+  // Render god ray occlusion map
+  godRayOcclusionCamera.copy(camera);
+  renderer.setRenderTarget(godRayOcclusionRT);
+  renderer.render(godRayOcclusionScene, godRayOcclusionCamera);
+  renderer.setRenderTarget(null);
+
+  // Update vignette/grain time
+  vignettePass.uniforms.time.value = elapsed;
+
+  // Update env maps if just loaded
+  if (envMap && !hexMaterial.uniforms.envMapCube.value) {
+    updateEnvMaps();
+  }
+
+  // Render via composer
+  composer.render();
+
+  // FPS counter
+  frameCount++;
+  fpsAccum += dt;
+  if (fpsAccum >= 0.5) {
+    fpsEl.textContent = `${Math.round(frameCount / fpsAccum)} fps`;
+    frameCount = 0;
+    fpsAccum = 0;
+  }
+}
+
+animate();
+
+// ============================================================
+// RESIZE HANDLER
+// ============================================================
+window.addEventListener('resize', () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+  godRayOcclusionRT.setSize(Math.floor(w * 0.5), Math.floor(h * 0.5));
+});
+
+// ============================================================
+// MOUSE INTERACTION (subtle parallax)
+// ============================================================
+let mouseX = 0, mouseY = 0;
+document.addEventListener('mousemove', (e) => {
+  mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
+  mouseY = (e.clientY / window.innerHeight - 0.5) * 2;
+  // Subtle hex response to mouse
+  hexMesh.rotation.x = Math.PI * 0.08 + mouseY * 0.05;
+  hexMesh.rotation.z = mouseX * 0.03;
+});
+
+</script>
+</body>
+</html>

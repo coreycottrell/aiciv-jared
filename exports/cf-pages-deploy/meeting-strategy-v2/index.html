@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PureBrain Meeting Architecture v2 - Proposed</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1220;--surface:#161b2e;--surface2:#1c2340;--border:#2a3155;
+  --text:#e2e8f0;--text-muted:#94a3b8;--text-dim:#64748b;
+  --blue:#3b82f6;--amber:#f59e0b;--purple:#a855f7;--green:#22c55e;
+  --red:#ef4444;--cyan:#06b6d4;
+  --brand-blue:#2a93c1;--brand-orange:#f1420b;
+}
+html{font-size:16px;scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;line-height:1.6;min-height:100vh}
+
+/* PASSWORD GATE */
+#gate{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:24px}
+#gate.hidden{display:none}
+#gate h2{font-family:'Oswald',sans-serif;font-size:1.8rem;text-transform:uppercase;letter-spacing:2px;color:var(--text)}
+#gate p{color:var(--text-muted);font-size:.9rem}
+#gate input{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:12px 20px;border-radius:8px;font-size:1rem;width:280px;text-align:center;outline:none;transition:border-color .2s}
+#gate input:focus{border-color:var(--brand-blue)}
+#gate input.error{border-color:var(--red);animation:shake .4s}
+#gate button{background:var(--brand-blue);color:#fff;border:none;padding:12px 32px;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;transition:opacity .2s}
+#gate button:hover{opacity:.85}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+
+/* MAIN CONTENT */
+#content{display:none;max-width:1100px;margin:0 auto;padding:40px 24px 80px}
+#content.visible{display:block}
+
+/* HEADER */
+.page-header{text-align:center;margin-bottom:48px}
+.badge{display:inline-block;background:var(--amber);color:#000;font-family:'Oswald',sans-serif;font-weight:600;font-size:.75rem;letter-spacing:1.5px;text-transform:uppercase;padding:6px 16px;border-radius:4px;margin-bottom:16px}
+.page-header h1{font-family:'Oswald',sans-serif;font-size:2.6rem;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px}
+.page-header h1 span{color:var(--brand-blue)}
+.page-header .subtitle{color:var(--text-muted);font-size:1rem}
+
+/* LEGEND */
+.legend{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-bottom:48px}
+.legend-item{display:flex;align-items:center;gap:8px;background:var(--surface);padding:8px 16px;border-radius:6px;font-size:.85rem;font-weight:500}
+.legend-dot{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+
+/* SECTION TITLES */
+.section-title{font-family:'Oswald',sans-serif;font-size:1.5rem;font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:20px;padding-bottom:8px;border-bottom:2px solid var(--border)}
+
+/* CALENDAR COMPARISON */
+.comparison{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:56px}
+@media(max-width:768px){.comparison{grid-template-columns:1fr}}
+.schedule-col{background:var(--surface);border-radius:12px;padding:24px;border:1px solid var(--border)}
+.schedule-col h3{font-family:'Oswald',sans-serif;font-size:1.15rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.schedule-col h3 .tag{font-size:.7rem;padding:3px 8px;border-radius:3px;font-family:'Inter',sans-serif;font-weight:600}
+.tag-current{background:var(--text-dim);color:#fff}
+.tag-proposed{background:var(--green);color:#000}
+
+.meeting-row{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.meeting-row:last-child{border-bottom:none}
+.meeting-dot{width:10px;height:10px;border-radius:2px;margin-top:6px;flex-shrink:0}
+.meeting-time{font-size:.8rem;color:var(--text-muted);min-width:90px;font-weight:500}
+.meeting-info{flex:1}
+.meeting-name{font-weight:600;font-size:.9rem}
+.meeting-meta{font-size:.78rem;color:var(--text-dim)}
+.meeting-badge{display:inline-block;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:2px 6px;border-radius:3px;margin-left:6px;vertical-align:middle}
+.badge-new{background:var(--green);color:#000}
+.badge-changed{background:var(--amber);color:#000}
+
+/* CHANGE CARDS */
+.changes-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:56px}
+@media(max-width:768px){.changes-grid{grid-template-columns:1fr}}
+.change-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;transition:border-color .2s}
+.change-card:hover{border-color:var(--brand-blue)}
+.change-card .num{font-family:'Oswald',sans-serif;font-size:.8rem;color:var(--text-dim);margin-bottom:4px}
+.change-card h4{font-size:1rem;font-weight:600;margin-bottom:8px}
+.change-card p{font-size:.85rem;color:var(--text-muted);line-height:1.55}
+.change-card .from-to{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:.8rem}
+.change-card .from{color:var(--red);text-decoration:line-through}
+.change-card .arrow{color:var(--text-dim)}
+.change-card .to{color:var(--green);font-weight:600}
+.change-card .who{margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.06)}
+.change-card .who-label{font-family:'Oswald',sans-serif;font-size:.72rem;text-transform:uppercase;letter-spacing:.8px;color:var(--text-dim);margin-bottom:6px}
+.change-card .who-list{font-size:.82rem;color:var(--text-muted);line-height:1.7}
+
+/* NET IMPACT BOX */
+.impact-box{background:linear-gradient(135deg,#1a2640,#162035);border:1px solid var(--brand-blue);border-radius:12px;padding:28px 32px;margin-bottom:56px}
+.impact-box h3{font-family:'Oswald',sans-serif;font-size:1.3rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px;color:var(--brand-blue)}
+.impact-list{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:10px 24px}
+@media(max-width:600px){.impact-list{grid-template-columns:1fr}}
+.impact-list li{font-size:.9rem;padding-left:20px;position:relative;color:var(--text-muted)}
+.impact-list li::before{content:"\2713";position:absolute;left:0;color:var(--green);font-weight:700}
+
+/* ROSTER TABLES */
+.roster-section{margin-bottom:48px}
+.roster-header{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.roster-header .dot{width:14px;height:14px;border-radius:3px}
+.roster-header h3{font-family:'Oswald',sans-serif;font-size:1.2rem;text-transform:uppercase;letter-spacing:1px}
+.roster-header .meta{font-size:.82rem;color:var(--text-muted);margin-left:auto}
+.roster-table{width:100%;border-collapse:collapse;background:var(--surface);border-radius:10px;overflow:hidden;border:1px solid var(--border)}
+.roster-table thead{background:var(--surface2)}
+.roster-table th{font-family:'Oswald',sans-serif;font-size:.78rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);padding:12px 16px;text-align:left;font-weight:500}
+.roster-table td{padding:10px 16px;font-size:.88rem;border-top:1px solid rgba(255,255,255,.05)}
+.roster-table tr:hover td{background:rgba(255,255,255,.02)}
+.status-required{color:var(--green);font-weight:600;font-size:.8rem}
+.status-optional{color:var(--text-dim);font-size:.8rem}
+
+/* FULL TEAM ROSTER */
+.full-roster{margin-bottom:48px}
+
+/* FOOTER */
+.page-footer{text-align:center;padding:32px 0;border-top:1px solid var(--border);color:var(--text-dim);font-size:.8rem}
+</style>
+<style>
+/* Built by Aether Footer */
+@keyframes pb-aether-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.75; }
+}
+#pb-aether-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 64px;
+    background: linear-gradient(135deg, #0a0c14 0%, #0d1120 50%, #080c18 100%);
+    border-top: 2px solid #f1420b;
+    box-shadow: 0 -4px 24px rgba(241, 66, 11, 0.20), 0 -1px 0 rgba(42, 147, 193, 0.15);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1;
+    color: #d1d5db;
+    padding: 0 24px;
+    box-sizing: border-box;
+    letter-spacing: 0.025em;
+    gap: 0;
+    flex-wrap: wrap;
+    font-size: 13px;
+}
+#pb-aether-footer a { text-decoration: none !important; transition: color 0.2s ease, text-shadow 0.2s ease; }
+#pb-aether-footer a:hover { background: none !important; text-decoration: none !important; }
+#pb-aether-footer .pb-footer-label { color: #9ca3af; font-weight: 400; }
+#pb-aether-footer .pb-footer-aether {
+    font-weight: 800; font-size: 15px; letter-spacing: 0.12em;
+    color: #f1420b;
+    text-shadow: 0 0 8px rgba(241, 66, 11, 0.7), 0 0 20px rgba(241, 66, 11, 0.35), 0 0 40px rgba(241, 66, 11, 0.15);
+    text-transform: uppercase;
+    animation: pb-aether-pulse 3s ease-in-out infinite;
+}
+#pb-aether-footer .pb-footer-ai-tag { color: #6b7280; font-size: 11px; font-style: italic; }
+#pb-aether-footer .pb-footer-for { color: #9ca3af; }
+#pb-aether-footer .pb-footer-purebrain { color: #f1420b; font-weight: 700; text-shadow: 0 0 6px rgba(241, 66, 11, 0.4); }
+#pb-aether-footer .pb-footer-purebrain:hover { color: #ff6633 !important; text-shadow: 0 0 12px rgba(241, 66, 11, 0.7) !important; }
+#pb-aether-footer .pb-footer-blue { color: #2a93c1; font-weight: 600; }
+#pb-aether-footer .pb-footer-blue:hover { color: #f1420b !important; text-shadow: 0 0 8px rgba(241, 66, 11, 0.5) !important; }
+#pb-aether-footer .pb-footer-sep { color: rgba(255, 255, 255, 0.12); margin: 0 12px; font-weight: 300; }
+#pb-aether-footer .pb-footer-why,
+#pb-aether-footer .pb-footer-mission,
+#pb-aether-footer .pb-footer-migrate {
+    color: #2a93c1; font-weight: 700; font-size: 12px; letter-spacing: 0.04em;
+    padding: 4px 10px; border: 1px solid rgba(42, 147, 193, 0.4); border-radius: 4px;
+    transition: all 0.2s ease; background: rgba(42, 147, 193, 0.08);
+}
+#pb-aether-footer .pb-footer-why:hover,
+#pb-aether-footer .pb-footer-mission:hover,
+#pb-aether-footer .pb-footer-migrate:hover {
+    color: #ffffff !important; background: #f1420b !important; border-color: #f1420b !important;
+    box-shadow: 0 0 12px rgba(241, 66, 11, 0.5); text-shadow: none;
+}
+@media (max-width: 600px) {
+    #pb-aether-footer { height: auto !important; min-height: 52px; padding: 8px 16px; font-size: 11px; flex-wrap: wrap; row-gap: 4px; }
+    #pb-aether-footer .pb-footer-aether { font-size: 13px; }
+    #pb-aether-footer .pb-footer-why, #pb-aether-footer .pb-footer-migrate { display: none !important; }
+    #pb-aether-footer .pb-footer-sep-why, #pb-aether-footer .pb-footer-sep-before-mission, #pb-aether-footer .pb-footer-sep-migrate { display: none !important; }
+    body { padding-bottom: 80px !important; }
+}
+body { padding-bottom: 64px !important; }
+</style>
+</head>
+<body>
+
+<!-- PASSWORD GATE -->
+<div id="gate">
+  <h2>Access Required</h2>
+  <p>Enter the access code to view this document.</p>
+  <input type="password" id="gate-input" placeholder="Access code" autocomplete="off">
+  <button onclick="checkGate()">Enter</button>
+</div>
+
+<!-- MAIN CONTENT -->
+<div id="content">
+
+  <!-- HEADER -->
+  <header class="page-header">
+    <div class="badge">Proposed &mdash; For Jared's Review</div>
+    <h1><span>Meeting Architecture</span> v2</h1>
+    <p class="subtitle">Chy's recommended schedule revisions &mdash; Pure Technology / PureBrain</p>
+  </header>
+
+  <!-- LEGEND -->
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div> Daily Check-In</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div> Weekly Tactical</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div> Monthly Strategic</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Quarterly Off-Site</div>
+  </div>
+
+  <!-- MEETING TYPES -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:48px">
+    <div style="background:var(--surface);border-left:3px solid var(--blue);padding:16px 20px;border-radius:0 8px 8px 0">
+      <h4 style="font-size:.95rem;margin-bottom:4px">Daily Check-In</h4>
+      <p style="font-size:.82rem;color:var(--text-muted)">15-20 min tactical sync. What shipped, what's stuck, what's next.</p>
+    </div>
+    <div style="background:var(--surface);border-left:3px solid var(--amber);padding:16px 20px;border-radius:0 8px 8px 0">
+      <h4 style="font-size:.95rem;margin-bottom:4px">Weekly Tactical</h4>
+      <p style="font-size:.82rem;color:var(--text-muted)">60-90 min lightning rounds + metrics review.</p>
+    </div>
+    <div style="background:var(--surface);border-left:3px solid var(--purple);padding:16px 20px;border-radius:0 8px 8px 0">
+      <h4 style="font-size:.95rem;margin-bottom:4px">Monthly Strategic</h4>
+      <p style="font-size:.82rem;color:var(--text-muted)">2-4 hrs one topic deep dive. Strategy and planning.</p>
+    </div>
+    <div style="background:var(--surface);border-left:3px solid var(--green);padding:16px 20px;border-radius:0 8px 8px 0">
+      <h4 style="font-size:.95rem;margin-bottom:4px">Quarterly Off-Site</h4>
+      <p style="font-size:.82rem;color:var(--text-muted)">Full/half day strategy + team bonding session.</p>
+    </div>
+  </div>
+
+  <!-- SCHEDULE COMPARISON -->
+  <h2 class="section-title">Schedule Comparison</h2>
+  <div class="comparison">
+
+    <!-- CURRENT -->
+    <div class="schedule-col">
+      <h3><span class="tag tag-current">Current</span> Weekly Schedule</h3>
+
+      <div class="meeting-row">
+        <div class="meeting-dot" style="background:var(--blue)"></div>
+        <div class="meeting-time">Mon-Thu 7am</div>
+        <div class="meeting-info">
+          <div class="meeting-name">Tech Daily</div>
+          <div class="meeting-meta">Engineering team</div>
+        </div>
+      </div>
+
+      <div class="meeting-row">
+        <div class="meeting-dot" style="background:var(--amber)"></div>
+        <div class="meeting-time">Wed 8:30am</div>
+        <div class="meeting-info">
+          <div class="meeting-name">Governance</div>
+          <div class="meeting-meta">Leadership governance review</div>
+        </div>
+      </div>
+
+      <div class="meeting-row">
+        <div class="meeting-dot" style="background:var(--amber)"></div>
+        <div class="meeting-time">Fri 9am</div>
+        <div class="meeting-info">
+          <div class="meeting-name">Deep Dive Commercial</div>
+          <div class="meeting-meta">Commercial strategy deep dive</div>
+        </div>
+      </div>
+
+      <div class="meeting-row">
+        <div class="meeting-dot" style="background:var(--purple)"></div>
+        <div class="meeting-time">Mon 11am</div>
+        <div class="meeting-info">
+          <div class="meeting-name">Leadership Meeting</div>
+          <div class="meeting-meta">Full leadership sync</div>
+        </div>
+      </div>
+
+      <div class="meeting-row">
+        <div class="meeting-dot" style="background:var(--blue)"></div>
+        <div class="meeting-time">Mon-Thu 1pm</div>
+        <div class="meeting-info">
+          <div class="meeting-name">Commercial</div>
+          <div class="meeting-meta">Daily commercial sync</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PROPOSED -->
+    <div class="schedule-col" style="border-color:var(--green)">
+      <h3><span class="tag tag-proposed">Proposed</span> Weekly Schedule</h3>
+
+      <div class="meeting-row">
+        <div class="meeting-dot" style="background:var(--blue)"></div>
+        <div class="meeting-time">Mon-Thu 7am</div>
+        <div class="meeting-info">
+          <div class="meeting-name">Tech Daily</div>
+          <div class="meeting-meta">Ahsen + Alex lead &bull; 5-10 min</div>
+        </div>
+      </div>
+
+      <div class="meeting-row">
+        <div class="meeting-dot" style="background:var(--amber)"></div>
+        <div class="meeting-time">Wed 8:30am</div>
+        <div class="meeting-info">
+          <div class="meeting-name">Governance</div>
+          <div class="meeting-meta">Chy + Metis + Rimah + Logie &bull; 45 min</div>
+        </div>
+      </div>
+
+      <div class="meeting-row">
+        <div class="meeting-dot" style="background:var(--purple)"></div>
+        <div class="meeting-time">Tue 9am</div>
+        <div class="meeting-info">
+          <div class="meeting-name">Product / Customer <span class="meeting-badge badge-new">New</span></div>
+          <div class="meeting-meta">Aether &bull; Bi-weekly &bull; 45 min</div>
+        </div>
+      </div>
+
+      <div class="meeting-row">
+        <div class="meeting-dot" style="background:var(--amber)"></div>
+        <div class="meeting-time">Fri 9am</div>
+        <div class="meeting-info">
+          <div class="meeting-name">Weekly Tactical All-Hands <span class="meeting-badge badge-changed">Changed</span></div>
+          <div class="meeting-meta">Full team &bull; 60-90 min</div>
+        </div>
+      </div>
+
+      <div class="meeting-row">
+        <div class="meeting-dot" style="background:var(--purple)"></div>
+        <div class="meeting-time">Mon 11am</div>
+        <div class="meeting-info">
+          <div class="meeting-name">Leadership Meeting</div>
+          <div class="meeting-meta">Jared + Full Leadership &bull; 60 min</div>
+        </div>
+      </div>
+
+      <div class="meeting-row">
+        <div class="meeting-dot" style="background:var(--blue)"></div>
+        <div class="meeting-time">Mon-Thu 1pm</div>
+        <div class="meeting-info">
+          <div class="meeting-name">Pipeline Review <span class="meeting-badge badge-changed">Changed</span></div>
+          <div class="meeting-meta">Melanie + Chy + Nathan &bull; 15 min</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHANGE CARDS -->
+  <h2 class="section-title">What's Changing</h2>
+  <div class="changes-grid">
+
+    <div class="change-card">
+      <div class="num">Change 01</div>
+      <h4>Tech Daily Gets Tighter</h4>
+      <p>Reduced from 15-20 min to a strict 5-10 min standup. Ahsen and Alex co-lead to keep it focused on blockers only.</p>
+      <div class="from-to"><span class="from">15-20 min</span><span class="arrow">&rarr;</span><span class="to">5-10 min</span></div>
+      <div class="who"><div class="who-label">Who</div><div class="who-list">Jared Sanborn, Ahsen Awan (co-lead), Alex Seant (co-lead), Corey Cottrell, Waqas Nasir, Shahbaz Ali, Muhammed Zafeer, Russell Korus &bull; <em>Optional:</em> Melanie Salvador</div></div>
+    </div>
+
+    <div class="change-card">
+      <div class="num">Change 02</div>
+      <h4>Deep Dive Commercial Becomes All-Hands</h4>
+      <p>Friday's commercial deep dive expands into a full Weekly Tactical All-Hands. Lightning rounds from every team, metrics review, blockers.</p>
+      <div class="from-to"><span class="from">Deep Dive Commercial</span><span class="arrow">&rarr;</span><span class="to">Weekly Tactical All-Hands</span></div>
+      <div class="who"><div class="who-label">Who</div><div class="who-list">Jared Sanborn, Melanie Salvador, Corey Cottrell, Ahsen Awan, Alex Seant, Chy, Aether, Nathan, Waqas Nasir, Shahbaz Ali, Muhammed Zafeer, Russell Korus, Metis, Rimah, Logie &bull; Full team</div></div>
+    </div>
+
+    <div class="change-card">
+      <div class="num">Change 03</div>
+      <h4>New: Product / Customer Meeting</h4>
+      <p>Bi-weekly Tuesday session led by Aether. Focuses on customer feedback, product roadmap alignment, and feature prioritization.</p>
+      <div class="from-to"><span class="from">(none)</span><span class="arrow">&rarr;</span><span class="to">Tue 9am, bi-weekly</span></div>
+      <div class="who"><div class="who-label">Who</div><div class="who-list">Aether (lead), Jared Sanborn, Ahsen Awan, Corey Cottrell, Melanie Salvador, Chy &bull; <em>Optional:</em> Nathan, Alex Seant</div></div>
+    </div>
+
+    <div class="change-card">
+      <div class="num">Change 04</div>
+      <h4>Commercial Daily Becomes Pipeline Review</h4>
+      <p>Renamed and refocused. Melanie, Chy, and Nathan run a tight 15-min pipeline review instead of a broad commercial sync.</p>
+      <div class="from-to"><span class="from">Commercial (broad)</span><span class="arrow">&rarr;</span><span class="to">Pipeline Review (15 min)</span></div>
+      <div class="who"><div class="who-label">Who</div><div class="who-list">Melanie Salvador (lead), Chy, Nathan &bull; <em>Optional:</em> Jared Sanborn</div></div>
+    </div>
+
+    <div class="change-card">
+      <div class="num">Change 05</div>
+      <h4>Governance Stays, Gets Defined</h4>
+      <p>Wednesday governance meeting remains but with clear ownership: Chy, Metis, Rimah, and Logie. 45-minute time box.</p>
+      <div class="who"><div class="who-label">Who</div><div class="who-list">Chy (lead), Metis, Rimah, Logie &bull; <em>Optional:</em> Jared Sanborn, Corey Cottrell</div></div>
+    </div>
+
+    <div class="change-card">
+      <div class="num">Change 06</div>
+      <h4>Leadership Meeting Formalized</h4>
+      <p>Monday 11am locked at 60 minutes. Jared plus full leadership team. Strategic decisions and cross-team alignment.</p>
+      <div class="who"><div class="who-label">Who</div><div class="who-list">Jared Sanborn (lead), Melanie Salvador, Corey Cottrell, Ahsen Awan, Chy, Aether, Russell Korus &bull; <em>Optional:</em> Alex Seant, Nathan</div></div>
+    </div>
+
+    <div class="change-card">
+      <div class="num">Change 07</div>
+      <h4>Triangle Sync Goes Async</h4>
+      <p>Jared + Chy + Aether triangle coordination becomes async-first via portal and Telegram. No standing meeting — sync only when needed for strategic decisions.</p>
+      <div class="who"><div class="who-label">Who</div><div class="who-list">Jared Sanborn, Chy, Aether &bull; Async via portal/Telegram</div></div>
+    </div>
+
+    <div class="change-card">
+      <div class="num">Change 08</div>
+      <h4>Monthly Strategic &amp; Quarterly Off-Site</h4>
+      <p>Monthly strategic deep dives (2-4 hrs, one topic) and quarterly off-sites continue unchanged. Clear ownership and pre-read requirements added.</p>
+      <div class="who"><div class="who-label">Who (Monthly)</div><div class="who-list">Jared Sanborn, Melanie Salvador, Corey Cottrell, Ahsen Awan, Chy, Aether, Russell Korus, Alex Seant</div></div>
+    </div>
+
+  </div>
+
+  <!-- NET IMPACT -->
+  <div class="impact-box">
+    <h3>Net Impact Summary</h3>
+    <ul class="impact-list">
+      <li>Tech dailies cut by ~50% in duration (10 min saved per day)</li>
+      <li>New Product/Customer bi-weekly adds strategic customer focus</li>
+      <li>Friday becomes the anchor all-hands (single weekly sync point)</li>
+      <li>Pipeline review replaces broad commercial sync (sharper focus)</li>
+      <li>Every meeting has a named owner and time box</li>
+      <li>Net weekly meeting time decreases despite adding one new meeting</li>
+      <li>Governance and Leadership meetings get explicit attendee definitions</li>
+      <li>Jared's calendar protected: fewer, shorter, more impactful meetings</li>
+    </ul>
+  </div>
+
+  <!-- DAILY TECH MEETING ROSTER -->
+  <div class="roster-section">
+    <div class="roster-header">
+      <div class="dot" style="background:var(--blue)"></div>
+      <h3>Daily Tech Meeting</h3>
+      <div class="meta">7:00 AM ET &bull; Mon-Thu &bull; 5-10 min</div>
+    </div>
+    <p style="color:var(--text-muted);font-size:.88rem;margin-bottom:16px"><strong>Led by:</strong> Ahsen Awan + Alex Seant &nbsp;|&nbsp; <strong>Focus:</strong> What's stuck? What shipped? What's next?</p>
+    <table class="roster-table">
+      <thead>
+        <tr><th>Name</th><th>Role</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Jared Sanborn</td><td>CEO</td><td class="status-required">Required</td></tr>
+        <tr><td>Ahsen Awan / Prodigy</td><td>VP, Product Management</td><td class="status-required">Required (co-leads)</td></tr>
+        <tr><td>Corey Cottrell / Witness</td><td>Co-founder</td><td class="status-required">Required</td></tr>
+        <tr><td>Alex Seant / Flux</td><td>Senior Technical Engineer</td><td class="status-required">Required (co-leads)</td></tr>
+        <tr><td>Waqas Nasir / Prodigy</td><td>Software Dev &amp; Product Owner</td><td class="status-required">Required</td></tr>
+        <tr><td>Shahbaz Ali / Prodigy</td><td>Manager IT and DevOps</td><td class="status-required">Required</td></tr>
+        <tr><td>Muhammed Zafeer / Prodigy</td><td>Senior Software Engineer</td><td class="status-required">Required</td></tr>
+        <tr><td>Russell Korus / Parallax</td><td>AI Advisory</td><td class="status-required">Required</td></tr>
+        <tr><td>Melanie Salvador / Tether</td><td>Vice-Chairman</td><td class="status-optional">Optional</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- FULL TEAM ROSTER -->
+  <div class="full-roster">
+    <h2 class="section-title">Full Team Roster</h2>
+    <table class="roster-table">
+      <thead>
+        <tr><th>Name</th><th>Handle / Team</th><th>Primary Role</th><th>Key Meetings</th></tr>
+      </thead>
+      <tbody>
+        <!-- C-Suite -->
+        <tr style="background:rgba(42,147,193,.08)"><td colspan="4" style="font-family:'Oswald',sans-serif;font-size:.8rem;text-transform:uppercase;letter-spacing:1px;color:var(--brand-blue);padding:10px 16px;font-weight:600">C-Suite</td></tr>
+        <tr><td>Jared Sanborn</td><td>&mdash;</td><td>CEO &amp; Founder</td><td>Tech Daily, Leadership, All-Hands, Monthly Strategic</td></tr>
+        <tr><td>Melanie Salvador</td><td>Tether</td><td>Vice-Chairman</td><td>Pipeline Review, Leadership, All-Hands, Monthly Strategic</td></tr>
+        <tr><td>Corey Cottrell</td><td>Witness</td><td>Co-founder</td><td>Tech Daily, Leadership, All-Hands</td></tr>
+        <tr><td>Chy</td><td>AI Co-CEO</td><td>AI Co-CEO, Operations</td><td>Governance (lead), Pipeline Review, Leadership</td></tr>
+        <tr><td>Aether</td><td>AI Co-CEO</td><td>AI Co-CEO, Product &amp; Growth</td><td>Product/Customer (lead), Leadership, All-Hands</td></tr>
+        <tr><td>Russell Korus</td><td>Parallax</td><td>AI Advisory</td><td>Tech Daily, Leadership, Monthly Strategic</td></tr>
+
+        <!-- Sales & Marketing -->
+        <tr style="background:rgba(245,158,11,.08)"><td colspan="4" style="font-family:'Oswald',sans-serif;font-size:.8rem;text-transform:uppercase;letter-spacing:1px;color:var(--amber);padding:10px 16px;font-weight:600">Sales &amp; Marketing</td></tr>
+        <tr><td>Nathan</td><td>&mdash;</td><td>Sales / Pipeline</td><td>Pipeline Review, All-Hands</td></tr>
+        <tr><td>Kyle Kessler</td><td>&mdash;</td><td>Sales Director</td><td>Pipeline Review, All-Hands</td></tr>
+        <tr><td>Sean Mylet</td><td>&mdash;</td><td>Sales Representative</td><td>Pipeline Review, All-Hands</td></tr>
+        <tr><td>Olivia Patterson</td><td>&mdash;</td><td>Marketing Coordinator</td><td>All-Hands</td></tr>
+        <tr><td>Ethan Schultz</td><td>&mdash;</td><td>Content &amp; Social Media</td><td>All-Hands</td></tr>
+
+        <!-- Operations -->
+        <tr style="background:rgba(168,85,247,.08)"><td colspan="4" style="font-family:'Oswald',sans-serif;font-size:.8rem;text-transform:uppercase;letter-spacing:1px;color:var(--purple);padding:10px 16px;font-weight:600">Operations</td></tr>
+        <tr><td>Metis</td><td>Metis</td><td>Governance &amp; Compliance</td><td>Governance</td></tr>
+        <tr><td>Rimah</td><td>Rimah</td><td>Governance &amp; Risk</td><td>Governance</td></tr>
+        <tr><td>Logie</td><td>Logie</td><td>Governance &amp; Logistics</td><td>Governance</td></tr>
+        <tr><td>Sarah Chen</td><td>&mdash;</td><td>Operations Manager</td><td>All-Hands, Monthly Strategic</td></tr>
+        <tr><td>Marcus Webb</td><td>&mdash;</td><td>Finance &amp; Accounting</td><td>Monthly Strategic, Quarterly</td></tr>
+
+        <!-- Product & Tech -->
+        <tr style="background:rgba(59,130,246,.08)"><td colspan="4" style="font-family:'Oswald',sans-serif;font-size:.8rem;text-transform:uppercase;letter-spacing:1px;color:var(--blue);padding:10px 16px;font-weight:600">Product &amp; Tech</td></tr>
+        <tr><td>Ahsen Awan</td><td>Prodigy</td><td>VP, Product Management</td><td>Tech Daily (co-lead), All-Hands, Product/Customer</td></tr>
+        <tr><td>Alex Seant</td><td>Flux</td><td>Senior Technical Engineer</td><td>Tech Daily (co-lead), All-Hands</td></tr>
+        <tr><td>Waqas Nasir</td><td>Prodigy</td><td>Software Dev &amp; Product Owner</td><td>Tech Daily, All-Hands</td></tr>
+        <tr><td>Shahbaz Ali</td><td>Prodigy</td><td>Manager IT and DevOps</td><td>Tech Daily, All-Hands</td></tr>
+        <tr><td>Muhammed Zafeer</td><td>Prodigy</td><td>Senior Software Engineer</td><td>Tech Daily, All-Hands</td></tr>
+        <tr><td>Hamza Rashid</td><td>Prodigy</td><td>Frontend Developer</td><td>Tech Daily, All-Hands</td></tr>
+        <tr><td>Ali Hassan</td><td>Prodigy</td><td>QA Engineer</td><td>Tech Daily, All-Hands</td></tr>
+        <tr><td>Bilal Ahmed</td><td>Prodigy</td><td>Backend Developer</td><td>Tech Daily, All-Hands</td></tr>
+
+        <!-- Additional / Optional -->
+        <tr style="background:rgba(34,197,94,.08)"><td colspan="4" style="font-family:'Oswald',sans-serif;font-size:.8rem;text-transform:uppercase;letter-spacing:1px;color:var(--green);padding:10px 16px;font-weight:600">Additional / Optional</td></tr>
+        <tr><td>Greg</td><td>Advisor</td><td>AI Consciousness Advisor</td><td>Quarterly, as needed</td></tr>
+        <tr><td>Chris</td><td>Advisor</td><td>Strategic Advisor</td><td>Quarterly, as needed</td></tr>
+        <tr><td>Gleb</td><td>&mdash;</td><td>Design Consultant</td><td>Product/Customer (optional)</td></tr>
+        <tr><td>True Bearing Team</td><td>External</td><td>Financial Advisory</td><td>Monthly Strategic (quarterly)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="page-footer">
+    <p>Meeting Architecture v2 &mdash; Proposed by Chy &mdash; Pure Technology / PureBrain &copy; 2026</p>
+    <p style="margin-top:8px"><a href="/meeting-strategy/" style="color:var(--brand-blue);text-decoration:none;font-size:.78rem">View v1 (Current) &rarr;</a></p>
+  </footer>
+
+</div>
+
+<script>
+function checkGate(){
+  var input=document.getElementById('gate-input');
+  if(input.value==='pure2026'){
+    document.getElementById('gate').classList.add('hidden');
+    document.getElementById('content').classList.add('visible');
+    sessionStorage.setItem('meeting-v2-auth','1');
+  }else{
+    input.classList.add('error');
+    setTimeout(function(){input.classList.remove('error')},400);
+    input.value='';
+    input.placeholder='Try again';
+  }
+}
+document.getElementById('gate-input').addEventListener('keydown',function(e){
+  if(e.key==='Enter')checkGate();
+});
+// Restore session
+if(sessionStorage.getItem('meeting-v2-auth')==='1'){
+  document.getElementById('gate').classList.add('hidden');
+  document.getElementById('content').classList.add('visible');
+}
+</script>
+<!-- Built by Aether Credit Bar -->
+<div id="pb-aether-footer">
+    <span class="pb-footer-label">Built by&nbsp;</span><span class="pb-footer-aether">AETHER</span>&nbsp;<span class="pb-footer-ai-tag">(an AI)</span>&nbsp;<span class="pb-footer-for">for&nbsp;</span><a href="https://purebrain.ai" target="_blank" rel="noopener" class="pb-footer-purebrain"><span style="color:#2a93c1">PureBr</span><span style="color:#f1420b">ai</span><span style="color:#2a93c1">n</span>.ai</a>,&nbsp;<a href="https://puremarketing.ai" target="_blank" rel="noopener" class="pb-footer-blue">PureMarketing.ai</a>&nbsp;&amp;&nbsp;<a href="https://puretechnology.nyc" target="_blank" rel="noopener" class="pb-footer-blue">PureTechnology.ai</a><span class="pb-footer-sep pb-footer-sep-why">|</span><a href="https://purebrain.ai/why-purebrain/" rel="noopener" class="pb-footer-why">Why Choose PureBrain?</a><span class="pb-footer-sep pb-footer-sep-before-mission">|</span><a href="https://purebrain.ai/mission-vision-values/" rel="noopener" class="pb-footer-mission">Mission &amp; Values</a><span class="pb-footer-sep pb-footer-sep-migrate">|</span><a href="https://purebrain.ai/compare/" rel="noopener" class="pb-footer-migrate">Compare</a>
+</div>
+
+</body>
+</html>

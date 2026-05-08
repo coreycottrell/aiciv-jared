@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Avatar v2 — Iridescent Thin-Film (Gleb Training 2026-05-05)</title>
+<style>
+  html,body{margin:0;height:100%;background:#060606;overflow:hidden;font-family:system-ui,sans-serif;color:#fff}
+  #info{position:fixed;left:14px;bottom:12px;font-size:11px;letter-spacing:.04em;color:#7f8c97;z-index:10}
+  #info b{color:#2a93c1}
+</style>
+</head>
+<body>
+<div id="info"><b>v2</b> · Iridescent Thin-Film · Belcour/Barla-style hue shift, view-angle Fresnel</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script>
+// ==========================================================================
+// Avatar v2 — Iridescent Thin-Film (focus: angle-dependent hue shift)
+// Notes from study (2026-05-05):
+//  - DerSchmale's threejs-thin-film-iridescence (Belcour & Barla 2017) —
+//    map view angle (Fresnel) to hue, modulate by film thickness in nm
+//  - r128 has no native iridescence (added later) — must build in shader
+//  - Trick: pre-bake a 1D LUT in the fragment via cosine-palette
+//    (Inigo Quilez palette). It maps Fresnel [0..1] → spectral RGB.
+//  - Strong rim-only — interior must read DARK so iridescent edges sing
+// ==========================================================================
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x040409);
+
+const camera = new THREE.PerspectiveCamera(38, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0, 0.05, 4.0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.body.appendChild(renderer.domElement);
+
+// ==========================================================================
+// Custom iridescent ShaderMaterial
+//  - Computes Fresnel from view angle
+//  - Maps Fresnel through cosine palette → hue shift across the surface
+//  - Adds physically motivated specular ring at grazing angles
+//  - Layers per-vertex noise on film thickness for organic shimmer
+// ==========================================================================
+const iridescentMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 },
+    uFilmThickness: { value: 380.0 }, // nanometers — peak hue determined by this
+    uIOR: { value: 1.45 },
+    uAccent: { value: new THREE.Color(0x2a93c1) }
+  },
+  vertexShader: `
+    varying vec3 vNormalW;
+    varying vec3 vViewDir;
+    varying vec3 vPos;
+    void main(){
+      vec4 worldPos = modelMatrix * vec4(position, 1.0);
+      vNormalW = normalize(mat3(modelMatrix) * normal);
+      vViewDir = normalize(cameraPosition - worldPos.xyz);
+      vPos = position;
+      gl_Position = projectionMatrix * viewMatrix * worldPos;
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    uniform float uFilmThickness;
+    uniform float uIOR;
+    uniform vec3 uAccent;
+    varying vec3 vNormalW;
+    varying vec3 vViewDir;
+    varying vec3 vPos;
+
+    // Inigo Quilez cosine palette — gives spectral hue cycling from a single param t
+    vec3 palette(float t){
+      vec3 a = vec3(0.5, 0.5, 0.5);
+      vec3 b = vec3(0.5, 0.5, 0.5);
+      vec3 c = vec3(1.0, 1.0, 1.0);
+      vec3 d = vec3(0.00, 0.33, 0.67); // RGB phase offsets — full spectrum
+      return a + b * cos(6.28318 * (c * t + d));
+    }
+
+    // Smooth pseudo-noise for thickness variation (no texture = self-contained)
+    float hash(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+    float noise3(vec3 p){
+      vec3 i = floor(p), f = fract(p);
+      f = f*f*(3.0 - 2.0*f);
+      float a = hash(i),                    b = hash(i + vec3(1,0,0));
+      float c1 = hash(i + vec3(0,1,0)),      d = hash(i + vec3(1,1,0));
+      float e = hash(i + vec3(0,0,1)),      g = hash(i + vec3(1,0,1));
+      float h = hash(i + vec3(0,1,1)),      l = hash(i + vec3(1,1,1));
+      return mix(mix(mix(a,b,f.x), mix(c1,d,f.x), f.y), mix(mix(e,g,f.x), mix(h,l,f.x), f.y), f.z);
+    }
+
+    void main(){
+      vec3 N = normalize(vNormalW);
+      vec3 V = normalize(vViewDir);
+      float NdotV = clamp(dot(N, V), 0.0, 1.0);
+
+      // Schlick Fresnel
+      float F0 = pow((1.0 - uIOR)/(1.0 + uIOR), 2.0);
+      float fresnel = F0 + (1.0 - F0) * pow(1.0 - NdotV, 5.0);
+
+      // Modulate film thickness by surface noise (organic shimmer)
+      float thicknessVar = noise3(vPos * 4.0 + vec3(uTime*0.15));
+      float t = (uFilmThickness * (0.7 + 0.6 * thicknessVar)) / 800.0;
+      // Hue index: combines fresnel (view angle) and thickness (per-fragment)
+      float hueIdx = fract(t + (1.0 - NdotV) * 0.6 + uTime * 0.04);
+
+      vec3 spectral = palette(hueIdx);
+
+      // Base interior — dark with brand-accent tint
+      vec3 baseColor = uAccent * 0.05;
+
+      // Spec ring at grazing — highest fresnel reads as bright iridescent rim
+      float rimMask = smoothstep(0.55, 1.0, fresnel);
+      vec3 col = baseColor + spectral * rimMask * 1.8;
+
+      // Subtle interior reflection of spectral (very low contribution)
+      col += spectral * fresnel * 0.25;
+
+      // Bloom feeder — push rim peaks above 1.0
+      col += spectral * pow(rimMask, 4.0) * 0.6;
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `
+});
+
+const sphere = new THREE.Mesh(new THREE.SphereGeometry(1.0, 192, 192), iridescentMat);
+scene.add(sphere);
+
+// Wireframe inner ghost — gives depth read without breaking iridescent silhouette
+const ghostMat = new THREE.MeshBasicMaterial({
+  color: 0x1a3a4a, wireframe: true, transparent: true, opacity: 0.18
+});
+const ghost = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 1), ghostMat);
+scene.add(ghost);
+
+// --- Postprocessing: bloom calibrated for iridescent rim -------------------
+const composer = new THREE.EffectComposer(renderer);
+composer.addPass(new THREE.RenderPass(scene, camera));
+const bloom = new THREE.UnrealBloomPass(
+  new THREE.Vector2(innerWidth, innerHeight),
+  0.65,   // stronger — iridescent rim should glow
+  0.95,
+  0.55    // lower threshold — let rim feed bloom liberally
+);
+composer.addPass(bloom);
+
+const clock = new THREE.Clock();
+function animate(){
+  const t = clock.getElapsedTime();
+  iridescentMat.uniforms.uTime.value = t;
+  sphere.rotation.y = t * 0.18;
+  sphere.rotation.x = Math.sin(t * 0.4) * 0.1;
+  ghost.rotation.x = -t * 0.25;
+  ghost.rotation.y = t * 0.4;
+  composer.render();
+  requestAnimationFrame(animate);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

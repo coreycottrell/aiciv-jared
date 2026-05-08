@@ -1,0 +1,250 @@
+  /* <!-- BEGIN: trio-image-upload --> */
+  // ---- UX Feature: Image upload (drag-drop, paste, inline rendering) ----
+
+  TRIO_WIDGET.pendingMedia = null; // { key, url, mime, size, original_name }
+  TRIO_WIDGET.isDragging = false;
+
+  // Upload file to social.purebrain.ai/api/uploads
+  async function twUploadFile(file){
+    if (file.size > 10 * 1024 * 1024) {
+      throw new Error('File too large (max 10MB)');
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch('https://social.purebrain.ai/api/uploads', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + twToken() },
+      body: formData
+    });
+    if (!res.ok) {
+      let msg = 'Upload failed (HTTP ' + res.status + ')';
+      try { const j = await res.json(); if (j.error) msg = j.error; } catch(_){}
+      throw new Error(msg);
+    }
+    return await res.json();
+  }
+
+  // Show pending image preview above input
+  function twShowPendingMedia(media){
+    TRIO_WIDGET.pendingMedia = media;
+    const container = document.getElementById('tw-pending-preview');
+    if (!container) return;
+
+    if (media.mime.startsWith('image/')){
+      container.innerHTML = `
+        <div class="tw-pending-item">
+          <img src="${media.url}" alt="Preview" class="tw-pending-thumb" />
+          <div class="tw-pending-info">
+            <div class="tw-pending-name">${twEscape(media.original_name)}</div>
+            <div class="tw-pending-size">${(media.size/1024).toFixed(1)}KB</div>
+          </div>
+          <button class="tw-pending-remove" onclick="twClearPendingMedia()" aria-label="Remove">&times;</button>
+        </div>`;
+    } else {
+      container.innerHTML = `
+        <div class="tw-pending-item">
+          <span class="tw-pending-icon">📎</span>
+          <div class="tw-pending-info">
+            <div class="tw-pending-name">${twEscape(media.original_name)}</div>
+            <div class="tw-pending-size">${(media.size/1024).toFixed(1)}KB</div>
+          </div>
+          <button class="tw-pending-remove" onclick="twClearPendingMedia()" aria-label="Remove">&times;</button>
+        </div>`;
+    }
+    container.style.display = 'flex';
+  }
+
+  window.twClearPendingMedia = function(){
+    TRIO_WIDGET.pendingMedia = null;
+    const container = document.getElementById('tw-pending-preview');
+    if (container) {
+      container.style.display = 'none';
+      container.innerHTML = '';
+    }
+  };
+
+  // Drag-and-drop on feed area
+  function twSetupDragDrop(){
+    const feed = document.getElementById('tw-feed-unified');
+    if (!feed) return;
+
+    feed.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (!TRIO_WIDGET.isDragging) {
+        TRIO_WIDGET.isDragging = true;
+        feed.classList.add('tw-drop-zone-active');
+      }
+    });
+
+    feed.addEventListener('dragleave', (e) => {
+      if (e.target === feed) {
+        TRIO_WIDGET.isDragging = false;
+        feed.classList.remove('tw-drop-zone-active');
+      }
+    });
+
+    feed.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      TRIO_WIDGET.isDragging = false;
+      feed.classList.remove('tw-drop-zone-active');
+
+      const files = e.dataTransfer.files;
+      if (!files || files.length === 0) return;
+
+      const file = files[0];
+      if (!file.type.startsWith('image/')) {
+        alert('Only images supported for drag-drop');
+        return;
+      }
+
+      const status = document.getElementById('tw-status');
+      status.textContent = 'Uploading image...';
+      status.style.color = 'var(--text-dim, #7a8aaa)';
+
+      try {
+        const media = await twUploadFile(file);
+        twShowPendingMedia(media);
+        status.style.color = 'var(--green, #22c55e)';
+        status.textContent = 'Image ready. Type a message and send.';
+        setTimeout(() => { status.textContent = ''; }, 3000);
+      } catch (err) {
+        status.style.color = 'var(--red, #ef4444)';
+        status.textContent = 'Upload failed: ' + err.message;
+      }
+    });
+  }
+
+  // Paste handler on textarea
+  function twSetupPaste(){
+    const ta = document.getElementById('tw-input');
+    if (!ta) return;
+
+    ta.addEventListener('paste', async (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (!file) continue;
+
+          const status = document.getElementById('tw-status');
+          status.textContent = 'Uploading pasted image...';
+          status.style.color = 'var(--text-dim, #7a8aaa)';
+
+          try {
+            const media = await twUploadFile(file);
+            twShowPendingMedia(media);
+            status.style.color = 'var(--green, #22c55e)';
+            status.textContent = 'Image ready. Type a message and send.';
+            setTimeout(() => { status.textContent = ''; }, 3000);
+          } catch (err) {
+            status.style.color = 'var(--red, #ef4444)';
+            status.textContent = 'Upload failed: ' + err.message;
+          }
+          break;
+        }
+      }
+    });
+  }
+
+  // Render images inline in messages
+  function twRenderMedia(message){
+    if (!message.media_refs || !Array.isArray(message.media_refs) || message.media_refs.length === 0) {
+      return '';
+    }
+
+    return message.media_refs.map(media => {
+      if (media.mime && media.mime.startsWith('image/')) {
+        return `<img src="${media.url}" class="tw-msg-img" loading="lazy" onclick="window.open(this.src,'_blank')" alt="${twEscape(media.original_name || 'image')}" />`;
+      } else {
+        return `<a href="${media.url}" target="_blank" class="tw-file-link">📎 ${twEscape(media.original_name || 'file')}</a>`;
+      }
+    }).join('');
+  }
+
+  // Initialize drag-drop and paste on widget open
+  const _twOriginalOpen = window.openTrioWidget;
+  window.openTrioWidget = function(){
+    _twOriginalOpen();
+    setTimeout(() => {
+      twSetupDragDrop();
+      twSetupPaste();
+    }, 200);
+  };
+  /* <!-- END: trio-image-upload --> */
+/* <!-- BEGIN: trio-image-upload --> */
+/* Drag-drop zone overlay */
+#trio-widget-modal .tw-feed.tw-drop-zone-active::before{
+  content:'📷 Drop image here';
+  position:absolute;inset:0;
+  background:rgba(42,147,193,0.12);
+  border:3px dashed #2a93c1;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;font-weight:600;color:#2a93c1;
+  pointer-events:none;z-index:10;
+}
+#trio-widget-modal .tw-feed{position:relative;}
+
+/* Pending media preview container */
+#trio-widget-modal .tw-pending-preview{
+  display:none;gap:8px;padding:8px 12px;
+  background:rgba(42,147,193,0.08);border:1px solid rgba(42,147,193,0.25);
+  border-radius:8px;margin-bottom:8px;align-items:center;
+}
+#trio-widget-modal .tw-pending-item{
+  display:flex;gap:10px;align-items:center;flex:1;
+}
+#trio-widget-modal .tw-pending-thumb{
+  width:60px;height:60px;object-fit:cover;border-radius:6px;
+  border:1px solid rgba(255,255,255,0.1);
+}
+#trio-widget-modal .tw-pending-icon{
+  font-size:32px;width:60px;height:60px;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(255,255,255,0.04);border-radius:6px;
+}
+#trio-widget-modal .tw-pending-info{flex:1;min-width:0;}
+#trio-widget-modal .tw-pending-name{
+  font-size:13px;font-weight:600;color:#e8eaf6;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+#trio-widget-modal .tw-pending-size{
+  font-size:11px;color:#7a8aaa;
+}
+#trio-widget-modal .tw-pending-remove{
+  background:rgba(255,255,255,0.08);border:none;color:#e8eaf6;
+  cursor:pointer;font-size:20px;padding:4px 8px;border-radius:6px;
+  line-height:1;min-width:32px;min-height:32px;
+  display:flex;align-items:center;justify-content:center;
+  transition:background 0.15s;
+}
+#trio-widget-modal .tw-pending-remove:hover{
+  background:rgba(239,68,68,0.25);color:#ef4444;
+}
+
+/* Inline message images */
+#trio-widget-modal .tw-msg-img{
+  display:block;max-width:100%;max-height:300px;
+  border-radius:8px;margin-top:8px;cursor:pointer;
+  border:1px solid rgba(255,255,255,0.1);
+  transition:opacity 0.2s;
+}
+#trio-widget-modal .tw-msg-img:hover{opacity:0.85;}
+
+/* File links */
+#trio-widget-modal .tw-file-link{
+  display:inline-block;margin-top:8px;
+  padding:6px 12px;background:rgba(255,255,255,0.06);
+  border-radius:6px;color:#2a93c1;text-decoration:none;
+  font-size:13px;transition:background 0.15s;
+}
+#trio-widget-modal .tw-file-link:hover{
+  background:rgba(42,147,193,0.15);text-decoration:underline;
+}
+/* <!-- END: trio-image-upload --> */
+      <!-- BEGIN: trio-image-upload -->
+      <div id="tw-pending-preview" class="tw-pending-preview"></div>
+      <!-- END: trio-image-upload -->

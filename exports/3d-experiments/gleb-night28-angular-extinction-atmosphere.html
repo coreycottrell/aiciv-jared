@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 28 Ex.3: Angular Extinction + Atmospheric Scattering</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #080a12; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  .info { position: fixed; top: 16px; left: 16px; color: rgba(255,255,255,0.5); font: 12px/1.4 monospace; z-index: 10; pointer-events: none; }
+  #fps { position: fixed; top: 16px; right: 16px; color: rgba(42,147,193,0.6); font: 11px monospace; z-index: 10; }
+</style>
+</head>
+<body>
+<div class="info">Night 28 / Exercise 3<br>Angular Extinction + Atmospheric Scattering<br>View-dependent absorption color shift + Rayleigh/Mie atmosphere<br>Glass orb becomes a tiny planet with its own atmosphere</div>
+<div id="fps">--</div>
+<canvas id="c"></canvas>
+<script>
+// Night 28 Exercise 3: Angular Extinction + Atmospheric Scattering
+// Techniques:
+// 1. View-angle-dependent extinction: glass color shifts from blue (head-on)
+//    to warm amber (grazing) via Rayleigh-like wavelength dependence
+// 2. Atmospheric shell around glass orb: thin scattering layer
+// 3. Animated internal structures (pulsing energy core + particle field)
+// 4. Subsurface scattering with dipole approximation
+// 5. Chromatic Fresnel (wavelength-dependent Fresnel coefficients)
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
+if (!gl) { document.body.innerHTML = '<p style="color:#fff;padding:40px">WebGL2 required</p>'; throw ''; }
+
+let W, H;
+function resize() {
+    const dpr = Math.min(devicePixelRatio, 1.5);
+    W = canvas.width = innerWidth * dpr | 0;
+    H = canvas.height = innerHeight * dpr | 0;
+    gl.viewport(0, 0, W, H);
+}
+resize();
+addEventListener('resize', resize);
+
+let mx = 0.5, my = 0.5;
+addEventListener('mousemove', e => { mx = e.clientX / innerWidth; my = e.clientY / innerHeight; });
+
+const vs = `#version 300 es
+in vec2 p;
+void main() { gl_Position = vec4(p, 0, 1); }`;
+
+const fs = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform float t;
+uniform vec2 mouse;
+uniform vec2 res;
+
+#define PI 3.14159265
+#define TAU 6.28318530
+
+// -- Noise --
+vec3 hash33(vec3 p3) {
+    p3 = fract(p3 * vec3(.1031,.1030,.0973));
+    p3 += dot(p3, p3.yxz + 33.33);
+    return fract((p3.xxy + p3.yxx) * p3.zyx);
+}
+
+float noise3(vec3 p) {
+    vec3 i = floor(p), f = fract(p);
+    f = f*f*(3.0-2.0*f);
+    float n = dot(i, vec3(1.0, 57.0, 113.0));
+    return mix(mix(mix(fract(sin(n)*43758.5453),
+                       fract(sin(n+1.0)*43758.5453), f.x),
+                   mix(fract(sin(n+57.0)*43758.5453),
+                       fract(sin(n+58.0)*43758.5453), f.x), f.y),
+               mix(mix(fract(sin(n+113.0)*43758.5453),
+                       fract(sin(n+114.0)*43758.5453), f.x),
+                   mix(fract(sin(n+170.0)*43758.5453),
+                       fract(sin(n+171.0)*43758.5453), f.x), f.y), f.z);
+}
+
+float fbm(vec3 p) {
+    float v = 0.0, a = 0.5;
+    for (int i = 0; i < 5; i++) { v += a * noise3(p); p *= 2.1; a *= 0.5; }
+    return v;
+}
+
+// -- SDFs --
+float sdSphere(vec3 p, float r) { return length(p) - r; }
+
+// Glass orb with surface detail
+float orbSDF(vec3 p) {
+    float base = sdSphere(p, 1.2);
+    // Gentle surface undulation
+    float wave = sin(p.x * 4.0 + t * 0.8) * sin(p.y * 3.0 + t * 0.5) * sin(p.z * 5.0 + t * 0.6) * 0.015;
+    return base + wave;
+}
+
+// Inner energy core
+float coreSDF(vec3 p) {
+    float pulse = 1.0 + sin(t * 2.0) * 0.1;
+    return sdSphere(p, 0.35 * pulse);
+}
+
+// Atmosphere shell (thin spherical region)
+float atmoDist(vec3 p) {
+    return abs(length(p) - 1.5) - 0.15;
+}
+
+vec3 calcNormal(vec3 p) {
+    vec2 e = vec2(0.001, 0.0);
+    return normalize(vec3(
+        orbSDF(p+e.xyy) - orbSDF(p-e.xyy),
+        orbSDF(p+e.yxy) - orbSDF(p-e.yxy),
+        orbSDF(p+e.yyx) - orbSDF(p-e.yyx)
+    ));
+}
+
+// -- Angular Extinction --
+// The key insight: absorption coefficients change with viewing angle relative to surface normal.
+// Head-on: short path, blue light dominates (blue absorption is low).
+// Grazing: long path, shorter wavelengths scatter away, warm amber remains.
+// This models Rayleigh-like wavelength-dependent scattering inside the medium.
+vec3 angularExtinction(float cosTheta, float pathLength) {
+    // Base absorption: wavelength^-4 Rayleigh dependence
+    // Red (700nm): low scatter, passes through
+    // Blue (450nm): high scatter, absorbed at depth
+    float lambdaR = 0.700, lambdaG = 0.540, lambdaB = 0.450;
+    float baseAbsR = 1.0 / (lambdaR * lambdaR * lambdaR * lambdaR);
+    float baseAbsG = 1.0 / (lambdaG * lambdaG * lambdaG * lambdaG);
+    float baseAbsB = 1.0 / (lambdaB * lambdaB * lambdaB * lambdaB);
+
+    // Normalize so red channel is 1.0 base
+    vec3 sigma = vec3(baseAbsR, baseAbsG, baseAbsB) / baseAbsR;
+
+    // Scale by density and viewing angle
+    // Grazing angle = longer effective path = more absorption
+    float effectivePath = pathLength / max(cosTheta, 0.05);
+
+    // Scale absorption strength
+    sigma *= 0.4;
+
+    return exp(-sigma * effectivePath);
+}
+
+// -- Chromatic Fresnel --
+// Different wavelengths have slightly different Fresnel reflectance
+vec3 chromaticFresnel(float cosI, float iorBase) {
+    vec3 ior = vec3(
+        iorBase + 0.02,  // red: slightly higher IOR
+        iorBase,          // green: base
+        iorBase - 0.015   // blue: slightly lower IOR
+    );
+    vec3 f0 = pow((ior - 1.0) / (ior + 1.0), vec3(2.0));
+    return f0 + (1.0 - f0) * pow(1.0 - cosI, 5.0);
+}
+
+// -- Rayleigh atmospheric scattering --
+vec3 rayleighScatter(float cosAngle, float density) {
+    // Rayleigh phase function: (3/4)(1 + cos^2(theta))
+    float phase = 0.75 * (1.0 + cosAngle * cosAngle);
+
+    // Wavelength-dependent scattering (blue scatters most)
+    vec3 scatter = vec3(0.06, 0.15, 0.35) * phase * density;
+    return scatter;
+}
+
+// Mie scattering (forward-dominant, larger particles)
+float miePhase(float cosAngle, float g) {
+    float g2 = g * g;
+    return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * cosAngle, 1.5));
+}
+
+void main() {
+    vec2 p = (gl_FragCoord.xy - res * 0.5) / min(res.x, res.y) * 2.0;
+
+    float camAngle = t * 0.1 + (mouse.x - 0.5) * 2.0;
+    float camY = 0.5 + (mouse.y - 0.5) * 1.5;
+    vec3 ro = vec3(sin(camAngle) * 4.5, camY, cos(camAngle) * 4.5);
+    vec3 target = vec3(0, 0, 0);
+    vec3 fwd = normalize(target - ro);
+    vec3 right = normalize(cross(fwd, vec3(0,1,0)));
+    vec3 up = cross(right, fwd);
+    vec3 rd = normalize(fwd + p.x * right + p.y * up);
+
+    vec3 lightDir = normalize(vec3(sin(t*0.2)*0.5, 0.8, cos(t*0.2)*0.5));
+    vec3 lightCol = vec3(1.0, 0.95, 0.88) * 2.5;
+
+    vec3 col = vec3(0.0);
+
+    // === ATMOSPHERE PASS ===
+    // Test intersection with atmospheric shell (outer sphere r=1.65, inner r=1.35)
+    float atmoOuter = 1.65, atmoInner = 1.35;
+
+    // Sphere intersection for atmosphere
+    float b = dot(ro, rd);
+    float c_outer = dot(ro, ro) - atmoOuter * atmoOuter;
+    float disc_outer = b*b - c_outer;
+
+    vec3 atmoAccum = vec3(0.0);
+    float atmoAlpha = 0.0;
+
+    if (disc_outer > 0.0) {
+        float t_enter = -b - sqrt(disc_outer);
+        float t_exit = -b + sqrt(disc_outer);
+        t_enter = max(t_enter, 0.0);
+
+        // Check inner sphere intersection
+        float c_inner = dot(ro, ro) - atmoInner * atmoInner;
+        float disc_inner = b*b - c_inner;
+
+        float atmoStart = t_enter;
+        float atmoEnd = t_exit;
+        if (disc_inner > 0.0) {
+            float t_in = -b - sqrt(disc_inner);
+            float t_out = -b + sqrt(disc_inner);
+            if (t_in > 0.0) atmoEnd = min(atmoEnd, t_in);
+        }
+
+        // March through atmosphere
+        int atmoSteps = 20;
+        float atmoStepSize = (atmoEnd - atmoStart) / float(atmoSteps);
+
+        for (int i = 0; i < 20; i++) {
+            float at = atmoStart + float(i) * atmoStepSize + atmoStepSize * 0.5;
+            vec3 ap = ro + rd * at;
+            float alt = length(ap);
+
+            // Density falls off from inner to outer
+            float density = exp(-(alt - atmoInner) / (atmoOuter - atmoInner) * 4.0);
+
+            // Light direction scatter
+            float cosAngle = dot(rd, lightDir);
+
+            // Rayleigh (blue atmospheric glow)
+            vec3 rayleigh = rayleighScatter(cosAngle, density);
+
+            // Mie (forward scattering halo)
+            float mie = miePhase(cosAngle, 0.75) * density * 0.08;
+
+            // Nebula-like color variation
+            float nebula = fbm(ap * 3.0 + t * 0.05);
+            vec3 nebulaCol = mix(vec3(0.165, 0.576, 0.757), vec3(0.5, 0.2, 0.8), nebula);
+
+            atmoAccum += (rayleigh + nebulaCol * mie) * atmoStepSize * lightCol * 0.5;
+            atmoAlpha += density * atmoStepSize * 0.3;
+        }
+        atmoAlpha = min(atmoAlpha, 0.6);
+    }
+
+    // === GLASS ORB PASS ===
+    float tRay = 0.0;
+    float d;
+    bool hitOrb = false;
+    for (int i = 0; i < 100; i++) {
+        d = orbSDF(ro + rd * tRay);
+        if (abs(d) < 0.001) { hitOrb = true; break; }
+        if (tRay > 20.0) break;
+        tRay += d * 0.75;
+    }
+
+    if (hitOrb) {
+        vec3 pos = ro + rd * tRay;
+        vec3 N = calcNormal(pos);
+        vec3 V = normalize(ro - pos);
+        float NdV = max(dot(N, V), 0.0);
+
+        // == Chromatic Fresnel ==
+        vec3 fresnel = chromaticFresnel(NdV, 1.52);
+
+        // == Reflection ==
+        vec3 reflDir = reflect(-V, N);
+        float reflY = reflDir.y * 0.5 + 0.5;
+        vec3 reflCol = mix(vec3(0.02, 0.03, 0.06), vec3(0.06, 0.1, 0.18), reflY);
+        // Sun reflection
+        float sunRefl = pow(max(dot(reflDir, lightDir), 0.0), 256.0);
+        reflCol += lightCol * sunRefl * 0.4;
+
+        // == Interior Volumetric with Angular Extinction ==
+        vec3 refrDir = refract(-V, N, 1.0 / 1.52);
+        if (length(refrDir) < 0.01) refrDir = reflect(-V, N);
+
+        vec3 interiorCol = vec3(0.0);
+        vec3 transmittance = vec3(1.0);
+        float stepSize = 0.04;
+        vec3 marchPos = pos - N * 0.005;
+
+        for (int i = 0; i < 50; i++) {
+            marchPos += refrDir * stepSize;
+            float interior = orbSDF(marchPos);
+
+            if (interior > 0.001) break; // exited orb
+
+            float pathLen = float(i) * stepSize;
+
+            // Angular extinction: color shifts with viewing angle
+            vec3 localExtinction = angularExtinction(NdV, pathLen);
+            transmittance *= localExtinction;
+
+            // Energy core emission
+            float coreD = coreSDF(marchPos);
+            if (coreD < 0.0) {
+                // Inside core: bright emission
+                vec3 coreEmission = vec3(0.945, 0.259, 0.043) * 3.0; // PureBrain orange
+                float coreGlow = exp(coreD * 8.0);
+                interiorCol += transmittance * coreEmission * coreGlow * stepSize;
+            }
+
+            // Internal particle scattering
+            float particleNoise = noise3(marchPos * 8.0 + t * 0.3);
+            if (particleNoise > 0.7) {
+                float sparkle = pow(particleNoise - 0.7, 2.0) * 30.0;
+                // Particles scatter light from light source
+                float inScatter = max(dot(normalize(lightDir), refrDir), 0.0);
+                interiorCol += transmittance * vec3(0.4, 0.7, 1.0) * sparkle * inScatter * stepSize;
+            }
+
+            // Subsurface scatter contribution
+            vec3 sss = vec3(0.165, 0.576, 0.757) * exp(-pathLen * 2.0) * 0.03;
+            interiorCol += transmittance * sss * stepSize;
+
+            // Early termination
+            if (max(max(transmittance.r, transmittance.g), transmittance.b) < 0.01) break;
+        }
+
+        // Exit refraction -> environment color
+        vec3 envCol = mix(vec3(0.01, 0.02, 0.04), vec3(0.04, 0.06, 0.1), refrDir.y * 0.5 + 0.5);
+        interiorCol += transmittance * envCol;
+
+        // == Combine glass ==
+        col = reflCol * fresnel + interiorCol * (vec3(1.0) - fresnel);
+
+        // Thin film iridescence on surface
+        float filmT = 0.00028 + 0.0001 * sin(pos.x * 10.0 + pos.z * 8.0 + t * 0.7);
+        float delta = 2.0 * 1.38 * filmT * NdV;
+        vec3 film = vec3(
+            0.5 + 0.5 * cos(TAU * delta / 0.650),
+            0.5 + 0.5 * cos(TAU * delta / 0.530),
+            0.5 + 0.5 * cos(TAU * delta / 0.470)
+        );
+        col += film * fresnel * 0.15;
+
+        // Rim glow
+        float rim = pow(1.0 - NdV, 3.5);
+        col += vec3(0.165, 0.576, 0.757) * rim * 0.5;
+
+    } else {
+        // Ground plane
+        float groundY = -2.0;
+        if (rd.y < -0.001) {
+            float gt = (groundY - ro.y) / rd.y;
+            if (gt > 0.0) {
+                vec3 gp = ro + rd * gt;
+                float falloff = exp(-length(gp.xz) * 0.12);
+
+                // Caustics with angular extinction coloring
+                vec3 caustics = vec3(0.0);
+                float dist = length(gp.xz);
+                for (int w = 0; w < 5; w++) {
+                    float lam = 0.420 + float(w) * 0.065;
+                    float ior = 1.52 + 0.0046 / (lam * lam);
+                    float causticR = ior * 1.5;
+                    float ring = exp(-abs(dist - causticR) * 3.0);
+
+                    // Angular caustic pattern (6-fold symmetry for hex brand)
+                    float angle = atan(gp.z, gp.x);
+                    float hexMod = 0.6 + 0.4 * pow(max(cos(angle * 3.0 + t * 0.3), 0.0), 2.0);
+
+                    float pattern = ring * hexMod * noise3(vec3(gp.xz * 5.0, t * 0.2 + lam));
+                    pattern = pow(max(pattern, 0.0), 1.5);
+
+                    vec3 wlCol;
+                    if (w < 2) wlCol = vec3(0.3, 0.1, 1.0);
+                    else if (w < 3) wlCol = vec3(0.0, 0.8, 0.4);
+                    else wlCol = vec3(1.0, 0.5, 0.1);
+
+                    caustics += wlCol * pattern;
+                }
+                caustics /= 5.0;
+
+                col = vec3(0.008, 0.012, 0.02) * falloff + caustics * 1.5 * falloff;
+            }
+        }
+
+        if (length(col) < 0.001) {
+            // Sky
+            float sky = rd.y * 0.5 + 0.5;
+            col = mix(vec3(0.01, 0.015, 0.03), vec3(0.02, 0.04, 0.07), sky);
+        }
+    }
+
+    // Blend atmosphere over everything
+    col = col * (1.0 - atmoAlpha) + atmoAccum;
+
+    // Vignette
+    vec2 vigUV = gl_FragCoord.xy / res;
+    col *= 1.0 - 0.3 * dot(vigUV - 0.5, vigUV - 0.5) * 2.0;
+
+    // ACES tonemap
+    col = col * (2.51 * col + 0.03) / (col * (2.43 * col + 0.59) + 0.14);
+
+    // Subtle color grading: push shadows toward blue
+    col.b += (1.0 - col.b) * 0.02;
+
+    // Film grain
+    col += (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)) + t) * 43758.5453) - 0.5) * 0.018;
+
+    fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}`;
+
+function createShader(src, type) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+    return s;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, createShader(vs, gl.VERTEX_SHADER));
+gl.attachShader(prog, createShader(fs, gl.FRAGMENT_SHADER));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+const pLoc = gl.getAttribLocation(prog, 'p');
+gl.enableVertexAttribArray(pLoc);
+gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
+
+const uT = gl.getUniformLocation(prog, 't');
+const uMouse = gl.getUniformLocation(prog, 'mouse');
+const uRes = gl.getUniformLocation(prog, 'res');
+
+let frames = 0, lastFps = performance.now();
+const fpsEl = document.getElementById('fps');
+const start = performance.now();
+
+function frame(now) {
+    gl.uniform1f(uT, (now - start) * 0.001);
+    gl.uniform2f(uMouse, mx, my);
+    gl.uniform2f(uRes, W, H);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    frames++;
+    if (now - lastFps > 1000) {
+        fpsEl.textContent = Math.round(frames * 1000 / (now - lastFps)) + ' fps';
+        frames = 0; lastFps = now;
+    }
+    requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

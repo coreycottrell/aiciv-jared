@@ -1,0 +1,323 @@
+"""
+referrals_d1_client.py — thin HTTPS client for the `referrals-api` Worker.
+
+Lets portal_server.py read referral data from D1 (the single source of truth
+post-2026-04-14 migration) while keeping an SQLite fallback behind a flag.
+
+Activation:
+    USE_D1_REFERRALS=true   # env var read at call time (no process restart needed)
+    D1_API_URL=https://referrals-api.in0v8.workers.dev
+    D1_API_ADMIN_TOKEN=<token>   # for /admin/affiliates only
+
+All helpers are async (portal is asyncio/starlette). Each request has a 30s
+response-level cache keyed on (endpoint, params) to match portal_server.py's
+existing read cadence (human clicks, not a tight loop).
+"""
+from __future__ import annotations
+
+import os
+import time
+import asyncio
+import json as _json
+from typing import Any, Optional, Tuple
+
+import httpx
+
+
+# ── config ────────────────────────────────────────────────────────────────
+def _env_flag(name: str, default: bool = False) -> bool:
+    v = os.environ.get(name, "").strip().lower()
+    if not v:
+        return default
+    return v in ("1", "true", "yes", "on")
+
+
+def d1_enabled() -> bool:
+    return _env_flag("USE_D1_REFERRALS", False)
+
+
+def _base_url() -> str:
+    return os.environ.get("D1_API_URL", "").rstrip("/")
+
+
+def _admin_token() -> str:
+    return os.environ.get("D1_API_ADMIN_TOKEN", "").strip()
+
+
+# ── cache (simple TTL dict) ───────────────────────────────────────────────
+_CACHE_TTL = 30.0  # seconds
+_cache: dict[Tuple[str, str], Tuple[float, Any]] = {}
+_cache_lock = asyncio.Lock()
+
+
+def _cache_key(endpoint: str, params: Optional[dict]) -> Tuple[str, str]:
+    return (endpoint, _json.dumps(params or {}, sort_keys=True, default=str))
+
+
+async def _cache_get(key: Tuple[str, str]) -> Optional[Any]:
+    async with _cache_lock:
+        entry = _cache.get(key)
+        if not entry:
+            return None
+        ts, val = entry
+        if time.time() - ts > _CACHE_TTL:
+            _cache.pop(key, None)
+            return None
+        return val
+
+
+async def _cache_set(key: Tuple[str, str], value: Any) -> None:
+    async with _cache_lock:
+        _cache[key] = (time.time(), value)
+
+
+def invalidate_cache() -> None:
+    _cache.clear()
+
+
+# ── HTTP core ─────────────────────────────────────────────────────────────
+class D1ClientError(RuntimeError):
+    def __init__(self, status: int, body: Any):
+        super().__init__(f"D1 API {status}: {body}")
+        self.status = status
+        self.body = body
+
+
+async def _post_json(endpoint: str, payload: dict,
+                     admin: bool = True, timeout: float = 10.0) -> Any:
+    """POST helper for write endpoints. Always admin-gated; never cached."""
+    base = _base_url()
+    if not base:
+        raise D1ClientError(500, "D1_API_URL not set")
+    headers = {"accept": "application/json", "content-type": "application/json"}
+    if admin:
+        tok = _admin_token()
+        if not tok:
+            raise D1ClientError(500, "D1_API_ADMIN_TOKEN not set")
+        headers["x-admin-token"] = tok
+    url = f"{base}{endpoint}"
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        r = await client.post(url, json=payload, headers=headers)
+        if r.status_code >= 400:
+            try: body = r.json()
+            except Exception: body = r.text
+            raise D1ClientError(r.status_code, body)
+        return r.json()
+
+
+async def _get_json(endpoint: str, params: Optional[dict] = None,
+                    admin: bool = False, timeout: float = 10.0) -> Any:
+    base = _base_url()
+    if not base:
+        raise D1ClientError(500, "D1_API_URL not set")
+    key = _cache_key(endpoint, params)
+    cached = await _cache_get(key)
+    if cached is not None:
+        return cached
+
+    headers = {"accept": "application/json"}
+    if admin:
+        tok = _admin_token()
+        if not tok:
+            raise D1ClientError(500, "D1_API_ADMIN_TOKEN not set")
+        headers["x-admin-token"] = tok
+
+    url = f"{base}{endpoint}"
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        r = await client.get(url, params=params or {}, headers=headers)
+        if r.status_code == 404:
+            # 404 is domain-meaningful (referrer not found) — return body
+            try:
+                body = r.json()
+            except Exception:
+                body = {"error": "not found"}
+            raise D1ClientError(404, body)
+        if r.status_code >= 400:
+            try:
+                body = r.json()
+            except Exception:
+                body = r.text
+            raise D1ClientError(r.status_code, body)
+        data = r.json()
+
+    await _cache_set(key, data)
+    return data
+
+
+# ── public API (mirrors the shapes portal_server.py needs) ────────────────
+async def dashboard(code: str = "", email: str = "") -> dict:
+    """Returns the JAREDSB0-style dashboard payload from D1.
+
+    Shape matches portal_server.api_referral_dashboard's JSON body keys:
+      referral_code, email, name, paypal_email,
+      total_referrals, completed, pending, earnings, total_clicks, history.
+    """
+    params = {}
+    if code:  params["code"] = code
+    if email: params["email"] = email
+    return await _get_json("/dashboard", params)
+
+
+async def referrer(code: str = "", email: str = "") -> dict:
+    params = {}
+    if code:  params["code"] = code
+    if email: params["email"] = email
+    return (await _get_json("/referrers", params))["referrer"]
+
+
+async def referrals(referrer_id: int) -> list[dict]:
+    data = await _get_json("/referrals", {"referrer_id": referrer_id})
+    return data.get("referrals", [])
+
+
+async def commission_payments(referral_id: int) -> list[dict]:
+    data = await _get_json("/commission_payments", {"referral_id": referral_id})
+    return data.get("payments", [])
+
+
+async def admin_affiliates() -> dict:
+    """Returns {affiliates: [...], count: N}. Requires admin token."""
+    return await _get_json("/admin/affiliates", admin=True)
+
+
+# ── write API (auto-provision) ────────────────────────────────────────────
+async def upsert_referral(email: str, code: str, name: str = "",
+                          paypal_email: str = "", tier: str = "starter") -> dict:
+    """Idempotent referrer upsert. Returns {ok, referrer, provisioned}.
+
+    Safe to call repeatedly — existing rows are preserved (only backfills
+    user_name/paypal_email when currently empty). `tier` is currently accepted
+    but not persisted server-side (referrers table has no tier column);
+    retained for API symmetry + future expansion.
+    """
+    payload = {
+        "email": (email or "").strip().lower(),
+        "code":  (code  or "").strip().upper(),
+        "name":  (name  or "").strip(),
+        "paypal_email": (paypal_email or "").strip(),
+    }
+    result = await _post_json("/referrers/upsert", payload, admin=True)
+    invalidate_cache()  # reads must see the new row
+    return result
+
+
+async def get_referral_by_email(email: str) -> Optional[dict]:
+    """Returns referrer row or None if missing (instead of raising)."""
+    try:
+        return await referrer(email=email)
+    except D1ClientError as e:
+        if e.status == 404:
+            return None
+        raise
+
+
+async def list_all_referrers_lite() -> list[dict]:
+    """Just (user_email, referral_code) pairs — for reconciliation scans."""
+    data = await _get_json("/admin/emails", admin=True)
+    return data.get("referrers", [])
+
+
+async def list_all_referrals() -> list[dict]:
+    """Full admin list (for admin dashboard). Alias for admin_affiliates()."""
+    data = await admin_affiliates()
+    return data.get("affiliates", [])
+
+
+async def get_referral_stats(code: str = "", email: str = "") -> dict:
+    """Stats block for a given referrer. Alias for dashboard()."""
+    return await dashboard(code=code, email=email)
+
+
+async def list_commission_payments(referral_id: int) -> list[dict]:
+    """Alias for commission_payments() for API symmetry."""
+    return await commission_payments(referral_id)
+
+
+# ── health ────────────────────────────────────────────────────────────────
+async def health() -> dict:
+    return await _get_json("/health")
+
+
+# ── fire-and-forget mirror helpers (P-3 2026-04-15) ───────────────────────
+# These never raise, never block the customer request. On failure they log
+# and return. Gated by USE_D1_REFERRALS so a flipped flag disables cleanly.
+
+import logging as _logging
+_mirror_log = _logging.getLogger("referrals_d1_mirror")
+if not _mirror_log.handlers:
+    _h = _logging.StreamHandler()
+    _h.setFormatter(_logging.Formatter("[d1-mirror] %(levelname)s: %(message)s"))
+    _mirror_log.addHandler(_h)
+_mirror_log.setLevel(_logging.INFO)
+
+
+async def _mirror_referrer_task(email: str, code: str, name: str = "",
+                                paypal_email: str = "") -> None:
+    """Internal coro: upsert a referrer row into D1. Swallows all errors."""
+    try:
+        if not d1_enabled():
+            return
+        email = (email or "").strip().lower()
+        code  = (code  or "").strip().upper()
+        if not email or not code:
+            return
+        await upsert_referral(email=email, code=code, name=name or "",
+                              paypal_email=paypal_email or "")
+        _mirror_log.info("mirrored referrer %s -> %s", email, code)
+    except Exception as e:
+        _mirror_log.warning("mirror referrer failed %s: %s", email, e)
+
+
+def mirror_referrer_async(email: str, code: str, name: str = "",
+                          paypal_email: str = "") -> None:
+    """Fire-and-forget referrer mirror. Safe in any asyncio context."""
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(_mirror_referrer_task(email, code, name, paypal_email))
+        else:
+            asyncio.run(_mirror_referrer_task(email, code, name, paypal_email))
+    except Exception as e:
+        _mirror_log.warning("mirror referrer schedule failed %s: %s", email, e)
+
+
+async def _mirror_paypal_email_task(email: str, paypal_email: str) -> None:
+    """Internal coro: update paypal_email on an existing D1 referrer.
+
+    Implementation note: the worker has no dedicated paypal-email endpoint.
+    We re-upsert with the existing code + new paypal_email. Read the existing
+    code first; if the referrer row doesn't exist yet in D1, we skip (the
+    provision path will create it). Swallows all errors.
+    """
+    try:
+        if not d1_enabled():
+            return
+        email = (email or "").strip().lower()
+        paypal_email = (paypal_email or "").strip()
+        if not email or not paypal_email:
+            return
+        row = await get_referral_by_email(email)
+        if not row:
+            _mirror_log.info("skip paypal mirror: referrer %s not in D1 yet", email)
+            return
+        code = (row.get("referral_code") or "").strip().upper()
+        name = (row.get("user_name") or "").strip()
+        if not code:
+            return
+        await upsert_referral(email=email, code=code, name=name,
+                              paypal_email=paypal_email)
+        _mirror_log.info("mirrored paypal_email for %s", email)
+    except Exception as e:
+        _mirror_log.warning("mirror paypal_email failed %s: %s", email, e)
+
+
+def mirror_paypal_email_async(email: str, paypal_email: str) -> None:
+    """Fire-and-forget paypal email mirror."""
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(_mirror_paypal_email_task(email, paypal_email))
+        else:
+            asyncio.run(_mirror_paypal_email_task(email, paypal_email))
+    except Exception as e:
+        _mirror_log.warning("mirror paypal_email schedule failed %s: %s", email, e)

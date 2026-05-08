@@ -1,0 +1,299 @@
+/**
+ * Referrals API Worker — read-only facade over D1 `purebrain-referrals`.
+ *
+ * Purpose: Replaces SQLite-backed referral reads in portal_server.py so the
+ * single source of truth becomes D1. Write paths (track/complete) remain on
+ * the VPS until a separate cutover.
+ *
+ * Endpoints (all JSON responses):
+ *   GET  /health
+ *   GET  /referrers?code=PB-XXXX           — full referrer row (minus password_hash)
+ *   GET  /referrers?email=foo@bar          — full referrer row
+ *   GET  /referrals?referrer_id=N          — list referrals (joined with commission sums)
+ *   GET  /commission_payments?referral_id=N
+ *   GET  /dashboard?code=PB-XXXX           — aggregated shape matching portal /refer/ frontend
+ *   GET  /admin/affiliates                 — admin view (requires X-Admin-Token)
+ *
+ * Auth model:
+ *   - Read endpoints for an individual referrer scope (dashboard, referrers, referrals,
+ *     commission_payments) are OPEN to the VPS (behind VPS's own auth). This worker is
+ *     ONLY called by portal_server.py (not by browsers).
+ *   - /admin/* requires `X-Admin-Token` matching `ADMIN_TOKENS` secret (comma-separated).
+ *
+ * Network lockdown: deploy with a WAF rule or mTLS restricting origin to VPS IP when
+ * cutover lands. For staging parity verification, open access is acceptable.
+ */
+
+const REFERRER_PUBLIC_COLS = [
+  "id", "user_name", "user_email", "referral_code",
+  "paypal_email", "created_at"
+  // Note: password_hash intentionally excluded.
+];
+
+function json(body, init = {}) {
+  return new Response(JSON.stringify(body), {
+    status: init.status || 200,
+    headers: {
+      "content-type": "application/json",
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+      ...(init.headers || {}),
+    },
+  });
+}
+
+function err(status, message) {
+  return json({ error: message }, { status });
+}
+
+async function requireAdmin(request, env) {
+  const hdr = request.headers.get("x-admin-token") || "";
+  const url = new URL(request.url);
+  const qp  = url.searchParams.get("admin_token") || "";
+  const token = (hdr || qp).trim();
+  if (!token) return false;
+  const allow = (env.ADMIN_TOKENS || "").split(",").map(s => s.trim()).filter(Boolean);
+  return allow.includes(token);
+}
+
+function pick(row, cols) {
+  const out = {};
+  for (const c of cols) out[c] = row[c];
+  return out;
+}
+
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    const path = url.pathname.replace(/\/+$/, "") || "/";
+    const method = request.method.toUpperCase();
+
+    // CORS (portal_server.py calls this server-side; browsers should NEVER hit it
+    // directly, but we set headers defensively).
+    if (method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "null",
+          "access-control-allow-methods": "GET, POST, OPTIONS",
+          "access-control-allow-headers": "x-admin-token, content-type",
+        },
+      });
+    }
+
+    // Admin-gated write endpoints (POST).
+    // Auto-provision referral code on customer signup, idempotent via UNIQUE(user_email).
+    if (method === "POST" && path === "/referrers/upsert") {
+      if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+      let body;
+      try { body = await request.json(); }
+      catch (_e) { return err(400, "invalid json"); }
+
+      const email        = String(body.email || "").trim().toLowerCase();
+      const name         = String(body.name || "").trim();
+      const code         = String(body.code || "").trim().toUpperCase();
+      const paypal_email = String(body.paypal_email || "").trim();
+      if (!email || !email.includes("@")) return err(400, "invalid email");
+      if (!code) return err(400, "code required");
+
+      const now = new Date().toISOString();
+      try {
+        // SQLite/D1 UPSERT: preserves existing code/password for already-provisioned rows,
+        // only fills paypal_email + user_name if currently empty.
+        const res = await env.DB.prepare(
+          `INSERT INTO referrers (user_name, user_email, referral_code, paypal_email, password_hash, created_at)
+           VALUES (?, ?, ?, ?, '', ?)
+           ON CONFLICT(user_email) DO UPDATE SET
+             user_name    = CASE WHEN referrers.user_name = '' THEN excluded.user_name ELSE referrers.user_name END,
+             paypal_email = CASE WHEN referrers.paypal_email = '' THEN excluded.paypal_email ELSE referrers.paypal_email END
+           RETURNING id, user_email, referral_code, user_name, paypal_email, created_at`
+        ).bind(name, email, code, paypal_email, now).all();
+        const row = res.results && res.results[0];
+        return json({ ok: true, referrer: row, provisioned: !!row });
+      } catch (e) {
+        // If race with duplicate code (unlikely given portal caller generates fresh), return 409
+        return json({ error: "upsert_failed", detail: String(e && e.message || e) }, { status: 500 });
+      }
+    }
+
+    if (method !== "GET") return err(405, "method not allowed");
+
+    try {
+      if (path === "/health") {
+        return json({ ok: true, db: "purebrain-referrals", ts: new Date().toISOString() });
+      }
+
+      if (path === "/referrers") {
+        const code  = (url.searchParams.get("code")  || "").trim();
+        const email = (url.searchParams.get("email") || "").trim();
+        if (!code && !email) return err(400, "missing code or email");
+        const sql = code
+          ? `SELECT * FROM referrers WHERE referral_code = ? COLLATE NOCASE`
+          : `SELECT * FROM referrers WHERE user_email = ? COLLATE NOCASE`;
+        const { results } = await env.DB.prepare(sql).bind(code || email).all();
+        if (!results || results.length === 0) return err(404, "referrer not found");
+        return json({ referrer: pick(results[0], REFERRER_PUBLIC_COLS) });
+      }
+
+      if (path === "/referrals") {
+        const refId = (url.searchParams.get("referrer_id") || "").trim();
+        if (!refId) return err(400, "missing referrer_id");
+        const { results } = await env.DB.prepare(
+          `SELECT r.id, r.referred_name, r.referred_email, r.status, r.created_at,
+                  r.completed_at,
+                  COALESCE(SUM(cp.commission_value), 0) AS earnings,
+                  COUNT(cp.id) AS payment_count
+             FROM referrals r
+             LEFT JOIN commission_payments cp ON cp.referral_id = r.id
+            WHERE r.referrer_id = ?
+              AND NOT (r.status = 'rejected' AND r.referred_email LIKE 'paypal_%@pending')
+         GROUP BY r.id
+         ORDER BY r.created_at DESC`
+        ).bind(refId).all();
+        return json({ referrals: results || [] });
+      }
+
+      if (path === "/commission_payments") {
+        const referralId = (url.searchParams.get("referral_id") || "").trim();
+        if (!referralId) return err(400, "missing referral_id");
+        const { results } = await env.DB.prepare(
+          `SELECT id, referrer_id, referral_id, payer_email, order_id,
+                  payment_amount, commission_rate, commission_value, tier, created_at
+             FROM commission_payments
+            WHERE referral_id = ?
+         ORDER BY created_at DESC`
+        ).bind(referralId).all();
+        return json({ payments: results || [] });
+      }
+
+      if (path === "/dashboard") {
+        const code  = (url.searchParams.get("code")  || "").trim().toUpperCase();
+        const email = (url.searchParams.get("email") || "").trim().toLowerCase();
+        if (!code && !email) return err(400, "missing code or email");
+
+        const refRes = await env.DB.prepare(
+          code
+            ? `SELECT * FROM referrers WHERE referral_code = ? COLLATE NOCASE`
+            : `SELECT * FROM referrers WHERE user_email = ? COLLATE NOCASE`
+        ).bind(code || email).all();
+        const referrer = refRes.results && refRes.results[0];
+        if (!referrer) return err(404, "referrer not found");
+
+        const rid  = referrer.id;
+        const rcode = referrer.referral_code;
+
+        // totals (exclude paypal ghosts)
+        const totalQ = await env.DB.prepare(
+          `SELECT COUNT(*) AS c FROM referrals WHERE referrer_id = ?
+             AND NOT (status = 'rejected' AND referred_email LIKE 'paypal_%@pending')`
+        ).bind(rid).first();
+        const completedQ = await env.DB.prepare(
+          `SELECT COUNT(*) AS c FROM referrals WHERE referrer_id = ? AND status = 'completed'`
+        ).bind(rid).first();
+        const pendingQ = await env.DB.prepare(
+          `SELECT COUNT(*) AS c FROM referrals WHERE referrer_id = ? AND status = 'pending'`
+        ).bind(rid).first();
+        const earningsQ = await env.DB.prepare(
+          `SELECT COALESCE(SUM(reward_value), 0) AS s FROM rewards WHERE referrer_id = ?`
+        ).bind(rid).first();
+        const clicksQ = await env.DB.prepare(
+          `SELECT COUNT(*) AS c FROM referral_clicks WHERE referral_code = ? COLLATE NOCASE`
+        ).bind(rcode).first();
+
+        const histQ = await env.DB.prepare(
+          `SELECT r.referred_name, r.referred_email, r.status, r.created_at,
+                  COALESCE(SUM(cp.commission_value), 0) AS earnings,
+                  COUNT(cp.id) AS payment_count
+             FROM referrals r
+             LEFT JOIN commission_payments cp ON cp.referral_id = r.id
+            WHERE r.referrer_id = ?
+              AND NOT (r.status = 'rejected' AND r.referred_email LIKE 'paypal_%@pending')
+         GROUP BY r.id
+         ORDER BY r.created_at DESC`
+        ).bind(rid).all();
+
+        return json({
+          referrer_id: rid,
+          referral_code: rcode,
+          email: referrer.user_email,
+          name: referrer.user_name,
+          paypal_email: referrer.paypal_email,
+          total_referrals: totalQ.c,
+          completed: completedQ.c,
+          pending: pendingQ.c,
+          earnings: Math.round((earningsQ.s || 0) * 100) / 100,
+          total_clicks: clicksQ.c,
+          history: histQ.results || [],
+        });
+      }
+
+      if (path === "/admin/emails") {
+        // Lightweight list for reconciliation: just (email, code) pairs — no joins.
+        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        const { results } = await env.DB.prepare(
+          `SELECT user_email, referral_code FROM referrers`
+        ).all();
+        return json({ count: (results || []).length, referrers: results || [] });
+      }
+
+      if (path === "/admin/affiliates") {
+        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+
+        const { results: referrers } = await env.DB.prepare(
+          `SELECT * FROM referrers ORDER BY created_at DESC`
+        ).all();
+
+        const affiliates = [];
+        for (const r of referrers || []) {
+          const rid = r.id, code = r.referral_code;
+          const totalQ = await env.DB.prepare(
+            `SELECT COUNT(*) AS c FROM referrals WHERE referrer_id = ?`
+          ).bind(rid).first();
+          const completedQ = await env.DB.prepare(
+            `SELECT COUNT(*) AS c FROM referrals WHERE referrer_id = ? AND status = 'completed'`
+          ).bind(rid).first();
+          const pendingQ = await env.DB.prepare(
+            `SELECT COUNT(*) AS c FROM referrals WHERE referrer_id = ? AND status = 'pending'`
+          ).bind(rid).first();
+          const earningsQ = await env.DB.prepare(
+            `SELECT COALESCE(SUM(reward_value), 0) AS s FROM rewards WHERE referrer_id = ?`
+          ).bind(rid).first();
+          const clicksQ = await env.DB.prepare(
+            `SELECT COUNT(*) AS c FROM referral_clicks WHERE referral_code = ? COLLATE NOCASE`
+          ).bind(code).first();
+          const histQ = await env.DB.prepare(
+            `SELECT ref.id, ref.referred_name, ref.referred_email, ref.status, ref.created_at,
+                    COALESCE(SUM(cp.commission_value), 0) AS earnings,
+                    COUNT(cp.id) AS payment_count
+               FROM referrals ref
+               LEFT JOIN commission_payments cp ON cp.referral_id = ref.id
+              WHERE ref.referrer_id = ?
+           GROUP BY ref.id
+           ORDER BY ref.created_at DESC`
+          ).bind(rid).all();
+
+          affiliates.push({
+            id:           rid,
+            name:         r.user_name,
+            email:        r.user_email,
+            code:         code,
+            paypal_email: r.paypal_email,
+            clicks:       clicksQ.c,
+            total:        totalQ.c,
+            completed:    completedQ.c,
+            pending:      pendingQ.c,
+            earnings:     Math.round((earningsQ.s || 0) * 100) / 100,
+            joined:       r.created_at,
+            history:      histQ.results || [],
+          });
+        }
+
+        return json({ affiliates, count: affiliates.length });
+      }
+
+      return err(404, "not found");
+    } catch (e) {
+      return json({ error: "worker_error", detail: String(e && e.message || e) }, { status: 500 });
+    }
+  },
+};

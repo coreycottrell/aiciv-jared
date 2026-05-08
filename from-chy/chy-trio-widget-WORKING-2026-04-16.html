@@ -1,0 +1,1039 @@
+<!-- ==================== TRIO CHAT WIDGET (3-panel pop-out overlay) ==================== -->
+<!-- Injected 2026-04-15 — adapted from 777 Command Center.
+     Uses portal proxy routes (/trio/messages, /trio/message) with Bearer token
+     from localStorage.portal_token. No BaaS key in frontend. -->
+
+<!-- Sidebar nav items: TRIO + 777 Command Center -->
+<script>
+(function(){
+  function injectSidebar(){
+    var sidebar = document.querySelector('nav.sidebar');
+    if (!sidebar) return false;
+    if (document.getElementById('nav-trio-item')) return true; // already injected
+
+    var footer = sidebar.querySelector('.sidebar-footer');
+    var insertBeforeEl = footer || null;
+
+    var section = document.createElement('div');
+    section.className = 'sidebar-section';
+    section.textContent = 'Coordination';
+    section.style.marginTop = '12px';
+
+    var trio = document.createElement('div');
+    trio.id = 'nav-trio-item';
+    trio.className = 'nav-item';
+    trio.setAttribute('data-tooltip', 'Trio Chat — talk to Aether, Chy, and Morphe together');
+    trio.style.cursor = 'pointer';
+    trio.innerHTML = '<span class="nav-icon" style="color:#f1420b;">&#x26A1;</span>Trio';
+    trio.onclick = function(e){ e.preventDefault(); if (window.openTrioWidget) window.openTrioWidget(); };
+
+    var cc = document.createElement('div');
+    cc.id = 'nav-777-item';
+    cc.className = 'nav-item';
+    cc.setAttribute('data-tooltip', '777 Command Center — unified cross-civ dashboard');
+    cc.style.cursor = 'pointer';
+    cc.innerHTML = '<span class="nav-icon" style="color:#2a93c1;">&#x25C9;</span>777';
+    cc.onclick = function(e){ e.preventDefault(); window.open('https://777.purebrain.ai/', '_blank'); };
+
+    if (insertBeforeEl) {
+      sidebar.insertBefore(section, insertBeforeEl);
+      sidebar.insertBefore(trio, insertBeforeEl);
+      sidebar.insertBefore(cc, insertBeforeEl);
+    } else {
+      sidebar.appendChild(section);
+      sidebar.appendChild(trio);
+      sidebar.appendChild(cc);
+    }
+    console.log('[trio-nav] Sidebar items injected');
+    return true;
+  }
+
+  function injectMobile(){
+    var mobileMenu = document.getElementById('mobile-more-menu');
+    if (!mobileMenu) return false;
+    if (document.getElementById('mobile-trio-item')) return true;
+
+    var mTrio = document.createElement('div');
+    mTrio.id = 'mobile-trio-item';
+    mTrio.className = 'tab-menu-item';
+    mTrio.style.cursor = 'pointer';
+    mTrio.innerHTML = '<span style="margin-right:10px;color:#f1420b;">&#x26A1;</span>Trio';
+    mTrio.onclick = function(){
+      if (window.closeMobileMenu) window.closeMobileMenu();
+      setTimeout(function(){ if (window.openTrioWidget) window.openTrioWidget(); }, 200);
+    };
+
+    var mCC = document.createElement('a');
+    mCC.id = 'mobile-777-item';
+    mCC.className = 'tab-menu-item';
+    mCC.href = 'https://777.purebrain.ai/';
+    mCC.target = '_blank';
+    mCC.style.textDecoration = 'none';
+    mCC.style.color = 'inherit';
+    mCC.innerHTML = '<span style="margin-right:10px;color:#2a93c1;">&#x25C9;</span>777 Command Center';
+    mCC.onclick = function(){ if (window.closeMobileMenu) window.closeMobileMenu(); };
+
+    mobileMenu.appendChild(mTrio);
+    mobileMenu.appendChild(mCC);
+    console.log('[trio-nav] Mobile menu items injected');
+    return true;
+  }
+
+  function injectTrioNavItems(){
+    var sidebarDone = injectSidebar();
+    var mobileDone = injectMobile();
+    if (!sidebarDone || !mobileDone) {
+      // Retry if either failed — DOM may not be fully ready
+      setTimeout(injectTrioNavItems, 500);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', injectTrioNavItems);
+  } else {
+    injectTrioNavItems();
+  }
+  // ---- UX Feature: Image upload (drag-drop, paste, inline rendering) ----
+  // CRITICAL SCOPE FIX (2026-04-16): TRIO_WIDGET is declared in Script 2 (line ~314).
+  // This script (Script 1) runs FIRST. Without this guard, line 98 crashes with
+  // ReferenceError, killing all image upload + drag-drop + paste + render code.
+  // We create window.TRIO_WIDGET as a placeholder that Script 2 must MERGE into
+  // (not replace) — see corresponding change at line ~314.
+  if (!window.TRIO_WIDGET) window.TRIO_WIDGET = {};
+  const TRIO_WIDGET = window.TRIO_WIDGET;
+
+  TRIO_WIDGET.pendingMedia = null; // { key, url, mime, size, original_name }
+  TRIO_WIDGET.isDragging = false;
+
+  // Upload file to social.purebrain.ai/api/uploads
+  async function twUploadFile(file){
+    if (file.size > 10 * 1024 * 1024) {
+      throw new Error('File too large (max 10MB)');
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch('/trio/upload', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + twToken() },
+      body: formData
+    });
+    if (!res.ok) {
+      let msg = 'Upload failed (HTTP ' + res.status + ')';
+      try { const j = await res.json(); if (j.error) msg = j.error; } catch(_){}
+      throw new Error(msg);
+    }
+    return await res.json();
+  }
+
+  // Show pending image preview above input
+  function twShowPendingMedia(media){
+    TRIO_WIDGET.pendingMedia = media;
+    const container = document.getElementById('tw-pending-preview');
+    if (!container) return;
+
+    if (media.mime.startsWith('image/')){
+      container.innerHTML = `
+        <div class="tw-pending-item">
+          <img src="${media.url}" alt="Preview" class="tw-pending-thumb" />
+          <div class="tw-pending-info">
+            <div class="tw-pending-name">${twEscape(media.original_name)}</div>
+            <div class="tw-pending-size">${(media.size/1024).toFixed(1)}KB</div>
+          </div>
+          <button class="tw-pending-remove" onclick="twClearPendingMedia()" aria-label="Remove">&times;</button>
+        </div>`;
+    } else {
+      container.innerHTML = `
+        <div class="tw-pending-item">
+          <span class="tw-pending-icon">📎</span>
+          <div class="tw-pending-info">
+            <div class="tw-pending-name">${twEscape(media.original_name)}</div>
+            <div class="tw-pending-size">${(media.size/1024).toFixed(1)}KB</div>
+          </div>
+          <button class="tw-pending-remove" onclick="twClearPendingMedia()" aria-label="Remove">&times;</button>
+        </div>`;
+    }
+    container.style.display = 'flex';
+  }
+
+  window.twClearPendingMedia = function(){
+    TRIO_WIDGET.pendingMedia = null;
+    const container = document.getElementById('tw-pending-preview');
+    if (container) {
+      container.style.display = 'none';
+      container.innerHTML = '';
+    }
+  };
+
+  // Drag-and-drop on feed area
+  function twSetupDragDrop(){
+    const feed = document.getElementById('tw-feed-unified');
+    if (!feed) return;
+
+    feed.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (!TRIO_WIDGET.isDragging) {
+        TRIO_WIDGET.isDragging = true;
+        feed.classList.add('tw-drop-zone-active');
+      }
+    });
+
+    feed.addEventListener('dragleave', (e) => {
+      if (e.target === feed) {
+        TRIO_WIDGET.isDragging = false;
+        feed.classList.remove('tw-drop-zone-active');
+      }
+    });
+
+    feed.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      TRIO_WIDGET.isDragging = false;
+      feed.classList.remove('tw-drop-zone-active');
+
+      const files = e.dataTransfer.files;
+      if (!files || files.length === 0) return;
+
+      const file = files[0];
+      if (!file.type.startsWith('image/')) {
+        alert('Only images supported for drag-drop');
+        return;
+      }
+
+      const status = document.getElementById('tw-status');
+      status.textContent = 'Uploading image...';
+      status.style.color = 'var(--text-dim, #7a8aaa)';
+
+      try {
+        const media = await twUploadFile(file);
+        twShowPendingMedia(media);
+        status.style.color = 'var(--green, #22c55e)';
+        status.textContent = 'Image ready. Type a message and send.';
+        setTimeout(() => { status.textContent = ''; }, 3000);
+      } catch (err) {
+        status.style.color = 'var(--red, #ef4444)';
+        status.textContent = 'Upload failed: ' + err.message;
+      }
+    });
+  }
+
+  // Paste handler on textarea
+  function twSetupPaste(){
+    const ta = document.getElementById('tw-input');
+    if (!ta) return;
+
+    ta.addEventListener('paste', async (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (!file) continue;
+
+          const status = document.getElementById('tw-status');
+          status.textContent = 'Uploading pasted image...';
+          status.style.color = 'var(--text-dim, #7a8aaa)';
+
+          try {
+            const media = await twUploadFile(file);
+            twShowPendingMedia(media);
+            status.style.color = 'var(--green, #22c55e)';
+            status.textContent = 'Image ready. Type a message and send.';
+            setTimeout(() => { status.textContent = ''; }, 3000);
+          } catch (err) {
+            status.style.color = 'var(--red, #ef4444)';
+            status.textContent = 'Upload failed: ' + err.message;
+          }
+          break;
+        }
+      }
+    });
+  }
+
+  // Render images inline in messages — self-contained escape so it works across IIFEs
+  function _twSafeEscape(s){
+    return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function twRenderMedia(message){
+    let refs = message.media_refs;
+    // Worker returns this as a JSON string from D1 — parse if needed
+    if (typeof refs === 'string') {
+      try { refs = JSON.parse(refs); } catch(e) { refs = []; }
+    }
+    if (!refs || !Array.isArray(refs) || refs.length === 0) {
+      return '';
+    }
+
+    return refs.map(media => {
+      const url = _twSafeEscape(media.url || '');
+      const name = _twSafeEscape(media.original_name || 'file');
+      if (media.mime && media.mime.startsWith('image/')) {
+        return `<img src="${url}" class="tw-msg-img" loading="lazy" onclick="window.open('${url}','_blank')" alt="${name}" />`;
+      } else {
+        return `<a href="${url}" target="_blank" class="tw-file-link">📎 ${name}</a>`;
+      }
+    }).join('');
+  }
+  // Expose globally so the main widget IIFE can call them
+  window.twRenderMedia = twRenderMedia;
+  window.twUploadFile = twUploadFile;
+  window.twShowPendingMedia = twShowPendingMedia;
+
+  // Initialize drag-drop and paste — use polling pattern since main widget's openTrioWidget
+  // may not be defined yet when this script runs (script ordering issue).
+  function _twWaitForOpen(retries) {
+    retries = retries || 0;
+    if (window.openTrioWidget && !window.openTrioWidget.__trioImageWrapped) {
+      const _twOriginalOpen = window.openTrioWidget;
+      window.openTrioWidget = function(){
+        _twOriginalOpen.apply(this, arguments);
+        setTimeout(() => {
+          try { twSetupDragDrop(); twSetupPaste(); } catch(e) { console.warn('[trio-image] setup failed:', e); }
+        }, 200);
+      };
+      window.openTrioWidget.__trioImageWrapped = true;
+      console.log('[trio-image] wrapped openTrioWidget — drag/paste will initialize');
+    } else if (retries < 50) {
+      setTimeout(() => _twWaitForOpen(retries + 1), 200);
+    } else {
+      console.warn('[trio-image] gave up waiting for openTrioWidget after 10s');
+    }
+  }
+  _twWaitForOpen();
+
+  // Also: setup drag/paste immediately if widget is already open (e.g., after refresh)
+  setTimeout(() => {
+    try {
+      if (document.getElementById('tw-feed-unified')) {
+        twSetupDragDrop();
+        twSetupPaste();
+        console.log('[trio-image] setup ran on existing widget');
+      }
+    } catch(e) { console.warn('[trio-image] immediate setup failed:', e); }
+  }, 500);
+
+})();
+</script>
+
+<script>
+(function(){
+  // CRITICAL SCOPE FIX (2026-04-16): Script 1 (image upload) created window.TRIO_WIDGET
+  // first and stored pendingMedia/isDragging on it. We MUST merge into the existing object,
+  // not replace it, or Script 1's image upload state pointer goes stale. See line ~98.
+  const TRIO_WIDGET = window.TRIO_WIDGET || {};
+  Object.assign(TRIO_WIDGET, {
+    ais: [
+      { id: 'aether', label: 'Aether', color: '#2a93c1', subtitle: 'Co-CEO' },
+      { id: 'chy',    label: 'Chy',    color: '#f1420b', subtitle: 'AI COO' },
+      { id: 'morphe', label: 'Morphe', color: '#0a0a0a', subtitle: 'Trio 3rd' },
+    ],
+    byId: TRIO_WIDGET.byId || {},
+    pollHandle: TRIO_WIDGET.pollHandle || null,
+    open: TRIO_WIDGET.open || false,
+  });
+  TRIO_WIDGET.ais.forEach(a => { TRIO_WIDGET.byId[a.id] = a; });
+  window.TRIO_WIDGET = TRIO_WIDGET;
+
+  function twToken(){
+    try { return localStorage.getItem('portal_token') || ''; } catch(e){ return ''; }
+  }
+  function twAuthHeaders(extra){
+    const h = Object.assign({}, extra || {});
+    const t = twToken();
+    if (t) h['Authorization'] = 'Bearer ' + t;
+    return h;
+  }
+  function twEscape(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+  function twLinkify(s){
+    let h = twEscape(s);
+    h = h.replace(/`([^`]+)`/g,'<code>$1</code>');
+    h = h.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+    h = h.replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">$1</a>');
+    h = h.replace(/\n/g,'<br>');
+    return h;
+  }
+  function twFmtTs(iso){
+    try { return new Date(iso).toLocaleTimeString('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit'}); }
+    catch(e){ return ''; }
+  }
+
+  window.openTrioWidget = function(){
+    TRIO_WIDGET.open = true;
+    const m = document.getElementById('trio-widget-modal');
+    if (m) m.classList.add('open');
+    twRefresh();
+    if (TRIO_WIDGET.pollHandle) clearInterval(TRIO_WIDGET.pollHandle);
+    TRIO_WIDGET.pollHandle = setInterval(twRefresh, 10000);
+    setTimeout(()=>{ const i=document.getElementById('tw-input'); if(i) i.focus(); }, 120);
+  };
+  window.closeTrioWidget = function(){
+    TRIO_WIDGET.open = false;
+    const m = document.getElementById('trio-widget-modal');
+    if (m) m.classList.remove('open');
+    if (TRIO_WIDGET.pollHandle) { clearInterval(TRIO_WIDGET.pollHandle); TRIO_WIDGET.pollHandle = null; }
+  };
+
+  async function twRefresh(){
+    try {
+      const res = await fetch('/trio/messages?limit=200', {
+        headers: twAuthHeaders(),
+        credentials: 'same-origin'
+      });
+      if (!res.ok) throw new Error('HTTP '+res.status);
+      const data = await res.json();
+      const rawMessages = Array.isArray(data) ? data : (data.messages || []);
+      const messages = rawMessages.slice().sort((a,b)=> (a.timestamp < b.timestamp ? -1 : 1));
+      twRenderUnified(messages);
+    } catch (e) {
+      console.warn('[trio-widget] refresh failed', e);
+      const st = document.getElementById('tw-status');
+      if (st && !TRIO_WIDGET._warned) {
+        st.style.color = 'var(--red, #ef4444)';
+        st.textContent = 'Connection error — ' + (e.message || e);
+        TRIO_WIDGET._warned = true;
+      }
+    }
+  }
+  window.trioRefresh = twRefresh;
+
+  // Highlight @mentions (@aether, @chy, @morphe, @all) — applied AFTER linkify+escape.
+  function twEmphasizeMentions(html){
+    return html.replace(/(^|[\s>])@(aether|chy|morphe|all)\b/gi, (m, pre, who) => {
+      return `${pre}<strong style="color:#fff;background:rgba(255,255,255,0.10);padding:1px 5px;border-radius:4px;">@${who.toLowerCase()}</strong>`;
+    });
+  }
+
+  // --- Phase 6 UX: search + mention notifications + copy/reply ---
+  const ACTION_VERBS = /\b(fix|build|ship|review|approve|check|debug|deploy|update|resolve|investigate|urgent|need|can you|please|help)\b/i;
+  const MY_ID = 'chy'; // TODO: dynamically detect from portal session
+  let ALL_MESSAGES = [];
+  let SEARCH_QUERY = '';
+
+  function twHasActionForMe(content) {
+    if (!content) return false;
+    const mentionsMe = new RegExp('@' + MY_ID + '\\b|@all\\b', 'i').test(content);
+    if (!mentionsMe) return false;
+    return ACTION_VERBS.test(content);
+  }
+
+  function twActionItemsCount() {
+    const seen = new Set(JSON.parse(localStorage.getItem('trio_seen_actions') || '[]'));
+    return ALL_MESSAGES.filter(m => !seen.has(m.id) && twHasActionForMe(m.content)).length;
+  }
+
+  function twMarkSeenAction(id) {
+    const seen = new Set(JSON.parse(localStorage.getItem('trio_seen_actions') || '[]'));
+    seen.add(id);
+    localStorage.setItem('trio_seen_actions', JSON.stringify([...seen]));
+    twUpdateNotificationBadge();
+  }
+
+  function twUpdateNotificationBadge() {
+    const badge = document.getElementById('tw-action-badge');
+    if (!badge) return;
+    const count = twActionItemsCount();
+    if (count > 0) { badge.textContent = count; badge.style.display = 'inline-flex'; }
+    else { badge.style.display = 'none'; }
+  }
+
+  function twFilterMessages(messages) {
+    if (!SEARCH_QUERY) return messages;
+    const q = SEARCH_QUERY.toLowerCase();
+    return messages.filter(m => {
+      const from = (m.from || m.sender_id || '').toLowerCase();
+      const content = (m.content || '').toLowerCase();
+      return from.includes(q) || content.includes(q) || q.startsWith('@') && content.includes(q);
+    });
+  }
+
+  function twCopyMessage(id) {
+    const msg = ALL_MESSAGES.find(m => m.id === id);
+    if (!msg) return;
+    navigator.clipboard.writeText(msg.content || '').then(() => {
+      const el = document.querySelector(`[data-msg-id="${id}"] .tw-copy-btn`);
+      if (el) { el.textContent = '✓ copied'; setTimeout(() => { el.textContent = 'copy'; }, 1500); }
+    });
+  }
+
+  function twReplyTo(id) {
+    const msg = ALL_MESSAGES.find(m => m.id === id);
+    if (!msg) return;
+    const from = (msg.from || msg.sender_id || 'unknown');
+    const snippet = (msg.content || '').replace(/\n/g, ' ').slice(0, 120);
+    const ta = document.getElementById('tw-input');
+    if (!ta) return;
+    const prefix = `> @${from}: ${snippet}${(msg.content||'').length > 120 ? '...' : ''}\n\n`;
+    ta.value = prefix + (ta.value || '');
+    ta.focus();
+    // Move cursor to end
+    ta.selectionStart = ta.selectionEnd = ta.value.length;
+    // Scroll input into view on mobile
+    setTimeout(() => ta.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+  }
+  window.trioCopyMessage = twCopyMessage;
+  window.trioReplyTo = twReplyTo;
+
+  function twRenderUnified(messages){
+    ALL_MESSAGES = messages;
+    const feed = document.getElementById('tw-feed-unified');
+    if (!feed) return;
+    const atBottom = Math.abs(feed.scrollTop + feed.clientHeight - feed.scrollHeight) < 40;
+
+    const filtered = twFilterMessages(messages);
+
+    if (!filtered.length){
+      const emptyText = SEARCH_QUERY
+        ? `No messages match "${twEscape(SEARCH_QUERY)}".`
+        : 'No messages yet. Send something to start the trio chat.';
+      feed.innerHTML = '<div class="tw-empty">' + emptyText + '</div>';
+      twUpdateNotificationBadge();
+      return;
+    }
+
+    feed.innerHTML = filtered.map(m => {
+      const from = (m.from || m.sender_id || '').toLowerCase();
+      const fromJared = from === 'jared';
+      const ai = TRIO_WIDGET.byId[from];
+      let label, color, side;
+      if (fromJared){
+        label = 'Jared'; color = '#ffffff'; side = 'right';
+      } else if (ai){
+        label = ai.label; color = ai.color; side = 'left';
+      } else {
+        label = m.from || m.sender_id || 'unknown'; color = '#7a8aaa'; side = 'left';
+      }
+      const body = twEmphasizeMentions(twLinkify(m.content||''));
+      const mediaHtml = (typeof window.twRenderMedia === 'function') ? window.twRenderMedia(m) : '';
+      const hasAction = twHasActionForMe(m.content);
+      const actionTag = hasAction ? '<span class="tw-action-tag" title="Action item for you">⚡ ACTION</span>' : '';
+      const msgId = m.id || '';
+      return `
+        <div class="tw-msg tw-msg-${side}" data-msg-id="${twEscape(msgId)}">
+          <div class="tw-msg-meta">
+            <span class="tw-sender" style="color:${color};">${twEscape(label)}</span>
+            <span class="tw-time">${twEscape(twFmtTs(m.timestamp))}</span>
+            ${actionTag}
+          </div>
+          <div class="tw-msg-body" style="border-color:${color}66;">${body}${mediaHtml}</div>
+          <div class="tw-msg-actions">
+            <button class="tw-copy-btn" onclick="trioCopyMessage('${twEscape(msgId)}')">copy</button>
+            <button class="tw-reply-btn" onclick="trioReplyTo('${twEscape(msgId)}')">reply</button>
+            ${hasAction ? `<button class="tw-ack-btn" onclick="window.trioMarkSeen('${twEscape(msgId)}')">mark done</button>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+    if (atBottom && !SEARCH_QUERY) feed.scrollTop = feed.scrollHeight;
+    twUpdateNotificationBadge();
+  }
+
+  window.trioMarkSeen = twMarkSeenAction;
+
+  function twScrollToActions() {
+    // Filter to show only action items
+    const input = document.getElementById('tw-search');
+    if (input) { input.value = '@' + MY_ID; SEARCH_QUERY = '@' + MY_ID; twRenderUnified(ALL_MESSAGES); }
+  }
+  window.trioScrollToActions = twScrollToActions;
+
+  async function twSend(){
+    const ta = document.getElementById('tw-input');
+    const status = document.getElementById('tw-status');
+    const content = (ta.value||'').trim();
+    const pendingMedia = (TRIO_WIDGET.pendingMedia) ? [TRIO_WIDGET.pendingMedia] : [];
+    if (!content && !pendingMedia.length) return;
+    status.textContent = 'Broadcasting...';
+    status.style.color = 'var(--text-dim, #7a8aaa)';
+    try {
+      const payload = { content: content || '' };
+      if (pendingMedia.length) payload.media_refs = pendingMedia;
+      const res = await fetch('/trio/message', {
+        method: 'POST',
+        headers: twAuthHeaders({'Content-Type':'application/json'}),
+        credentials: 'same-origin',
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        let detail = 'HTTP '+res.status;
+        try { const j = await res.json(); if (j.error) detail = j.error + (j.detail ? ' — '+j.detail : ''); } catch(_){}
+        throw new Error(detail);
+      }
+      ta.value = '';
+      status.style.color = 'var(--green, #22c55e)';
+      status.textContent = 'Sent.';
+      setTimeout(()=>{ status.textContent=''; }, 3500);
+      await twRefresh();
+    } catch (e) {
+      status.style.color = 'var(--red, #ef4444)';
+      status.textContent = 'Failed: ' + e.message;
+    }
+  }
+  window.trioSend = twSend;
+
+  document.addEventListener('keydown', e => {
+    if (!TRIO_WIDGET.open) return;
+    if (e.key === 'Escape') { window.closeTrioWidget(); return; }
+    if (e.target && e.target.id === 'tw-input' && e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault(); twSend();
+    }
+  });
+
+  // Wire search input
+  function twSetupSearch() {
+    const input = document.getElementById('tw-search');
+    if (!input) { setTimeout(twSetupSearch, 300); return; }
+    input.addEventListener('input', () => {
+      SEARCH_QUERY = input.value.trim();
+      if (ALL_MESSAGES.length) twRenderUnified(ALL_MESSAGES);
+    });
+  }
+  window.trioClearSearch = function() {
+    const input = document.getElementById('tw-search');
+    if (input) { input.value = ''; SEARCH_QUERY = ''; twRenderUnified(ALL_MESSAGES); }
+  };
+  twSetupSearch();
+
+  // Drag-and-drop support — URLs, text, files
+  function setupDragDrop(){
+    var ta = document.getElementById('tw-input');
+    if (!ta) { setTimeout(setupDragDrop, 300); return; }
+
+    ['dragenter','dragover'].forEach(function(ev){
+      ta.addEventListener(ev, function(e){
+        e.preventDefault(); e.stopPropagation();
+        ta.classList.add('drag-over');
+      });
+    });
+    ['dragleave','drop'].forEach(function(ev){
+      ta.addEventListener(ev, function(e){
+        e.preventDefault(); e.stopPropagation();
+        ta.classList.remove('drag-over');
+      });
+    });
+
+    ta.addEventListener('drop', async function(e){
+      e.preventDefault();
+      var dt = e.dataTransfer;
+      if (!dt) return;
+
+      // 1. FILES — actually upload them (was previously stuffing filename as text)
+      //    Files take priority because browser may also include text/plain with the filename.
+      if (dt.files && dt.files.length) {
+        for (var i = 0; i < dt.files.length; i++) {
+          var f = dt.files[i];
+          try {
+            if (typeof window.twUploadFile === 'function' && typeof window.twShowPendingMedia === 'function') {
+              var media = await window.twUploadFile(f);
+              window.twShowPendingMedia(media);
+            } else {
+              console.warn('[trio-drop] upload helpers not available, falling back to filename text');
+              var cur = ta.value || '';
+              ta.value = cur + (cur ? ' ' : '') + '[file: ' + f.name + ']';
+            }
+          } catch(err) {
+            console.error('[trio-drop] upload failed:', err);
+            alert('Upload failed: ' + (err.message || err));
+          }
+        }
+        ta.focus();
+        return;
+      }
+
+      var appendText = '';
+
+      // 2. URL data (links dragged from browser)
+      var url = dt.getData('text/uri-list') || dt.getData('URL');
+      if (url) {
+        appendText = url;
+      }
+      // 3. HTML content — extract links
+      else if (dt.getData('text/html')) {
+        var html = dt.getData('text/html');
+        var matches = html.match(/href="([^"]+)"/);
+        if (matches) appendText = matches[1];
+        else appendText = dt.getData('text/plain') || '';
+      }
+      // 4. Plain text
+      else if (dt.getData('text/plain')) {
+        appendText = dt.getData('text/plain');
+      }
+
+      if (appendText) {
+        var cur = ta.value || '';
+        ta.value = cur + (cur && !cur.endsWith(' ') && !cur.endsWith('\n') ? ' ' : '') + appendText;
+        ta.focus();
+        ta.style.height = 'auto';
+        ta.style.height = Math.min(240, ta.scrollHeight) + 'px';
+      }
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupDragDrop);
+  } else {
+    setupDragDrop();
+  }
+
+  /* <!-- BEGIN: trio-scroll-bottom-and-voice --> */
+  // Scroll-to-bottom button — visible when user has scrolled up from latest
+  function setupScrollBottom(){
+    var feed = document.getElementById('tw-feed-unified');
+    var btn = document.getElementById('tw-scroll-bottom');
+    if (!feed || !btn) { setTimeout(setupScrollBottom, 300); return; }
+
+    function checkScrollPos(){
+      var atBottom = Math.abs(feed.scrollTop + feed.clientHeight - feed.scrollHeight) < 40;
+      btn.style.display = atBottom ? 'none' : 'flex';
+    }
+    feed.addEventListener('scroll', checkScrollPos);
+    checkScrollPos();
+  }
+  window.trioScrollBottom = function(){
+    var feed = document.getElementById('tw-feed-unified');
+    if (feed) feed.scrollTo({top: feed.scrollHeight, behavior: 'smooth'});
+  };
+  setupScrollBottom();
+
+  // Voice dictation via Web Speech API
+  var _trioRecognition = null;
+  var _trioRecognizing = false;
+
+  window.trioToggleMic = function(){
+    var btn = document.getElementById('tw-mic');
+    var ta = document.getElementById('tw-input');
+    if (!btn || !ta) return;
+
+    var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Voice dictation not supported in this browser. Try Chrome, Edge, or Safari.');
+      return;
+    }
+
+    if (_trioRecognizing) {
+      try { _trioRecognition && _trioRecognition.stop(); } catch(e){}
+      return;
+    }
+
+    _trioRecognition = new SpeechRecognition();
+    _trioRecognition.continuous = true;
+    _trioRecognition.interimResults = true;
+    _trioRecognition.lang = 'en-US';
+
+    var baseText = ta.value;
+    var finalText = '';
+
+    _trioRecognition.onstart = function(){
+      _trioRecognizing = true;
+      btn.classList.add('recording');
+      btn.title = 'Tap to stop';
+    };
+    _trioRecognition.onend = function(){
+      _trioRecognizing = false;
+      btn.classList.remove('recording');
+      btn.title = 'Voice dictation';
+      ta.focus();
+    };
+    _trioRecognition.onerror = function(e){
+      _trioRecognizing = false;
+      btn.classList.remove('recording');
+      console.warn('[trio-voice] error:', e.error);
+      if (e.error === 'not-allowed') {
+        alert('Microphone permission denied. Enable mic access in your browser settings.');
+      }
+    };
+    var _autoSendTimer = null;
+    var _countdownInterval = null;
+    var SILENCE_TIMEOUT_MS = 3500;
+    var TRIGGER_PHRASES = /\b(send it|send now|send message|fire it|fire away|send)\b\.?\s*$/i;
+
+    function clearAutoSend(){
+      if (_autoSendTimer) { clearTimeout(_autoSendTimer); _autoSendTimer = null; }
+      if (_countdownInterval) { clearInterval(_countdownInterval); _countdownInterval = null; }
+      var statusEl = document.getElementById('tw-status');
+      if (statusEl && statusEl.textContent.startsWith('Sending in')) statusEl.textContent = '';
+    }
+
+    function fireSend(){
+      clearAutoSend();
+      try { _trioRecognition && _trioRecognition.stop(); } catch(e){}
+      if (window.trioSend && (ta.value || '').trim()) {
+        window.trioSend();
+      }
+    }
+
+    function startCountdown(){
+      clearAutoSend();
+      var statusEl = document.getElementById('tw-status');
+      var seconds = Math.ceil(SILENCE_TIMEOUT_MS / 1000);
+      var remaining = seconds;
+      if (statusEl) {
+        statusEl.style.color = 'var(--orange, #f1420b)';
+        statusEl.textContent = 'Sending in ' + remaining + 's... (speak to cancel)';
+      }
+      _countdownInterval = setInterval(function(){
+        remaining--;
+        if (statusEl && remaining > 0) statusEl.textContent = 'Sending in ' + remaining + 's... (speak to cancel)';
+      }, 1000);
+      _autoSendTimer = setTimeout(fireSend, SILENCE_TIMEOUT_MS);
+    }
+
+    _trioRecognition.onresult = function(event){
+      clearAutoSend();
+      var interim = '';
+      for (var i = event.resultIndex; i < event.results.length; i++){
+        var t = event.results[i][0].transcript;
+        if (event.results[i].isFinal) finalText += t + ' ';
+        else interim += t;
+      }
+      var combined = (baseText + ' ' + finalText + interim).trim();
+
+      // Check for trigger phrase at end → strip + send immediately
+      if (TRIGGER_PHRASES.test(combined)) {
+        var stripped = combined.replace(TRIGGER_PHRASES, '').trim();
+        ta.value = stripped;
+        ta.style.height = 'auto';
+        ta.style.height = Math.min(240, ta.scrollHeight) + 'px';
+        // Small delay so user sees the value before send
+        setTimeout(fireSend, 200);
+        return;
+      }
+
+      ta.value = combined;
+      ta.style.height = 'auto';
+      ta.style.height = Math.min(240, ta.scrollHeight) + 'px';
+
+      // If we got a final result, start the countdown for auto-send
+      var hasNewFinal = false;
+      for (var j = event.resultIndex; j < event.results.length; j++){
+        if (event.results[j].isFinal) { hasNewFinal = true; break; }
+      }
+      if (hasNewFinal && combined) startCountdown();
+    };
+
+    // Patch the existing onend handler to clear timer
+    var _origOnend = _trioRecognition.onend;
+    _trioRecognition.onend = function(){
+      clearAutoSend();
+      if (_origOnend) _origOnend();
+    };
+
+    try { _trioRecognition.start(); }
+    catch(e){ console.warn('[trio-voice] start failed:', e); }
+  };
+  /* <!-- END: trio-scroll-bottom-and-voice --> */
+})();
+</script>
+
+<style>
+#trio-widget-modal{
+  position:fixed;inset:0;background:rgba(4,6,12,0.72);backdrop-filter:blur(6px);
+  z-index:99999;display:none;align-items:center;justify-content:center;padding:24px;
+}
+#trio-widget-modal.open{display:flex;}
+#trio-widget-modal .tw-shell{
+  width:min(820px,100%);height:min(82vh,820px);background:#0d1121;
+  border:1px solid rgba(42,147,193,0.25);border-radius:14px;
+  display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 24px 80px rgba(0,0,0,0.6);color:#e8eaf6;
+}
+#trio-widget-modal .tw-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.06);
+  background:linear-gradient(180deg,rgba(42,147,193,0.1),transparent);
+}
+#trio-widget-modal .tw-title{font-weight:600;font-size:16px;color:#e8eaf6;display:flex;align-items:center;gap:10px;}
+#trio-widget-modal .tw-title .tw-dots{display:inline-flex;gap:4px;}
+#trio-widget-modal .tw-title .tw-dots span{width:8px;height:8px;border-radius:50%;display:inline-block;}
+#trio-widget-modal .tw-close{background:transparent;border:none;color:#7a8aaa;font-size:22px;cursor:pointer;line-height:1;padding:4px 10px;border-radius:6px;}
+#trio-widget-modal .tw-close:hover{background:rgba(255,255,255,0.06);color:#e8eaf6;}
+#trio-widget-modal .tw-feed-wrap{flex:1;display:flex;flex-direction:column;background:#0d1121;overflow:hidden;min-width:0;}
+#trio-widget-modal .tw-feed{flex:1;overflow-y:auto;padding:18px 20px;display:flex;flex-direction:column;gap:12px;}
+#trio-widget-modal .tw-empty{color:#4a5570;font-style:italic;font-size:12px;text-align:center;margin-top:24px;}
+#trio-widget-modal .tw-msg{max-width:78%;display:flex;flex-direction:column;gap:3px;}
+#trio-widget-modal .tw-msg-right{align-self:flex-end;align-items:flex-end;}
+#trio-widget-modal .tw-msg-left{align-self:flex-start;align-items:flex-start;}
+#trio-widget-modal .tw-msg-meta{font-size:10px;color:#7a8aaa;font-weight:500;display:flex;gap:8px;align-items:baseline;}
+#trio-widget-modal .tw-msg-meta .tw-sender{font-weight:700;font-size:11px;letter-spacing:0.2px;}
+#trio-widget-modal .tw-msg-meta .tw-time{color:#7a8aaa;}
+#trio-widget-modal .tw-msg-body{font-size:13px;line-height:1.5;color:#e8eaf6;padding:9px 13px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:10px;word-wrap:break-word;}
+#trio-widget-modal .tw-msg-right .tw-msg-body{background:rgba(255,255,255,0.07);}
+#trio-widget-modal .tw-msg-body code{background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:4px;font-size:12px;}
+#trio-widget-modal .tw-hint{font-size:10px;opacity:0.65;margin-top:6px;color:#7a8aaa;}
+#trio-widget-modal .tw-footer{padding:12px 16px;border-top:1px solid rgba(255,255,255,0.06);background:#0a0d1a;}
+#trio-widget-modal .tw-input-row{display:flex;gap:10px;align-items:flex-end;}
+#trio-widget-modal #tw-input{flex:1;background:#111729;border:1px solid rgba(42,147,193,0.25);color:#e8eaf6;border-radius:10px;padding:14px 14px;font-family:inherit;font-size:16px;resize:vertical;min-height:96px;max-height:240px;line-height:1.5;touch-action:manipulation;-webkit-text-size-adjust:100%;}
+#trio-widget-modal #tw-input:focus{outline:none;border-color:#2a93c1;box-shadow:0 0 0 3px rgba(42,147,193,0.2);}
+#trio-widget-modal #tw-input.drag-over{border-color:#f1420b;box-shadow:0 0 0 3px rgba(241,66,11,0.25);background:#1a2140;}
+#trio-widget-modal #tw-send{background:linear-gradient(135deg,#2a93c1,#f1420b);color:#fff;border:none;padding:12px 22px;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px;white-space:nowrap;letter-spacing:0.02em;}
+#trio-widget-modal #tw-send:hover{filter:brightness(1.1);}
+#trio-widget-modal .tw-status-row{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:11px;color:#7a8aaa;}
+/* Phase 6 UX additions */
+#trio-widget-modal .tw-header-actions{display:flex;align-items:center;gap:4px;}
+#trio-widget-modal .tw-action-badge-btn{position:relative;background:transparent;border:none;color:#e8eaf6;font-size:20px;padding:4px 10px;cursor:pointer;border-radius:8px;display:flex;align-items:center;gap:4px;}
+#trio-widget-modal .tw-action-badge-btn:hover{background:rgba(255,255,255,0.06);}
+#trio-widget-modal #tw-action-badge{background:#f1420b;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:100px;min-width:18px;text-align:center;}
+#trio-widget-modal .tw-search-row{display:flex;gap:6px;align-items:center;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.06);background:#0a0d1a;}
+#trio-widget-modal #tw-search{flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#e8eaf6;border-radius:8px;padding:8px 12px;font-family:inherit;font-size:13px;}
+#trio-widget-modal #tw-search:focus{outline:none;border-color:rgba(42,147,193,0.4);background:rgba(255,255,255,0.06);}
+#trio-widget-modal .tw-search-clear{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);color:#7a8aaa;cursor:pointer;padding:6px 12px;font-size:14px;border-radius:8px;}
+#trio-widget-modal .tw-search-clear:hover{color:#e8eaf6;}
+#trio-widget-modal .tw-msg-actions{display:flex;gap:6px;margin-top:6px;opacity:0;transition:opacity 0.15s;}
+#trio-widget-modal .tw-msg:hover .tw-msg-actions{opacity:1;}
+#trio-widget-modal .tw-msg-actions button{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:#7a8aaa;font-size:10px;padding:3px 10px;border-radius:6px;cursor:pointer;font-family:inherit;}
+#trio-widget-modal .tw-msg-actions button:hover{color:#e8eaf6;background:rgba(255,255,255,0.1);}
+#trio-widget-modal .tw-action-tag{background:rgba(241,66,11,0.15);color:#f1420b;font-size:9px;font-weight:700;letter-spacing:0.04em;padding:2px 7px;border-radius:100px;margin-left:6px;}
+/* Scroll-to-bottom button */
+#trio-widget-modal #tw-scroll-bottom{position:absolute;bottom:120px;right:24px;width:40px;height:40px;border-radius:50%;background:rgba(42,147,193,0.85);border:none;color:#fff;font-size:18px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.4);z-index:10;backdrop-filter:blur(8px);transition:transform .15s,background .2s;}
+#trio-widget-modal #tw-scroll-bottom:hover{background:#2a93c1;transform:translateY(-2px);}
+/* Mic button */
+#trio-widget-modal #tw-mic{background:rgba(255,255,255,0.05);border:1px solid rgba(42,147,193,0.25);color:#e8eaf6;border-radius:10px;padding:10px 14px;font-size:18px;cursor:pointer;transition:all .2s;}
+#trio-widget-modal #tw-mic:hover{background:rgba(42,147,193,0.15);border-color:rgba(42,147,193,0.5);}
+#trio-widget-modal #tw-mic.recording{background:rgba(241,66,11,0.2);border-color:#f1420b;color:#f1420b;animation:micPulse 1.5s infinite;}
+@keyframes micPulse{0%,100%{box-shadow:0 0 0 0 rgba(241,66,11,0.4);}50%{box-shadow:0 0 0 8px rgba(241,66,11,0);}}
+@media (max-width: 900px){
+  #trio-widget-modal{padding:0;align-items:stretch;justify-content:stretch;}
+  #trio-widget-modal .tw-shell{
+    height:100vh;
+    height:100dvh;
+    max-height:100dvh;
+    width:100vw;
+    border-radius:0;
+    border:none;
+  }
+  #trio-widget-modal .tw-header{
+    padding-top:max(14px, env(safe-area-inset-top));
+    padding-left:16px;
+    padding-right:8px;
+    min-height:52px;
+  }
+  #trio-widget-modal .tw-title{font-size:14px;}
+  #trio-widget-modal .tw-close{
+    font-size:28px !important;
+    padding:8px 16px !important;
+    min-width:44px;
+    min-height:44px;
+    background:rgba(255,255,255,0.08) !important;
+    color:#e8eaf6 !important;
+    border-radius:8px !important;
+    font-weight:300 !important;
+    line-height:1 !important;
+  }
+  #trio-widget-modal .tw-close:active{background:rgba(255,255,255,0.15) !important;}
+  #trio-widget-modal .tw-msg{max-width:92%;}
+  #trio-widget-modal .tw-footer{padding-bottom:max(12px, env(safe-area-inset-bottom));}
+  #trio-widget-modal #tw-input{font-size:16px;}
+}
+/* Drag-drop zone overlay */
+#trio-widget-modal .tw-feed.tw-drop-zone-active::before{
+  content:'📷 Drop image here';
+  position:absolute;inset:0;
+  background:rgba(42,147,193,0.12);
+  border:3px dashed #2a93c1;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;font-weight:600;color:#2a93c1;
+  pointer-events:none;z-index:10;
+}
+#trio-widget-modal .tw-feed{position:relative;}
+
+/* Pending media preview container */
+#trio-widget-modal .tw-pending-preview{
+  display:none;gap:8px;padding:8px 12px;
+  background:rgba(42,147,193,0.08);border:1px solid rgba(42,147,193,0.25);
+  border-radius:8px;margin-bottom:8px;align-items:center;
+}
+#trio-widget-modal .tw-pending-item{
+  display:flex;gap:10px;align-items:center;flex:1;
+}
+#trio-widget-modal .tw-pending-thumb{
+  width:60px;height:60px;object-fit:cover;border-radius:6px;
+  border:1px solid rgba(255,255,255,0.1);
+}
+#trio-widget-modal .tw-pending-icon{
+  font-size:32px;width:60px;height:60px;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(255,255,255,0.04);border-radius:6px;
+}
+#trio-widget-modal .tw-pending-info{flex:1;min-width:0;}
+#trio-widget-modal .tw-pending-name{
+  font-size:13px;font-weight:600;color:#e8eaf6;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+#trio-widget-modal .tw-pending-size{
+  font-size:11px;color:#7a8aaa;
+}
+#trio-widget-modal .tw-pending-remove{
+  background:rgba(255,255,255,0.08);border:none;color:#e8eaf6;
+  cursor:pointer;font-size:20px;padding:4px 8px;border-radius:6px;
+  line-height:1;min-width:32px;min-height:32px;
+  display:flex;align-items:center;justify-content:center;
+  transition:background 0.15s;
+}
+#trio-widget-modal .tw-pending-remove:hover{
+  background:rgba(239,68,68,0.25);color:#ef4444;
+}
+
+/* Inline message images */
+#trio-widget-modal .tw-msg-img{
+  display:block;max-width:100%;max-height:300px;
+  border-radius:8px;margin-top:8px;cursor:pointer;
+  border:1px solid rgba(255,255,255,0.1);
+  transition:opacity 0.2s;
+}
+#trio-widget-modal .tw-msg-img:hover{opacity:0.85;}
+
+/* File links */
+#trio-widget-modal .tw-file-link{
+  display:inline-block;margin-top:8px;
+  padding:6px 12px;background:rgba(255,255,255,0.06);
+  border-radius:6px;color:#2a93c1;text-decoration:none;
+  font-size:13px;transition:background 0.15s;
+}
+#trio-widget-modal .tw-file-link:hover{
+  background:rgba(42,147,193,0.15);text-decoration:underline;
+}
+
+</style>
+
+<div id="trio-widget-modal" role="dialog" aria-modal="true" aria-label="Trio Chat">
+  <div class="tw-shell">
+    <div class="tw-header">
+      <div class="tw-title">
+        <span class="tw-dots">
+          <span style="background:#2a93c1;"></span>
+          <span style="background:#f1420b;"></span>
+          <span style="background:#0a0a0a;border:1px solid rgba(255,255,255,0.4);"></span>
+        </span>
+        Trio Chat
+      </div>
+      <div class="tw-header-actions">
+        <button class="tw-action-badge-btn" onclick="window.trioScrollToActions()" title="Pending action items">
+          <span>⚡</span><span id="tw-action-badge" style="display:none"></span>
+        </button>
+        <button class="tw-close" onclick="closeTrioWidget()" aria-label="Close">&times;</button>
+      </div>
+    </div>
+    <div class="tw-search-row">
+      <input type="text" id="tw-search" placeholder="Search messages by @name or keyword..." autocomplete="off">
+      <button class="tw-search-clear" onclick="window.trioClearSearch()" title="Clear">×</button>
+    </div>
+    <div class="tw-feed-wrap">
+      <div class="tw-feed" id="tw-feed-unified"></div>
+    </div>
+          <!-- BEGIN: trio-image-upload -->
+      <div id="tw-pending-preview" class="tw-pending-preview"></div>
+      <!-- END: trio-image-upload -->
+    <button id="tw-scroll-bottom" onclick="window.trioScrollBottom()" title="Jump to latest" style="display:none">↓</button>
+    <div class="tw-footer">
+      <div class="tw-input-row">
+        <textarea id="tw-input" placeholder="Type a message — broadcasts to all 3. Enter to send, Shift+Enter for newline." rows="1"></textarea>
+        <button id="tw-mic" onclick="window.trioToggleMic()" title="Voice dictation" aria-label="Voice dictation">🎤</button>
+        <button id="tw-send" onclick="trioSend()">Send</button>
+      </div>
+      <div class="tw-hint">Tip: type <code>@aether</code>, <code>@chy</code>, <code>@morphe</code>, or <code>@all</code> to call out a specific watcher (default = broadcast).</div>
+      <div class="tw-status-row">
+        <span id="tw-status"></span>
+        <span style="font-size:10px;opacity:0.7;">Polling every 10s &middot; Portal proxy /trio</span>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ==================== END TRIO CHAT WIDGET ==================== -->

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Avatar v1 — Glass + Bloom (Gleb Training 2026-05-05)</title>
+<style>
+  html,body{margin:0;height:100%;background:#060606;overflow:hidden;font-family:system-ui,sans-serif;color:#fff}
+  #info{position:fixed;left:14px;bottom:12px;font-size:11px;letter-spacing:.04em;color:#7f8c97;z-index:10}
+  #info b{color:#2a93c1}
+</style>
+</head>
+<body>
+<div id="info"><b>v1</b> · Glass + Bloom · physical refraction, restrained bloom, dark stage</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script>
+// ==========================================================================
+// Avatar v1 — Glass + Bloom (focus: refractive depth + restrained bloom)
+// Notes from study (2026-05-05):
+//  - Codrops "Susurrus" + Belcour/Barla 2017 — bloom should be restrained
+//    (threshold > 0.85, intensity < 0.5) when material itself carries the look
+//  - Dark BG (#060606) is non-negotiable — glass needs darkness to read
+//  - Rim light at ~35° camera-left only; no theatrical 3-point
+// ==========================================================================
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x060606);
+
+const camera = new THREE.PerspectiveCamera(38, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0, 0.1, 4.2);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.body.appendChild(renderer.domElement);
+
+// --- "HDRI feel" via gradient cube map + colored point lights ---------------
+// (no external HDRI, must be self-contained per nightly rule)
+const cubeRT = new THREE.WebGLCubeRenderTarget(256, { format: THREE.RGBAFormat, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
+const envScene = new THREE.Scene();
+const envGeo = new THREE.SphereGeometry(50, 32, 32);
+const envMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  uniforms: {},
+  vertexShader: `varying vec3 vWorldPos; void main(){ vWorldPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  fragmentShader: `
+    varying vec3 vWorldPos;
+    void main(){
+      vec3 dir = normalize(vWorldPos);
+      // dark studio: sky cool, floor near black
+      vec3 sky = mix(vec3(0.02,0.04,0.07), vec3(0.06,0.10,0.16), smoothstep(-0.2, 0.6, dir.y));
+      // subtle rim "lamp" — bright spot camera-left-up
+      float lamp = smoothstep(0.85, 0.98, dot(dir, normalize(vec3(-0.7, 0.4, 0.6))));
+      sky += vec3(0.45, 0.55, 0.75) * lamp * 1.4;
+      // brand-blue accent low-right
+      float blueAccent = smoothstep(0.92, 1.0, dot(dir, normalize(vec3(0.8, -0.3, 0.4))));
+      sky += vec3(0.16, 0.58, 0.76) * blueAccent * 0.8;
+      gl_FragColor = vec4(sky, 1.0);
+    }
+  `
+});
+envScene.add(new THREE.Mesh(envGeo, envMat));
+const cubeCam = new THREE.CubeCamera(0.1, 100, cubeRT);
+cubeCam.update(renderer, envScene);
+scene.environment = cubeRT.texture;
+
+// --- Glass orb with internal core ------------------------------------------
+const glassGeo = new THREE.SphereGeometry(1.0, 128, 128); // 128 segs mandatory for refraction (S5 nightly rule)
+const glassMat = new THREE.MeshPhysicalMaterial({
+  color: 0xffffff,
+  metalness: 0.0,
+  roughness: 0.04,
+  transmission: 1.0,
+  thickness: 0.9,
+  ior: 1.52,
+  attenuationColor: new THREE.Color(0x9bd6ee), // tints transmitted light PureBrain blue
+  attenuationDistance: 1.4,
+  clearcoat: 0.5,
+  clearcoatRoughness: 0.08,
+  envMapIntensity: 1.2
+});
+const glass = new THREE.Mesh(glassGeo, glassMat);
+scene.add(glass);
+
+// Internal emissive core — gives the orb something to refract THROUGH
+const coreGeo = new THREE.IcosahedronGeometry(0.32, 2);
+const coreMat = new THREE.MeshStandardMaterial({
+  color: 0xf1420b,            // PureBrain orange
+  emissive: 0xf1420b,
+  emissiveIntensity: 2.4,
+  roughness: 0.4,
+  metalness: 0.1
+});
+const core = new THREE.Mesh(coreGeo, coreMat);
+scene.add(core);
+
+// Rim point light (the only "light" — env does the rest)
+const rim = new THREE.PointLight(0xa9d4ff, 1.6, 12, 1.6);
+rim.position.set(-2.4, 1.2, 1.5);
+scene.add(rim);
+
+// --- Postprocessing: restrained bloom only ---------------------------------
+const composer = new THREE.EffectComposer(renderer);
+composer.addPass(new THREE.RenderPass(scene, camera));
+const bloom = new THREE.UnrealBloomPass(
+  new THREE.Vector2(innerWidth, innerHeight),
+  0.42,   // strength (Gleb-restrained — under 0.5)
+  0.85,   // radius
+  0.88    // threshold (high — only the brightest bits bloom)
+);
+composer.addPass(bloom);
+
+// --- Animation -------------------------------------------------------------
+const clock = new THREE.Clock();
+function animate(){
+  const t = clock.getElapsedTime();
+  glass.rotation.y = t * 0.15;
+  core.rotation.x = t * 0.4;
+  core.rotation.y = -t * 0.3;
+  // breathe core intensity
+  core.material.emissiveIntensity = 2.0 + Math.sin(t * 1.6) * 0.4;
+  composer.render();
+  requestAnimationFrame(animate);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

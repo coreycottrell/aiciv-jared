@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Session 44: SSR + Spatial UI + Dual Bloom Practice Scene</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #060606; }
+    #root { width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Import Maps for ES Modules -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+      "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+    import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
+    import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+    import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+    import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+
+    // === BRAND CONSTANTS ===
+    const PUREBRAIN_BLUE = new THREE.Color('#2a93c1');
+    const PUREBRAIN_ORANGE = new THREE.Color('#f1420b');
+    const DARK_BG = new THREE.Color('#060606');
+
+    // === SCENE SETUP ===
+    const scene = new THREE.Scene();
+    scene.background = DARK_BG;
+    scene.fog = new THREE.FogExp2(0x060606, 0.08);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 2.5, 6);
+    camera.lookAt(0, 0.8, 0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    document.getElementById('root').appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.target.set(0, 0.8, 0);
+    controls.maxPolarAngle = Math.PI / 2.1;
+
+    // === LIGHTING ===
+    // Ambient (very low)
+    const ambient = new THREE.AmbientLight(0x111122, 0.3);
+    scene.add(ambient);
+
+    // Key light (directional, animated sweep)
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    keyLight.position.set(3, 5, 2);
+    scene.add(keyLight);
+
+    // Brand blue fill
+    const fillBlue = new THREE.PointLight(PUREBRAIN_BLUE, 2.0, 10);
+    fillBlue.position.set(-3, 2, 1);
+    scene.add(fillBlue);
+
+    // Brand orange accent (subtle)
+    const accentOrange = new THREE.PointLight(PUREBRAIN_ORANGE, 0.8, 8);
+    accentOrange.position.set(2, 0.5, -2);
+    scene.add(accentOrange);
+
+    // === REFLECTIVE FLOOR (SSR Alternative: Planar Reflection via Reflector) ===
+    // Since realism-effects SSR is deprecated, we use THREE.Reflector for
+    // physically-motivated planar reflections -- Gleb's dark reflective floors
+    const floorGeometry = new THREE.PlaneGeometry(20, 20);
+    const reflector = new Reflector(floorGeometry, {
+      clipBias: 0.003,
+      textureWidth: window.innerWidth * window.devicePixelRatio * 0.5,
+      textureHeight: window.innerHeight * window.devicePixelRatio * 0.5,
+      color: 0x101015,
+    });
+    reflector.rotation.x = -Math.PI / 2;
+    reflector.position.y = -0.01;
+    scene.add(reflector);
+
+    // Semi-transparent floor overlay to control reflection opacity
+    // (Gleb technique: reflections at 30-50% opacity, not full mirror)
+    const floorOverlay = new THREE.Mesh(
+      new THREE.PlaneGeometry(20, 20),
+      new THREE.MeshStandardMaterial({
+        color: 0x0a0a10,
+        metalness: 0.9,
+        roughness: 0.15,
+        transparent: true,
+        opacity: 0.65,
+      })
+    );
+    floorOverlay.rotation.x = -Math.PI / 2;
+    floorOverlay.position.y = 0.001;
+    scene.add(floorOverlay);
+
+    // === HERO GLASS SPHERE (MeshPhysicalMaterial with dispersion + attenuation) ===
+    const sphereGeo = new THREE.SphereGeometry(1.2, 128, 128);
+    const glassMaterial = new THREE.MeshPhysicalMaterial({
+      transmission: 1.0,
+      thickness: 1.2,
+      roughness: 0.02,
+      ior: 1.45,
+      dispersion: 0.3,  // Three.js r164+ native dispersion
+      attenuationColor: new THREE.Color('#1a6a99'),  // Brand blue tint
+      attenuationDistance: 0.8,  // Beer's law: edges darker
+      clearcoat: 0.3,
+      clearcoatRoughness: 0.1,
+      iridescence: 0.4,
+      iridescenceIOR: 1.8,
+      envMapIntensity: 1.5,
+      metalness: 0,
+    });
+    const heroSphere = new THREE.Mesh(sphereGeo, glassMaterial);
+    heroSphere.position.set(0, 1.4, 0);
+    scene.add(heroSphere);
+
+    // === INNER CORE (Emissive energy inside glass) ===
+    const coreGeo = new THREE.IcosahedronGeometry(0.4, 4);
+    const coreMaterial = new THREE.MeshStandardMaterial({
+      color: PUREBRAIN_ORANGE,
+      emissive: PUREBRAIN_ORANGE,
+      emissiveIntensity: 3.0,
+      toneMapped: false,  // Critical: allows bloom to catch it
+      metalness: 0.2,
+      roughness: 0.3,
+    });
+    const innerCore = new THREE.Mesh(coreGeo, coreMaterial);
+    innerCore.position.set(0, 1.4, 0);
+    scene.add(innerCore);
+
+    // === SPATIAL UI ELEMENTS (3D-positioned HTML-like text planes) ===
+    // In production R3F, this would be drei's <Html transform>
+    // Here we simulate with textured planes at different z-depths for parallax
+
+    function createSpatialLabel(text, position, fontSize = 0.15) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = 512;
+      canvas.height = 128;
+      ctx.fillStyle = 'transparent';
+      ctx.clearRect(0, 0, 512, 128);
+
+      // Text with brand glow
+      ctx.font = `bold ${Math.floor(fontSize * 300)}px "SF Pro Display", -apple-system, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Glow layer
+      ctx.shadowColor = '#2a93c1';
+      ctx.shadowBlur = 20;
+      ctx.fillStyle = 'rgba(42, 147, 193, 0.9)';
+      ctx.fillText(text, 256, 64);
+
+      // Crisp text layer
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.fillText(text, 256, 64);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.minFilter = THREE.LinearFilter;
+
+      const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+
+      const plane = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 0.5), material);
+      plane.position.copy(position);
+      return plane;
+    }
+
+    // Spatial UI at different z-depths (parallax on camera move)
+    const labelMain = createSpatialLabel('PUREBRAIN.AI', new THREE.Vector3(0, 3.2, 0.5));
+    const labelSub = createSpatialLabel('Neural Intelligence', new THREE.Vector3(0, 2.8, 1.0), 0.10);
+    const labelLeft = createSpatialLabel('96.4%', new THREE.Vector3(-2.2, 1.8, 0.3), 0.12);
+    const labelRight = createSpatialLabel('SESSION 44', new THREE.Vector3(2.2, 1.8, 0.3), 0.10);
+
+    scene.add(labelMain, labelSub, labelLeft, labelRight);
+
+    // === SECONDARY GLASS ACCENTS (smaller spheres for composition depth) ===
+    const smallGlassMat = new THREE.MeshPhysicalMaterial({
+      transmission: 0.9,
+      thickness: 0.5,
+      roughness: 0.05,
+      ior: 1.5,
+      attenuationColor: new THREE.Color('#2a93c1'),
+      attenuationDistance: 0.4,
+      metalness: 0,
+    });
+
+    const accent1 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 64, 64), smallGlassMat);
+    accent1.position.set(-2.0, 0.6, 1.0);
+    scene.add(accent1);
+
+    const accent2 = new THREE.Mesh(new THREE.SphereGeometry(0.2, 64, 64), smallGlassMat.clone());
+    accent2.position.set(1.8, 0.4, 0.8);
+    scene.add(accent2);
+
+    const accent3 = new THREE.Mesh(new THREE.SphereGeometry(0.15, 64, 64), smallGlassMat.clone());
+    accent3.position.set(0.8, 0.3, 2.0);
+    scene.add(accent3);
+
+    // === DUAL BLOOM POSTPROCESSING ===
+    // Technique from Session 43: Tight bloom (specular highlights) + Wide bloom (atmospheric halo)
+    const renderPass = new RenderPass(scene, camera);
+
+    // Bloom Pass 1: TIGHT (specular highlights only)
+    const bloomTight = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      0.4,    // intensity (low)
+      0.2,    // radius (tight)
+      0.92    // threshold (only brightest pixels)
+    );
+
+    // Bloom Pass 2: WIDE HALO (atmospheric glow)
+    const bloomWide = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      0.15,   // intensity (very subtle)
+      1.2,    // radius (wide spread)
+      0.80    // threshold (catches more)
+    );
+
+    const outputPass = new OutputPass();
+
+    const composer = new EffectComposer(renderer);
+    composer.addPass(renderPass);
+    composer.addPass(bloomTight);
+    composer.addPass(bloomWide);
+    composer.addPass(outputPass);
+
+    // === ANIMATION LOOP ===
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const elapsed = clock.getElapsedTime();
+      const delta = clock.getDelta();
+
+      // Animated specular sweep (15s orbital)
+      keyLight.position.x = Math.cos(elapsed * 0.42) * 4;
+      keyLight.position.z = Math.sin(elapsed * 0.42) * 3;
+
+      // Hero sphere: subtle float + rotation
+      heroSphere.position.y = 1.4 + Math.sin(elapsed * 0.8) * 0.05;
+      heroSphere.rotation.y = elapsed * 0.15;
+
+      // Inner core: faster rotation, pulse scale
+      innerCore.rotation.x = elapsed * 0.5;
+      innerCore.rotation.z = elapsed * 0.3;
+      const pulse = 1.0 + Math.sin(elapsed * 2.0) * 0.08;
+      innerCore.scale.setScalar(pulse);
+
+      // Animated IOR (breathing crystal effect from Session 42)
+      glassMaterial.ior = 1.35 + Math.sin(elapsed * 0.5) * 0.15;
+
+      // Accent sphere float
+      accent1.position.y = 0.6 + Math.sin(elapsed * 1.1) * 0.03;
+      accent2.position.y = 0.4 + Math.sin(elapsed * 0.9 + 1) * 0.025;
+      accent3.position.y = 0.3 + Math.sin(elapsed * 1.3 + 2) * 0.02;
+
+      // Spatial UI: subtle float (different rates = parallax)
+      labelMain.position.y = 3.2 + Math.sin(elapsed * 0.6) * 0.02;
+      labelSub.position.y = 2.8 + Math.sin(elapsed * 0.7 + 0.5) * 0.015;
+
+      controls.update();
+      composer.render();
+    }
+
+    animate();
+
+    // === RESIZE HANDLER ===
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    console.log('Session 44 Practice Scene Active');
+    console.log('Techniques: Planar Reflections + Dual Bloom + Spatial UI + Beer\'s Law + Animated IOR + Dispersion');
+  </script>
+</body>
+</html>

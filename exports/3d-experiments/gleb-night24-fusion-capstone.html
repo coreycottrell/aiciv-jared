@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Night 24: Fusion Capstone - Spectral + Extinction + Hex Iris</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #080a12; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+canvas { display: block; width: 100vw; height: 100vh; }
+#info {
+  position: fixed; top: 16px; left: 16px; color: rgba(255,255,255,0.6);
+  font-size: 12px; z-index: 10; pointer-events: none;
+}
+#fps { position: fixed; top: 16px; right: 16px; color: rgba(42,147,193,0.7); font-size: 11px; z-index: 10; }
+</style>
+</head>
+<body>
+<div id="info">Night 24 Exercise 1: Fusion Capstone<br>7-Wavelength + Beer-Lambert Extinction + Hex Iris Caustics</div>
+<div id="fps">-- fps</div>
+<canvas id="c"></canvas>
+<script>
+// Night 24 Exercise 1: Fuse all three Night 23 techniques into a single unified shader
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+if (!gl) document.body.innerHTML = '<h1 style="color:white;padding:2em">WebGL2 required</h1>';
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio, 1.5);
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+resize();
+window.addEventListener('resize', resize);
+
+const vs = `#version 300 es
+in vec2 a;
+void main(){gl_Position=vec4(a,0,1);}`;
+
+const fs = `#version 300 es
+precision highp float;
+out vec4 O;
+uniform float t;
+uniform vec2 r;
+uniform vec2 mouse;
+
+#define PI 3.14159265
+#define TAU 6.28318530
+
+// --- SDF Primitives ---
+float sdSphere(vec3 p, float r) { return length(p) - r; }
+
+float sdBrain(vec3 p) {
+  float base = sdSphere(p, 1.0);
+  // Gyroid-based sulci pattern
+  float scale = 3.8;
+  vec3 sp = p * scale;
+  float gyroid = dot(sin(sp), cos(sp.yzx)) * 0.08;
+  // Frontal lobe elongation
+  float frontal = smoothstep(0.0, 0.8, p.z) * 0.15;
+  // Temporal lobe bulge
+  float temporal = exp(-4.0 * (p.y + 0.3) * (p.y + 0.3)) * abs(p.x) * 0.2;
+  return base + gyroid - frontal - temporal;
+}
+
+// --- 7-Wavelength Cauchy Dispersion ---
+// Wavelengths: 400, 450, 500, 550, 600, 650, 700 nm
+const float wavelengths[7] = float[7](0.400, 0.450, 0.500, 0.550, 0.600, 0.650, 0.700);
+
+float cauchyIOR(float lambda) {
+  // Cauchy equation: n = A + B/lambda^2
+  return 1.5220 + 0.00459 / (lambda * lambda);
+}
+
+vec3 wavelengthToRGB(float lambda) {
+  // Attempt to approximate spectral color
+  float t2;
+  vec3 c = vec3(0.0);
+  if (lambda < 0.440) { t2 = (lambda - 0.380) / 0.060; c = vec3(0.3 + 0.7 * (1.0 - t2), 0.0, 1.0); }
+  else if (lambda < 0.490) { t2 = (lambda - 0.440) / 0.050; c = vec3(0.0, t2, 1.0); }
+  else if (lambda < 0.510) { t2 = (lambda - 0.490) / 0.020; c = vec3(0.0, 1.0, 1.0 - t2); }
+  else if (lambda < 0.580) { t2 = (lambda - 0.510) / 0.070; c = vec3(t2, 1.0, 0.0); }
+  else if (lambda < 0.640) { t2 = (lambda - 0.580) / 0.060; c = vec3(1.0, 1.0 - t2, 0.0); }
+  else { t2 = (lambda - 0.640) / 0.060; c = vec3(1.0, 0.0, 0.0); }
+  // Fade edges of visible spectrum
+  float edge = 1.0;
+  if (lambda < 0.420) edge = 0.3 + 0.7 * (lambda - 0.380) / 0.040;
+  else if (lambda > 0.680) edge = 0.3 + 0.7 * (0.720 - lambda) / 0.040;
+  return c * clamp(edge, 0.0, 1.0);
+}
+
+// --- Beer-Lambert Volumetric Extinction ---
+vec3 extinctionAbsorb = vec3(0.8, 0.4, 0.15); // red absorbs most -> amber at depth
+vec3 extinctionScatter = vec3(0.05, 0.08, 0.12); // blue scatters most (brand)
+float henyeyGreenstein(float cosTheta, float g) {
+  float g2 = g * g;
+  return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5));
+}
+
+// --- Hex Iris Aperture ---
+float hexSDF(vec2 p, float size) {
+  vec2 q = abs(p);
+  return max(q.x - size * 0.866, q.x * 0.5 + q.y * 0.866 - size);
+}
+
+float irisAperture(vec2 p, float openAmount) {
+  // 6-blade iris
+  float d = 1e9;
+  for (int i = 0; i < 6; i++) {
+    float a = float(i) * TAU / 6.0;
+    vec2 offset = vec2(cos(a), sin(a)) * (1.0 - openAmount) * 0.4;
+    mat2 rot = mat2(cos(a), -sin(a), sin(a), cos(a));
+    vec2 rp = rot * (p - offset);
+    d = min(d, hexSDF(rp, 0.3));
+  }
+  return smoothstep(0.0, 0.01, -d);
+}
+
+// --- Normal via gradient ---
+vec3 calcNormal(vec3 p) {
+  vec2 e = vec2(0.001, 0.0);
+  return normalize(vec3(
+    sdBrain(p + e.xyy) - sdBrain(p - e.xyy),
+    sdBrain(p + e.yxy) - sdBrain(p - e.yxy),
+    sdBrain(p + e.yyx) - sdBrain(p - e.yyx)
+  ));
+}
+
+// --- Raymarch ---
+float raymarch(vec3 ro, vec3 rd, float tMax) {
+  float d = 0.0;
+  for (int i = 0; i < 120; i++) {
+    vec3 p = ro + rd * d;
+    float h = sdBrain(p);
+    if (abs(h) < 0.0005) return d;
+    if (d > tMax) break;
+    d += h * 0.7; // conservative step
+  }
+  return -1.0;
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * r) / min(r.x, r.y);
+
+  // Camera orbit
+  float camAngle = t * 0.15 + mouse.x * 2.0;
+  float camPitch = 0.3 + mouse.y * 0.5;
+  vec3 ro = vec3(cos(camAngle) * 3.5, sin(camPitch) * 1.5, sin(camAngle) * 3.5);
+  vec3 target = vec3(0.0, 0.0, 0.0);
+  vec3 fwd = normalize(target - ro);
+  vec3 right = normalize(cross(fwd, vec3(0, 1, 0)));
+  vec3 up = cross(right, fwd);
+  vec3 rd = normalize(fwd + uv.x * right + uv.y * up);
+
+  // Light with breathing iris
+  float irisOpen = 0.5 + 0.3 * sin(t * 0.4);
+  vec3 lightPos = vec3(2.0, 3.0, 2.0);
+  vec3 lightDir = normalize(lightPos);
+
+  vec3 col = vec3(0.0);
+
+  float d = raymarch(ro, rd, 8.0);
+
+  if (d > 0.0) {
+    vec3 p = ro + rd * d;
+    vec3 n = calcNormal(p);
+    vec3 v = normalize(ro - p);
+
+    // === FUSED TECHNIQUE: 7-wavelength refraction + volumetric extinction + hex iris ===
+
+    vec3 spectralAccum = vec3(0.0);
+    float totalWeight = 0.0;
+
+    for (int w = 0; w < 7; w++) {
+      float lambda = wavelengths[w];
+      float ior = cauchyIOR(lambda);
+      vec3 spectralColor = wavelengthToRGB(lambda);
+
+      // Refract into brain
+      vec3 refracted = refract(-v, n, 1.0 / ior);
+      if (length(refracted) < 0.01) {
+        // Total internal reflection
+        refracted = reflect(-v, n);
+      }
+
+      // Interior volumetric march with Beer-Lambert extinction
+      vec3 interiorPos = p - n * 0.01;
+      vec3 transmittance = vec3(1.0);
+      vec3 scatterLight = vec3(0.0);
+      float stepSize = 0.04;
+      int maxSteps = 40;
+
+      for (int s = 0; s < 40; s++) {
+        interiorPos += refracted * stepSize;
+        float interior = sdBrain(interiorPos);
+
+        if (interior > 0.0) break; // Exited brain
+
+        // Absorption (Beer-Lambert)
+        vec3 sigma_t = extinctionAbsorb + extinctionScatter;
+        transmittance *= exp(-sigma_t * stepSize);
+
+        // In-scatter: light from iris aperture through brain
+        vec3 toLight = normalize(lightPos - interiorPos);
+        float cosTheta = dot(refracted, toLight);
+        float phase = henyeyGreenstein(cosTheta, 0.7);
+
+        // Check if light from this direction passes through iris
+        vec2 lightUV = interiorPos.xy - lightPos.xy * (interiorPos.z / lightPos.z);
+        float irisWeight = irisAperture(lightUV * 2.0, irisOpen);
+
+        scatterLight += transmittance * extinctionScatter * phase * stepSize * irisWeight * 3.0;
+
+        // Early termination
+        if (max(max(transmittance.x, transmittance.y), transmittance.z) < 0.01) break;
+      }
+
+      // Weight by spectral sensitivity
+      float weight = 1.0;
+      spectralAccum += spectralColor * (transmittance * 0.3 + scatterLight * 2.0) * weight;
+      totalWeight += weight;
+    }
+
+    spectralAccum /= totalWeight;
+
+    // Surface Fresnel
+    float fresnel = pow(1.0 - max(dot(n, v), 0.0), 5.0);
+    fresnel = 0.04 + 0.96 * fresnel;
+
+    // Hex bokeh highlights on surface
+    vec3 halfVec = normalize(lightDir + v);
+    float specAngle = max(dot(n, halfVec), 0.0);
+    // Project to tangent plane for hex shape
+    vec3 tangent = normalize(cross(n, vec3(0, 1, 0.01)));
+    vec3 bitangent = cross(n, tangent);
+    vec2 specUV = vec2(dot(halfVec, tangent), dot(halfVec, bitangent));
+    float hexSpec = smoothstep(0.05, 0.0, hexSDF(specUV * 8.0, 0.1));
+    hexSpec *= pow(specAngle, 64.0) * 3.0;
+
+    // Combine: surface reflection + spectral interior + hex highlights
+    vec3 envReflect = vec3(0.02, 0.04, 0.06) * fresnel; // dark environment reflection
+    col = envReflect + spectralAccum * (1.0 - fresnel) + vec3(0.7, 0.85, 1.0) * hexSpec;
+
+    // Rim glow (brand blue)
+    float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+    col += vec3(0.165, 0.576, 0.757) * rim * 0.5; // #2a93c1
+
+  } else {
+    // Ground plane with caustic projection
+    float groundY = -1.2;
+    if (rd.y < -0.001) {
+      float tGround = (groundY - ro.y) / rd.y;
+      if (tGround > 0.0) {
+        vec3 groundP = ro + rd * tGround;
+
+        // Hex grid on ground
+        vec2 gp = groundP.xz * 2.0;
+        vec2 hexP = gp;
+        float hexGrid = smoothstep(0.48, 0.5, abs(fract(hexP.x + hexP.y * 0.577) - 0.5));
+        hexGrid = max(hexGrid, smoothstep(0.48, 0.5, abs(fract(hexP.x - hexP.y * 0.577) - 0.5)));
+        hexGrid = max(hexGrid, smoothstep(0.48, 0.5, abs(fract(hexP.y * 1.155) - 0.5)));
+
+        // Spectral caustic fans on ground
+        vec3 caustics = vec3(0.0);
+        for (int w = 0; w < 7; w++) {
+          float lambda = wavelengths[w];
+          float ior = cauchyIOR(lambda);
+          vec3 sColor = wavelengthToRGB(lambda);
+
+          // Simulate refracted light hitting ground
+          vec3 toGround = normalize(groundP - vec3(0.0));
+          float causticAngle = ior * 0.1;
+          float causticPattern = exp(-length(groundP.xz) * 0.5) *
+            (0.5 + 0.5 * sin(length(groundP.xz) * ior * 8.0 + t * 0.5));
+          causticPattern *= exp(-2.0 * abs(length(groundP.xz) - ior));
+
+          // Iris-shaped modulation
+          float irismod = irisAperture(normalize(groundP.xz) * length(groundP.xz) * 0.5, irisOpen);
+          caustics += sColor * causticPattern * irismod * 0.3;
+        }
+
+        // 6-fold god ray symmetry
+        float angle = atan(groundP.z, groundP.x);
+        float godRay = pow(max(cos(angle * 3.0), 0.0), 4.0);
+        godRay *= exp(-length(groundP.xz) * 0.3) * 0.15;
+
+        col = vec3(0.01, 0.015, 0.025) * (1.0 + hexGrid * 0.3) + caustics + vec3(0.165, 0.576, 0.757) * godRay;
+      }
+    }
+  }
+
+  // Vignette
+  vec2 vigUV = gl_FragCoord.xy / r;
+  float vig = 1.0 - 0.4 * length(vigUV - 0.5);
+  col *= vig;
+
+  // Tone mapping (ACES-ish)
+  col = col / (col + 0.5);
+  col = pow(col, vec3(1.0 / 2.2));
+
+  O = vec4(col, 1.0);
+}`;
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(s));
+  }
+  return s;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, vs));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fs));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+const aLoc = gl.getAttribLocation(prog, 'a');
+gl.enableVertexAttribArray(aLoc);
+gl.vertexAttribPointer(aLoc, 2, gl.FLOAT, false, 0, 0);
+
+const uT = gl.getUniformLocation(prog, 't');
+const uR = gl.getUniformLocation(prog, 'r');
+const uMouse = gl.getUniformLocation(prog, 'mouse');
+
+let mx = 0.0, my = 0.0;
+canvas.addEventListener('mousemove', e => {
+  mx = (e.clientX / window.innerWidth - 0.5) * 2.0;
+  my = (e.clientY / window.innerHeight - 0.5) * 2.0;
+});
+
+let frames = 0, lastFps = performance.now();
+const fpsEl = document.getElementById('fps');
+
+function render(time) {
+  const s = time * 0.001;
+  gl.uniform1f(uT, s);
+  gl.uniform2f(uR, canvas.width, canvas.height);
+  gl.uniform2f(uMouse, mx, my);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  frames++;
+  if (time - lastFps > 1000) {
+    fpsEl.textContent = Math.round(frames * 1000 / (time - lastFps)) + ' fps';
+    frames = 0; lastFps = time;
+  }
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

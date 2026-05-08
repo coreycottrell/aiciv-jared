@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 27 Ex.1: Froxel Volumetric Glass</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #080a12; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  .info { position: fixed; top: 16px; left: 16px; color: rgba(255,255,255,0.5); font: 12px/1.4 monospace; z-index: 10; pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="info">Night 27 — Froxel Volumetric Glass (WebGL2 Approximation)<br>3D noise extinction + Beer-Lambert scattering + 64-step raymarch</div>
+<canvas id="c"></canvas>
+<script>
+// Night 27 Exercise 1: Froxel Volumetric Glass
+// Approximates froxel (frustum-voxel) volumetric lighting using
+// multi-step raymarching with 3D procedural extinction coefficients.
+// Pure WebGL2, no dependencies.
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
+if (!gl) document.body.innerHTML = '<p style="color:white;padding:40px">WebGL2 required</p>';
+
+function resize() {
+  const dpr = Math.min(devicePixelRatio, 1.5);
+  canvas.width = innerWidth * dpr;
+  canvas.height = innerHeight * dpr;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+resize();
+addEventListener('resize', resize);
+
+let mx = 0, my = 0;
+addEventListener('mousemove', e => { mx = e.clientX / innerWidth; my = e.clientY / innerHeight; });
+
+const vs = `#version 300 es
+in vec2 p;
+out vec2 uv;
+void main() { uv = p * 0.5 + 0.5; gl_Position = vec4(p, 0, 1); }`;
+
+const fs = `#version 300 es
+precision highp float;
+in vec2 uv;
+out vec4 fragColor;
+uniform float t;
+uniform vec2 mouse;
+uniform vec2 res;
+
+#define PI 3.14159265
+#define STEPS 64
+#define LIGHT_STEPS 8
+
+// Hash for 3D noise
+vec3 hash3(vec3 p) {
+    p = vec3(dot(p,vec3(127.1,311.7,74.7)),
+             dot(p,vec3(269.5,183.3,246.1)),
+             dot(p,vec3(113.5,271.9,124.6)));
+    return fract(sin(p) * 43758.5453);
+}
+
+// 3D value noise for extinction field
+float noise3D(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+
+    float n = mix(
+        mix(mix(dot(hash3(i), f), dot(hash3(i + vec3(1,0,0)), f - vec3(1,0,0)), f.x),
+            mix(dot(hash3(i + vec3(0,1,0)), f - vec3(0,1,0)), dot(hash3(i + vec3(1,1,0)), f - vec3(1,1,0)), f.x), f.y),
+        mix(mix(dot(hash3(i + vec3(0,0,1)), f - vec3(0,0,1)), dot(hash3(i + vec3(1,0,1)), f - vec3(1,0,1)), f.x),
+            mix(dot(hash3(i + vec3(0,1,1)), f - vec3(0,1,1)), dot(hash3(i + vec3(1,1,1)), f - vec3(1,1,1)), f.x), f.y),
+        f.z);
+    return n * 0.5 + 0.5;
+}
+
+// Fractional Brownian Motion for volume density
+float fbm(vec3 p) {
+    float v = 0.0, a = 0.5;
+    for (int i = 0; i < 4; i++) {
+        v += a * noise3D(p);
+        p *= 2.03;
+        a *= 0.5;
+    }
+    return v;
+}
+
+// Sphere SDF
+float sdSphere(vec3 p, float r) { return length(p) - r; }
+
+// Glass sphere with volumetric interior
+vec4 traceVolume(vec3 ro, vec3 rd) {
+    vec3 spherePos = vec3(sin(t * 0.3) * 0.2, cos(t * 0.25) * 0.15, 0.0);
+    float sphereR = 1.2;
+
+    // Ray-sphere intersection
+    vec3 oc = ro - spherePos;
+    float b = dot(oc, rd);
+    float c = dot(oc, oc) - sphereR * sphereR;
+    float disc = b * b - c;
+    if (disc < 0.0) return vec4(0);
+
+    float sqd = sqrt(disc);
+    float tNear = -b - sqd;
+    float tFar = -b + sqd;
+    if (tFar < 0.0) return vec4(0);
+    tNear = max(tNear, 0.0);
+
+    // March through interior volume
+    float stepSize = (tFar - tNear) / float(STEPS);
+    vec3 scatterAccum = vec3(0);
+    float transmittance = 1.0;
+
+    // Brand colors for scattering
+    vec3 scatterBlue = vec3(0.165, 0.576, 0.757);   // #2a93c1
+    vec3 scatterOrange = vec3(0.945, 0.259, 0.043);  // #f1420b
+
+    // Light direction (animated)
+    vec3 lightDir = normalize(vec3(
+        sin(t * 0.4) * 0.6 + mouse.x * 0.8 - 0.4,
+        0.8 + mouse.y * 0.3,
+        cos(t * 0.3) * 0.4 + 0.6
+    ));
+    vec3 lightCol = vec3(1.0, 0.95, 0.9) * 3.0;
+
+    for (int i = 0; i < STEPS; i++) {
+        float tCur = tNear + (float(i) + 0.5) * stepSize;
+        vec3 pos = ro + rd * tCur;
+        vec3 localPos = pos - spherePos;
+
+        // Extinction coefficient from 3D noise (froxel approximation)
+        // The noise is our "voxelized" density field
+        float density = fbm(localPos * 1.8 + vec3(t * 0.1, t * 0.07, t * 0.13));
+
+        // Shape density: higher near center, fading at edges
+        float edgeFade = 1.0 - smoothstep(0.0, sphereR, length(localPos));
+        density *= edgeFade * edgeFade;
+
+        // Cardiac rhythm modulation
+        float heartbeat = 0.8 + 0.2 * pow(sin(t * 1.2) * 0.5 + 0.5, 4.0);
+        density *= heartbeat;
+
+        // Extinction coefficient (Beer-Lambert)
+        float extinction = density * 4.0;
+
+        if (extinction > 0.001) {
+            // In-scattering: trace toward light for shadow
+            float shadowDensity = 0.0;
+            float lightStepSize = sphereR * 0.5 / float(LIGHT_STEPS);
+            for (int j = 0; j < LIGHT_STEPS; j++) {
+                vec3 lightPos = pos + lightDir * float(j) * lightStepSize;
+                vec3 lLocal = lightPos - spherePos;
+                if (length(lLocal) < sphereR) {
+                    shadowDensity += fbm(lLocal * 1.8 + vec3(t * 0.1, t * 0.07, t * 0.13))
+                                     * (1.0 - smoothstep(0.0, sphereR, length(lLocal)));
+                }
+            }
+            float shadowTransmit = exp(-shadowDensity * lightStepSize * 3.0);
+
+            // Phase function (Henyey-Greenstein, forward scattering g=0.7)
+            float cosTheta = dot(rd, lightDir);
+            float g = 0.7;
+            float phase = (1.0 - g*g) / (4.0 * PI * pow(1.0 + g*g - 2.0*g*cosTheta, 1.5));
+
+            // Color: blend blue/orange based on position
+            float colorMix = smoothstep(-0.5, 0.5, localPos.y + sin(t * 0.5) * 0.3);
+            vec3 scatter = mix(scatterBlue, scatterOrange, colorMix);
+
+            // Accumulate scattering with Beer-Lambert
+            vec3 inScatter = scatter * lightCol * shadowTransmit * phase;
+            scatterAccum += transmittance * inScatter * extinction * stepSize;
+            transmittance *= exp(-extinction * stepSize);
+        }
+
+        if (transmittance < 0.01) break;
+    }
+
+    // Fresnel on sphere surface
+    vec3 normal = normalize(ro + rd * tNear - spherePos);
+    float fresnel = pow(1.0 - abs(dot(normalize(-rd), normal)), 3.0);
+    vec3 rimColor = mix(scatterBlue, vec3(1), 0.3) * fresnel * 0.6;
+
+    return vec4(scatterAccum + rimColor, 1.0 - transmittance + fresnel * 0.3);
+}
+
+// Ground plane with caustics
+vec3 groundCaustic(vec3 ro, vec3 rd) {
+    float floorY = -1.8;
+    if (rd.y >= 0.0) return vec3(0);
+    float tFloor = (floorY - ro.y) / rd.y;
+    vec3 fp = ro + rd * tFloor;
+
+    // Animated caustic pattern
+    float c1 = noise3D(vec3(fp.xz * 2.0 + t * 0.1, t * 0.2));
+    float c2 = noise3D(vec3(fp.xz * 3.5 - t * 0.15, t * 0.3 + 1.0));
+    float caustic = pow(c1 * c2, 2.0) * 3.0;
+
+    vec3 causticCol = mix(
+        vec3(0.165, 0.576, 0.757) * 0.4,
+        vec3(0.945, 0.259, 0.043) * 0.3,
+        c1
+    );
+
+    float dist = length(fp.xz);
+    float falloff = exp(-dist * 0.3);
+
+    return causticCol * caustic * falloff;
+}
+
+void main() {
+    vec2 p = (gl_FragCoord.xy - res * 0.5) / min(res.x, res.y) * 2.0;
+
+    // Camera
+    float camDist = 3.5;
+    float camAngle = t * 0.15 + mouse.x * 0.5;
+    vec3 ro = vec3(sin(camAngle) * camDist, 0.5 + (mouse.y - 0.5) * 0.8, cos(camAngle) * camDist);
+    vec3 target = vec3(0, -0.1, 0);
+    vec3 fwd = normalize(target - ro);
+    vec3 right = normalize(cross(fwd, vec3(0, 1, 0)));
+    vec3 up = cross(right, fwd);
+    vec3 rd = normalize(fwd + p.x * right + p.y * up);
+
+    // Background gradient
+    vec3 col = mix(vec3(0.02, 0.03, 0.06), vec3(0.04, 0.06, 0.1), uv.y);
+
+    // Stars
+    vec2 starUV = gl_FragCoord.xy * 0.01;
+    float star = pow(noise3D(vec3(starUV * 40.0, 0.0)), 16.0);
+    col += star * 0.4;
+
+    // Ground caustics
+    col += groundCaustic(ro, rd);
+
+    // Volumetric glass sphere
+    vec4 vol = traceVolume(ro, rd);
+    col = mix(col, vol.rgb, vol.a);
+
+    // God rays (screen-space approximation)
+    vec2 center = vec2(0.5 + sin(t * 0.3) * 0.05, 0.45);
+    vec2 toCenter = center - uv;
+    float rayStrength = 0.0;
+    for (int i = 0; i < 16; i++) {
+        vec2 sampleUV = uv + toCenter * float(i) * 0.015;
+        float s = length(sampleUV - center);
+        rayStrength += exp(-s * 4.0) * 0.02;
+    }
+    col += vec3(0.165, 0.576, 0.757) * rayStrength * 0.5;
+
+    // Hex iris vignette
+    float angle = atan(p.y, p.x);
+    float hexDist = cos(PI / 6.0) / cos(mod(angle + PI / 6.0, PI / 3.0) - PI / 6.0);
+    float iris = smoothstep(1.6, 2.2, length(p) / hexDist);
+    col *= 1.0 - iris * 0.7;
+
+    // ACES tonemap
+    col = (col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14);
+
+    // Film grain
+    float grain = (noise3D(vec3(gl_FragCoord.xy * 0.5, t * 60.0)) - 0.5) * 0.04;
+    col += grain;
+
+    fragColor = vec4(pow(clamp(col, 0.0, 1.0), vec3(1.0 / 2.2)), 1.0);
+}`;
+
+function createShader(src, type) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(s));
+        return null;
+    }
+    return s;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, createShader(vs, gl.VERTEX_SHADER));
+gl.attachShader(prog, createShader(fs, gl.FRAGMENT_SHADER));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+const pLoc = gl.getAttribLocation(prog, 'p');
+gl.enableVertexAttribArray(pLoc);
+gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
+
+const tLoc = gl.getUniformLocation(prog, 't');
+const mLoc = gl.getUniformLocation(prog, 'mouse');
+const rLoc = gl.getUniformLocation(prog, 'res');
+
+let start = performance.now();
+function frame() {
+    const elapsed = (performance.now() - start) * 0.001;
+    gl.uniform1f(tLoc, elapsed);
+    gl.uniform2f(mLoc, mx, my);
+    gl.uniform2f(rLoc, canvas.width, canvas.height);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    requestAnimationFrame(frame);
+}
+frame();
+</script>
+</body>
+</html>

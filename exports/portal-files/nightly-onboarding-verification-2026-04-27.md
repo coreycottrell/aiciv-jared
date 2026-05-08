@@ -1,0 +1,165 @@
+# Nightly Onboarding Pipeline Verification
+**Date**: 2026-04-27 06:16 UTC
+**Scope**: 8 payment pages + backend services + blog-publisher Worker
+
+---
+
+## 1. HTTP Status (All Pages)
+
+| Page | Status |
+|------|--------|
+| `/` (homepage) | 200 OK |
+| `/insiders/` | 200 OK |
+| `/awakened/` | 200 OK |
+| `/partnered/` | 200 OK |
+| `/unified/` | 200 OK |
+| `/home-test/` | 200 OK |
+| `/home-test-sandbox/` | 200 OK |
+| `/home-test-live-1/` | 200 OK |
+
+**Result**: PASS -- all 8 pages responding.
+
+---
+
+## 2. PayPal SDK + Plan IDs
+
+**Canonical plan IDs from ONBOARDING-SPEC**: P-2SA65600MT088594TNGLTFKY, P-3VH43554A66001716NGLTFKY, P-43A28944XN5237411NGLTFLA
+
+| Page | Plan IDs Present | Match Spec |
+|------|-----------------|------------|
+| `/` | P-2SA, P-3VH, P-43A (3 live plans) | YES |
+| `/insiders/` | P-3VH, P-43A, P-8AU (incl. insiders-specific) | YES |
+| `/awakened/` | P-2SA, P-3VH, P-43A | YES |
+| `/partnered/` | P-2SA, P-3VH, P-43A | YES |
+| `/unified/` | P-2SA, P-3VH, P-43A | YES |
+| `/home-test/` | P-2SA, P-3VH, P-43A | YES |
+| `/home-test-sandbox/` | 6 plans (3 live + 3 sandbox P-6DU/P-6JY/P-9KA) | YES (dual-mode) |
+| `/home-test-live-1/` | EMPTY (all plan IDs = '') | WARNING -- capture-only by design |
+
+**Result**: PASS (7/8). home-test-live-1 is intentionally capture-only.
+
+---
+
+## 3. Seed Flow Guards
+
+| Guard | Homepage | insiders | awakened | partnered | unified | home-test | sandbox | live-1 |
+|-------|----------|----------|----------|-----------|---------|-----------|---------|--------|
+| `fireSeed` | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
+| `_seedFired` | 3 | 3 | 3 | 3 | 3 | 3 | 3 | 3 |
+| `_addendumFired` | 3 | 3 | 3 | 3 | 3 | 3 | 3 | 3 |
+
+**Result**: PASS -- double-fire protection intact on all 8 pages.
+
+---
+
+## 4. Pre-Payment State Export
+
+| Feature | Present |
+|---------|---------|
+| `window._pbState` on homepage | YES (8 refs) |
+| `_pbState` on tier-specific pages | NOT present (expected -- simpler flow) |
+
+**Result**: PASS.
+
+---
+
+## 5. Performance Optimizations
+
+| Check | Result |
+|-------|--------|
+| `preconnect` to PayPal on homepage | 3 preconnect hints |
+| GoDaddy active scripts on 8 pages | ZERO (4 tier pages have HTML comments noting removal -- no active scripts) |
+
+**Result**: PASS.
+
+---
+
+## 6. Backend Endpoints
+
+| Endpoint | Method | Status |
+|----------|--------|--------|
+| `api.purebrain.ai/api/verify-payment` | OPTIONS | 204 (CORS OK) |
+| `api.purebrain.ai/api/send-seed` | OPTIONS | 204 (CORS OK) |
+
+**Result**: PASS.
+
+---
+
+## 7. Thank-You Page + Magic Link Polling
+
+- `/thank-you/` returns 200
+- 9 magic link references in page source (polling active)
+
+**Result**: PASS.
+
+---
+
+## 8. AgentMail Monitors
+
+- `agentmail_monitor.py` (PID 1203627): RUNNING (since Apr 24)
+- `agentmail_general_monitor.py` (PID 1203609): RUNNING (since Apr 24)
+
+**Result**: PASS.
+
+---
+
+## 9. Domain Rewrite (.ai-civ.com -> .app.purebrain.ai)
+
+- Line 367 in agentmail_monitor.py: regex rewrites `.ai-civ.com` to `.app.purebrain.ai`
+- Line 470: documented in code comments
+
+**Result**: PASS.
+
+---
+
+## 10. Blog-Publisher Worker Health
+
+- URL: `blog-publisher.in0v8.workers.dev/health`
+- HTTP Status: 200
+- Response: `{"ok":true,"service":"blog-publisher","version":"1.0.0-mvp","timestamp":"2026-04-27T06:16:11.829Z"}`
+
+**Result**: PASS -- blog-publisher Worker is healthy and responding.
+
+---
+
+## 11. Worker Health (Other Services)
+
+| Worker | Status |
+|--------|--------|
+| `social.purebrain.ai` | 200 OK |
+| `meetings-api.purebrain.ai/health` | **FAIL** -- HTTP 530, CF Error 1016 (Origin DNS error) |
+| `admin-api.purebrain.ai/health` | **FAIL** -- HTTP 530, CF Error 1016 (Origin DNS error) |
+
+**Result**: 1/3 PASS. meetings-api and admin-api DNS failures persist (Day 3).
+
+---
+
+## SUMMARY
+
+| Category | Status |
+|----------|--------|
+| All 8 pages HTTP 200 | PASS |
+| PayPal plan IDs correct | PASS (7/8; home-test-live-1 capture-only by design) |
+| fireSeed + _seedFired guard | PASS (all 8) |
+| _addendumFired guard | PASS (all 8) |
+| verify-payment CORS | PASS (api.purebrain.ai) |
+| send-seed CORS | PASS (api.purebrain.ai) |
+| Magic link polling | PASS |
+| AgentMail monitors | PASS (both running) |
+| Domain rewrite | PASS |
+| Preconnect optimization | PASS |
+| No GoDaddy active scripts | PASS |
+| Blog-publisher Worker health | **PASS** |
+| social.purebrain.ai | PASS |
+| meetings-api health | **FAIL** (DNS Error 1016 -- Day 3) |
+| admin-api health | **FAIL** (DNS Error 1016 -- Day 3) |
+
+### Critical Issues (Persisting)
+1. **meetings-api.purebrain.ai** -- CF Error 1016 (Origin DNS error). Day 3 of this failure.
+2. **admin-api.purebrain.ai** -- CF Error 1016 (Origin DNS error). Day 3 of this failure.
+
+### Action Required
+- Fix DNS CNAMEs for meetings-api and admin-api in Cloudflare dashboard. Either point them to valid origins or deploy as CF Workers with direct routes. This is now Day 3 -- escalation recommended.
+
+---
+*Generated by Payment Flow QA Engineer -- READ-ONLY analysis, no code modified.*

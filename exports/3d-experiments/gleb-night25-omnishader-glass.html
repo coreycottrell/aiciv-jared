@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Night 25: The Omnishader - Multi-Layer Glass Composition</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #080a12; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+canvas { display: block; width: 100vw; height: 100vh; }
+#info {
+  position: fixed; top: 16px; left: 16px; color: rgba(255,255,255,0.55);
+  font-size: 11px; z-index: 10; pointer-events: none; line-height: 1.6;
+}
+#fps { position: fixed; top: 16px; right: 16px; color: rgba(42,147,193,0.6); font-size: 11px; z-index: 10; }
+</style>
+</head>
+<body>
+<div id="info">Night 25 Exercise 1: The Omnishader<br>
+7-Wavelength Dispersion + Beer-Lambert + Thin-Film + SSS + Voronoi Caustics + Hex Iris + God Rays</div>
+<div id="fps">-- fps</div>
+<canvas id="c"></canvas>
+<script>
+// Night 25 Exercise 1: The Omnishader
+// Combines every glass technique learned across 24 nights into a single unified shader.
+// - 7-wavelength Cauchy dispersion (spectral refraction)
+// - Beer-Lambert volumetric extinction (colored absorption)
+// - 2-layer thin-film interference (MgF2 + TiO2)
+// - Dipole subsurface scattering approximation
+// - Voronoi caustic projection on ground
+// - Hex iris aperture modulation
+// - Volumetric god rays with Mie scattering
+// All on a brain SDF with gyroid sulci
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+if (!gl) { document.body.innerHTML = '<h1 style="color:#fff;padding:2em">WebGL2 required</h1>'; }
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio, 1.5);
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+resize();
+window.addEventListener('resize', resize);
+
+let mx = 0.0, my = 0.0;
+canvas.addEventListener('mousemove', e => {
+  mx = (e.clientX / window.innerWidth) * 2.0 - 1.0;
+  my = (e.clientY / window.innerHeight) * 2.0 - 1.0;
+});
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  mx = (e.touches[0].clientX / window.innerWidth) * 2.0 - 1.0;
+  my = (e.touches[0].clientY / window.innerHeight) * 2.0 - 1.0;
+}, { passive: false });
+
+const vs = `#version 300 es
+in vec2 a;
+void main(){gl_Position=vec4(a,0,1);}`;
+
+const fs = `#version 300 es
+precision highp float;
+out vec4 O;
+uniform float t;
+uniform vec2 r;
+uniform vec2 mouse;
+
+#define PI 3.14159265
+#define TAU 6.28318530
+
+// ========== SDF PRIMITIVES ==========
+float sdSphere(vec3 p, float s) { return length(p) - s; }
+
+float sdBrain(vec3 p) {
+  float base = sdSphere(p, 1.0);
+  float scale = 3.8;
+  vec3 sp = p * scale;
+  float gyroid = dot(sin(sp), cos(sp.yzx)) * 0.08;
+  float frontal = smoothstep(0.0, 0.8, p.z) * 0.15;
+  float temporal = exp(-4.0 * (p.y + 0.3) * (p.y + 0.3)) * abs(p.x) * 0.2;
+  return base + gyroid - frontal - temporal;
+}
+
+float sdGround(vec3 p) { return p.y + 1.8; }
+
+float scene(vec3 p) { return min(sdBrain(p), sdGround(p)); }
+
+vec3 calcNormal(vec3 p) {
+  vec2 e = vec2(0.001, 0.0);
+  return normalize(vec3(
+    sdBrain(p+e.xyy) - sdBrain(p-e.xyy),
+    sdBrain(p+e.yxy) - sdBrain(p-e.yxy),
+    sdBrain(p+e.yyx) - sdBrain(p-e.yyx)
+  ));
+}
+
+// ========== SPECTRAL ENGINE ==========
+// 7-wavelength Cauchy dispersion
+const float WL[7] = float[7](0.400, 0.450, 0.500, 0.550, 0.600, 0.650, 0.700);
+
+float cauchyIOR(float lam) {
+  return 1.5220 + 0.00459 / (lam * lam);
+}
+
+vec3 wl2rgb(float lam) {
+  vec3 c = vec3(0.0);
+  float x;
+  if (lam < 0.440) { x = (lam-0.380)/0.060; c = vec3(0.3+0.7*(1.0-x), 0.0, 1.0); }
+  else if (lam < 0.490) { x = (lam-0.440)/0.050; c = vec3(0.0, x, 1.0); }
+  else if (lam < 0.510) { x = (lam-0.490)/0.020; c = vec3(0.0, 1.0, 1.0-x); }
+  else if (lam < 0.580) { x = (lam-0.510)/0.070; c = vec3(x, 1.0, 0.0); }
+  else if (lam < 0.645) { x = (lam-0.580)/0.065; c = vec3(1.0, 1.0-x, 0.0); }
+  else { x = (lam-0.645)/0.075; c = vec3(1.0-0.5*x, 0.0, 0.0); }
+  return c;
+}
+
+// ========== BEER-LAMBERT EXTINCTION ==========
+vec3 beerLambert(float dist, vec3 absorb) {
+  return exp(-absorb * dist);
+}
+
+// ========== THIN-FILM INTERFERENCE ==========
+// 2-layer: MgF2 (n=1.38) + TiO2 (n=2.4) on glass substrate
+float thinFilmReflectance(float cosI, float lam, float thickness) {
+  float n0 = 1.0; // air
+  float n1 = 1.38; // MgF2
+  float n2 = 2.40; // TiO2
+  float d1 = thickness;
+  float d2 = thickness * 0.4;
+  float cosT1 = sqrt(1.0 - (n0/n1)*(n0/n1)*(1.0-cosI*cosI));
+  float cosT2 = sqrt(1.0 - (n0/n2)*(n0/n2)*(1.0-cosI*cosI));
+  float delta1 = TAU * n1 * d1 * cosT1 / lam;
+  float delta2 = TAU * n2 * d2 * cosT2 / lam;
+  float r01 = (n0*cosI - n1*cosT1) / (n0*cosI + n1*cosT1);
+  float r12 = (n1*cosT1 - n2*cosT2) / (n1*cosT1 + n2*cosT2);
+  float cr = r01 + r12*cos(delta1+delta2);
+  float ci = r12*sin(delta1+delta2);
+  return cr*cr + ci*ci;
+}
+
+// ========== SUBSURFACE SCATTERING (Dipole) ==========
+vec3 sssColor(float dist) {
+  vec3 sigma = vec3(0.8, 0.4, 1.2); // absorption coefficients
+  vec3 scatter = vec3(0.15, 0.55, 0.35); // scatter color (blue-tinted)
+  return scatter * exp(-sigma * dist);
+}
+
+// ========== VORONOI FOR CAUSTICS ==========
+vec3 hash33(vec3 p) {
+  p = vec3(dot(p,vec3(127.1,311.7,74.7)),
+           dot(p,vec3(269.5,183.3,246.1)),
+           dot(p,vec3(113.5,271.9,124.6)));
+  return fract(sin(p)*43758.5453);
+}
+
+vec2 voronoi(vec3 p) {
+  vec3 i = floor(p), f = fract(p);
+  float d1 = 8.0, d2 = 8.0;
+  for (int x=-1; x<=1; x++)
+  for (int y=-1; y<=1; y++)
+  for (int z=-1; z<=1; z++) {
+    vec3 g = vec3(x,y,z);
+    vec3 o = hash33(i+g);
+    vec3 r = g + o - f;
+    float d = dot(r,r);
+    if (d < d1) { d2 = d1; d1 = d; }
+    else if (d < d2) { d2 = d; }
+  }
+  return vec2(sqrt(d1), sqrt(d2));
+}
+
+// ========== HEX IRIS APERTURE ==========
+float hexDist(vec2 p) {
+  p = abs(p);
+  return max(p.x + p.y * 0.577, p.y * 1.155);
+}
+
+float hexIris(vec2 uv, float aperture) {
+  float d = hexDist(uv);
+  return smoothstep(aperture - 0.05, aperture + 0.05, d);
+}
+
+// ========== VOLUMETRIC GOD RAYS (Mie) ==========
+float miePhase(float cosTheta) {
+  return 0.1 + 0.9 * pow(max(cosTheta, 0.0), 8.0);
+}
+
+// ========== MAIN RENDER ==========
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * r) / r.y;
+  float aspect = r.x / r.y;
+
+  // Camera
+  float angle = t * 0.15 + mouse.x * 0.4;
+  float camY = 0.3 + mouse.y * 0.3;
+  vec3 ro = vec3(sin(angle)*3.5, camY, cos(angle)*3.5);
+  vec3 ta = vec3(0.0, -0.1, 0.0);
+  vec3 ww = normalize(ta - ro);
+  vec3 uu = normalize(cross(ww, vec3(0,1,0)));
+  vec3 vv = cross(uu, ww);
+  vec3 rd = normalize(uv.x*uu + uv.y*vv + 1.8*ww);
+
+  // Light (orbiting)
+  float la = t * 0.3;
+  vec3 lightPos = vec3(sin(la)*2.5, 1.8, cos(la)*2.5);
+  vec3 lightCol = vec3(1.0, 0.95, 0.9) * 2.0;
+
+  // Raymarch brain
+  float d = 0.0, totalD = 0.0;
+  bool hitBrain = false;
+  for (int i = 0; i < 80; i++) {
+    vec3 p = ro + rd * totalD;
+    d = sdBrain(p);
+    if (d < 0.001) { hitBrain = true; break; }
+    if (totalD > 15.0) break;
+    totalD += d * 0.8;
+  }
+
+  vec3 col = vec3(0.0);
+
+  if (hitBrain) {
+    vec3 pos = ro + rd * totalD;
+    vec3 N = calcNormal(pos);
+    vec3 V = -rd;
+    vec3 L = normalize(lightPos - pos);
+    float NdL = max(dot(N, L), 0.0);
+    float NdV = max(dot(N, V), 0.0);
+
+    // === THIN-FILM INTERFERENCE ===
+    // Thickness varies organically over surface
+    float filmThickness = 0.0003 + 0.0002 * sin(pos.x*12.0 + pos.y*8.0 + t*0.5);
+    vec3 filmCol = vec3(0.0);
+    for (int w = 0; w < 7; w++) {
+      float lam = WL[w];
+      float refl = thinFilmReflectance(NdV, lam, filmThickness);
+      filmCol += wl2rgb(lam) * refl;
+    }
+    filmCol /= 7.0;
+
+    // === SPECTRAL REFRACTION + BEER-LAMBERT ===
+    vec3 spectralCol = vec3(0.0);
+    // Absorption coefficients (warm amber tint in depth)
+    vec3 absCoeff = vec3(0.3, 0.5, 0.9);
+
+    for (int w = 0; w < 7; w++) {
+      float lam = WL[w];
+      float ior = cauchyIOR(lam);
+
+      // Refract ray into brain
+      vec3 refracted = refract(rd, N, 1.0/ior);
+      if (length(refracted) < 0.01) refracted = reflect(rd, N);
+
+      // March through interior
+      float intDist = 0.0;
+      for (int j = 0; j < 30; j++) {
+        vec3 ip = pos + refracted * intDist;
+        float id = -sdBrain(ip);
+        if (id < 0.001) break;
+        intDist += max(id * 0.7, 0.01);
+      }
+
+      // Beer-Lambert absorption
+      vec3 absorbed = beerLambert(intDist, absCoeff);
+
+      // Hex iris aperture modulation
+      float irisBreathing = 0.35 + 0.15 * sin(t * 0.8);
+      vec2 exitXZ = (pos + refracted * intDist).xz;
+      float irisMask = 1.0 - hexIris(exitXZ * 0.8, irisBreathing);
+
+      spectralCol += wl2rgb(lam) * absorbed * (0.6 + 0.4 * irisMask);
+    }
+    spectralCol /= 7.0;
+
+    // === SUBSURFACE SCATTERING ===
+    // Approximate internal scatter path length
+    float scatterDist = 0.0;
+    vec3 scatterDir = normalize(L + N * 0.3);
+    for (int j = 0; j < 16; j++) {
+      vec3 sp = pos + scatterDir * scatterDist * 0.5;
+      float sd2 = -sdBrain(sp);
+      if (sd2 < 0.001) break;
+      scatterDist += max(sd2, 0.02);
+    }
+    vec3 sss = sssColor(scatterDist) * NdL * 0.4;
+
+    // === FRESNEL ===
+    float fresnel = pow(1.0 - NdV, 5.0);
+    fresnel = mix(0.04, 1.0, fresnel);
+
+    // === COMBINE GLASS LAYERS ===
+    // Layer ordering: SSS (deepest) -> spectral absorption -> thin-film -> fresnel
+    vec3 glassCol = sss + spectralCol * (1.0 - fresnel * 0.5) + filmCol * fresnel * 0.6;
+
+    // Specular highlight
+    vec3 H = normalize(L + V);
+    float spec = pow(max(dot(N, H), 0.0), 96.0);
+    glassCol += spec * lightCol * 0.5;
+
+    // Rim light (brand blue)
+    float rim = pow(1.0 - NdV, 3.0);
+    glassCol += rim * vec3(0.165, 0.576, 0.757) * 0.4;
+
+    col = glassCol;
+
+  } else {
+    // === GROUND PLANE ===
+    float groundT = -(ro.y + 1.8) / rd.y;
+    if (groundT > 0.0 && rd.y < 0.0) {
+      vec3 gp = ro + rd * groundT;
+      vec3 gL = normalize(lightPos - gp);
+
+      // Voronoi caustic projection
+      vec3 causticSample = gp * 2.5 + vec3(0.0, t*0.1, 0.0);
+      vec2 vor = voronoi(causticSample);
+      float causticEdge = smoothstep(0.0, 0.15, vor.y - vor.x);
+      float causticIntensity = (1.0 - causticEdge) * 2.5;
+
+      // Spectral caustic tinting
+      vec3 causticCol = vec3(0.0);
+      for (int w = 0; w < 7; w++) {
+        float lam = WL[w];
+        float offset = (lam - 0.55) * 0.3;
+        vec2 vorOffset = voronoi(causticSample + vec3(offset, 0.0, offset));
+        float ci = (1.0 - smoothstep(0.0, 0.15, vorOffset.y - vorOffset.x));
+        causticCol += wl2rgb(lam) * ci;
+      }
+      causticCol /= 7.0;
+
+      // Hex iris modulation on ground
+      float irisBreathing = 0.4 + 0.2 * sin(t * 0.8);
+      float irisOnGround = 1.0 - hexIris(gp.xz * 0.5, irisBreathing);
+
+      // Distance to brain center (for falloff)
+      float dCenter = length(gp.xz);
+      float falloff = exp(-dCenter * 0.5);
+
+      // Ground color: dark with caustic light
+      vec3 groundCol = vec3(0.01, 0.012, 0.018);
+      groundCol += causticCol * causticIntensity * falloff * 0.8;
+      groundCol += vec3(0.165, 0.576, 0.757) * irisOnGround * falloff * 0.15;
+
+      // Subtle ground specular
+      float gSpec = pow(max(dot(reflect(-gL, vec3(0,1,0)), -rd), 0.0), 16.0);
+      groundCol += gSpec * 0.05;
+
+      col = groundCol;
+    }
+  }
+
+  // === VOLUMETRIC GOD RAYS ===
+  {
+    vec3 volCol = vec3(0.0);
+    int volSteps = 24;
+    float volLen = min(hitBrain ? totalD : 8.0, 8.0);
+    float stepSize = volLen / float(volSteps);
+
+    for (int i = 0; i < 24; i++) {
+      float tt = float(i) * stepSize + stepSize * 0.5;
+      vec3 sp = ro + rd * tt;
+      vec3 toLight = lightPos - sp;
+      float lightDist = length(toLight);
+      vec3 lDir = toLight / lightDist;
+
+      // Check occlusion against brain
+      float shadowD = 0.0;
+      bool occluded = false;
+      for (int j = 0; j < 16; j++) {
+        vec3 shp = sp + lDir * shadowD;
+        float sd = sdBrain(shp);
+        if (sd < 0.005) { occluded = true; break; }
+        shadowD += sd;
+        if (shadowD > lightDist) break;
+      }
+
+      if (!occluded) {
+        float cosTheta = dot(rd, lDir);
+        float mie = miePhase(cosTheta);
+
+        // Hex-shaped ray pattern
+        vec2 hexUV = sp.xz - lightPos.xz;
+        float hexMask = 1.0 - hexIris(hexUV * 0.4, 0.6);
+
+        float scatter = mie * (1.0 + hexMask * 0.5) / (lightDist * lightDist + 0.5);
+        vec3 rayCol = lightCol * scatter * stepSize * 0.015;
+
+        // Tint rays: blue near brain, orange far
+        float nearBrain = exp(-sdBrain(sp) * 2.0);
+        rayCol *= mix(vec3(1.0, 0.7, 0.5), vec3(0.165, 0.576, 0.757), nearBrain * 0.5);
+
+        volCol += rayCol;
+      }
+    }
+    col += volCol;
+  }
+
+  // === POST-PROCESSING ===
+  // Heartbeat pulsation
+  float heartbeat = smoothstep(0.0, 0.1, fract(t*0.8)) * smoothstep(0.2, 0.1, fract(t*0.8))
+                  + smoothstep(0.3, 0.4, fract(t*0.8)) * smoothstep(0.5, 0.4, fract(t*0.8));
+  heartbeat *= 0.03;
+  col *= 1.0 + heartbeat;
+
+  // Vignette
+  vec2 vuv = gl_FragCoord.xy / r;
+  float vig = 1.0 - 0.4 * dot(vuv - 0.5, vuv - 0.5) * 2.0;
+  col *= vig;
+
+  // Tone mapping (ACES approx)
+  col = col * (2.51 * col + 0.03) / (col * (2.43 * col + 0.59) + 0.14);
+
+  // Film grain
+  float grain = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)) + t) * 43758.5453) * 0.02;
+  col += grain;
+
+  col = clamp(col, 0.0, 1.0);
+  O = vec4(col, 1.0);
+}`;
+
+function createShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(s));
+    return null;
+  }
+  return s;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, createShader(gl.VERTEX_SHADER, vs));
+gl.attachShader(prog, createShader(gl.FRAGMENT_SHADER, fs));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+const aLoc = gl.getAttribLocation(prog, 'a');
+gl.enableVertexAttribArray(aLoc);
+gl.vertexAttribPointer(aLoc, 2, gl.FLOAT, false, 0, 0);
+
+const uT = gl.getUniformLocation(prog, 't');
+const uR = gl.getUniformLocation(prog, 'r');
+const uM = gl.getUniformLocation(prog, 'mouse');
+
+let frames = 0, lastFps = performance.now();
+const fpsEl = document.getElementById('fps');
+
+function render(time) {
+  gl.uniform1f(uT, time * 0.001);
+  gl.uniform2f(uR, canvas.width, canvas.height);
+  gl.uniform2f(uM, mx, my);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  frames++;
+  if (time - lastFps > 1000) {
+    fpsEl.textContent = Math.round(frames * 1000 / (time - lastFps)) + ' fps';
+    frames = 0;
+    lastFps = time;
+  }
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

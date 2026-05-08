@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Variation A — True Per-Channel IOR Dispersion (Heckel)</title>
+<style>
+  html,body{margin:0;height:100%;background:#060606;overflow:hidden;font-family:-apple-system,system-ui,sans-serif;color:#aaa}
+  #info{position:fixed;top:12px;left:12px;font-size:11px;line-height:1.5;letter-spacing:0.05em;text-transform:uppercase;opacity:0.5;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="info">Variation A · True per-channel IOR dispersion · FBO scene texture · 16-sample loop</div>
+<script type="importmap">
+{"imports":{
+  "three":"https://unpkg.com/three@0.158.0/build/three.module.js",
+  "three/addons/":"https://unpkg.com/three@0.158.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// PureBrain palette
+const BLUE   = new THREE.Color('#2a93c1');
+const ORANGE = new THREE.Color('#f1420b');
+
+// ---------- Renderer ----------
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+// ---------- Main scene ----------
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#060606');
+const camera = new THREE.PerspectiveCamera(40, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0, 0, 6);
+
+// Backdrop scene that the dispersion shader will sample
+// (geometric grid of glowing emissive shapes — gives dispersion something interesting to bend)
+const backdropScene = new THREE.Scene();
+backdropScene.background = new THREE.Color('#060606');
+const backdropCam = camera; // share camera so parallax is correct
+
+// Build a backdrop of soft emissive disks in a grid
+const diskGeo = new THREE.CircleGeometry(0.18, 32);
+const cols = 7, rows = 5;
+for (let i = 0; i < cols; i++) {
+  for (let j = 0; j < rows; j++) {
+    const x = (i - (cols-1)/2) * 0.85;
+    const y = (j - (rows-1)/2) * 0.85;
+    const t = (i + j) / (cols + rows);
+    const c = new THREE.Color().lerpColors(BLUE, ORANGE, t);
+    const m = new THREE.MeshBasicMaterial({color:c, transparent:true, opacity:0.85});
+    const mesh = new THREE.Mesh(diskGeo, m);
+    mesh.position.set(x, y, -2);
+    backdropScene.add(mesh);
+  }
+}
+// Add a faint orange rim
+const rim = new THREE.Mesh(
+  new THREE.RingGeometry(2.4, 2.55, 96),
+  new THREE.MeshBasicMaterial({color:ORANGE, transparent:true, opacity:0.5})
+);
+rim.position.z = -1.5;
+backdropScene.add(rim);
+
+// FBO that captures the backdrop — dispersion shader samples this
+const backdropTarget = new THREE.WebGLRenderTarget(innerWidth, innerHeight, {
+  format: THREE.RGBAFormat,
+  type: THREE.UnsignedByteType,
+  minFilter: THREE.LinearFilter,
+  magFilter: THREE.LinearFilter
+});
+
+// ---------- Dispersion ShaderMaterial ----------
+// Implements Heckel's per-channel IOR refraction with 16-sample loop for silky edges
+const dispersionMaterial = new THREE.ShaderMaterial({
+  uniforms: {
+    uTexture:    { value: backdropTarget.texture },
+    uResolution: { value: new THREE.Vector2(innerWidth, innerHeight) },
+    uIorR:       { value: 1.15 },
+    uIorG:       { value: 1.18 },
+    uIorB:       { value: 1.22 },
+    uChroma:     { value: 1.0 },
+    uPower:      { value: 0.4 },
+    uFresnelPower:{ value: 4.5 },
+    uTint:       { value: new THREE.Color('#2a93c1') },
+    uTime:       { value: 0 }
+  },
+  vertexShader: /* glsl */ `
+    varying vec3 vWorldNormal;
+    varying vec3 vEyeVector;
+    void main() {
+      vec4 worldPos = modelMatrix * vec4(position, 1.0);
+      vWorldNormal = normalize(mat3(modelMatrix) * normal);
+      vEyeVector  = normalize(worldPos.xyz - cameraPosition);
+      gl_Position = projectionMatrix * viewMatrix * worldPos;
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    precision highp float;
+    uniform sampler2D uTexture;
+    uniform vec2 uResolution;
+    uniform float uIorR, uIorG, uIorB;
+    uniform float uChroma;
+    uniform float uPower;
+    uniform float uFresnelPower;
+    uniform vec3  uTint;
+    uniform float uTime;
+    varying vec3 vWorldNormal;
+    varying vec3 vEyeVector;
+
+    void main() {
+      vec2 uv = gl_FragCoord.xy / uResolution.xy;
+      vec3 N  = normalize(vWorldNormal);
+      vec3 V  = normalize(vEyeVector);
+
+      // Per-channel refraction (Heckel)
+      vec3 refractR = refract(V, N, 1.0 / uIorR);
+      vec3 refractG = refract(V, N, 1.0 / uIorG);
+      vec3 refractB = refract(V, N, 1.0 / uIorB);
+
+      // 16-sample loop for silky dispersion edges
+      vec3 color = vec3(0.0);
+      const int SAMPLES = 16;
+      for (int i = 0; i < SAMPLES; i++) {
+        float slide = float(i) / float(SAMPLES) * 0.1;
+        color.r += texture2D(uTexture, uv + refractR.xy * (uPower + slide * 1.0) * uChroma).r;
+        color.g += texture2D(uTexture, uv + refractG.xy * (uPower + slide * 2.0) * uChroma).g;
+        color.b += texture2D(uTexture, uv + refractB.xy * (uPower + slide * 3.0) * uChroma).b;
+      }
+      color /= float(SAMPLES);
+
+      // Fresnel for rim luminance
+      float fresnel = pow(1.0 - max(dot(N, -V), 0.0), uFresnelPower);
+
+      // Tint multiplied on body, fresnel adds white-blue rim
+      color = mix(color * (0.85 + uTint * 0.3), vec3(1.0), fresnel * 0.6);
+
+      // Subtle pulse on tint
+      float pulse = 0.92 + sin(uTime * 0.8) * 0.08;
+      color *= pulse;
+
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `
+});
+
+// Sphere that wears the dispersion shader
+const orb = new THREE.Mesh(
+  new THREE.SphereGeometry(1.1, 192, 192),
+  dispersionMaterial
+);
+scene.add(orb);
+
+// ---------- Postprocessing ----------
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.6, 0.7, 0.88);
+composer.addPass(bloom);
+
+// ---------- Resize ----------
+addEventListener('resize', () => {
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+  backdropTarget.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  dispersionMaterial.uniforms.uResolution.value.set(innerWidth, innerHeight);
+});
+
+// ---------- Animate ----------
+const clock = new THREE.Clock();
+function animate() {
+  const t = clock.getElapsedTime();
+
+  // Drift backdrop disks subtly
+  backdropScene.children.forEach((m, i) => {
+    if (m.geometry instanceof THREE.CircleGeometry) {
+      m.position.z = -2 + Math.sin(t * 0.6 + i * 0.3) * 0.15;
+    }
+  });
+
+  // Idle orb rotation + breath
+  orb.rotation.y = t * 0.25;
+  orb.rotation.x = Math.sin(t * 0.4) * 0.15;
+  orb.scale.setScalar(1 + Math.sin(t * 0.9) * 0.025);
+
+  // Modulate dispersion strength (the rainbow "breath")
+  dispersionMaterial.uniforms.uChroma.value = 1.0 + Math.sin(t * 0.6) * 0.4;
+  dispersionMaterial.uniforms.uTime.value = t;
+
+  // Render backdrop to FBO
+  renderer.setRenderTarget(backdropTarget);
+  renderer.render(backdropScene, backdropCam);
+  renderer.setRenderTarget(null);
+
+  // Render main scene with dispersion shader sampling that FBO
+  composer.render();
+
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
+</body>
+</html>

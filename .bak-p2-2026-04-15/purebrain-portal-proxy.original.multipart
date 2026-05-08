@@ -1,0 +1,177 @@
+--f07ddf8152f841326193589de40ad2b0c120cd495f6dc5ecf36bee210d46
+Content-Disposition: form-data; name="index.js"
+
+/**
+ * PureBrain Portal Proxy Worker
+ * ==============================
+ * Routes *.purebrain.ai portal subdomains to Witness containers at 37.27.237.109.
+ *
+ * Request flow:
+ *   {subdomain}.purebrain.ai/*
+ *     → Check if portal subdomain (not a known system subdomain)
+ *     → If portal: proxy to https://{subdomain}.ai-civ.com on Witness (37.27.237.109)
+ *     → If system subdomain: pass through to Cloudflare (tunnel handles it)
+ *     → Response looks like it came from purebrain.ai
+ *
+ * SPECIAL: app.purebrain.ai/api/referral/* → chy-jared.ai-civ.com (referral API)
+ *
+ * System subdomains (app, www, portal, api, video, cc, comms, etc.) are detected
+ * and passed through without modification so the cloudflared tunnel handles them.
+ *
+ * Deploy:
+ *   Worker name:  purebrain-portal-proxy
+ *   Route:        *.purebrain.ai/*
+ *   Zone:         purebrain.ai (ID: 49400cad1527af716705f6cb8c22bb65)
+ *
+ * Witness server: 37.27.237.109
+ * Container URL format: https://{subdomain}.ai-civ.com
+ */
+
+// Known system subdomains — pass these through to Cloudflare/tunnel unchanged.
+// These have explicit DNS records (CNAME → cloudflared tunnel) that handle routing.
+const SYSTEM_SUBDOMAINS = new Set([
+  'app',
+  'www',
+  'portal',
+  'api',
+  'video',
+  'cc',
+  'comms',
+  'mail',
+  'staging',
+  'blog',
+  'status',
+  'cdn',
+  'static',
+  'assets',
+  'media',
+  'keenjared',     // Legacy test portal — still in DNS, routed via nginx
+  'testariatest',  // Legacy test portal — still in DNS, routed via nginx
+]);
+
+// Witness server IP — all container traffic routes here
+const WITNESS_IP = '37.27.237.109';
+
+// ai-civ.com: the actual hostname namespace for portal containers
+const CONTAINER_DOMAIN = 'ai-civ.com';
+
+// Referral API: served by chy-jared container on Witness
+const REFERRAL_API_HOST = `chy-jared.${CONTAINER_DOMAIN}`;
+
+/**
+ * Determine if this subdomain is a portal subdomain.
+ * Returns true if it should be proxied to Witness.
+ * Returns false if it's a known system subdomain.
+ */
+function isPortalSubdomain(subdomain) {
+  if (!subdomain) return false;
+  // System subdomains are NOT portals
+  if (SYSTEM_SUBDOMAINS.has(subdomain.toLowerCase())) return false;
+  // Portal subdomains contain at least one alphanumeric character
+  // and match the expected pattern: letters, numbers, hyphens
+  return /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(subdomain.toLowerCase());
+}
+
+/**
+ * Extract the subdomain from a Host header value.
+ * e.g. "greg-lucas-neuteufel.purebrain.ai" → "greg-lucas-neuteufel"
+ * e.g. "purebrain.ai" → "" (no subdomain = apex domain)
+ */
+function extractSubdomain(host) {
+  // Strip port if present
+  const hostname = host.split(':')[0];
+  // purebrain.ai has two labels — any subdomain will have 3+ labels
+  const parts = hostname.split('.');
+  if (parts.length <= 2) return '';
+  // Everything before .purebrain.ai
+  return parts.slice(0, parts.length - 2).join('.');
+}
+
+/**
+ * Proxy a request to a specific container on Witness.
+ */
+async function proxyToContainer(request, targetHost, originalHost) {
+  const url = new URL(request.url);
+  const targetUrl = `https://${targetHost}${url.pathname}${url.search}`;
+
+  const proxyHeaders = new Headers(request.headers);
+  proxyHeaders.set('Host', targetHost);
+  proxyHeaders.set('X-Forwarded-Host', originalHost);
+  proxyHeaders.set('X-Forwarded-Proto', url.protocol.replace(':', ''));
+  proxyHeaders.set('X-Real-IP', request.headers.get('CF-Connecting-IP') || '');
+
+  const proxyRequest = new Request(targetUrl, {
+    method: request.method,
+    headers: proxyHeaders,
+    body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : null,
+    redirect: 'manual',
+  });
+
+  const response = await fetch(proxyRequest, {
+    cf: { resolveOverride: WITNESS_IP },
+  });
+
+  const responseHeaders = new Headers(response.headers);
+  const location = responseHeaders.get('Location');
+  if (location && location.includes(`.${CONTAINER_DOMAIN}`)) {
+    const rewritten = location.replace(
+      new RegExp(`([a-z0-9-]+)\\.${CONTAINER_DOMAIN.replace('.', '\\.')}`, 'g'),
+      `$1.purebrain.ai`
+    );
+    responseHeaders.set('Location', rewritten);
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: responseHeaders,
+  });
+}
+
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    const host = request.headers.get('Host') || url.host;
+    const subdomain = extractSubdomain(host);
+
+    // No subdomain = apex domain (purebrain.ai itself).
+    if (!subdomain) {
+      return fetch(request);
+    }
+
+    // SPECIAL: app.purebrain.ai/api/referral/* → proxy to chy-jared container
+    // The referral API is served by the portal server in chy-jared on Witness.
+    if (subdomain === 'app' && url.pathname.startsWith('/api/referral')) {
+      try {
+        return await proxyToContainer(request, REFERRAL_API_HOST, host);
+      } catch (err) {
+        return new Response(
+          JSON.stringify({ error: 'Referral API temporarily unavailable' }),
+          { status: 502, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // System subdomain — pass through to Cloudflare routing (tunnel handles these).
+    if (!isPortalSubdomain(subdomain)) {
+      return fetch(request);
+    }
+
+    // Portal subdomain — proxy to {subdomain}.ai-civ.com on Witness.
+    const targetHost = `${subdomain}.${CONTAINER_DOMAIN}`;
+
+    try {
+      return await proxyToContainer(request, targetHost, host);
+    } catch (err) {
+      return new Response(
+        `Portal unavailable. Your portal "${subdomain}" may still be initializing. ` +
+          `Please try again in a few minutes. (Error: ${err.message})`,
+        {
+          status: 502,
+          headers: { 'Content-Type': 'text/plain' },
+        }
+      );
+    }
+  },
+};
+--f07ddf8152f841326193589de40ad2b0c120cd495f6dc5ecf36bee210d46--

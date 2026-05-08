@@ -1,0 +1,658 @@
+<!-- ==================== DUO CHAT WIDGET (generic multi-AI pop-out overlay) ==================== -->
+<!-- Self-contained widget for customer portals. Parameterized via data attributes.
+     Uses trio-comms worker /trio/messages + /trio/message with Bearer token.
+     No hardcoded names — participants auto-detected from message sender_id. -->
+
+<!-- Usage: inject into any portal HTML with:
+  <script src="duo-widget.html"
+    data-duo-id="CUSTOMER_DUO_ID"
+    data-token="PORTAL_AUTH_TOKEN"
+    data-comms-url="https://trio-comms.in0v8.workers.dev">
+  </script>
+  OR: just include this HTML file directly and set window.DUO_CONFIG before it loads.
+-->
+
+<script>
+(function(){
+  // --- Configuration ---
+  // Reads from: 1) data attributes on the script tag, 2) window.DUO_CONFIG, 3) defaults
+  var scriptTag = document.currentScript || (function(){
+    var scripts = document.getElementsByTagName('script');
+    return scripts[scripts.length - 1];
+  })();
+
+  var cfg = window.DUO_CONFIG || {};
+  var DUO_ID = scriptTag?.getAttribute('data-duo-id') || cfg.duo_id || '';
+  var DUO_TOKEN = scriptTag?.getAttribute('data-token') || cfg.token || '';
+  var COMMS_URL = scriptTag?.getAttribute('data-comms-url') || cfg.comms_url || 'https://trio-comms.in0v8.workers.dev';
+  var POLL_MS = parseInt(scriptTag?.getAttribute('data-poll-ms') || cfg.poll_ms || '10000', 10);
+  var WIDGET_TITLE = scriptTag?.getAttribute('data-title') || cfg.title || 'Duo Chat';
+
+  if (!DUO_ID) console.warn('[duo-widget] No data-duo-id set. Messages will not load.');
+
+  // --- Widget state ---
+  var DUO = window.DUO_WIDGET = {
+    participants: {},   // id -> {id, label, color}
+    participantOrder: [],
+    pollHandle: null,
+    open: false,
+    allMessages: [],
+    searchQuery: '',
+    _savedScrollY: 0,
+    pendingMedia: null,
+    isDragging: false
+  };
+
+  // Color palette for auto-assigning participant colors
+  var COLORS = [
+    '#2a93c1', '#f1420b', '#22c55e', '#a855f7', '#eab308',
+    '#ec4899', '#06b6d4', '#f97316', '#8b5cf6', '#14b8a6'
+  ];
+  var HUMAN_COLOR = '#ffffff';
+
+  function getParticipant(senderId) {
+    if (!senderId) return { id: 'unknown', label: 'Unknown', color: '#7a8aaa' };
+    var key = senderId.toLowerCase();
+    if (DUO.participants[key]) return DUO.participants[key];
+    var idx = DUO.participantOrder.length;
+    var p = {
+      id: key,
+      label: senderId.charAt(0).toUpperCase() + senderId.slice(1),
+      color: COLORS[idx % COLORS.length]
+    };
+    DUO.participants[key] = p;
+    DUO.participantOrder.push(key);
+    updateHeaderDots();
+    return p;
+  }
+
+  function updateHeaderDots() {
+    var dotsEl = document.getElementById('dw-dots');
+    if (!dotsEl) return;
+    dotsEl.innerHTML = DUO.participantOrder.map(function(id) {
+      var p = DUO.participants[id];
+      return '<span style="width:8px;height:8px;border-radius:50%;display:inline-block;background:' + dwEscape(p.color) + ';"></span>';
+    }).join('');
+  }
+
+  // --- Auth ---
+  function dwToken() {
+    return DUO_TOKEN || '';
+  }
+
+  function dwAuthHeaders(extra) {
+    var h = Object.assign({}, extra || {});
+    var t = dwToken();
+    if (t) h['Authorization'] = 'Bearer ' + t;
+    return h;
+  }
+
+  // --- Helpers ---
+  function dwEscape(s) {
+    return String(s || '').replace(/[&<>"']/g, function(c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  function dwFmtTs(iso) {
+    try { return new Date(iso).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }); }
+    catch(e) { return ''; }
+  }
+
+  // --- Markdown renderer ---
+  function dwLinkify(s) {
+    var raw = String(s || '');
+    var codeBlocks = [];
+    var h = raw.replace(/```(\w+)?\n?([\s\S]*?)```/g, function(m, lang, code) {
+      var langClass = lang ? ' class="language-' + lang.replace(/[^a-zA-Z0-9]/g, '') + '"' : '';
+      var safeCode = dwEscape(code.replace(/\n$/, ''));
+      var idx = codeBlocks.length;
+      codeBlocks.push('<pre class="dw-code-block"><code' + langClass + '>' + safeCode + '</code></pre>');
+      return '\0CB' + idx + '\0';
+    });
+
+    h = dwEscape(h);
+    h = h.replace(/`([^`\n]+)`/g, '<code class="dw-inline-code">$1</code>');
+    h = h.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    h = h.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
+    h = h.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+    h = h.replace(/(^|[^_])_([^_\n]+)_(?!_)/g, '$1<em>$2</em>');
+    h = h.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
+    h = h.replace(/^### (.+)$/gm, '<div class="dw-h3">$1</div>');
+    h = h.replace(/^## (.+)$/gm, '<div class="dw-h2">$1</div>');
+    h = h.replace(/^# (.+)$/gm, '<div class="dw-h1">$1</div>');
+    h = h.replace(/^&gt; (.+)$/gm, '<div class="dw-blockquote">$1</div>');
+    h = h.replace(/^(?:[-*]) (.+)$/gm, '<div class="dw-li">$1</div>');
+    h = h.replace(/^(\d+)\. (.+)$/gm, '<div class="dw-li">$1. $2</div>');
+    h = h.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener" style="color:#2a93c1;text-decoration:underline;">$1</a>');
+    h = h.replace(/(?<!["=])(https?:\/\/[^\s<]+)/g,
+      '<a href="$1" target="_blank" rel="noopener" style="color:#2a93c1;text-decoration:underline;">$1</a>');
+    h = h.replace(/\n/g, '<br>');
+    h = h.replace(/\0CB(\d+)\0/g, function(m, idx) { return codeBlocks[parseInt(idx, 10)] || ''; });
+    return h;
+  }
+
+  // --- Mention highlight ---
+  function dwEmphasizeMentions(html) {
+    return html.replace(/(^|[\s>])@(\w+)\b/gi, function(m, pre, who) {
+      return pre + '<strong style="color:#fff;background:rgba(255,255,255,0.10);padding:1px 5px;border-radius:4px;">@' + who.toLowerCase() + '</strong>';
+    });
+  }
+
+  // --- Media rendering ---
+  function dwRenderMedia(message) {
+    var refs = message.media_refs;
+    if (typeof refs === 'string') {
+      try { refs = JSON.parse(refs); } catch(e) { refs = []; }
+    }
+    if (!refs || !Array.isArray(refs) || refs.length === 0) return '';
+    return refs.map(function(media) {
+      var url = dwEscape(media.url || '');
+      var name = dwEscape(media.original_name || 'file');
+      if (media.mime && media.mime.startsWith('image/')) {
+        return '<img src="' + url + '" class="dw-msg-img" loading="lazy" onclick="window.open(\'' + url + '\',\'_blank\')" alt="' + name + '" />';
+      } else {
+        return '<a href="' + url + '" target="_blank" class="dw-file-link">' + name + '</a>';
+      }
+    }).join('');
+  }
+
+  // --- Search ---
+  function dwFilterMessages(messages) {
+    if (!DUO.searchQuery) return messages;
+    var q = DUO.searchQuery.toLowerCase();
+    return messages.filter(function(m) {
+      var from = (m.from || m.sender_id || '').toLowerCase();
+      var content = (m.content || '').toLowerCase();
+      return from.includes(q) || content.includes(q);
+    });
+  }
+
+  // --- Pin / Bookmark / Reactions (localStorage, scoped by duo_id) ---
+  function _storageKey(prefix) { return prefix + '_' + DUO_ID; }
+
+  function _getPinnedIds() {
+    try { return JSON.parse(localStorage.getItem(_storageKey('duoPins')) || '[]'); } catch(e) { return []; }
+  }
+  function _getBookmarkedIds() {
+    try { return JSON.parse(localStorage.getItem(_storageKey('duoBookmarks')) || '[]'); } catch(e) { return []; }
+  }
+  function _getReactions(id) {
+    try { return JSON.parse(localStorage.getItem(_storageKey('duoReact_') + id) || '[]'); } catch(e) { return []; }
+  }
+
+  window.duoTogglePin = function(id) {
+    var pins = _getPinnedIds();
+    var idx = pins.indexOf(id);
+    if (idx >= 0) pins.splice(idx, 1); else pins.push(id);
+    localStorage.setItem(_storageKey('duoPins'), JSON.stringify(pins));
+    dwRenderUnified(DUO.allMessages);
+  };
+
+  window.duoShowPins = function() {
+    var pins = _getPinnedIds();
+    if (!pins.length) { alert('No pinned messages yet. Click "pin" on any message.'); return; }
+    DUO.searchQuery = '';
+    var pinned = DUO.allMessages.filter(function(m) { return pins.includes(m.id); });
+    dwRenderUnified(pinned);
+    var input = document.getElementById('dw-search');
+    if (input) input.value = 'Pinned messages';
+    _dwShowFilterBanner('Pinned messages', pins.length);
+  };
+
+  window.duoToggleBookmark = function(id) {
+    var bms = _getBookmarkedIds();
+    var idx = bms.indexOf(id);
+    if (idx >= 0) bms.splice(idx, 1); else bms.push(id);
+    localStorage.setItem(_storageKey('duoBookmarks'), JSON.stringify(bms));
+    dwRenderUnified(DUO.allMessages);
+  };
+
+  window.duoShowBookmarks = function() {
+    var bms = _getBookmarkedIds();
+    if (!bms.length) { alert('No bookmarks yet.'); return; }
+    var saved = DUO.allMessages.filter(function(m) { return bms.includes(m.id); });
+    dwRenderUnified(saved);
+    var input = document.getElementById('dw-search');
+    if (input) input.value = 'Bookmarked messages';
+    _dwShowFilterBanner('Bookmarked messages', bms.length);
+  };
+
+  window.duoReact = function(id, emoji) {
+    var key = _storageKey('duoReact_') + id;
+    var reactions = _getReactions(id);
+    var idx = reactions.indexOf(emoji);
+    if (idx >= 0) reactions.splice(idx, 1); else reactions.push(emoji);
+    localStorage.setItem(key, JSON.stringify(reactions));
+    dwRenderUnified(DUO.allMessages);
+  };
+
+  function _dwShowFilterBanner(label, count) {
+    var banner = document.getElementById('dw-filter-banner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'dw-filter-banner';
+      banner.style.cssText = 'padding:8px 16px;background:rgba(42,147,193,0.12);border-bottom:1px solid rgba(42,147,193,0.2);display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#2a93c1;font-weight:600';
+      var feed = document.getElementById('dw-feed-unified');
+      if (feed && feed.parentElement) feed.parentElement.insertBefore(banner, feed);
+    }
+    banner.innerHTML = '<span>' + dwEscape(label) + ' (' + count + ')</span><button onclick="window.duoClearSearch();var b=document.getElementById(\'dw-filter-banner\');if(b)b.remove()" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);color:#fff;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600">Back to all</button>';
+    banner.style.display = 'flex';
+  }
+
+  // --- Copy / Reply ---
+  window.duoCopyMessage = function(id) {
+    var msg = DUO.allMessages.find(function(m) { return m.id === id; });
+    if (!msg) return;
+    navigator.clipboard.writeText(msg.content || '').then(function() {
+      var el = document.querySelector('[data-msg-id="' + id + '"] .dw-copy-btn');
+      if (el) { el.textContent = 'copied'; setTimeout(function() { el.textContent = 'copy'; }, 1500); }
+    });
+  };
+
+  window.duoReplyTo = function(id) {
+    var msg = DUO.allMessages.find(function(m) { return m.id === id; });
+    if (!msg) return;
+    var from = msg.from || msg.sender_id || 'unknown';
+    var snippet = (msg.content || '').replace(/\n/g, ' ').slice(0, 120);
+    var ta = document.getElementById('dw-input');
+    if (!ta) return;
+    var prefix = '> @' + from + ': ' + snippet + ((msg.content || '').length > 120 ? '...' : '') + '\n\n';
+    ta.value = prefix + (ta.value || '');
+    ta.focus();
+    ta.selectionStart = ta.selectionEnd = ta.value.length;
+  };
+
+  // --- Render messages ---
+  function dwRenderUnified(messages) {
+    DUO.allMessages = messages;
+    var feed = document.getElementById('dw-feed-unified');
+    if (!feed) return;
+    var atBottom = Math.abs(feed.scrollTop + feed.clientHeight - feed.scrollHeight) < 40;
+
+    var filtered = dwFilterMessages(messages);
+
+    if (!filtered.length) {
+      var emptyText = DUO.searchQuery
+        ? 'No messages match "' + dwEscape(DUO.searchQuery) + '".'
+        : 'No messages yet. Send something to start the conversation.';
+      feed.innerHTML = '<div class="dw-empty">' + emptyText + '</div>';
+      return;
+    }
+
+    feed.innerHTML = filtered.map(function(m) {
+      var senderId = (m.from || m.sender_id || '').toLowerCase();
+      var participant = getParticipant(senderId);
+      // Determine message alignment: portal user's messages go right, others go left.
+      // Set DUO_CONFIG.my_id to the portal user's sender_id to align their messages right.
+      var myId = (cfg.my_id || '').toLowerCase();
+      var side = (myId && senderId === myId) ? 'right' : 'left';
+      var label = participant.label;
+      var color = participant.color;
+
+      var body = dwEmphasizeMentions(dwLinkify(m.content || ''));
+      if (DUO.searchQuery && DUO.searchQuery.length > 1) {
+        try {
+          var safeQ = DUO.searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          body = body.replace(new RegExp('(' + safeQ + ')', 'gi'),
+            '<mark style="background:rgba(234,179,8,0.35);color:#fff;padding:1px 2px;border-radius:2px">$1</mark>');
+        } catch(e) {}
+      }
+
+      var mediaHtml = dwRenderMedia(m);
+      var msgId = m.id || '';
+      var isPinned = _getPinnedIds().includes(msgId);
+      var isBookmarked = _getBookmarkedIds().includes(msgId);
+      var reactions = _getReactions(msgId);
+      var bodyLen = (m.content || '').length;
+      var isLong = bodyLen > 400;
+      var collapsed = isLong ? ' dw-collapsed' : '';
+      var fullTs = m.timestamp ? new Date(m.timestamp).toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : '';
+
+      return '<div class="dw-msg dw-msg-' + side + (isPinned ? ' dw-pinned' : '') + '" data-msg-id="' + dwEscape(msgId) + '">' +
+        '<div class="dw-msg-meta">' +
+          '<span class="dw-sender" style="color:' + color + ';">' + dwEscape(label) + '</span>' +
+          '<span class="dw-time" title="' + dwEscape(fullTs) + '">' + dwEscape(dwFmtTs(m.timestamp)) + '</span>' +
+          (isPinned ? '<span class="dw-pin-badge">pinned</span>' : '') +
+        '</div>' +
+        '<div class="dw-msg-body' + collapsed + '" style="border-color:' + color + '66;" ondblclick="duoCopyMessage(\'' + dwEscape(msgId) + '\')">' + body + mediaHtml + '</div>' +
+        (isLong ? '<button class="dw-expand-btn" onclick="this.previousElementSibling.classList.toggle(\'dw-collapsed\');this.textContent=this.previousElementSibling.classList.contains(\'dw-collapsed\')?\'Show more\':\'Show less\'">Show more</button>' : '') +
+        '<div class="dw-reactions">' +
+          '<button class="dw-react-btn' + (reactions.includes('\uD83D\uDC4D') ? ' active' : '') + '" onclick="duoReact(\'' + dwEscape(msgId) + '\',\'\uD83D\uDC4D\')">\uD83D\uDC4D' + (reactions.filter(function(r){return r==='\uD83D\uDC4D';}).length || '') + '</button>' +
+          '<button class="dw-react-btn' + (reactions.includes('\uD83D\uDD25') ? ' active' : '') + '" onclick="duoReact(\'' + dwEscape(msgId) + '\',\'\uD83D\uDD25\')">\uD83D\uDD25' + (reactions.filter(function(r){return r==='\uD83D\uDD25';}).length || '') + '</button>' +
+          '<button class="dw-react-btn' + (reactions.includes('\u2705') ? ' active' : '') + '" onclick="duoReact(\'' + dwEscape(msgId) + '\',\'\u2705\')">\u2705' + (reactions.filter(function(r){return r==='\u2705';}).length || '') + '</button>' +
+        '</div>' +
+        '<div class="dw-msg-actions">' +
+          '<button class="dw-copy-btn" onclick="duoCopyMessage(\'' + dwEscape(msgId) + '\')">copy</button>' +
+          '<button class="dw-reply-btn" onclick="duoReplyTo(\'' + dwEscape(msgId) + '\')">reply</button>' +
+          '<button class="dw-pin-btn" onclick="duoTogglePin(\'' + dwEscape(msgId) + '\')">' + (isPinned ? 'unpin' : 'pin') + '</button>' +
+          '<button class="dw-bm-btn" onclick="duoToggleBookmark(\'' + dwEscape(msgId) + '\')">' + (isBookmarked ? 'bookmarked' : 'bookmark') + '</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    if (atBottom && !DUO.searchQuery) feed.scrollTop = feed.scrollHeight;
+  }
+
+  // --- API calls ---
+  async function dwRefresh() {
+    if (!DUO_ID || !DUO_TOKEN) return;
+    try {
+      var url = COMMS_URL + '/trio/messages?limit=200&trio_id=' + encodeURIComponent(DUO_ID);
+      var res = await fetch(url, {
+        headers: dwAuthHeaders()
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      var data = await res.json();
+      var rawMessages = Array.isArray(data) ? data : (data.messages || []);
+      var messages = rawMessages.slice().sort(function(a, b) { return a.timestamp < b.timestamp ? -1 : 1; });
+      dwRenderUnified(messages);
+    } catch(e) {
+      console.warn('[duo-widget] refresh failed', e);
+      var st = document.getElementById('dw-status');
+      if (st && !DUO._warned) {
+        st.style.color = '#ef4444';
+        st.textContent = 'Connection error: ' + (e.message || e);
+        DUO._warned = true;
+      }
+    }
+  }
+
+  async function dwSend() {
+    var ta = document.getElementById('dw-input');
+    var status = document.getElementById('dw-status');
+    var content = (ta.value || '').trim();
+    if (!content) return;
+    status.textContent = 'Sending...';
+    status.style.color = '#7a8aaa';
+    try {
+      var payload = { content: content, trio_id: DUO_ID };
+      var res = await fetch(COMMS_URL + '/trio/message', {
+        method: 'POST',
+        headers: dwAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        var detail = 'HTTP ' + res.status;
+        try { var j = await res.json(); if (j.error) detail = j.error; } catch(e) {}
+        throw new Error(detail);
+      }
+      ta.value = '';
+      status.style.color = '#22c55e';
+      status.textContent = 'Sent.';
+      setTimeout(function() { status.textContent = ''; }, 3500);
+      await dwRefresh();
+    } catch(e) {
+      status.style.color = '#ef4444';
+      status.textContent = 'Failed: ' + e.message;
+    }
+  }
+
+  // --- Open / Close ---
+  window.openDuoWidget = function() {
+    DUO.open = true;
+    var m = document.getElementById('duo-widget-modal');
+    if (m) m.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+    document.body.style.top = '-' + window.scrollY + 'px';
+    DUO._savedScrollY = window.scrollY;
+    dwRefresh();
+    if (DUO.pollHandle) clearInterval(DUO.pollHandle);
+    DUO.pollHandle = setInterval(dwRefresh, POLL_MS);
+    setTimeout(function() { var i = document.getElementById('dw-input'); if (i) i.focus(); }, 120);
+  };
+
+  window.closeDuoWidget = function() {
+    DUO.open = false;
+    var m = document.getElementById('duo-widget-modal');
+    if (m) m.classList.remove('open');
+    document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
+    document.body.style.position = '';
+    document.body.style.width = '';
+    document.body.style.top = '';
+    window.scrollTo(0, DUO._savedScrollY || 0);
+    if (DUO.pollHandle) { clearInterval(DUO.pollHandle); DUO.pollHandle = null; }
+  };
+
+  window.duoSend = dwSend;
+  window.duoRefresh = dwRefresh;
+
+  window.duoClearSearch = function() {
+    var input = document.getElementById('dw-search');
+    if (input) { input.value = ''; DUO.searchQuery = ''; dwRenderUnified(DUO.allMessages); }
+    var banner = document.getElementById('dw-filter-banner');
+    if (banner) banner.remove();
+  };
+
+  window.duoScrollBottom = function() {
+    var feed = document.getElementById('dw-feed-unified');
+    if (feed) feed.scrollTo({ top: feed.scrollHeight, behavior: 'smooth' });
+  };
+
+  // --- Keyboard ---
+  document.addEventListener('keydown', function(e) {
+    if (!DUO.open) return;
+    if (e.key === 'Escape') { window.closeDuoWidget(); return; }
+    if (e.target && e.target.id === 'dw-input' && e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault(); dwSend();
+    }
+  });
+
+  // --- Search wiring ---
+  function dwSetupSearch() {
+    var input = document.getElementById('dw-search');
+    if (!input) { setTimeout(dwSetupSearch, 300); return; }
+    input.addEventListener('input', function() {
+      DUO.searchQuery = input.value.trim();
+      if (DUO.allMessages.length) dwRenderUnified(DUO.allMessages);
+    });
+  }
+  dwSetupSearch();
+
+  // --- Scroll-to-bottom button ---
+  function setupScrollBottom() {
+    var feed = document.getElementById('dw-feed-unified');
+    var btn = document.getElementById('dw-scroll-bottom');
+    if (!feed || !btn) { setTimeout(setupScrollBottom, 300); return; }
+    function check() {
+      var atBottom = Math.abs(feed.scrollTop + feed.clientHeight - feed.scrollHeight) < 40;
+      btn.style.display = atBottom ? 'none' : 'flex';
+    }
+    feed.addEventListener('scroll', check);
+    check();
+  }
+  setupScrollBottom();
+
+  // --- Drag-and-drop on textarea ---
+  function setupDragDrop() {
+    var ta = document.getElementById('dw-input');
+    if (!ta) { setTimeout(setupDragDrop, 300); return; }
+    ['dragenter','dragover'].forEach(function(ev) {
+      ta.addEventListener(ev, function(e) {
+        e.preventDefault(); e.stopPropagation();
+        ta.classList.add('drag-over');
+      });
+    });
+    ['dragleave','drop'].forEach(function(ev) {
+      ta.addEventListener(ev, function(e) {
+        e.preventDefault(); e.stopPropagation();
+        ta.classList.remove('drag-over');
+      });
+    });
+    ta.addEventListener('drop', function(e) {
+      e.preventDefault();
+      var dt = e.dataTransfer;
+      if (!dt) return;
+      var appendText = '';
+      var url = dt.getData('text/uri-list') || dt.getData('URL');
+      if (url) appendText = url;
+      else if (dt.getData('text/plain')) appendText = dt.getData('text/plain');
+      if (appendText) {
+        var cur = ta.value || '';
+        ta.value = cur + (cur && !cur.endsWith(' ') && !cur.endsWith('\n') ? ' ' : '') + appendText;
+        ta.focus();
+      }
+    });
+  }
+  setupDragDrop();
+
+})();
+</script>
+
+<style>
+#duo-widget-modal{
+  position:fixed;inset:0;background:rgba(4,6,12,0.72);backdrop-filter:blur(6px);
+  z-index:99999;display:none;align-items:center;justify-content:center;padding:24px;
+  overflow:hidden;touch-action:none;
+}
+#duo-widget-modal.open{display:flex;}
+#duo-widget-modal .dw-shell{
+  width:min(820px,100%);height:min(82vh,820px);background:#0d1121;
+  border:1px solid rgba(42,147,193,0.25);border-radius:14px;
+  display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 24px 80px rgba(0,0,0,0.6);color:#e8eaf6;
+  position:relative;max-width:100vw;max-height:100vh;
+}
+#duo-widget-modal .dw-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.06);
+  background:linear-gradient(180deg,rgba(42,147,193,0.1),transparent);
+}
+#duo-widget-modal .dw-title{font-weight:600;font-size:16px;color:#e8eaf6;display:flex;align-items:center;gap:10px;}
+#duo-widget-modal .dw-title .dw-dots{display:inline-flex;gap:4px;}
+#duo-widget-modal .dw-close{background:transparent;border:none;color:#7a8aaa;font-size:22px;cursor:pointer;line-height:1;padding:4px 10px;border-radius:6px;}
+#duo-widget-modal .dw-close:hover{background:rgba(255,255,255,0.06);color:#e8eaf6;}
+#duo-widget-modal .dw-feed-wrap{flex:1;display:flex;flex-direction:column;background:#0d1121;overflow:hidden;min-width:0;position:relative;}
+#duo-widget-modal .dw-feed{flex:1;overflow-y:auto;padding:18px 20px;display:flex;flex-direction:column;gap:12px;position:relative;}
+#duo-widget-modal .dw-empty{color:#4a5570;font-style:italic;font-size:12px;text-align:center;margin-top:24px;}
+#duo-widget-modal .dw-msg{max-width:78%;display:flex;flex-direction:column;gap:3px;}
+#duo-widget-modal .dw-msg-right{align-self:flex-end;align-items:flex-end;}
+#duo-widget-modal .dw-msg-left{align-self:flex-start;align-items:flex-start;}
+#duo-widget-modal .dw-msg-meta{font-size:10px;color:#7a8aaa;font-weight:500;display:flex;gap:8px;align-items:baseline;}
+#duo-widget-modal .dw-msg-meta .dw-sender{font-weight:700;font-size:11px;letter-spacing:0.2px;}
+#duo-widget-modal .dw-msg-meta .dw-time{color:#7a8aaa;}
+#duo-widget-modal .dw-msg-body{font-size:13px;line-height:1.5;color:#e8eaf6;padding:9px 13px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:10px;word-wrap:break-word;}
+#duo-widget-modal .dw-msg-right .dw-msg-body{background:rgba(255,255,255,0.07);}
+#duo-widget-modal .dw-msg-body code{background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:4px;font-size:12px;}
+#duo-widget-modal .dw-footer{padding:12px 16px;border-top:1px solid rgba(255,255,255,0.06);background:#0a0d1a;}
+#duo-widget-modal .dw-input-row{display:flex;gap:10px;align-items:flex-end;}
+#duo-widget-modal #dw-input{flex:1;background:#111729;border:1px solid rgba(42,147,193,0.25);color:#e8eaf6;border-radius:10px;padding:14px;font-family:inherit;font-size:16px;resize:vertical;min-height:64px;max-height:240px;line-height:1.5;touch-action:manipulation;}
+#duo-widget-modal #dw-input:focus{outline:none;border-color:#2a93c1;box-shadow:0 0 0 3px rgba(42,147,193,0.2);}
+#duo-widget-modal #dw-input.drag-over{border-color:#f1420b;box-shadow:0 0 0 3px rgba(241,66,11,0.25);background:#1a2140;}
+#duo-widget-modal #dw-send{background:linear-gradient(135deg,#2a93c1,#1a7fa8);color:#fff;border:none;padding:12px 22px;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px;white-space:nowrap;}
+#duo-widget-modal #dw-send:hover{filter:brightness(1.1);}
+#duo-widget-modal .dw-status-row{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:11px;color:#7a8aaa;}
+
+/* Search */
+#duo-widget-modal .dw-search-row{display:flex;gap:6px;align-items:center;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.06);background:#0a0d1a;}
+#duo-widget-modal #dw-search{flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#e8eaf6;border-radius:8px;padding:8px 12px;font-family:inherit;font-size:13px;}
+#duo-widget-modal #dw-search:focus{outline:none;border-color:rgba(42,147,193,0.4);background:rgba(255,255,255,0.06);}
+#duo-widget-modal .dw-filter-btn{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);color:rgba(255,255,255,0.5);cursor:pointer;padding:5px 10px;font-size:14px;border-radius:8px;transition:all .15s}
+#duo-widget-modal .dw-filter-btn:hover{background:rgba(255,255,255,0.08);color:#fff;border-color:rgba(42,147,193,0.3)}
+#duo-widget-modal .dw-search-clear{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);color:#7a8aaa;cursor:pointer;padding:6px 12px;font-size:14px;border-radius:8px;}
+#duo-widget-modal .dw-search-clear:hover{color:#e8eaf6;}
+
+/* Message actions */
+#duo-widget-modal .dw-msg-actions{display:flex;gap:6px;margin-top:6px;opacity:0;transition:opacity 0.15s;}
+#duo-widget-modal .dw-msg:hover .dw-msg-actions{opacity:1;}
+#duo-widget-modal .dw-msg-actions button{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:#7a8aaa;font-size:10px;padding:3px 10px;border-radius:6px;cursor:pointer;font-family:inherit;}
+#duo-widget-modal .dw-msg-actions button:hover{color:#e8eaf6;background:rgba(255,255,255,0.1);}
+
+/* Scroll-to-bottom */
+#duo-widget-modal #dw-scroll-bottom{position:absolute;bottom:130px;right:20px;width:48px;height:48px;border-radius:50%;background:rgba(42,147,193,0.95);border:2px solid rgba(255,255,255,0.2);color:#fff;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,0.5);z-index:20;display:none;align-items:center;justify-content:center;}
+#duo-widget-modal #dw-scroll-bottom:hover{background:#2a93c1;transform:translateY(-3px);}
+
+/* Pin, Bookmark, Reactions, Collapse */
+#duo-widget-modal .dw-pinned{border-left:3px solid #eab308;background:rgba(234,179,8,0.03)}
+#duo-widget-modal .dw-pin-badge{font-size:9px;margin-left:4px;color:#eab308;font-weight:600;}
+#duo-widget-modal .dw-reactions{display:flex;gap:4px;margin-top:4px;opacity:0;transition:opacity .15s}
+#duo-widget-modal .dw-msg:hover .dw-reactions{opacity:1}
+#duo-widget-modal .dw-react-btn{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:2px 8px;font-size:12px;cursor:pointer;transition:all .15s;color:rgba(255,255,255,0.5)}
+#duo-widget-modal .dw-react-btn:hover{background:rgba(255,255,255,0.08);color:#fff}
+#duo-widget-modal .dw-react-btn.active{background:rgba(42,147,193,0.15);border-color:rgba(42,147,193,0.3);color:#fff}
+#duo-widget-modal .dw-msg-body.dw-collapsed{max-height:120px;overflow:hidden;position:relative}
+#duo-widget-modal .dw-msg-body.dw-collapsed::after{content:'';position:absolute;bottom:0;left:0;right:0;height:40px;background:linear-gradient(transparent,#0d1121)}
+#duo-widget-modal .dw-expand-btn{background:none;border:none;color:#2a93c1;font-size:11px;cursor:pointer;padding:2px 0;font-family:inherit}
+#duo-widget-modal .dw-expand-btn:hover{text-decoration:underline}
+
+/* Markdown / Code blocks */
+#duo-widget-modal .dw-inline-code{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:1px 6px;font-family:'SF Mono','Monaco','Menlo','Consolas',monospace;font-size:12px;color:#2a93c1;}
+#duo-widget-modal .dw-code-block{background:rgba(4,6,12,0.85);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px 14px;margin:8px 0;overflow-x:auto;font-family:'SF Mono','Monaco','Menlo','Consolas',monospace;font-size:12px;line-height:1.5;}
+#duo-widget-modal .dw-code-block code{background:transparent;border:none;padding:0;color:#e8eaf6;font-size:12px;display:block;white-space:pre;}
+#duo-widget-modal .dw-h1{font-size:17px;font-weight:800;color:#fff;margin:8px 0 4px;}
+#duo-widget-modal .dw-h2{font-size:15px;font-weight:700;color:#fff;margin:6px 0 3px;}
+#duo-widget-modal .dw-h3{font-size:13px;font-weight:700;color:#e8eaf6;margin:4px 0 2px;text-transform:uppercase;letter-spacing:0.05em;}
+#duo-widget-modal .dw-blockquote{border-left:3px solid rgba(42,147,193,0.5);padding:4px 10px;color:rgba(255,255,255,0.7);font-style:italic;margin:4px 0;}
+#duo-widget-modal .dw-li{padding-left:12px;margin:1px 0;color:rgba(255,255,255,0.85);}
+#duo-widget-modal del{opacity:0.65;}
+#duo-widget-modal .dw-msg-body em{font-style:italic;color:rgba(255,255,255,0.9);}
+#duo-widget-modal .dw-msg-body strong{color:#fff;font-weight:700;}
+#duo-widget-modal .dw-msg-img{display:block;max-width:100%;max-height:300px;border-radius:8px;margin-top:8px;cursor:pointer;border:1px solid rgba(255,255,255,0.1);}
+#duo-widget-modal .dw-msg-img:hover{opacity:0.85;}
+#duo-widget-modal .dw-file-link{display:inline-block;margin-top:8px;padding:6px 12px;background:rgba(255,255,255,0.06);border-radius:6px;color:#2a93c1;text-decoration:none;font-size:13px;}
+#duo-widget-modal .dw-file-link:hover{background:rgba(42,147,193,0.15);text-decoration:underline;}
+
+/* Mobile responsive */
+@media (max-width: 900px){
+  #duo-widget-modal{padding:0;align-items:stretch;justify-content:stretch;}
+  #duo-widget-modal .dw-shell{height:100vh;height:100dvh;max-height:100dvh;width:100vw;border-radius:0;border:none;}
+  #duo-widget-modal .dw-header{padding-top:max(14px, env(safe-area-inset-top));padding-left:16px;padding-right:8px;min-height:52px;}
+  #duo-widget-modal .dw-title{font-size:14px;}
+  #duo-widget-modal .dw-close{font-size:28px !important;padding:8px 16px !important;min-width:44px;min-height:44px;background:rgba(255,255,255,0.08) !important;color:#e8eaf6 !important;border-radius:8px !important;}
+  #duo-widget-modal .dw-msg{max-width:92%;}
+  #duo-widget-modal .dw-footer{padding-bottom:max(12px, env(safe-area-inset-bottom));}
+  #duo-widget-modal #dw-input{font-size:16px;}
+}
+</style>
+
+<div id="duo-widget-modal" role="dialog" aria-modal="true" aria-label="Duo Chat">
+  <div class="dw-shell">
+    <div class="dw-header">
+      <div class="dw-title">
+        <span class="dw-dots" id="dw-dots"></span>
+        <span id="dw-title-text">Duo Chat</span>
+      </div>
+      <button class="dw-close" onclick="closeDuoWidget()" aria-label="Close">&times;</button>
+    </div>
+    <div class="dw-search-row">
+      <input type="text" id="dw-search" placeholder="Search messages by @name or keyword..." autocomplete="off">
+      <button class="dw-filter-btn" onclick="window.duoShowPins()" title="Pinned messages">pin</button>
+      <button class="dw-filter-btn" onclick="window.duoShowBookmarks()" title="Bookmarks">saved</button>
+      <button class="dw-search-clear" onclick="window.duoClearSearch()" title="Clear">&times;</button>
+    </div>
+    <div class="dw-feed-wrap">
+      <div class="dw-feed" id="dw-feed-unified"></div>
+    </div>
+    <button id="dw-scroll-bottom" onclick="window.duoScrollBottom()" title="Jump to latest" style="display:none">&darr;</button>
+    <div class="dw-footer">
+      <div class="dw-input-row">
+        <textarea id="dw-input" placeholder="Type a message. Enter to send, Shift+Enter for newline." rows="1"></textarea>
+        <button id="dw-send" onclick="duoSend()">Send</button>
+      </div>
+      <div class="dw-status-row">
+        <span id="dw-status"></span>
+        <span style="font-size:10px;opacity:0.7;">Polling every <span id="dw-poll-interval"></span>s</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Set dynamic values after DOM is ready
+(function(){
+  var titleEl = document.getElementById('dw-title-text');
+  var pollEl = document.getElementById('dw-poll-interval');
+  var cfg = window.DUO_CONFIG || {};
+  var scriptTag = document.currentScript || document.querySelector('script[data-duo-id]');
+  var title = (scriptTag && scriptTag.getAttribute('data-title')) || cfg.title || 'Duo Chat';
+  var pollMs = parseInt((scriptTag && scriptTag.getAttribute('data-poll-ms')) || cfg.poll_ms || '10000', 10);
+  if (titleEl) titleEl.textContent = title;
+  if (pollEl) pollEl.textContent = Math.round(pollMs / 1000);
+})();
+</script>
+<!-- ==================== END DUO CHAT WIDGET ==================== -->

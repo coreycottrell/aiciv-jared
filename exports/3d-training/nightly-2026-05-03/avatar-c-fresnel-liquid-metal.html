@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Variation C — Fresnel-Driven Liquid Metal with Dual-Layer Composition</title>
+<style>
+  html,body{margin:0;height:100%;background:#040406;overflow:hidden;font-family:-apple-system,system-ui,sans-serif;color:#888}
+  #info{position:fixed;top:12px;left:12px;font-size:11px;line-height:1.5;letter-spacing:0.05em;text-transform:uppercase;opacity:0.45;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="info">Variation C · Liquid metal · Fresnel-driven dual layer · Animated normal flow</div>
+<script type="importmap">
+{"imports":{
+  "three":"https://unpkg.com/three@0.158.0/build/three.module.js",
+  "three/addons/":"https://unpkg.com/three@0.158.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const BLUE   = '#2a93c1';
+const ORANGE = '#f1420b';
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#040406');
+const camera = new THREE.PerspectiveCamera(40, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0, 0, 5);
+
+// PMREM environment from RoomEnvironment for usable PBR reflections
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+// Subtle directional fill (PureBrain orange — sets warm bias)
+const orangeLight = new THREE.DirectionalLight(ORANGE, 1.2);
+orangeLight.position.set(-3, 2, 3);
+scene.add(orangeLight);
+
+const blueRim = new THREE.DirectionalLight(BLUE, 1.6);
+blueRim.position.set(3, -1, -2);
+scene.add(blueRim);
+
+scene.add(new THREE.AmbientLight(0x111118, 0.3));
+
+// ----- LAYER 1: Inner liquid-metal core -----
+// MeshPhysicalMaterial with onBeforeCompile vertex displacement (3-octave noise)
+const coreGeo = new THREE.IcosahedronGeometry(1.0, 64);
+const coreMat = new THREE.MeshPhysicalMaterial({
+  color: '#1a1a22',
+  metalness: 1.0,
+  roughness: 0.18,
+  iridescence: 0.95,
+  iridescenceIOR: 1.45,
+  iridescenceThicknessRange: [120, 800],
+  sheen: 0.6,
+  sheenColor: new THREE.Color(BLUE),
+  sheenRoughness: 0.4,
+  clearcoat: 0.6,
+  clearcoatRoughness: 0.05,
+  envMapIntensity: 1.2
+});
+coreMat.userData.uTime = { value: 0 };
+coreMat.onBeforeCompile = (shader) => {
+  shader.uniforms.uTime = coreMat.userData.uTime;
+  shader.vertexShader = `
+    uniform float uTime;
+    // 3D simplex-ish noise (cheap)
+    vec4 mod289_(vec4 x){ return x - floor(x * (1.0/289.0)) * 289.0; }
+    vec4 perm_(vec4 x){ return mod289_(((x * 34.0) + 1.0) * x); }
+    float noise3(vec3 p){
+      vec3 a = floor(p);
+      vec3 d = p - a;
+      d = d * d * (3.0 - 2.0 * d);
+      vec4 b = a.xxyy + vec4(0.0, 1.0, 0.0, 1.0);
+      vec4 k1 = perm_(b.xyxy);
+      vec4 k2 = perm_(k1.xyxy + b.zzww);
+      vec4 c = k2 + a.zzzz;
+      vec4 k3 = perm_(c);
+      vec4 k4 = perm_(c + 1.0);
+      vec4 o1 = fract(k3 * (1.0 / 41.0));
+      vec4 o2 = fract(k4 * (1.0 / 41.0));
+      vec4 o3 = o2 * d.z + o1 * (1.0 - d.z);
+      vec2 o4 = o3.yw * d.x + o3.xz * (1.0 - d.x);
+      return o4.y * d.y + o4.x * (1.0 - d.y);
+    }
+    float fbm3(vec3 p){
+      float v = 0.0; float a = 0.5;
+      for (int i = 0; i < 3; i++){ v += a * noise3(p); p *= 2.0; a *= 0.5; }
+      return v;
+    }
+  ` + shader.vertexShader.replace(
+    '#include <begin_vertex>',
+    `
+      vec3 transformed = vec3(position);
+      float d = fbm3(position * 1.4 + vec3(0.0, uTime * 0.18, uTime * 0.05));
+      transformed += normal * (d - 0.5) * 0.18;
+    `
+  );
+};
+const core = new THREE.Mesh(coreGeo, coreMat);
+scene.add(core);
+
+// ----- LAYER 2: Outer fresnel-driven shell -----
+// Fully transparent except at silhouette where Fresnel multiplies a brand-blue glow
+const shellMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime:        { value: 0 },
+    uFresnelPower:{ value: 3.5 },
+    uColor:       { value: new THREE.Color(BLUE) },
+    uIntensity:   { value: 1.6 }
+  },
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+  vertexShader: /* glsl */ `
+    varying vec3 vN;
+    varying vec3 vV;
+    void main(){
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      vN = normalize(mat3(modelMatrix) * normal);
+      vV = normalize(cameraPosition - wp.xyz);
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform float uTime, uFresnelPower, uIntensity;
+    uniform vec3  uColor;
+    varying vec3 vN, vV;
+    void main(){
+      float fres = pow(1.0 - max(dot(normalize(vN), normalize(vV)), 0.0), uFresnelPower);
+      // Subtle scanline based on world Y for "energy" feel
+      float pulse = 0.85 + 0.15 * sin(uTime * 1.2);
+      vec3 col = uColor * fres * uIntensity * pulse;
+      gl_FragColor = vec4(col, fres);
+    }
+  `
+});
+const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(1.18, 32), shellMat);
+scene.add(shell);
+
+// ----- Postprocessing: dual bloom (tight + atmospheric) -----
+// Pass 1 (tight) catches the metallic specular peaks
+// Pass 2 (atmospheric) gives the silhouette its glow
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const tightBloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.45, 0.25, 0.92);
+composer.addPass(tightBloom);
+const atmoBloom  = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.18, 1.0, 0.6);
+composer.addPass(atmoBloom);
+
+addEventListener('resize', () => {
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+// Cursor-reactive camera nudge
+const target = new THREE.Vector2();
+addEventListener('pointermove', (e) => {
+  target.x = (e.clientX / innerWidth - 0.5) * 0.6;
+  target.y = (e.clientY / innerHeight - 0.5) * 0.4;
+});
+
+const clock = new THREE.Clock();
+function animate(){
+  const t = clock.getElapsedTime();
+
+  coreMat.userData.uTime.value = t;
+  shellMat.uniforms.uTime.value = t;
+
+  core.rotation.y = t * 0.18;
+  core.rotation.x = Math.sin(t * 0.3) * 0.18;
+  shell.rotation.copy(core.rotation);
+  shell.rotation.y = -t * 0.1;
+
+  // Subtle camera parallax toward cursor
+  camera.position.x += (target.x - camera.position.x) * 0.04;
+  camera.position.y += (-target.y - camera.position.y) * 0.04;
+  camera.lookAt(0, 0, 0);
+
+  composer.render();
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
+</body>
+</html>

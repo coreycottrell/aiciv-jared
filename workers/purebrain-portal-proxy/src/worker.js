@@ -212,6 +212,31 @@ export default {
         respHeaders.set('Access-Control-Allow-Origin', '*');
         return new Response(resp.body, { status: resp.status, headers: respHeaders });
       }
+      // Admin clients + invites endpoints → admin-api Worker (D1 purebrain-social shared)
+      // Apr 23 split (commit 8474bc8) added admin-api routes but never wired the proxy.
+      // This routes the six P0 endpoints (PATCH client, invite CRUD) that were 404ing.
+      // CONSTRAINT: throwaway bridge code — Tier 3 Phase 9 deletes this whole admin block.
+      // CTO pre-build approved 2026-05-08: HTTP+token (NOT Service Bindings — admin-api deletion ~2 weeks).
+      if (
+        url.pathname.startsWith('/api/admin/clients') ||
+        url.pathname === '/api/admin/invite' ||
+        url.pathname.startsWith('/api/admin/invites') ||
+        url.pathname === '/api/admin/validate-token'
+      ) {
+        const workerUrl = `https://admin-api.in0v8.workers.dev${url.pathname}${url.search}`;
+        const proxyHeaders = new Headers(request.headers);
+        if (env.ADMIN_TOKEN) {
+          proxyHeaders.set('X-Admin-Token', env.ADMIN_TOKEN);
+        }
+        const resp = await fetch(new Request(workerUrl, {
+          method: request.method,
+          headers: proxyHeaders,
+          body: (request.method !== 'GET' && request.method !== 'HEAD' && request.method !== 'OPTIONS') ? request.body : null,
+        }));
+        const respHeaders = new Headers(resp.headers);
+        respHeaders.set('Access-Control-Allow-Origin', '*');
+        return new Response(resp.body, { status: resp.status, headers: respHeaders });
+      }
       // Admin client endpoints → social-api Worker (D1)
       if (url.pathname.startsWith('/api/admin/')) {
         const workerUrl = `https://social-api.in0v8.workers.dev${url.pathname}${url.search}`;

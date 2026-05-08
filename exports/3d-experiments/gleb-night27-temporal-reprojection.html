@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 27 Ex.2: Temporal Reprojection Glass</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #080a12; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  .info { position: fixed; top: 16px; left: 16px; color: rgba(255,255,255,0.5); font: 12px/1.4 monospace; z-index: 10; pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="info">Night 27 — Temporal Reprojection Glass<br>Depth-aware temporal blend + motion vector rejection + glass transmission boundaries</div>
+<canvas id="c"></canvas>
+<script>
+// Night 27 Exercise 2: Temporal Reprojection for Glass Stability
+// Two-pass rendering: current frame + temporal blend with previous frame.
+// Depth-aware rejection at transmission discontinuities prevents ghosting through glass.
+// Pure WebGL2, no dependencies.
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
+if (!gl) { document.body.innerHTML = '<p style="color:#fff;padding:40px">WebGL2 required</p>'; throw ''; }
+
+let W, H;
+function resize() {
+    const dpr = Math.min(devicePixelRatio, 1.5);
+    W = canvas.width = innerWidth * dpr | 0;
+    H = canvas.height = innerHeight * dpr | 0;
+    gl.viewport(0, 0, W, H);
+    initFBOs();
+}
+
+// Ping-pong FBOs for temporal reprojection
+let fboA, fboB, texA, texB, depthTexA;
+function createFBO() {
+    const fbo = gl.createFramebuffer();
+    const colorTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, colorTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, W, H, 0, gl.RGBA, gl.HALF_FLOAT, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    const depthTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, depthTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, W, H, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colorTex, 0);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depthTex, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    return { fbo, colorTex, depthTex };
+}
+
+function initFBOs() {
+    [fboA, fboB].forEach(f => { if (f) { gl.deleteFramebuffer(f.fbo); gl.deleteTexture(f.colorTex); gl.deleteTexture(f.depthTex); }});
+    fboA = createFBO();
+    fboB = createFBO();
+}
+
+resize();
+addEventListener('resize', resize);
+
+let mx = 0.5, my = 0.5;
+addEventListener('mousemove', e => { mx = e.clientX / innerWidth; my = e.clientY / innerHeight; });
+
+const quadVS = `#version 300 es
+in vec2 p;
+out vec2 uv;
+void main() { uv = p * 0.5 + 0.5; gl_Position = vec4(p, 0, 1); }`;
+
+// Pass 1: Render glass scene with depth output
+const sceneFS = `#version 300 es
+precision highp float;
+in vec2 uv;
+layout(location = 0) out vec4 fragColor;
+uniform float t;
+uniform vec2 mouse;
+uniform vec2 res;
+
+#define PI 3.14159265
+
+vec3 hash3(vec3 p) {
+    p = vec3(dot(p,vec3(127.1,311.7,74.7)), dot(p,vec3(269.5,183.3,246.1)), dot(p,vec3(113.5,271.9,124.6)));
+    return fract(sin(p) * 43758.5453);
+}
+
+float noise3D(vec3 p) {
+    vec3 i = floor(p), f = fract(p);
+    f = f*f*(3.0-2.0*f);
+    return mix(mix(mix(dot(hash3(i),f), dot(hash3(i+vec3(1,0,0)),f-vec3(1,0,0)), f.x),
+                   mix(dot(hash3(i+vec3(0,1,0)),f-vec3(0,1,0)), dot(hash3(i+vec3(1,1,0)),f-vec3(1,1,0)), f.x), f.y),
+               mix(mix(dot(hash3(i+vec3(0,0,1)),f-vec3(0,0,1)), dot(hash3(i+vec3(1,0,1)),f-vec3(1,0,1)), f.x),
+                   mix(dot(hash3(i+vec3(0,1,1)),f-vec3(0,1,1)), dot(hash3(i+vec3(1,1,1)),f-vec3(1,1,1)), f.x), f.y), f.z) * 0.5 + 0.5;
+}
+
+float sdSphere(vec3 p, float r) { return length(p) - r; }
+
+// Thin-film interference
+vec3 thinFilm(float cosTheta, float thickness) {
+    float delta = 2.0 * 1.38 * thickness * cosTheta;
+    return vec3(
+        0.5 + 0.5 * cos(2.0 * PI * delta / 0.650),
+        0.5 + 0.5 * cos(2.0 * PI * delta / 0.532),
+        0.5 + 0.5 * cos(2.0 * PI * delta / 0.473)
+    );
+}
+
+struct Hit { float d; int id; };
+
+Hit scene(vec3 p) {
+    // Three glass orbs in orbit
+    float a1 = t * 0.5, a2 = t * 0.4 + 2.094, a3 = t * 0.35 + 4.189;
+    float r = 1.4;
+    Hit h = Hit(1e9, -1);
+
+    float d1 = sdSphere(p - vec3(sin(a1)*r, sin(t*0.3)*0.3, cos(a1)*r), 0.5);
+    float d2 = sdSphere(p - vec3(sin(a2)*r, sin(t*0.35+1.0)*0.3, cos(a2)*r), 0.45);
+    float d3 = sdSphere(p - vec3(sin(a3)*r, sin(t*0.4+2.0)*0.3, cos(a3)*r), 0.4);
+
+    if (d1 < h.d) { h.d = d1; h.id = 0; }
+    if (d2 < h.d) { h.d = d2; h.id = 1; }
+    if (d3 < h.d) { h.d = d3; h.id = 2; }
+
+    // Ground
+    float ground = p.y + 1.5;
+    if (ground < h.d) { h.d = ground; h.id = 3; }
+
+    return h;
+}
+
+vec3 calcNormal(vec3 p) {
+    vec2 e = vec2(0.001, 0);
+    return normalize(vec3(
+        scene(p+e.xyy).d - scene(p-e.xyy).d,
+        scene(p+e.yxy).d - scene(p-e.yxy).d,
+        scene(p+e.yyx).d - scene(p-e.yyx).d
+    ));
+}
+
+void main() {
+    vec2 p = (gl_FragCoord.xy - res * 0.5) / min(res.x, res.y) * 2.0;
+
+    float camAngle = t * 0.12 + (mouse.x - 0.5) * 1.2;
+    float camY = 1.0 + (mouse.y - 0.5) * 1.5;
+    vec3 ro = vec3(sin(camAngle) * 4.0, camY, cos(camAngle) * 4.0);
+    vec3 target = vec3(0, -0.2, 0);
+    vec3 fwd = normalize(target - ro);
+    vec3 right = normalize(cross(fwd, vec3(0,1,0)));
+    vec3 up = cross(right, fwd);
+    vec3 rd = normalize(fwd + p.x * right + p.y * up);
+
+    vec3 col = mix(vec3(0.02, 0.03, 0.07), vec3(0.03, 0.05, 0.09), uv.y);
+
+    // Raymarch
+    float tRay = 0.0;
+    Hit hit;
+    for (int i = 0; i < 120; i++) {
+        hit = scene(ro + rd * tRay);
+        if (abs(hit.d) < 0.001 || tRay > 20.0) break;
+        tRay += hit.d * 0.8;
+    }
+
+    if (tRay < 20.0 && hit.id >= 0) {
+        vec3 pos = ro + rd * tRay;
+        vec3 nor = calcNormal(pos);
+
+        vec3 lightDir = normalize(vec3(0.5, 0.8, 0.3));
+        float diff = max(dot(nor, lightDir), 0.0);
+        float spec = pow(max(dot(reflect(-lightDir, nor), -rd), 0.0), 64.0);
+        float fresnel = pow(1.0 - abs(dot(nor, -rd)), 4.0);
+
+        if (hit.id < 3) {
+            // Glass orbs
+            vec3 filmCol = thinFilm(dot(nor, -rd), 300.0 + float(hit.id) * 50.0);
+            vec3 glassCol = mix(vec3(0.165, 0.576, 0.757), vec3(0.945, 0.259, 0.043), float(hit.id) * 0.3);
+
+            // Beer-Lambert absorption
+            vec3 absorbed = exp(-glassCol * tRay * 0.3);
+
+            col = filmCol * fresnel * 0.8 + glassCol * diff * 0.3 + vec3(1) * spec * 0.6;
+            col += absorbed * 0.2;
+            col *= 0.6 + fresnel * 0.4;
+        } else {
+            // Ground
+            float caustic = pow(noise3D(vec3(pos.xz * 3.0 + t * 0.1, t * 0.2)) *
+                                noise3D(vec3(pos.xz * 4.5 - t * 0.08, t * 0.15 + 3.0)), 2.0);
+            col = vec3(0.04, 0.05, 0.08) * (diff * 0.5 + 0.3) +
+                  vec3(0.165, 0.576, 0.757) * caustic * 0.6 * exp(-length(pos.xz) * 0.4);
+        }
+    }
+
+    // Store depth in alpha for temporal rejection
+    float depth = tRay / 20.0;
+
+    // ACES tonemap
+    col = (col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14);
+
+    fragColor = vec4(col, depth);
+}`;
+
+// Pass 2: Temporal blend with depth-aware rejection
+const temporalFS = `#version 300 es
+precision highp float;
+in vec2 uv;
+out vec4 fragColor;
+uniform sampler2D currentFrame;
+uniform sampler2D prevFrame;
+uniform float blendFactor;
+
+void main() {
+    vec4 current = texture(currentFrame, uv);
+    vec4 prev = texture(prevFrame, uv);
+
+    // Depth-aware rejection: if depth changed significantly, reject history
+    float depthDiff = abs(current.a - prev.a);
+    float rejection = smoothstep(0.02, 0.08, depthDiff);
+
+    // Near glass edges (transmission boundaries), reduce temporal weight
+    // Detect edges via depth gradient
+    vec2 texel = 1.0 / vec2(textureSize(currentFrame, 0));
+    float dL = texture(currentFrame, uv - vec2(texel.x, 0)).a;
+    float dR = texture(currentFrame, uv + vec2(texel.x, 0)).a;
+    float dU = texture(currentFrame, uv + vec2(0, texel.y)).a;
+    float dD = texture(currentFrame, uv - vec2(0, texel.y)).a;
+    float depthEdge = abs(dL - dR) + abs(dU - dD);
+    float edgeRejection = smoothstep(0.01, 0.05, depthEdge);
+
+    // Final blend: more current frame near edges and depth changes
+    float alpha = blendFactor * (1.0 - max(rejection, edgeRejection));
+
+    vec3 blended = mix(current.rgb, prev.rgb, alpha);
+
+    // Subtle sharpening to counteract temporal blur
+    vec3 cL = texture(currentFrame, uv - vec2(texel.x, 0)).rgb;
+    vec3 cR = texture(currentFrame, uv + vec2(texel.x, 0)).rgb;
+    vec3 cU = texture(currentFrame, uv + vec2(0, texel.y)).rgb;
+    vec3 cD = texture(currentFrame, uv - vec2(0, texel.y)).rgb;
+    vec3 laplacian = current.rgb * 4.0 - cL - cR - cU - cD;
+    blended += laplacian * 0.06 * (1.0 - edgeRejection);
+
+    // Film grain (temporal variation)
+    float grain = (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)) + float(gl_FragCoord.x)) * 43758.5453) - 0.5) * 0.025;
+    blended += grain;
+
+    fragColor = vec4(clamp(blended, 0.0, 1.0), current.a);
+}`;
+
+function compile(vSrc, fSrc) {
+    const p = gl.createProgram();
+    const v = createShader(vSrc, gl.VERTEX_SHADER);
+    const f = createShader(fSrc, gl.FRAGMENT_SHADER);
+    gl.attachShader(p, v); gl.attachShader(p, f);
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p));
+    return p;
+}
+
+function createShader(src, type) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+    return s;
+}
+
+const sceneProg = compile(quadVS, sceneFS);
+const temporalProg = compile(quadVS, temporalFS);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+
+function setupAttribs(prog) {
+    const loc = gl.getAttribLocation(prog, 'p');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+
+const sceneUniforms = {
+    t: gl.getUniformLocation(sceneProg, 't'),
+    mouse: gl.getUniformLocation(sceneProg, 'mouse'),
+    res: gl.getUniformLocation(sceneProg, 'res')
+};
+const temporalUniforms = {
+    currentFrame: gl.getUniformLocation(temporalProg, 'currentFrame'),
+    prevFrame: gl.getUniformLocation(temporalProg, 'prevFrame'),
+    blendFactor: gl.getUniformLocation(temporalProg, 'blendFactor')
+};
+
+let pingPong = 0;
+let start = performance.now();
+let frameCount = 0;
+
+function frame() {
+    const elapsed = (performance.now() - start) * 0.001;
+    const src = pingPong === 0 ? fboA : fboB;
+    const dst = pingPong === 0 ? fboB : fboA;
+
+    // Pass 1: Render scene into dst FBO
+    gl.bindFramebuffer(gl.FRAMEBUFFER, dst.fbo);
+    gl.enable(gl.DEPTH_TEST);
+    gl.useProgram(sceneProg);
+    setupAttribs(sceneProg);
+    gl.uniform1f(sceneUniforms.t, elapsed);
+    gl.uniform2f(sceneUniforms.mouse, mx, my);
+    gl.uniform2f(sceneUniforms.res, W, H);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    // Pass 2: Temporal blend to screen
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.disable(gl.DEPTH_TEST);
+    gl.useProgram(temporalProg);
+    setupAttribs(temporalProg);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, dst.colorTex);
+    gl.uniform1i(temporalUniforms.currentFrame, 0);
+
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, src.colorTex);
+    gl.uniform1i(temporalUniforms.prevFrame, 1);
+
+    // Ramp blend factor from 0 to 0.85 over first 10 frames (avoid initial ghosting)
+    gl.uniform1f(temporalUniforms.blendFactor, Math.min(frameCount / 10, 1) * 0.85);
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    pingPong = 1 - pingPong;
+    frameCount++;
+    requestAnimationFrame(frame);
+}
+frame();
+</script>
+</body>
+</html>

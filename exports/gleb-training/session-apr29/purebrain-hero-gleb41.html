@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PureBrain Hero - Gleb Session 41: SDF Morphing + Generative Color Fields</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #080a12; overflow: hidden; font-family: system-ui, sans-serif; }
+canvas { display: block; width: 100vw; height: 100vh; }
+#info {
+  position: fixed; bottom: 16px; left: 16px; color: rgba(255,255,255,0.35);
+  font: 11px/1.5 monospace; z-index: 10; pointer-events: none;
+}
+#fps {
+  position: fixed; top: 16px; right: 16px; color: rgba(255,255,255,0.25);
+  font: 11px monospace; z-index: 10; pointer-events: none;
+}
+#techniques {
+  position: fixed; top: 16px; left: 16px; color: rgba(255,255,255,0.22);
+  font: 9px/1.8 monospace; z-index: 10; pointer-events: none; max-width: 380px;
+}
+</style>
+</head>
+<body>
+<div id="info">Session 41 | PureBrain Hero | SDF Morphing + Generative Color Fields + God Rays + Particles + Full Post Stack</div>
+<div id="fps">--</div>
+<div id="techniques">
+  [1] SDF Morphing Geometry (raymarched hex/sphere/torus smoothMin blending)<br>
+  [2] Generative Color Fields (noise-driven cosine palette flowing through glass)<br>
+  [3] Per-Channel IOR Chromatic Glass Refraction (from S40)<br>
+  [4] Volumetric God Rays (radial blur, occlusion map, 64 samples)<br>
+  [5] Organic Curl-Noise Particles (3D FBM advection)<br>
+  [6] Spring-Damped Camera Easing (orbit drift + transitions)<br>
+  [7] Full Post Stack (bloom + god rays + chromatic aberration + vignette + grain)
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+// ============================================================
+// BRAND CONSTANTS
+// ============================================================
+const BRAND = {
+  dark: 0x080a12,
+  blue: 0x2a93c1,
+  orange: 0xf1420b,
+  blueVec: new THREE.Color(0x2a93c1),
+  orangeVec: new THREE.Color(0xf1420b),
+};
+
+// ============================================================
+// RENDERER
+// ============================================================
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+// ============================================================
+// SCENE + CAMERA
+// ============================================================
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(BRAND.dark);
+scene.fog = new THREE.FogExp2(BRAND.dark, 0.02);
+
+const camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0.3, 5.0);
+
+// ============================================================
+// CAMERA EASING SYSTEM (from S40)
+// ============================================================
+class CameraEasing {
+  constructor(cam) {
+    this.camera = cam;
+    this.basePos = cam.position.clone();
+    this.lookTarget = new THREE.Vector3(0, -0.05, 0);
+    this.time = 0;
+    this.orbitRadius = 0.18;
+    this.orbitSpeed = 0.1;
+    this.breatheAmp = 0.04;
+    this.breatheSpeed = 0.35;
+    this.transitioning = false;
+    this.transitionStart = 0;
+    this.transitionDur = 3.0;
+    this.fromPos = new THREE.Vector3();
+    this.toPos = new THREE.Vector3();
+  }
+  springEase(t, damping = 0.8) {
+    const w = 2.0 * Math.PI;
+    return 1.0 - Math.exp(-damping * 6.0 * t) * Math.cos(w * t * 0.5);
+  }
+  transitionTo(target, duration = 4.0) {
+    this.transitioning = true;
+    this.transitionStart = this.time;
+    this.transitionDur = duration;
+    this.fromPos.copy(this.camera.position);
+    this.toPos.copy(target);
+  }
+  update(dt) {
+    this.time += dt;
+    if (this.transitioning) {
+      const elapsed = this.time - this.transitionStart;
+      let t = Math.min(elapsed / this.transitionDur, 1.0);
+      t = this.springEase(t, 0.8);
+      this.camera.position.lerpVectors(this.fromPos, this.toPos, t);
+      if (elapsed >= this.transitionDur) {
+        this.transitioning = false;
+        this.basePos.copy(this.toPos);
+      }
+    } else {
+      const orbitX = Math.sin(this.time * this.orbitSpeed) * this.orbitRadius;
+      const orbitY = Math.cos(this.time * this.orbitSpeed * 0.7) * this.orbitRadius * 0.5;
+      const breathe = Math.sin(this.time * this.breatheSpeed) * this.breatheAmp;
+      this.camera.position.x = this.basePos.x + orbitX;
+      this.camera.position.y = this.basePos.y + orbitY;
+      this.camera.position.z = this.basePos.z + breathe;
+    }
+    this.camera.lookAt(this.lookTarget);
+  }
+}
+const cameraEasing = new CameraEasing(camera);
+const cameraPositions = [
+  new THREE.Vector3(0, 0.3, 5.0),
+  new THREE.Vector3(1.0, 0.5, 4.5),
+  new THREE.Vector3(-0.6, -0.1, 4.8),
+  new THREE.Vector3(0.4, 0.7, 3.9),
+  new THREE.Vector3(0, 0.3, 5.0),
+];
+let camPosIdx = 0;
+setInterval(() => {
+  camPosIdx = (camPosIdx + 1) % cameraPositions.length;
+  cameraEasing.transitionTo(cameraPositions[camPosIdx], 4.0);
+}, 9000);
+
+// ============================================================
+// HDRI ENVIRONMENT
+// ============================================================
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+let envMap = null;
+new RGBELoader()
+  .setPath('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/')
+  .load('studio_small_09_1k.hdr', (texture) => {
+    envMap = pmremGenerator.fromEquirectangular(texture).texture;
+    scene.environment = envMap;
+    texture.dispose();
+    pmremGenerator.dispose();
+  });
+
+// ============================================================
+// NEW TECHNIQUE 1: SDF MORPHING GEOMETRY
+// Raymarched fullscreen quad with hex <-> sphere <-> torus morphing
+// Uses smoothMin for organic blending between SDF primitives
+// ============================================================
+const sdfMorphRT = new THREE.WebGLRenderTarget(
+  Math.floor(window.innerWidth * 0.75),
+  Math.floor(window.innerHeight * 0.75),
+  { type: THREE.HalfFloatType }
+);
+
+const sdfMorphVertexShader = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = vec4(position.xy, 0.0, 1.0);
+  }
+`;
+
+const sdfMorphFragmentShader = `
+  precision highp float;
+
+  uniform float time;
+  uniform vec2 resolution;
+  uniform vec3 cameraPos;
+  uniform mat4 invProjectionMatrix;
+  uniform mat4 invViewMatrix;
+  uniform vec3 brandBlue;
+  uniform vec3 brandOrange;
+  uniform float morphProgress; // 0-1 cycles through shapes
+
+  // ---- SDF Primitives (Inigo Quilez) ----
+
+  float sdSphere(vec3 p, float r) {
+    return length(p) - r;
+  }
+
+  float sdBox(vec3 p, vec3 b) {
+    vec3 q = abs(p) - b;
+    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+  }
+
+  float sdHexPrism(vec3 p, vec2 h) {
+    const vec3 k = vec3(-0.8660254, 0.5, 0.57735);
+    p = abs(p);
+    p.xy -= 2.0 * min(dot(k.xy, p.xy), 0.0) * k.xy;
+    vec2 d = vec2(
+      length(p.xy - vec2(clamp(p.x, -k.z * h.x, k.z * h.x), h.x)) * sign(p.y - h.x),
+      p.z - h.y
+    );
+    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+  }
+
+  float sdTorus(vec3 p, vec2 t) {
+    vec2 q = vec2(length(p.xz) - t.x, p.y);
+    return length(q) - t.y;
+  }
+
+  float sdOctahedron(vec3 p, float s) {
+    p = abs(p);
+    float m = p.x + p.y + p.z - s;
+    vec3 q;
+    if (3.0 * p.x < m) q = p.xyz;
+    else if (3.0 * p.y < m) q = p.yzx;
+    else if (3.0 * p.z < m) q = p.zxy;
+    else return m * 0.57735027;
+    float k = clamp(0.5 * (q.z - q.y + s), 0.0, s);
+    return length(vec3(q.x, q.y - s + k, q.z - k));
+  }
+
+  // ---- Smooth Minimum (polynomial, IQ) ----
+  float smin(float a, float b, float k) {
+    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    return mix(b, a, h) - k * h * (1.0 - h);
+  }
+
+  // ---- Rotation matrices ----
+  mat2 rot2D(float a) {
+    float c = cos(a), s = sin(a);
+    return mat2(c, -s, s, c);
+  }
+
+  // ---- Noise for surface detail ----
+  float hash(vec3 p) {
+    p = fract(p * 0.3183099 + 0.1);
+    p *= 17.0;
+    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+  }
+
+  float noise3D(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x),
+                   mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+               mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                   mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+  }
+
+  // ---- NEW TECHNIQUE 2: Generative Color Fields ----
+  // Cosine palette (IQ) driven by noise for flowing color
+  vec3 cosinePalette(float t, vec3 a, vec3 b, vec3 c, vec3 d) {
+    return a + b * cos(6.28318 * (c * t + d));
+  }
+
+  // PureBrain palette: flows between brand blue and brand orange
+  vec3 pureBrainPalette(float t) {
+    // Blue-dominant palette with orange accents
+    vec3 a = vec3(0.15, 0.45, 0.55);   // bias toward blue tones
+    vec3 b = vec3(0.45, 0.35, 0.40);   // amplitude
+    vec3 c = vec3(1.0, 0.8, 0.7);      // frequency
+    vec3 d = vec3(0.0, 0.15, 0.55);    // phase (shifts orange into cycle)
+    return cosinePalette(t, a, b, c, d);
+  }
+
+  // Flowing noise field that drives color sampling
+  float colorFieldNoise(vec3 p, float t) {
+    float n = 0.0;
+    float amp = 1.0;
+    float freq = 1.0;
+    // 4 octaves of FBM with time advection
+    for (int i = 0; i < 4; i++) {
+      n += amp * noise3D(p * freq + vec3(t * 0.15, t * 0.1, t * 0.12));
+      freq *= 2.1;
+      amp *= 0.45;
+    }
+    return n;
+  }
+
+  // ---- Combined SDF Scene ----
+  // Morphs between: hexagonal prism -> sphere -> torus -> octahedron -> hex
+  float sceneSDF(vec3 p) {
+    // Slow rotation
+    p.xz *= rot2D(time * 0.15);
+    p.yz *= rot2D(time * 0.1);
+
+    // Micro-displacement from noise (surface detail)
+    float disp = noise3D(p * 3.5 + time * 0.2) * 0.04;
+
+    // Four shape SDFs
+    float hex = sdHexPrism(p.xzy, vec2(1.0, 0.25));
+    float sphere = sdSphere(p, 0.95);
+    float torus = sdTorus(p, vec2(0.8, 0.3));
+    float octa = sdOctahedron(p, 1.1);
+
+    // Morph cycle: 0->1->2->3->0 (each shape gets ~25% of the cycle)
+    float phase = morphProgress * 4.0;
+    float segment = floor(phase);
+    float t = fract(phase);
+
+    // Smooth easing for morph transition
+    t = t * t * (3.0 - 2.0 * t); // smoothstep
+
+    float d;
+    if (segment < 1.0) {
+      d = mix(hex, sphere, t);
+    } else if (segment < 2.0) {
+      d = mix(sphere, torus, t);
+    } else if (segment < 3.0) {
+      d = mix(torus, octa, t);
+    } else {
+      d = mix(octa, hex, t);
+    }
+
+    // Add micro-displacement
+    d += disp;
+
+    // Secondary orbiting blobs that smoothMin merge with main shape
+    float blob1Angle = time * 0.4;
+    vec3 blob1Pos = vec3(cos(blob1Angle) * 1.4, sin(blob1Angle * 0.7) * 0.5, sin(blob1Angle) * 1.4);
+    float blob1 = sdSphere(p - blob1Pos, 0.22);
+
+    float blob2Angle = time * 0.35 + 2.09;
+    vec3 blob2Pos = vec3(cos(blob2Angle) * 1.5, sin(blob2Angle * 0.8) * 0.4, sin(blob2Angle) * 1.3);
+    float blob2 = sdSphere(p - blob2Pos, 0.18);
+
+    float blob3Angle = time * 0.3 + 4.18;
+    vec3 blob3Pos = vec3(cos(blob3Angle) * 1.3, sin(blob3Angle * 0.6) * 0.6, sin(blob3Angle) * 1.5);
+    float blob3 = sdSphere(p - blob3Pos, 0.15);
+
+    // SmoothMin blending: blobs merge into main shape when close
+    d = smin(d, blob1, 0.5);
+    d = smin(d, blob2, 0.4);
+    d = smin(d, blob3, 0.35);
+
+    return d;
+  }
+
+  // ---- Normal calculation via gradient ----
+  vec3 calcNormal(vec3 p) {
+    const float e = 0.001;
+    return normalize(vec3(
+      sceneSDF(p + vec3(e,0,0)) - sceneSDF(p - vec3(e,0,0)),
+      sceneSDF(p + vec3(0,e,0)) - sceneSDF(p - vec3(0,e,0)),
+      sceneSDF(p + vec3(0,0,e)) - sceneSDF(p - vec3(0,0,e))
+    ));
+  }
+
+  // ---- Soft shadow via SDF ----
+  float softShadow(vec3 ro, vec3 rd, float mint, float maxt, float k) {
+    float res = 1.0;
+    float t = mint;
+    for (int i = 0; i < 24; i++) {
+      float h = sceneSDF(ro + rd * t);
+      res = min(res, k * h / t);
+      t += clamp(h, 0.02, 0.2);
+      if (h < 0.001 || t > maxt) break;
+    }
+    return clamp(res, 0.0, 1.0);
+  }
+
+  // ---- Ambient occlusion via SDF ----
+  float calcAO(vec3 pos, vec3 nor) {
+    float occ = 0.0;
+    float sca = 1.0;
+    for (int i = 0; i < 5; i++) {
+      float h = 0.02 + 0.1 * float(i);
+      float d = sceneSDF(pos + nor * h);
+      occ += (h - d) * sca;
+      sca *= 0.85;
+    }
+    return clamp(1.0 - 1.5 * occ, 0.0, 1.0);
+  }
+
+  void main() {
+    vec2 uv = (gl_FragCoord.xy / resolution) * 2.0 - 1.0;
+    uv.x *= resolution.x / resolution.y;
+
+    // Ray setup
+    vec3 ro = cameraPos;
+    // Reconstruct ray direction from UV
+    vec3 rd = normalize(vec3(uv * tan(radians(38.0) * 0.5), -1.0));
+    // Apply camera rotation (inverse view)
+    rd = (invViewMatrix * vec4(rd, 0.0)).xyz;
+
+    // Raymarching
+    float totalDist = 0.0;
+    float minDist = 1e10;
+    bool hit = false;
+    vec3 hitPos;
+
+    for (int i = 0; i < 96; i++) {
+      vec3 p = ro + rd * totalDist;
+      float d = sceneSDF(p);
+      minDist = min(minDist, d);
+      if (d < 0.001) {
+        hit = true;
+        hitPos = p;
+        break;
+      }
+      totalDist += d;
+      if (totalDist > 20.0) break;
+    }
+
+    if (hit) {
+      vec3 nor = calcNormal(hitPos);
+
+      // ---- GENERATIVE COLOR FIELD ----
+      // Drive color palette with flowing noise field
+      float colorNoise = colorFieldNoise(hitPos, time);
+      // Remap noise to 0-1 range for palette sampling
+      float paletteT = colorNoise * 0.5 + 0.5;
+      // Add view-dependent iridescence shift
+      float viewAngle = dot(nor, normalize(cameraPos - hitPos));
+      paletteT += viewAngle * 0.3;
+      // Add time shift for constant flow
+      paletteT += time * 0.05;
+
+      vec3 baseColor = pureBrainPalette(paletteT);
+
+      // Ensure brand colors dominate: boost blue/orange based on region
+      float blueStrength = smoothstep(0.3, 0.7, colorNoise);
+      baseColor = mix(baseColor, brandBlue * 1.3, blueStrength * 0.4);
+      baseColor = mix(baseColor, brandOrange * 1.2, (1.0 - blueStrength) * 0.15);
+
+      // ---- Lighting ----
+      vec3 lightDir1 = normalize(vec3(0.6, 0.8, 0.4));
+      vec3 lightDir2 = normalize(vec3(-0.5, 0.3, 0.7));
+
+      float diff1 = max(dot(nor, lightDir1), 0.0);
+      float diff2 = max(dot(nor, lightDir2), 0.0);
+
+      // Specular (Blinn-Phong)
+      vec3 halfDir1 = normalize(lightDir1 + normalize(cameraPos - hitPos));
+      float spec1 = pow(max(dot(nor, halfDir1), 0.0), 64.0);
+      vec3 halfDir2 = normalize(lightDir2 + normalize(cameraPos - hitPos));
+      float spec2 = pow(max(dot(nor, halfDir2), 0.0), 48.0);
+
+      // Fresnel rim
+      float fresnel = pow(1.0 - max(dot(nor, normalize(cameraPos - hitPos)), 0.0), 4.0);
+
+      // Soft shadow from primary light
+      float shadow = softShadow(hitPos + nor * 0.01, lightDir1, 0.02, 5.0, 16.0);
+
+      // AO
+      float ao = calcAO(hitPos, nor);
+
+      // Combine lighting
+      vec3 color = baseColor * 0.08; // ambient
+      color += baseColor * diff1 * 0.7 * shadow * ao;
+      color += baseColor * diff2 * 0.3 * ao;
+
+      // Specular highlights (white-ish with slight brand tint)
+      color += vec3(0.9, 0.95, 1.0) * spec1 * 0.8 * shadow;
+      color += brandBlue * spec2 * 0.4;
+
+      // Fresnel rim glow (generative color field)
+      vec3 rimColor = pureBrainPalette(paletteT + 0.3) * 1.5;
+      color += rimColor * fresnel * 0.6;
+
+      // Internal glow (subsurface scatter approximation)
+      float scatter = pow(max(dot(-normalize(cameraPos - hitPos), nor), 0.0), 3.0);
+      color += brandBlue * scatter * 0.2;
+
+      // Glass-like transmission hint (darken interior)
+      float transmission = exp(-totalDist * 0.3);
+      color *= mix(0.6, 1.0, transmission);
+
+      gl_FragColor = vec4(color, 1.0);
+    } else {
+      // Near-miss glow (soft aura around SDF object)
+      float glow = exp(-minDist * 3.0) * 0.35;
+      vec3 glowColor = mix(brandBlue, brandOrange, sin(time * 0.5) * 0.5 + 0.5);
+      gl_FragColor = vec4(glowColor * glow, glow);
+    }
+  }
+`;
+
+// SDF Morph Mesh (fullscreen quad rendered to RT)
+const sdfMorphScene = new THREE.Scene();
+const sdfMorphCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+const sdfMorphMaterial = new THREE.ShaderMaterial({
+  vertexShader: sdfMorphVertexShader,
+  fragmentShader: sdfMorphFragmentShader,
+  uniforms: {
+    time: { value: 0 },
+    resolution: { value: new THREE.Vector2(sdfMorphRT.width, sdfMorphRT.height) },
+    cameraPos: { value: new THREE.Vector3(0, 0, 4.5) },
+    invProjectionMatrix: { value: new THREE.Matrix4() },
+    invViewMatrix: { value: new THREE.Matrix4() },
+    brandBlue: { value: new THREE.Vector3(0.165, 0.576, 0.757) },
+    brandOrange: { value: new THREE.Vector3(0.945, 0.259, 0.043) },
+    morphProgress: { value: 0 },
+  },
+  transparent: true,
+});
+
+const sdfQuad = new THREE.Mesh(
+  new THREE.PlaneGeometry(2, 2),
+  sdfMorphMaterial
+);
+sdfMorphScene.add(sdfQuad);
+
+// Display SDF on a screen-space plane in main scene
+const sdfDisplayMaterial = new THREE.ShaderMaterial({
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D sdfTexture;
+    varying vec2 vUv;
+    void main() {
+      vec4 sdf = texture2D(sdfTexture, vUv);
+      if (sdf.a < 0.01) discard;
+      gl_FragColor = sdf;
+    }
+  `,
+  uniforms: {
+    sdfTexture: { value: sdfMorphRT.texture },
+  },
+  transparent: true,
+  depthWrite: true,
+  side: THREE.DoubleSide,
+});
+
+// SDF display as 3D-positioned plane in scene
+const sdfDisplayPlane = new THREE.Mesh(
+  new THREE.PlaneGeometry(3.2, 2.4),
+  sdfDisplayMaterial
+);
+sdfDisplayPlane.position.set(0, 0, 0);
+scene.add(sdfDisplayPlane);
+
+// ============================================================
+// GLASS HEX OVERLAY (chromatic refraction from S40, now with
+// generative color field integration)
+// ============================================================
+const hexGlassVertexShader = `
+  varying vec3 vWorldPos;
+  varying vec3 vWorldNormal;
+  varying vec3 vViewDir;
+  varying vec2 vUv;
+  void main() {
+    vec4 worldPos = modelMatrix * vec4(position, 1.0);
+    vWorldPos = worldPos.xyz;
+    vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+    vViewDir = normalize(cameraPosition - worldPos.xyz);
+    vUv = uv;
+    gl_Position = projectionMatrix * viewMatrix * worldPos;
+  }
+`;
+
+const hexGlassFragmentShader = `
+  uniform float time;
+  uniform samplerCube envMapCube;
+  uniform vec3 brandBlue;
+  uniform vec3 brandOrange;
+  uniform float iorBase;
+  uniform float chromaticSpread;
+
+  varying vec3 vWorldPos;
+  varying vec3 vWorldNormal;
+  varying vec3 vViewDir;
+  varying vec2 vUv;
+
+  // Cosine palette for generative color
+  vec3 cosinePalette(float t, vec3 a, vec3 b, vec3 c, vec3 d) {
+    return a + b * cos(6.28318 * (c * t + d));
+  }
+
+  vec3 pureBrainPalette(float t) {
+    vec3 a = vec3(0.15, 0.45, 0.55);
+    vec3 b = vec3(0.45, 0.35, 0.40);
+    vec3 c = vec3(1.0, 0.8, 0.7);
+    vec3 d = vec3(0.0, 0.15, 0.55);
+    return cosinePalette(t, a, b, c, d);
+  }
+
+  // Simple noise for color field
+  float hash2D(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+  float noise2D(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash2D(i), hash2D(i + vec2(1,0)), f.x),
+               mix(hash2D(i + vec2(0,1)), hash2D(i + vec2(1,1)), f.x), f.y);
+  }
+
+  float fresnel(vec3 viewDir, vec3 normal, float f0) {
+    float cosTheta = max(dot(viewDir, normal), 0.0);
+    return f0 + (1.0 - f0) * pow(1.0 - cosTheta, 5.0);
+  }
+
+  vec3 chromaticRefraction(vec3 viewDir, vec3 normal, float ior, float spread) {
+    float iorR = ior - spread;
+    float iorG = ior;
+    float iorB = ior + spread;
+    vec3 refractR = refract(-viewDir, normal, 1.0 / iorR);
+    vec3 refractG = refract(-viewDir, normal, 1.0 / iorG);
+    vec3 refractB = refract(-viewDir, normal, 1.0 / iorB);
+    float r = textureCube(envMapCube, refractR).r;
+    float g = textureCube(envMapCube, refractG).g;
+    float b = textureCube(envMapCube, refractB).b;
+    return vec3(r, g, b);
+  }
+
+  void main() {
+    vec3 N = normalize(vWorldNormal);
+    vec3 V = normalize(vViewDir);
+
+    // Chromatic refraction
+    vec3 refracted = chromaticRefraction(V, N, iorBase, chromaticSpread);
+
+    // Generative color field: flowing noise through glass
+    float fieldNoise = noise2D(vWorldPos.xy * 2.0 + time * 0.15);
+    fieldNoise += noise2D(vWorldPos.yz * 3.0 - time * 0.1) * 0.5;
+    fieldNoise += noise2D(vWorldPos.xz * 4.0 + time * 0.08) * 0.25;
+    float paletteT = fieldNoise * 0.4 + time * 0.03;
+
+    vec3 generativeColor = pureBrainPalette(paletteT);
+
+    // Tint refraction with generative color field
+    vec3 tintedRefraction = refracted * mix(vec3(1.0), generativeColor * 1.5, 0.35);
+
+    // Beer's law absorption with flowing color
+    vec3 absorbColor = mix(brandBlue, generativeColor, 0.4);
+    float thickness = 0.8 + 0.2 * sin(vUv.x * 6.28 + time);
+    tintedRefraction *= exp(-absorbColor * thickness * 0.4);
+
+    // Reflection
+    vec3 reflectDir = reflect(-V, N);
+    vec3 reflected = textureCube(envMapCube, reflectDir).rgb;
+
+    float f = fresnel(V, N, 0.04);
+
+    // Rim glow with generative color
+    float rim = 1.0 - max(dot(V, N), 0.0);
+    vec3 rimColor = mix(brandBlue, generativeColor, 0.5) * pow(rim, 3.0) * 0.7;
+
+    vec3 color = mix(tintedRefraction, reflected, f * 0.6) + rimColor;
+
+    // Subsurface scatter
+    float scatter = pow(max(dot(-V, N), 0.0), 4.0) * 0.12;
+    color += generativeColor * scatter;
+
+    gl_FragColor = vec4(color, 0.88);
+  }
+`;
+
+// Hex geometry
+function createHexGeometry(radius, depth) {
+  const shape = new THREE.Shape();
+  for (let i = 0; i < 6; i++) {
+    const angle = (i / 6) * Math.PI * 2 - Math.PI / 2;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
+  }
+  shape.closePath();
+  const geom = new THREE.ExtrudeGeometry(shape, {
+    depth, bevelEnabled: true, bevelThickness: 0.02,
+    bevelSize: 0.02, bevelOffset: 0, bevelSegments: 4
+  });
+  geom.center();
+  geom.computeVertexNormals();
+  return geom;
+}
+
+// Orbiting glass hexes (smaller, around the SDF)
+const smallHexes = [];
+for (let i = 0; i < 6; i++) {
+  const geom = createHexGeometry(0.2 + Math.random() * 0.12, 0.08);
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: hexGlassVertexShader,
+    fragmentShader: hexGlassFragmentShader,
+    uniforms: {
+      time: { value: 0 },
+      envMapCube: { value: null },
+      brandBlue: { value: new THREE.Vector3(0.165, 0.576, 0.757) },
+      brandOrange: { value: new THREE.Vector3(0.945, 0.259, 0.043) },
+      iorBase: { value: 1.45 + Math.random() * 0.1 },
+      chromaticSpread: { value: 0.04 + Math.random() * 0.04 },
+    },
+    transparent: true,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geom, mat);
+  mesh.userData = {
+    orbitAngle: (i / 6) * Math.PI * 2,
+    orbitRadius: 2.0 + Math.random() * 0.4,
+    orbitSpeed: 0.12 + Math.random() * 0.08,
+    orbitY: (Math.random() - 0.5) * 0.8,
+    rotSpeed: new THREE.Vector3(
+      (Math.random() - 0.5) * 0.4,
+      (Math.random() - 0.5) * 0.4,
+      (Math.random() - 0.5) * 0.3
+    ),
+  };
+  scene.add(mesh);
+  smallHexes.push(mesh);
+}
+
+// ============================================================
+// ORGANIC PARTICLE SYSTEM (from S40: curl-noise advection)
+// ============================================================
+const PARTICLE_COUNT = 2000;
+const particlePositions = new Float32Array(PARTICLE_COUNT * 3);
+const particleSizes = new Float32Array(PARTICLE_COUNT);
+const particleAlphas = new Float32Array(PARTICLE_COUNT);
+const particleColors = new Float32Array(PARTICLE_COUNT * 3);
+const particleVelocities = new Float32Array(PARTICLE_COUNT * 3);
+const particleLifetimes = new Float32Array(PARTICLE_COUNT);
+const particleMaxLifetimes = new Float32Array(PARTICLE_COUNT);
+
+function resetParticle(i) {
+  const angle = Math.random() * Math.PI * 2;
+  const radius = 1.0 + Math.random() * 0.8;
+  const y = (Math.random() - 0.5) * 1.5;
+  particlePositions[i * 3] = Math.cos(angle) * radius;
+  particlePositions[i * 3 + 1] = y;
+  particlePositions[i * 3 + 2] = Math.sin(angle) * radius + (Math.random() - 0.5) * 0.4;
+  particleSizes[i] = 1.5 + Math.random() * 3.0;
+  particleAlphas[i] = 0.0;
+  const isOrange = Math.random() < 0.2;
+  if (isOrange) {
+    particleColors[i * 3] = 0.945;
+    particleColors[i * 3 + 1] = 0.259 + Math.random() * 0.1;
+    particleColors[i * 3 + 2] = 0.043;
+  } else {
+    particleColors[i * 3] = 0.165 + Math.random() * 0.1;
+    particleColors[i * 3 + 1] = 0.576 + Math.random() * 0.1;
+    particleColors[i * 3 + 2] = 0.757 + Math.random() * 0.1;
+  }
+  particleVelocities[i * 3] = 0;
+  particleVelocities[i * 3 + 1] = 0;
+  particleVelocities[i * 3 + 2] = 0;
+  particleLifetimes[i] = 0;
+  particleMaxLifetimes[i] = 3.0 + Math.random() * 5.0;
+}
+
+for (let i = 0; i < PARTICLE_COUNT; i++) {
+  resetParticle(i);
+  particleLifetimes[i] = Math.random() * particleMaxLifetimes[i];
+}
+
+const particleGeometry = new THREE.BufferGeometry();
+particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+particleGeometry.setAttribute('size', new THREE.BufferAttribute(particleSizes, 1));
+particleGeometry.setAttribute('alpha', new THREE.BufferAttribute(particleAlphas, 1));
+particleGeometry.setAttribute('customColor', new THREE.BufferAttribute(particleColors, 3));
+
+const particleMaterial = new THREE.ShaderMaterial({
+  vertexShader: `
+    attribute float size;
+    attribute float alpha;
+    attribute vec3 customColor;
+    varying float vAlpha;
+    varying vec3 vColor;
+    void main() {
+      vAlpha = alpha;
+      vColor = customColor;
+      vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = size * (300.0 / -mvPos.z);
+      gl_Position = projectionMatrix * mvPos;
+    }
+  `,
+  fragmentShader: `
+    varying float vAlpha;
+    varying vec3 vColor;
+    void main() {
+      vec2 center = gl_PointCoord - 0.5;
+      float dist = length(center);
+      if (dist > 0.5) discard;
+      float strength = 1.0 - smoothstep(0.0, 0.5, dist);
+      strength = pow(strength, 1.5);
+      gl_FragColor = vec4(vColor, strength * vAlpha);
+    }
+  `,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+
+const particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+scene.add(particleSystem);
+
+function noise3D_cpu(x, y, z) {
+  return Math.sin(x * 1.3 + y * 0.7) * Math.cos(y * 1.1 + z * 0.9) *
+         Math.sin(z * 0.8 + x * 1.2) * 0.5 +
+         Math.sin(x * 2.7 + z * 1.4) * Math.cos(y * 2.3 + x * 0.6) * 0.25 +
+         Math.sin(x * 5.1 + y * 3.7 + z * 4.2) * 0.125;
+}
+
+function curlNoise(x, y, z, time) {
+  const eps = 0.01;
+  const t = time * 0.3;
+  const dnoise_dy = (noise3D_cpu(x, y + eps, z + t) - noise3D_cpu(x, y - eps, z + t)) / (2.0 * eps);
+  const dnoise_dz = (noise3D_cpu(x, y, z + eps + t) - noise3D_cpu(x, y, z - eps + t)) / (2.0 * eps);
+  const dnoise_dx = (noise3D_cpu(x + eps, y, z + t) - noise3D_cpu(x - eps, y, z + t)) / (2.0 * eps);
+  return {
+    x: dnoise_dy - dnoise_dz,
+    y: dnoise_dz - dnoise_dx,
+    z: dnoise_dx - dnoise_dy,
+  };
+}
+
+function updateParticles(dt, time) {
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    particleLifetimes[i] += dt;
+    if (particleLifetimes[i] >= particleMaxLifetimes[i]) {
+      resetParticle(i);
+      continue;
+    }
+    const lifeRatio = particleLifetimes[i] / particleMaxLifetimes[i];
+    let alpha;
+    if (lifeRatio < 0.1) alpha = lifeRatio / 0.1;
+    else if (lifeRatio > 0.8) alpha = (1.0 - lifeRatio) / 0.2;
+    else alpha = 1.0;
+    particleAlphas[i] = alpha * 0.55;
+
+    const px = particlePositions[i * 3];
+    const py = particlePositions[i * 3 + 1];
+    const pz = particlePositions[i * 3 + 2];
+    const curl = curlNoise(px * 0.8, py * 0.8, pz * 0.8, time);
+
+    particleVelocities[i * 3] = curl.x * 0.15 - px * 0.015;
+    particleVelocities[i * 3 + 1] = curl.y * 0.15 + 0.012;
+    particleVelocities[i * 3 + 2] = curl.z * 0.15 - pz * 0.015;
+
+    particlePositions[i * 3] += particleVelocities[i * 3] * dt;
+    particlePositions[i * 3 + 1] += particleVelocities[i * 3 + 1] * dt;
+    particlePositions[i * 3 + 2] += particleVelocities[i * 3 + 2] * dt;
+
+    particleSizes[i] = (1.5 + Math.random() * 0.5) * (1.0 + Math.sin(time * 2.0 + i) * 0.2);
+  }
+  particleGeometry.attributes.position.needsUpdate = true;
+  particleGeometry.attributes.size.needsUpdate = true;
+  particleGeometry.attributes.alpha.needsUpdate = true;
+}
+
+// ============================================================
+// GOD RAYS (from S40: volumetric light via radial blur)
+// ============================================================
+const godRayOccRT = new THREE.WebGLRenderTarget(
+  Math.floor(window.innerWidth * 0.5),
+  Math.floor(window.innerHeight * 0.5)
+);
+const godRayOccScene = new THREE.Scene();
+godRayOccScene.background = new THREE.Color(0x000000);
+
+const godRayLightPos = new THREE.Vector3(0.6, 0.9, -1.5);
+
+// Light orb in main scene
+const lightOrb = new THREE.Mesh(
+  new THREE.SphereGeometry(0.2, 32, 32),
+  new THREE.MeshBasicMaterial({ color: 0xffffff })
+);
+lightOrb.position.copy(godRayLightPos);
+scene.add(lightOrb);
+
+// Occluder in occlusion scene
+const occluderGeom = new THREE.SphereGeometry(1.3, 64, 64);
+const occluder = new THREE.Mesh(occluderGeom, new THREE.MeshBasicMaterial({ color: 0x000000 }));
+godRayOccScene.add(occluder);
+
+const occLight = new THREE.Mesh(
+  new THREE.SphereGeometry(0.25, 32, 32),
+  new THREE.MeshBasicMaterial({ color: 0xffffff })
+);
+occLight.position.copy(godRayLightPos);
+godRayOccScene.add(occLight);
+
+const godRayShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    tOcclusion: { value: godRayOccRT.texture },
+    lightPositionOnScreen: { value: new THREE.Vector2(0.5, 0.6) },
+    exposure: { value: 0.2 },
+    decay: { value: 0.96 },
+    density: { value: 0.85 },
+    weight: { value: 0.38 },
+    godRayColor: { value: new THREE.Vector3(0.165, 0.576, 0.757) },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform sampler2D tOcclusion;
+    uniform vec2 lightPositionOnScreen;
+    uniform float exposure;
+    uniform float decay;
+    uniform float density;
+    uniform float weight;
+    uniform vec3 godRayColor;
+    varying vec2 vUv;
+
+    void main() {
+      vec4 sceneColor = texture2D(tDiffuse, vUv);
+      vec2 deltaUV = (vUv - lightPositionOnScreen) * (1.0 / 64.0) * density;
+      vec2 sampleUV = vUv;
+      float illuminationDecay = 1.0;
+      vec3 godRays = vec3(0.0);
+      for (int i = 0; i < 64; i++) {
+        sampleUV -= deltaUV;
+        vec3 occSample = texture2D(tOcclusion, sampleUV).rgb;
+        occSample *= illuminationDecay * weight;
+        godRays += occSample;
+        illuminationDecay *= decay;
+      }
+      godRays *= exposure * godRayColor * 2.5;
+      gl_FragColor = vec4(sceneColor.rgb + godRays, sceneColor.a);
+    }
+  `,
+};
+
+// ============================================================
+// CHROMATIC ABERRATION POST SHADER
+// ============================================================
+const chromaticAberrationShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    strength: { value: 0.003 },
+    resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float strength;
+    uniform vec2 resolution;
+    varying vec2 vUv;
+    void main() {
+      vec2 center = vUv - 0.5;
+      float dist = length(center);
+      vec2 offset = center * dist * strength;
+      float r = texture2D(tDiffuse, vUv + offset).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vUv - offset).b;
+      gl_FragColor = vec4(r, g, b, 1.0);
+    }
+  `,
+};
+
+// ============================================================
+// VIGNETTE + GRAIN + COLOR GRADING
+// ============================================================
+const vignetteGrainShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    time: { value: 0 },
+    vignetteIntensity: { value: 0.45 },
+    vignetteRadius: { value: 0.72 },
+    grainIntensity: { value: 0.035 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float time;
+    uniform float vignetteIntensity;
+    uniform float vignetteRadius;
+    uniform float grainIntensity;
+    varying vec2 vUv;
+
+    float random(vec2 co) {
+      return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+    }
+
+    void main() {
+      vec4 color = texture2D(tDiffuse, vUv);
+
+      // Vignette
+      vec2 center = vUv - 0.5;
+      float dist = length(center);
+      float vignette = 1.0 - smoothstep(vignetteRadius, vignetteRadius + 0.4, dist) * vignetteIntensity;
+      color.rgb *= vignette;
+
+      // Film grain
+      float g = (random(vUv + time * 7.3) * 2.0 - 1.0) * grainIntensity;
+      color.rgb += vec3(g);
+
+      // Color grading: teal shadows, warm highlights
+      float lum = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
+      vec3 shadows = vec3(0.05, 0.08, 0.12);
+      vec3 highlights = vec3(1.02, 0.99, 0.95);
+      color.rgb = mix(color.rgb * shadows * 2.0 * 0.15, color.rgb * highlights, smoothstep(0.0, 0.5, lum));
+
+      gl_FragColor = color;
+    }
+  `,
+};
+
+// ============================================================
+// POST-PROCESSING COMPOSER
+// ============================================================
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.6,   // intensity
+  0.4,   // radius
+  0.88   // threshold
+);
+composer.addPass(bloomPass);
+
+const godRayPass = new ShaderPass(godRayShader);
+composer.addPass(godRayPass);
+
+const chromaPass = new ShaderPass(chromaticAberrationShader);
+composer.addPass(chromaPass);
+
+const vignettePass = new ShaderPass(vignetteGrainShader);
+composer.addPass(vignettePass);
+
+// ============================================================
+// LIGHTING
+// ============================================================
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+dirLight.position.set(2, 3, 4);
+dirLight.castShadow = true;
+scene.add(dirLight);
+
+const fillLight = new THREE.DirectionalLight(BRAND.blue, 0.4);
+fillLight.position.set(-3, 1, 2);
+scene.add(fillLight);
+
+const ambientLight = new THREE.AmbientLight(0x111122, 0.3);
+scene.add(ambientLight);
+
+// ============================================================
+// ANIMATION LOOP
+// ============================================================
+const clock = new THREE.Clock();
+let frameCount = 0;
+let lastFpsUpdate = 0;
+const fpsEl = document.getElementById('fps');
+
+// Morph cycle: one full cycle every 20 seconds
+const MORPH_CYCLE_DURATION = 20.0;
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const elapsed = clock.getElapsedTime();
+
+  // FPS counter
+  frameCount++;
+  if (elapsed - lastFpsUpdate > 0.5) {
+    fpsEl.textContent = Math.round(frameCount / (elapsed - lastFpsUpdate)) + ' fps';
+    frameCount = 0;
+    lastFpsUpdate = elapsed;
+  }
+
+  // Camera easing
+  cameraEasing.update(dt);
+
+  // Update morph progress (smooth cycle)
+  const morphProgress = (elapsed % MORPH_CYCLE_DURATION) / MORPH_CYCLE_DURATION;
+
+  // Update SDF morph uniforms
+  sdfMorphMaterial.uniforms.time.value = elapsed;
+  sdfMorphMaterial.uniforms.morphProgress.value = morphProgress;
+  sdfMorphMaterial.uniforms.cameraPos.value.copy(camera.position);
+  sdfMorphMaterial.uniforms.invViewMatrix.value.copy(camera.matrixWorld);
+
+  // Render SDF morph to RT
+  renderer.setRenderTarget(sdfMorphRT);
+  renderer.render(sdfMorphScene, sdfMorphCamera);
+  renderer.setRenderTarget(null);
+
+  // Update orbiting glass hexes
+  for (const hex of smallHexes) {
+    const ud = hex.userData;
+    ud.orbitAngle += ud.orbitSpeed * dt;
+    hex.position.x = Math.cos(ud.orbitAngle) * ud.orbitRadius;
+    hex.position.z = Math.sin(ud.orbitAngle) * ud.orbitRadius;
+    hex.position.y = ud.orbitY + Math.sin(elapsed * 0.5 + ud.orbitAngle) * 0.15;
+    hex.rotation.x += ud.rotSpeed.x * dt;
+    hex.rotation.y += ud.rotSpeed.y * dt;
+    hex.rotation.z += ud.rotSpeed.z * dt;
+    hex.material.uniforms.time.value = elapsed;
+    if (envMap && !hex.material.uniforms.envMapCube.value) {
+      hex.material.uniforms.envMapCube.value = envMap;
+    }
+  }
+
+  // Update particles
+  updateParticles(dt, elapsed);
+
+  // Update god ray occlusion
+  const lightScreenPos = godRayLightPos.clone().project(camera);
+  godRayPass.uniforms.lightPositionOnScreen.value.set(
+    lightScreenPos.x * 0.5 + 0.5,
+    lightScreenPos.y * 0.5 + 0.5
+  );
+
+  renderer.setRenderTarget(godRayOccRT);
+  renderer.render(godRayOccScene, camera);
+  renderer.setRenderTarget(null);
+
+  // Update time uniforms
+  vignettePass.uniforms.time.value = elapsed;
+
+  // Final render through composer
+  composer.render();
+}
+
+animate();
+
+// ============================================================
+// RESIZE HANDLER
+// ============================================================
+window.addEventListener('resize', () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+
+  sdfMorphRT.setSize(Math.floor(w * 0.75), Math.floor(h * 0.75));
+  sdfMorphMaterial.uniforms.resolution.value.set(sdfMorphRT.width, sdfMorphRT.height);
+
+  godRayOccRT.setSize(Math.floor(w * 0.5), Math.floor(h * 0.5));
+
+  chromaPass.uniforms.resolution.value.set(w, h);
+});
+
+</script>
+</body>
+</html>
