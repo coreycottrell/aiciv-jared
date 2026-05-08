@@ -10,11 +10,14 @@
  *   GET    /health
  *   GET    /api/check-name                 — public: check AI name uniqueness
  *   GET    /api/admin/clients              — list all clients with stats
- *   PATCH  /api/admin/clients/by-email/:e  — update client by email (internal, no auth)
+ *   POST   /api/admin/clients/update       — Save modal (leader only, MODAL_ALLOWLIST)
+ *   PATCH  /api/admin/clients/by-email/:e  — update client by email (leader only)
  *   PATCH  /api/admin/clients/:id          — update client by ID (leader only)
  *   POST   /api/admin/invite               — create team invite (leader only)
+ *   POST   /api/admin/invite/revoke        — revoke invite (leader only, hard delete)
  *   GET    /api/admin/invites              — list all invites
  *   DELETE /api/admin/invites/:id          — delete invite (leader only)
+ *   GET    /api/admin/validate-token       — public: validate invite token
  *
  * Meeting endpoints moved to meetings-api Worker (2026-04-23).
  *
@@ -44,6 +47,49 @@ function generateToken() {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
+}
+
+// ---------- Mutation Allowlists ----------
+// MODAL_ALLOWLIST = fields the admin Save modal may mutate (UI-driven, narrowed).
+// Excludes payment-derived columns (payment_status, monthly_amount), referral_code,
+// password_hash, total_paid, hidden, uuid, id, created_at — those are owned elsewhere.
+const CLIENT_MODAL_ALLOWLIST = [
+  "name", "goes_by", "email", "ai_name", "company",
+  "role", "goal", "tier", "status", "notes",
+];
+// INTERNAL_ALLOWLIST = broader set used by existing PATCH-by-id route (hide toggle etc).
+const CLIENT_INTERNAL_ALLOWLIST = [
+  "ai_name", "name", "company", "tier", "status", "payment_status",
+  "monthly_amount", "goes_by", "notes", "hidden", "email", "role", "goal",
+];
+
+// Shared helper — interpolates ONLY allowlist KEYS into SET clause, never values.
+// All values bound parameterized via prepare(...).bind(...).
+async function updateClientFields(env, identifier, by, body, allowlist) {
+  const updates = [];
+  const params = [];
+  for (const key of allowlist) {
+    if (body[key] !== undefined) {
+      updates.push(key + " = ?");
+      params.push(body[key]);
+    }
+  }
+  if (updates.length === 0) return err(400, "no valid fields");
+  params.push(by === "email" ? String(identifier).toLowerCase() : identifier);
+  const where = by === "email" ? "LOWER(email) = ?" : "id = ?";
+  await env.DB.prepare(
+    "UPDATE clients SET " + updates.join(", ") + " WHERE " + where
+  ).bind(...params).run();
+  return json({ status: "ok" });
+}
+
+// Shared helper — hard delete from team_invites.
+// Constrained to admin-source rows (matches existing handleDeleteInvite invariant).
+async function revokeInviteById(env, id) {
+  await env.DB.prepare(
+    "DELETE FROM team_invites WHERE id = ? AND (source = 'admin' OR source IS NULL)"
+  ).bind(id).run();
+  return json({ status: "ok" });
 }
 
 function corsHeaders(origin) {
@@ -118,6 +164,7 @@ async function requireAuth(request, env) {
 
 // ---------- Route Handlers ----------
 
+// PUBLIC — intentionally no auth (used by signup form to validate AI name uniqueness).
 /**
  * GET /api/check-name?ai_name=X&human_name=Y
  * Public endpoint (no auth) — checks AI name uniqueness in clients table.
@@ -211,33 +258,8 @@ async function handleUpdateClientByEmail(request, env, clientEmail) {
   if (sess.role !== "leader") return err(403, "leader only");
 
   const body = await request.json();
-  const updates = [];
-  const params = [];
-  const allowed = [
-    "ai_name",
-    "name",
-    "company",
-    "tier",
-    "status",
-    "payment_status",
-    "monthly_amount",
-    "goes_by",
-    "notes",
-  ];
-  for (const key of allowed) {
-    if (body[key] !== undefined) {
-      updates.push(key + " = ?");
-      params.push(body[key]);
-    }
-  }
-  if (updates.length === 0) return err(400, "no valid fields");
-  params.push(clientEmail.toLowerCase());
-  await env.DB.prepare(
-    "UPDATE clients SET " + updates.join(", ") + " WHERE LOWER(email) = ?"
-  )
-    .bind(...params)
-    .run();
-  return json({ status: "ok" });
+  console.log(`[admin-action] role=${sess.role} user=${sess.user_id} action=update_client_by_email target=${clientEmail}`);
+  return updateClientFields(env, clientEmail, "email", body, CLIENT_INTERNAL_ALLOWLIST);
 }
 
 async function handleUpdateClientById(request, env, clientId) {
@@ -246,35 +268,22 @@ async function handleUpdateClientById(request, env, clientId) {
   if (sess.role !== "leader") return err(403, "leader only");
 
   const body = await request.json();
-  const updates = [];
-  const params = [];
-  const allowed = [
-    "name",
-    "email",
-    "ai_name",
-    "company",
-    "tier",
-    "status",
-    "payment_status",
-    "hidden",
-    "monthly_amount",
-    "goes_by",
-    "notes",
-  ];
-  for (const key of allowed) {
-    if (body[key] !== undefined) {
-      updates.push(key + " = ?");
-      params.push(body[key]);
-    }
-  }
-  if (updates.length === 0) return err(400, "no valid fields");
-  params.push(clientId);
-  await env.DB.prepare(
-    "UPDATE clients SET " + updates.join(", ") + " WHERE id = ?"
-  )
-    .bind(...params)
-    .run();
-  return json({ status: "ok" });
+  console.log(`[admin-action] role=${sess.role} user=${sess.user_id} action=update_client_by_id target=${clientId}`);
+  return updateClientFields(env, clientId, "id", body, CLIENT_INTERNAL_ALLOWLIST);
+}
+
+// POST /api/admin/clients/update — Save modal handler.
+// Frontend posts {id, ...modal_fields}. Uses MODAL_ALLOWLIST (narrower than INTERNAL).
+async function handleUpdateClient(request, env) {
+  const { error: authErr, sess } = await requireAuth(request, env);
+  if (authErr) return authErr;
+  if (sess.role !== "leader") return err(403, "leader only");
+
+  const body = await request.json();
+  const id = body.id;
+  if (!id) return err(400, "id required");
+  console.log(`[admin-action] role=${sess.role} user=${sess.user_id} action=update_client target=${id}`);
+  return updateClientFields(env, id, "id", body, CLIENT_MODAL_ALLOWLIST);
 }
 
 async function handleCreateInvite(request, env) {
@@ -327,6 +336,7 @@ async function handleGetInvites(request, env) {
   }
 }
 
+// PUBLIC — intentionally no auth (used by invite landing page to validate token before sign-in).
 async function handleValidateToken(request, env, url) {
   const token = url.searchParams.get("token") || "";
   if (!token) return err(400, "token required");
@@ -347,10 +357,22 @@ async function handleDeleteInvite(request, env, inviteId) {
   if (authErr) return authErr;
   if (sess.role !== "leader") return err(403, "leader only");
 
-  await env.DB.prepare("DELETE FROM team_invites WHERE id = ? AND (source = 'admin' OR source IS NULL)")
-    .bind(inviteId)
-    .run();
-  return json({ status: "ok" });
+  console.log(`[admin-action] role=${sess.role} user=${sess.user_id} action=delete_invite target=${inviteId}`);
+  return revokeInviteById(env, inviteId);
+}
+
+// POST /api/admin/invite/revoke — frontend revoke button (id-in-body shape).
+// Hard delete: matches existing DELETE-by-id behavior. Token unrecoverable post-revoke.
+async function handleRevokeInvite(request, env) {
+  const { error: authErr, sess } = await requireAuth(request, env);
+  if (authErr) return authErr;
+  if (sess.role !== "leader") return err(403, "leader only");
+
+  const body = await request.json();
+  const id = body.id;
+  if (id === undefined || id === null || id === "") return err(400, "id required");
+  console.log(`[admin-action] role=${sess.role} user=${sess.user_id} action=revoke_invite target=${id}`);
+  return revokeInviteById(env, id);
 }
 
 // ---------- Main Export ----------
@@ -381,6 +403,9 @@ export default {
       } else if (method === "GET" && path === "/api/admin/clients") {
         response = await handleGetClients(request, env, url);
 
+      } else if (method === "POST" && path === "/api/admin/clients/update") {
+        response = await handleUpdateClient(request, env);
+
       } else if (method === "PATCH" && path.startsWith("/api/admin/clients/by-email/")) {
         const clientEmail = decodeURIComponent(
           path.slice("/api/admin/clients/by-email/".length)
@@ -394,6 +419,9 @@ export default {
       // --- Invite endpoints ---
       } else if (method === "POST" && path === "/api/admin/invite") {
         response = await handleCreateInvite(request, env);
+
+      } else if (method === "POST" && path === "/api/admin/invite/revoke") {
+        response = await handleRevokeInvite(request, env);
 
       } else if (method === "GET" && path === "/api/admin/invites") {
         response = await handleGetInvites(request, env);
