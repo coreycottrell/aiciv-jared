@@ -55,7 +55,7 @@ function generateToken() {
 // password_hash, total_paid, hidden, uuid, id, created_at — those are owned elsewhere.
 const CLIENT_MODAL_ALLOWLIST = [
   "name", "goes_by", "email", "ai_name", "company",
-  "role", "goal", "tier", "status", "notes",
+  "tier", "status", "notes",
 ];
 // INTERNAL_ALLOWLIST = broader set used by existing PATCH-by-id route (hide toggle etc).
 const CLIENT_INTERNAL_ALLOWLIST = [
