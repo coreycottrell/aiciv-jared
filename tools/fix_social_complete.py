@@ -360,6 +360,6 @@ if __name__ == "__main__":
     print()
     print("To deploy:")
     print(f"  cd /home/jared/projects/AI-CIV/aether/workers/social-api")
-    print(f"  CLOUDFLARE_API_TOKEN=cfut_UxKCZuQQ2eY9jnjVUIliObCuRcCSmAkEeQkLEo6pba65a3be npx wrangler deploy --dry-run")
+    print(f"  CLOUDFLARE_API_TOKEN=[REDACTED-2026-05-09-LEAK-CFUT] npx wrangler deploy --dry-run")
     print(f"  # If dry-run passes:")
-    print(f"  CLOUDFLARE_API_TOKEN=cfut_UxKCZuQQ2eY9jnjVUIliObCuRcCSmAkEeQkLEo6pba65a3be npx wrangler deploy")
+    print(f"  CLOUDFLARE_API_TOKEN=[REDACTED-2026-05-09-LEAK-CFUT] npx wrangler deploy")

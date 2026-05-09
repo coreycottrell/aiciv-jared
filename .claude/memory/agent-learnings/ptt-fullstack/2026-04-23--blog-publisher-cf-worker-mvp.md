@@ -19,7 +19,7 @@ CF Worker at `blog-publisher.in0v8.workers.dev` that:
 
 ## GitHub Token
 
-- PAT extracted from `purebrain-site` git remote: `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`
+- PAT extracted from `purebrain-site` git remote: `[REDACTED-2026-05-09-LEAK-GHPAT]`
 - Set as GITHUB_TOKEN secret on the worker
 
 ## Default Branch for Publishes

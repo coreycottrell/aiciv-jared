@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from io import BytesIO
 
 # Config
-REPLICATE_TOKEN = os.environ.get("REPLICATE_API_TOKEN", "r8_HU0LIcWclhNkx01Qod0rms8bFeqovK03yBDLr")
+REPLICATE_TOKEN = os.environ.get("REPLICATE_API_TOKEN", "[REDACTED-2026-05-09-LEAK-REPLICATE-1]")
 FONT_PATH = "/home/jared/.fonts/Oswald-Bold.ttf"
 LOGO_PATH = "/home/jared/exports/portal-files/gleb-training-2026-04-05/pt-hex-logo.png"
 OUTPUT_DIR = "/home/jared/exports/portal-files"

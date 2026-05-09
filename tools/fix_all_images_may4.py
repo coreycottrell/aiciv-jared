@@ -18,7 +18,7 @@ TOKEN = "0ac9fe92dc16a435275e0c1c0fc597f99c7a4492cc5a040cb34e68d84aa2afb0"
 API = "https://social.purebrain.ai"
 CF_ACCOUNT = "d526a3e9498dd167509003004df03290"
 D1_DB = "625dde70-0a60-45e7-bf81-e18e5ac4d854"
-CF_TOKEN = "cfut_UxKCZuQQ2eY9jnjVUIliObCuRcCSmAkEeQkLEo6pba65a3be"
+CF_TOKEN = "[REDACTED-2026-05-09-LEAK-CFUT]"
 
 # Image directories
 IMG_DIRS = [

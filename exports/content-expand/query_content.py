@@ -5,7 +5,7 @@ import urllib.request
 
 CF_ACCOUNT_ID = "d526a3e9498dd167509003004df03290"
 D1_DB_ID = "625dde70-0a60-45e7-bf81-e18e5ac4d854"
-CF_TOKEN = "cfut_UxKCZuQQ2eY9jnjVUIliObCuRcCSmAkEeQkLEo6pba65a3be"
+CF_TOKEN = "[REDACTED-2026-05-09-LEAK-CFUT]"
 
 url = f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/d1/database/{D1_DB_ID}/query"
 

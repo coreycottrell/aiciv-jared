@@ -13,7 +13,7 @@ import sys
 
 CF_ACCOUNT = "d526a3e9498dd167509003004df03290"
 D1_DB = "625dde70-0a60-45e7-bf81-e18e5ac4d854"
-CF_TOKEN = "cfut_UxKCZuQQ2eY9jnjVUIliObCuRcCSmAkEeQkLEo6pba65a3be"
+CF_TOKEN = "[REDACTED-2026-05-09-LEAK-CFUT]"
 
 OLD_PREFIX = "https://pub-8f8cf3b34e354e108283ed11c59db125.r2.dev/"
 NEW_PREFIX = "https://social.purebrain.ai/media/"

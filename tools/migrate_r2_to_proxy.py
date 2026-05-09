@@ -199,7 +199,7 @@ def run_d1_migration():
     # Read credentials from fix_all_images_may4.py (already has them)
     CF_ACCOUNT = "d526a3e9498dd167509003004df03290"
     D1_DB = "625dde70-0a60-45e7-bf81-e18e5ac4d854"
-    CF_TOKEN = "cfut_UxKCZuQQ2eY9jnjVUIliObCuRcCSmAkEeQkLEo6pba65a3be"
+    CF_TOKEN = "[REDACTED-2026-05-09-LEAK-CFUT]"
 
     old_prefix = f"https://{OLD_DOMAIN}/"
     new_prefix = f"https://{PROXY_BASE}/"
@@ -278,7 +278,7 @@ def verify_d1_migration():
 
     CF_ACCOUNT = "d526a3e9498dd167509003004df03290"
     D1_DB = "625dde70-0a60-45e7-bf81-e18e5ac4d854"
-    CF_TOKEN = "cfut_UxKCZuQQ2eY9jnjVUIliObCuRcCSmAkEeQkLEo6pba65a3be"
+    CF_TOKEN = "[REDACTED-2026-05-09-LEAK-CFUT]"
 
     count_sql = f"SELECT COUNT(*) as cnt FROM content_items WHERE media_refs LIKE '%{OLD_DOMAIN}%'"
     result = subprocess.run(
@@ -310,7 +310,7 @@ def verify_proxy_endpoint():
     # Get one proxied URL from D1 to test
     CF_ACCOUNT = "d526a3e9498dd167509003004df03290"
     D1_DB = "625dde70-0a60-45e7-bf81-e18e5ac4d854"
-    CF_TOKEN = "cfut_UxKCZuQQ2eY9jnjVUIliObCuRcCSmAkEeQkLEo6pba65a3be"
+    CF_TOKEN = "[REDACTED-2026-05-09-LEAK-CFUT]"
 
     sql = f"SELECT media_refs FROM content_items WHERE media_refs LIKE '%{PROXY_BASE}%' LIMIT 1"
     result = subprocess.run(

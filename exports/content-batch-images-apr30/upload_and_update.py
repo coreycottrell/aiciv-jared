@@ -25,7 +25,7 @@ MEDIA_PROXY_BASE = "https://social.purebrain.ai/media"
 
 # D1 credentials
 D1_DB_ID = "625dde70-0a60-45e7-bf81-e18e5ac4d854"
-CF_TOKEN = "cfut_UxKCZuQQ2eY9jnjVUIliObCuRcCSmAkEeQkLEo6pba65a3be"
+CF_TOKEN = "[REDACTED-2026-05-09-LEAK-CFUT]"
 
 # User ID for R2 key prefix (from previous batch)
 USER_ID = "f15527f5-559c-4799-92e3-4b2de2e27897"

@@ -18,7 +18,7 @@
 5. `clients.referral_code` column is 100% empty across all 48 rows — never populated at signup. Dead column.
 
 ## Gotcha: CF_MANAGEMENT_TOKEN fails D1, use CF_API_TOKEN
-In aether/.env, `CF_MANAGEMENT_TOKEN` returns 1000/7403 auth errors on D1 queries. `CF_API_TOKEN` (cfut_UxKCZu...) works. Account ID d526a3e9498dd167509003004df03290. D1 database_id cdd9a522-f947-42a6-b9a3-c30534e02c3f for purebrain-referrals. Endpoint: `https://api.cloudflare.com/client/v4/accounts/$ACCT/d1/database/$DB/query`.
+In aether/.env, `CF_MANAGEMENT_TOKEN` returns 1000/7403 auth errors on D1 queries. `CF_API_TOKEN` ([REDACTED-2026-05-09-LEAK-CFUT]...) works. Account ID d526a3e9498dd167509003004df03290. D1 database_id cdd9a522-f947-42a6-b9a3-c30534e02c3f for purebrain-referrals. Endpoint: `https://api.cloudflare.com/client/v4/accounts/$ACCT/d1/database/$DB/query`.
 
 ## Gap noted
 - CF Pages access logs not queryable from this host (no Logpush destination)

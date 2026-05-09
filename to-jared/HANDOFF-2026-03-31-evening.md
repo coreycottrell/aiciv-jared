@@ -17,7 +17,7 @@
 - **Investor avatar** — All 5 requirements complete (59 codes, Chy voice, real Chy sessions, gifts, persistence)
 - **Investor brief page** — Fixed dead WordPress API, shows thank-you modal now
 - **Investor Leads sheet** — Created tab in master spreadsheet + localStorage capture
-- **Replicate TTS** — Wired into investor avatar, token: r8_HU0LIcWclhNkx01Qod0rms8bFeqovK03yBDLr
+- **Replicate TTS** — Wired into investor avatar, token: [REDACTED-2026-05-09-LEAK-REPLICATE-1]
 - **Chy CF access** — All tokens shared (deploy + cache purge)
 - **Darren Rowan welcome email** — Sent "Colin is Ready for You, Darren" with magic link
 

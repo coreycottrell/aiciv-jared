@@ -23,7 +23,7 @@
 
 ## Key Learnings
 
-- CF API token `cfut_UxKCZuQQ2eY9jnjVUIliObCuRcCSmAkEeQkLEo6pba65a3be` lacks D1 permissions
+- CF API token `[REDACTED-2026-05-09-LEAK-CFUT]` lacks D1 permissions
 - Must use Global API Key + Email + Account ID for D1 operations
 - Account ID: d526a3e9498dd167509003004df03290
 - Wildcard route `*.purebrain.ai/*` exists (portal-proxy) — more specific routes take priority

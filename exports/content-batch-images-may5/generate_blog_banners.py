@@ -24,7 +24,7 @@ HEX_ICON_PATH = "/home/jared/projects/AI-CIV/aether/assets/pt-hex-icon-official.
 RAW_DIR = "/home/jared/projects/AI-CIV/aether/exports/content-batch-images-may5/flux-raw-banners"
 FINAL_DIR = "/home/jared/projects/AI-CIV/aether/exports/content-batch-images-may5"
 
-os.environ["REPLICATE_API_TOKEN"] = "r8_7PtU7gFQ9yKWXemIFbFHnReAMCdgS9H1zhfFt"
+os.environ["REPLICATE_API_TOKEN"] = "[REDACTED-2026-05-09-LEAK-REPLICATE-2]"
 
 FLUX_PREFIX = "Professional dark moody tech aesthetic, cinematic lighting, 8k quality, wide landscape composition, no text no words no letters, "
 

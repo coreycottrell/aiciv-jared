@@ -6,7 +6,7 @@
 ## Key Findings
 
 ### Credentials Status
-- CF API Token (cfut_UxKCZu...) is ACTIVE but lacks `analytics.read` permission
+- CF API Token ([REDACTED-2026-05-09-LEAK-CFUT]...) is ACTIVE but lacks `analytics.read` permission
 - No GA4 API credentials in .env
 - No Clarity API credentials in .env
 - No Search Console API credentials in .env

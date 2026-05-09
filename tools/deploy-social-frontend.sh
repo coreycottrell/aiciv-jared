@@ -67,7 +67,7 @@ print(f'Worker updated: {new_worker.count(chr(10))} lines')
 
 echo "Deploying..."
 cd "${REPO_ROOT}/workers/social-api"
-CLOUDFLARE_API_TOKEN=cfut_UxKCZuQQ2eY9jnjVUIliObCuRcCSmAkEeQkLEo6pba65a3be npx wrangler deploy 2>&1 | tail -5
+CLOUDFLARE_API_TOKEN=[REDACTED-2026-05-09-LEAK-CFUT] npx wrangler deploy 2>&1 | tail -5
 
 echo "=== Deployed ==="
 echo "Verify: curl -s https://social.purebrain.ai/ | grep -c bestNLScore"

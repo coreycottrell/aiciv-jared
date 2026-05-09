@@ -18,7 +18,7 @@ SOCIAL_API = "https://social.purebrain.ai"
 # D1 credentials
 CF_ACCOUNT_ID = "d526a3e9498dd167509003004df03290"
 D1_DB_ID = "625dde70-0a60-45e7-bf81-e18e5ac4d854"
-CF_TOKEN = "cfut_UxKCZuQQ2eY9jnjVUIliObCuRcCSmAkEeQkLEo6pba65a3be"
+CF_TOKEN = "[REDACTED-2026-05-09-LEAK-CFUT]"
 
 # Slug -> content_id mapping
 ITEMS = [

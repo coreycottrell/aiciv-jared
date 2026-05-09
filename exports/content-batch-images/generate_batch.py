@@ -26,7 +26,7 @@ HEX_ICON_PATH = "/home/jared/projects/AI-CIV/aether/assets/pt-hex-icon-official.
 RAW_DIR = "/home/jared/projects/AI-CIV/aether/exports/content-batch-images/flux-raw"
 FINAL_DIR = "/home/jared/projects/AI-CIV/aether/exports/content-batch-images"
 
-os.environ["REPLICATE_API_TOKEN"] = "r8_HU0LIcWclhNkx01Qod0rms8bFeqovK03yBDLr"
+os.environ["REPLICATE_API_TOKEN"] = "[REDACTED-2026-05-09-LEAK-REPLICATE-1]"
 
 # --- Posts (7 standalones) ---
 POSTS = [
