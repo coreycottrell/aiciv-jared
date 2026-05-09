@@ -32,7 +32,9 @@ scan_pattern() {
 }
 
 # 1. Hardcoded password constants
-scan_pattern "(PASS|PASSWORD|SECRET|TOKEN|KEY)[A-Z_]*\s*=\s*['\"][A-Za-z0-9!@#\$%^&*]{6,}['\"]" \
+# 2026-05-09: added '-' and '_' to char class so 'purebrain-admin-2026' style
+# tokens (the literal that leaked in admin-clients 2026-05-08) are caught.
+scan_pattern "(PASS|PASSWORD|SECRET|TOKEN|KEY)[A-Z_]*\s*=\s*['\"][A-Za-z0-9!@#\$%^&*_-]{6,}['\"]" \
   "Hardcoded password/secret constant" "HIGH"
 
 # 2. Test-account credential literals

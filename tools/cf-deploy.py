@@ -66,12 +66,15 @@ MAX_RETRIES = 3
 # deleted, or deployed to without explicit --force-protected flag.
 # Added 2026-04-11 after investment-opportunity-backup-2 was erased by
 # a full deployment that didn't include it in the local directory.
+# Added 2026-05-08: user-guide/ after bulk deploy stripped it from manifest;
+# stale CF cache masked the origin 404 for ~46 hours, real users hit 404s.
 # ---------------------------------------------------------------------------
 PROTECTED_PATHS = {
     "investment-opportunity/",
     "investment-opportunity-backup-2/",
     "investment-opportunity-backup/",
     "investment-opportunity-backup-3/",
+    "user-guide/",
 }
 
 def check_protected_paths(paths_to_deploy: list, force: bool = False) -> list:
@@ -452,6 +455,91 @@ def collect_files(paths: list, base_dir: Path) -> dict:
     return files
 
 # ---------------------------------------------------------------------------
+# Pre-deploy credential scan (SECURITY gate — CONSTITUTIONAL, no bypass)
+# Wires .claude/skills/pre-deploy-credential-scan/scan.sh as a hard gate.
+# Added 2026-05-09 per Tier-1 retire (17 conductor BOOPs / ~40h undispatched)
+# after CE SME / Phil-creds leak 2026-05-07 showed skill-filed != skill-enforced.
+# ---------------------------------------------------------------------------
+
+CRED_SCAN_SKILL = PROJECT_ROOT / ".claude" / "skills" / "pre-deploy-credential-scan" / "scan.sh"
+
+def pre_deploy_credential_scan(new_files: dict) -> None:
+    """Block deploy if hardcoded credentials detected in actual upload payload.
+
+    Materializes the exact bytes about to be uploaded (including --stdin content)
+    into a temp directory, then invokes the scan.sh skill against that directory.
+    This guarantees we scan the real upload contents — not just git working tree —
+    so stdin-injected content and any in-memory transforms are also covered.
+
+    Exits with code 2 on any HIGH or CRITICAL finding. No environment-variable
+    bypass exists by design (filing != enforcement; the gate must not be skippable).
+    """
+    import subprocess
+    import tempfile
+    import shutil
+
+    if not CRED_SCAN_SKILL.exists():
+        print(f"🔴 BLOCKED: pre-deploy credential scan skill missing at {CRED_SCAN_SKILL}", file=sys.stderr)
+        print("   Restore .claude/skills/pre-deploy-credential-scan/scan.sh before deploying.", file=sys.stderr)
+        sys.exit(2)
+
+    # Only scan text artifacts that scan.sh's --include patterns match.
+    # Binary assets (images, fonts, etc.) are out of scope for credential greps.
+    SCAN_EXTENSIONS = (".html", ".js", ".ts", ".mjs", ".cjs", ".htm")
+    scan_targets = {p: data for p, data in new_files.items()
+                    if p.lower().endswith(SCAN_EXTENSIONS)}
+
+    if not scan_targets:
+        print("Pre-deploy credential scan: no scannable text artifacts in payload (skipping).", file=sys.stderr)
+        return
+
+    print(f"Pre-deploy credential scan: materializing {len(scan_targets)} file(s) for scan...", file=sys.stderr)
+
+    tmpdir = Path(tempfile.mkdtemp(prefix="cf-deploy-credscan-"))
+    try:
+        for site_path, (content, _ct) in scan_targets.items():
+            # Mirror site_path under tmpdir so grep -n line numbers map to real paths.
+            rel = site_path.lstrip("/")
+            target = tmpdir / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+
+        result = subprocess.run(
+            ["bash", str(CRED_SCAN_SKILL), str(tmpdir)],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            print("", file=sys.stderr)
+            print("🔴 BLOCKED: pre-deploy credential scan FAILED", file=sys.stderr)
+            print(f"   Skill: {CRED_SCAN_SKILL}", file=sys.stderr)
+            print(f"   Scanned payload root: {tmpdir} (preserved for audit)", file=sys.stderr)
+            print("   Findings (line numbers are within materialized payload):", file=sys.stderr)
+            if result.stdout:
+                # Rewrite tmpdir prefix in output so reviewers see site paths, not /tmp/...
+                cleaned = result.stdout.replace(str(tmpdir) + "/", "/")
+                print(cleaned, file=sys.stderr)
+            if result.stderr:
+                print(result.stderr, file=sys.stderr)
+            print("", file=sys.stderr)
+            print("   This gate is CONSTITUTIONAL — no bypass env var exists.", file=sys.stderr)
+            print("   Fix the credential leak in source, re-stage, and re-run.", file=sys.stderr)
+            # Intentionally NOT cleaning up tmpdir on failure — auditors can inspect.
+            sys.exit(2)
+
+        # Clean only on success
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        print("Pre-deploy credential scan: clean", file=sys.stderr)
+
+    except FileNotFoundError as e:
+        # bash missing or skill removed mid-run — fail closed
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        print(f"🔴 BLOCKED: cannot execute credential scan ({e})", file=sys.stderr)
+        sys.exit(2)
+
+
+# ---------------------------------------------------------------------------
 # Main deploy logic
 # ---------------------------------------------------------------------------
 
@@ -478,6 +566,13 @@ def deploy(paths: list, base_dir: Path, dry_run: bool = False,
     if not new_files and not delete_paths:
         print("No files to deploy.", file=sys.stderr)
         return
+
+    # 2.5. SECURITY GATE — pre-deploy credential scan (CONSTITUTIONAL, no bypass)
+    # Runs on the EXACT bytes about to be uploaded (including --stdin payloads).
+    # Fires before hash compute, manifest merge, AND the dry-run short-circuit,
+    # so dry-runs also surface credential leaks. Exits 2 on any finding.
+    if new_files:
+        pre_deploy_credential_scan(new_files)
 
     # 3. Compute hashes for new files
     print(f"Computing hashes for {len(new_files)} file(s)...", file=sys.stderr)
