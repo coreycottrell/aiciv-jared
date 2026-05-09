@@ -127,6 +127,66 @@ async function proxyToContainer(request, targetHost, originalHost) {
   });
 }
 
+/**
+ * Validate the caller has a valid `leader` session before allowing the bridge
+ * to inject `X-Admin-Token` into admin-api forwards.
+ *
+ * Source: 2026-05-09 CTO pre-build spec. Closes the bug where anonymous
+ * `curl https://portal.purebrain.ai/api/admin/invites` received a server-injected
+ * admin token + full invitee list (including role:leader grants).
+ *
+ * Reuses the existing `/internal/validate-session` Service Binding contract on
+ * `clients-api` (already production-hardened by admin-api + social-api callers).
+ *
+ * Failure modes (fail CLOSED — security gate):
+ *   - missing token        → 401 unauthorized
+ *   - missing binding/secret → 503 auth_unavailable
+ *   - bridge non-success   → 401 unauthorized
+ *   - role !== "leader"    → 403 forbidden
+ *   - bridge throw         → 503 auth_unavailable
+ *
+ * Token sources accepted (matches admin-api getSession order):
+ *   1. Authorization: Bearer <token>      (preferred, used by admin frontend localStorage)
+ *   2. Cookie social_session=<token>      (fallback, set by /api/login → social-api)
+ */
+async function validateLeaderSession(request, env) {
+  let token = "";
+  const auth = request.headers.get("authorization") || "";
+  if (auth.startsWith("Bearer ")) token = auth.slice(7);
+  if (!token) {
+    const cookies = request.headers.get("cookie") || "";
+    const m = cookies.match(/social_session=([^;]+)/);
+    if (m) token = m[1];
+  }
+  if (!token) return { ok: false, status: 401 };
+
+  if (!env.CLIENTS_API || !env.INTERNAL_BINDING_SECRET) {
+    // Fail CLOSED — emergency security gate. Better 503 than bypass.
+    return { ok: false, status: 503 };
+  }
+
+  try {
+    const req = new Request("https://clients-api/internal/validate-session", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-internal-binding": "clients-api",
+        "x-internal-binding-secret": env.INTERNAL_BINDING_SECRET,
+      },
+      body: JSON.stringify({ token }),
+    });
+    const resp = await env.CLIENTS_API.fetch(req);
+    if (!resp.ok) return { ok: false, status: 401 };
+    const j = await resp.json();
+    if (!j || j.valid !== true) return { ok: false, status: 401 };
+    if (j.role !== "leader") return { ok: false, status: 403 };
+    return { ok: true, session: j };
+  } catch {
+    // Bridge unreachable — fail CLOSED for security routes.
+    return { ok: false, status: 503 };
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -225,12 +285,35 @@ export default {
       // This routes the six P0 endpoints (PATCH client, invite CRUD) that were 404ing.
       // CONSTRAINT: throwaway bridge code — Tier 3 Phase 9 deletes this whole admin block.
       // CTO pre-build approved 2026-05-08: HTTP+token (NOT Service Bindings — admin-api deletion ~2 weeks).
+      //
+      // SECURITY GATE (2026-05-09 CTO spec, post-V11-rotation finding):
+      //   Before injecting env.ADMIN_TOKEN, validate the caller has a leader
+      //   session via the CLIENTS_API Service Binding. Closes the anonymous
+      //   data-exposure bug where curl with no auth received the full invitee
+      //   list (including role:leader invite tokens). PUBLIC EXCEPTION:
+      //   /api/admin/validate-token is intentionally unauthenticated (powers
+      //   invite-landing before sign-in — admin-api worker.js:404).
       if (
         url.pathname.startsWith('/api/admin/clients') ||
         url.pathname.startsWith('/api/admin/invite') ||
         url.pathname.startsWith('/api/admin/invites') ||
         url.pathname === '/api/admin/validate-token'
       ) {
+        if (url.pathname !== '/api/admin/validate-token') {
+          const gate = await validateLeaderSession(request, env);
+          if (!gate.ok) {
+            const errBody = gate.status === 403
+              ? '{"error":"forbidden"}'
+              : (gate.status === 503 ? '{"error":"auth_unavailable"}' : '{"error":"unauthorized"}');
+            return new Response(errBody, {
+              status: gate.status,
+              headers: {
+                'content-type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+              },
+            });
+          }
+        }
         const workerUrl = `https://admin-api.in0v8.workers.dev${url.pathname}${url.search}`;
         const proxyHeaders = new Headers(request.headers);
         if (env.ADMIN_TOKEN) {
