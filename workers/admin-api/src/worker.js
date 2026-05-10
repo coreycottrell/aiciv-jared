@@ -111,8 +111,59 @@ function corsHeaders(origin) {
 
 // ---------- Auth ----------
 
+// Phase 5: validate sessions via clients-api Service Binding bridge.
+// 60s in-memory cache absorbs load. Bridge 401 = authoritative invalid.
+// Bridge 5xx / network error → falls back to direct D1 read for availability.
+const SESSION_CACHE_TTL_MS = 60 * 1000;
+const sessionCache = new Map();
+function cacheGetSession(token) {
+  const e = sessionCache.get(token);
+  if (!e) return null;
+  if (Date.now() > e.expires_at_ms) { sessionCache.delete(token); return null; }
+  return e.sess;
+}
+function cachePutSession(token, sess) {
+  if (sessionCache.size > 5000) sessionCache.clear();
+  sessionCache.set(token, { sess, expires_at_ms: Date.now() + SESSION_CACHE_TTL_MS });
+}
+
+async function bridgeValidateSession(token, env) {
+  if (!env.CLIENTS_API) return undefined;
+  if (!env.INTERNAL_BINDING_SECRET) return undefined;
+  try {
+    const req = new Request("https://clients-api/internal/validate-session", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-internal-binding": "clients-api",
+        "x-internal-binding-secret": env.INTERNAL_BINDING_SECRET,
+      },
+      body: JSON.stringify({ token }),
+    });
+    const resp = await env.CLIENTS_API.fetch(req);
+    // Phase 5 policy: any non-success → fallback to local D1 (see social-api
+    // matching comment). Tightens to authoritative in Phase 7c.
+    if (!resp.ok) return undefined;
+    const j = await resp.json();
+    if (!j || j.valid !== true) return undefined;
+    // admin-api session shape historically uses display_name; clients-api
+    // returns `name`. Map to keep call sites unchanged.
+    return {
+      user_id: j.user_id,
+      email: j.email,
+      role: j.role,
+      display_name: j.name,
+      team_id: j.team_id,
+      billing_tier: j.billing_tier,
+      expires_at: j.expires_at,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 async function getSession(request, env) {
-  // 1. Check X-Admin-Token header (set by portal proxy)
+  // 1. Check X-Admin-Token header (set by portal proxy) — local check, never bridged
   const adminToken = request.headers.get("x-admin-token") || "";
   if (env.ADMIN_TOKEN && adminToken && adminToken === env.ADMIN_TOKEN) {
     return {
@@ -123,7 +174,7 @@ async function getSession(request, env) {
     };
   }
 
-  // 2. Check Bearer token / session cookie against D1 sessions table
+  // 2. Check Bearer token / session cookie
   let token = "";
   const auth = request.headers.get("authorization") || "";
   if (auth.startsWith("Bearer ")) token = auth.slice(7);
@@ -134,7 +185,7 @@ async function getSession(request, env) {
   }
   if (!token) return null;
 
-  // System API key passthrough
+  // System API key passthrough — local check
   if (env.ROUTER_API_KEY && token === env.ROUTER_API_KEY) {
     return {
       user_id: "system",
@@ -144,12 +195,26 @@ async function getSession(request, env) {
     };
   }
 
+  // 60s cache
+  const cached = cacheGetSession(token);
+  if (cached) return cached;
+
+  // Service Binding bridge call (primary path)
+  const bridged = await bridgeValidateSession(token, env);
+  if (bridged === null) return null;
+  if (bridged && bridged.user_id) {
+    cachePutSession(token, bridged);
+    return bridged;
+  }
+
+  // Fallback: direct D1 read (preserves availability if bridge unavailable)
   try {
     const row = await env.DB.prepare(
-      "SELECT s.user_id, s.expires_at, u.email, u.role, u.display_name FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.token = ?"
+      "SELECT s.user_id, s.expires_at, u.email, u.role, u.name AS display_name FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.token = ?"
     ).bind(token).first();
     if (!row) return null;
     if (new Date(row.expires_at) < new Date()) return null;
+    cachePutSession(token, row);
     return row;
   } catch {
     return null;
@@ -255,7 +320,7 @@ async function handleGetClients(request, env, url) {
 async function handleUpdateClientByEmail(request, env, clientEmail) {
   const { error: authErr, sess } = await requireAuth(request, env);
   if (authErr) return authErr;
-  if (sess.role !== "leader") return err(403, "leader only");
+  if (!["leader","owner"].includes(sess.role)) return err(403, "leader or owner only");
 
   const body = await request.json();
   console.log(`[admin-action] role=${sess.role} user=${sess.user_id} action=update_client_by_email target=${clientEmail}`);
@@ -265,7 +330,7 @@ async function handleUpdateClientByEmail(request, env, clientEmail) {
 async function handleUpdateClientById(request, env, clientId) {
   const { error: authErr, sess } = await requireAuth(request, env);
   if (authErr) return authErr;
-  if (sess.role !== "leader") return err(403, "leader only");
+  if (!["leader","owner"].includes(sess.role)) return err(403, "leader or owner only");
 
   const body = await request.json();
   console.log(`[admin-action] role=${sess.role} user=${sess.user_id} action=update_client_by_id target=${clientId}`);
@@ -277,7 +342,7 @@ async function handleUpdateClientById(request, env, clientId) {
 async function handleUpdateClient(request, env) {
   const { error: authErr, sess } = await requireAuth(request, env);
   if (authErr) return authErr;
-  if (sess.role !== "leader") return err(403, "leader only");
+  if (!["leader","owner"].includes(sess.role)) return err(403, "leader or owner only");
 
   const body = await request.json();
   const id = body.id;
@@ -289,7 +354,7 @@ async function handleUpdateClient(request, env) {
 async function handleCreateInvite(request, env) {
   const { error: authErr, sess } = await requireAuth(request, env);
   if (authErr) return authErr;
-  if (sess.role !== "leader") return err(403, "leader only");
+  if (!["leader","owner"].includes(sess.role)) return err(403, "leader or owner only");
 
   const body = await request.json();
   const email = (body.email || "").trim().toLowerCase();
@@ -355,7 +420,7 @@ async function handleValidateToken(request, env, url) {
 async function handleDeleteInvite(request, env, inviteId) {
   const { error: authErr, sess } = await requireAuth(request, env);
   if (authErr) return authErr;
-  if (sess.role !== "leader") return err(403, "leader only");
+  if (!["leader","owner"].includes(sess.role)) return err(403, "leader or owner only");
 
   console.log(`[admin-action] role=${sess.role} user=${sess.user_id} action=delete_invite target=${inviteId}`);
   return revokeInviteById(env, inviteId);
@@ -366,7 +431,7 @@ async function handleDeleteInvite(request, env, inviteId) {
 async function handleRevokeInvite(request, env) {
   const { error: authErr, sess } = await requireAuth(request, env);
   if (authErr) return authErr;
-  if (sess.role !== "leader") return err(403, "leader only");
+  if (!["leader","owner"].includes(sess.role)) return err(403, "leader or owner only");
 
   const body = await request.json();
   const id = body.id;

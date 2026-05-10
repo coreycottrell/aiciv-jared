@@ -179,7 +179,7 @@ async function validateLeaderSession(request, env) {
     if (!resp.ok) return { ok: false, status: 401 };
     const j = await resp.json();
     if (!j || j.valid !== true) return { ok: false, status: 401 };
-    if (j.role !== "leader") return { ok: false, status: 403 };
+    if (!["leader","owner"].includes(j.role)) return { ok: false, status: 403 };
     return { ok: true, session: j };
   } catch {
     // Bridge unreachable — fail CLOSED for security routes.
