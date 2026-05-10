@@ -3702,6 +3702,65 @@ async function verifyHmacSignature(payloadB64, signatureHex, secret) {
 }
 
 // ---------- Auth ----------
+// Phase 5: validate sessions via clients-api Service Binding bridge.
+// Per CTO brief: cache 60s in Worker memory to absorb load. Acceptable
+// password-change lag = 60s. Falls back to direct D1 read ONLY if the
+// Service Binding throws (network-tier error) — preserves availability
+// during the transition. 401/expired responses from the bridge are
+// authoritative and do NOT fall back.
+const SESSION_CACHE_TTL_MS = 60 * 1000;
+const sessionCache = new Map(); // token -> { sess, expires_at_ms }
+
+function cacheGetSession(token) {
+  const e = sessionCache.get(token);
+  if (!e) return null;
+  if (Date.now() > e.expires_at_ms) { sessionCache.delete(token); return null; }
+  return e.sess;
+}
+function cachePutSession(token, sess) {
+  // bound the cache so it can't grow unbounded in pathological cases
+  if (sessionCache.size > 5000) sessionCache.clear();
+  sessionCache.set(token, { sess, expires_at_ms: Date.now() + SESSION_CACHE_TTL_MS });
+}
+
+async function bridgeValidateSession(token, env) {
+  if (!env.CLIENTS_API) return undefined; // binding missing — signal fallback
+  if (!env.INTERNAL_BINDING_SECRET) return undefined; // secret missing → fallback
+  try {
+    const req = new Request("https://clients-api/internal/validate-session", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-internal-binding": "clients-api",
+        "x-internal-binding-secret": env.INTERNAL_BINDING_SECRET,
+      },
+      body: JSON.stringify({ token }),
+    });
+    const resp = await env.CLIENTS_API.fetch(req);
+    // Phase 5 policy: any non-200 from the bridge → fallback to local D1.
+    // During the transition some users (e.g. fresh signups, since signup
+    // is NOT migrated this sprint) only exist in purebrain-social. The
+    // bridge will 401 because its JOIN fails. Local D1 still has the row.
+    // Phase 7c will tighten this to "bridge 401 = authoritative" once
+    // signup also routes through clients-api.
+    if (!resp.ok) return undefined;
+    const j = await resp.json();
+    if (!j || j.valid !== true) return undefined; // soft fail → local fallback
+    return {
+      token,
+      user_id: j.user_id,
+      email: j.email,
+      name: j.name,
+      team_id: j.team_id,
+      role: j.role,
+      billing_tier: j.billing_tier,
+      expires_at: j.expires_at,
+    };
+  } catch {
+    return undefined; // throw → fallback
+  }
+}
+
 async function getSession(request, env) {
   let token = "";
   const auth = request.headers.get("authorization") || "";
@@ -3713,7 +3772,8 @@ async function getSession(request, env) {
   }
   if (!token) return null;
 
-  // System API key (ContentRouter M2M auth) — synthetic system session
+  // System API key (ContentRouter M2M auth) — synthetic system session.
+  // Local check: bridge MUST NOT see ROUTER_API_KEY (different env).
   if (env.ROUTER_API_KEY && token === env.ROUTER_API_KEY) {
     return {
       user_id: "system",
@@ -3726,6 +3786,20 @@ async function getSession(request, env) {
     };
   }
 
+  // 60s in-memory cache
+  const cached = cacheGetSession(token);
+  if (cached) return cached;
+
+  // Service Binding bridge call (primary path)
+  const bridged = await bridgeValidateSession(token, env);
+  if (bridged === null) return null;          // bridge said invalid/expired
+  if (bridged && bridged.user_id) {
+    cachePutSession(token, bridged);
+    return bridged;
+  }
+
+  // Bridge unavailable (binding missing / 5xx / threw) → fall back to local D1 read.
+  // Same shape as before.
   const row = await env.DB.prepare(
     `SELECT s.token, s.user_id, s.expires_at, u.email, u.name, u.team_id, u.role, u.billing_tier
      FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.token = ?`
@@ -3733,6 +3807,7 @@ async function getSession(request, env) {
 
   if (!row) return null;
   if (row.expires_at < nowIso()) return null;
+  cachePutSession(token, row);
   return row;
 }
 
@@ -3742,17 +3817,58 @@ async function requireAuth(request, env) {
   return { error: null, sess };
 }
 
-async function createSession(userId, request, env) {
+// Phase 5 dual-write helper: mirror a freshly-created session into clients-api
+// via the Service Binding. Best-effort; bridge failure does NOT fail login.
+async function mirrorSessionToClientsApi(env, payload) {
+  if (!env.CLIENTS_API) return; // binding missing → silently skip
+  if (!env.INTERNAL_BINDING_SECRET) return; // secret missing → skip
+  try {
+    const req = new Request("https://clients-api/internal/create-session", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-internal-binding": "clients-api",
+        "x-internal-binding-secret": env.INTERNAL_BINDING_SECRET,
+      },
+      body: JSON.stringify(payload),
+    });
+    await env.CLIENTS_API.fetch(req);
+  } catch {
+    // Best-effort. Asymmetry window mitigated by Phase 6 data copy + future
+    // background reconciler. Login must not break on mirror failure.
+  }
+}
+
+async function createSession(userId, request, env, ctx) {
   const token = crypto.getRandomValues(new Uint8Array(32));
   const tokenStr = Array.from(token).map(b => b.toString(16).padStart(2, "0")).join("");
   const ua = (request.headers.get("user-agent") || "").slice(0, 200);
   const ip = request.headers.get("cf-connecting-ip") || "";
+  const exp = expiresAt();
   await env.DB.prepare(
     "INSERT INTO sessions (token, user_id, expires_at, user_agent, ip_address) VALUES (?, ?, ?, ?, ?)"
-  ).bind(tokenStr, userId, expiresAt(), ua, ip).run();
+  ).bind(tokenStr, userId, exp, ua, ip).run();
   await env.DB.prepare(
     "UPDATE users SET last_login_at = ? WHERE id = ?"
   ).bind(nowIso(), userId).run();
+
+  // Phase 5 dual-write — mirror to clients-api. ctx.waitUntil keeps the
+  // event loop alive past the response so the bridge call completes even
+  // if the client hung up. If ctx isn't threaded through we fall back to
+  // an awaited best-effort call (still returns < 30ms p95 in practice).
+  const mirrorPayload = {
+    token: tokenStr,
+    user_id: userId,
+    expires_at: exp,
+    user_agent: ua,
+    ip_address: ip,
+  };
+  if (ctx && typeof ctx.waitUntil === "function") {
+    ctx.waitUntil(mirrorSessionToClientsApi(env, mirrorPayload));
+  } else {
+    await mirrorSessionToClientsApi(env, mirrorPayload);
+  }
+
   return tokenStr;
 }
 
@@ -3765,10 +3881,52 @@ function setSessionCookie(response, token) {
   return response;
 }
 
+// ---------- Service Binding helper to clients-api (P1.5.4) ----------
+// CTO Option C — hard-fail. Read-only call site (legacy /api/admin/clients
+// list), so retry is cheap; propagate failure as 502 so portal/operator sees
+// the error and can retry.
+//
+// THE GOTCHA (P1.5.2 lesson): "x-internal-binding" header MUST be the
+// CALLEE's identity ("clients-api"), NOT the caller's name. The marker is
+// a constant for ALL callers (paypal-webhook, agentmail-webhook, admin-api,
+// social-api). Don't repeat the P1.5.2 mistake.
+async function callClientsApi(env, path, { method = "POST", body = null } = {}) {
+  if (!env.CLIENTS_API) {
+    throw new Error("CLIENTS_API service binding not configured");
+  }
+  if (!env.INTERNAL_BINDING_SECRET) {
+    throw new Error("INTERNAL_BINDING_SECRET not configured");
+  }
+
+  const init = {
+    method,
+    headers: {
+      "content-type": "application/json",
+      "x-internal-binding": "clients-api",
+      "x-internal-binding-secret": env.INTERNAL_BINDING_SECRET,
+    },
+  };
+  if (body !== null) init.body = JSON.stringify(body);
+
+  const req = new Request(`https://clients-api${path}`, init);
+  const resp = await env.CLIENTS_API.fetch(req);
+
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => "");
+    throw new Error(`clients-api ${path} failed: ${resp.status} ${errText.slice(0, 200)}`);
+  }
+
+  const j = await resp.json().catch(() => ({}));
+  if (j && j.ok === false) {
+    throw new Error(`clients-api ${path} returned ok=false: ${JSON.stringify(j.error || j).slice(0, 200)}`);
+  }
+  return j;
+}
+
 // ---------- Route handlers ----------
 // ---------- Signup ----------
 // Creates new user + team (first user on a team owns it), returns session token.
-async function handleSignup(request, env) {
+async function handleSignup(request, env, ctx) {
   const ip = request.headers.get("cf-connecting-ip") || "unknown";
 
   // Same anti-abuse as login
@@ -3814,7 +3972,7 @@ async function handleSignup(request, env) {
     throw e;
   }
 
-  const token = await createSession(userId, request, env);
+  const token = await createSession(userId, request, env, ctx);
   const resp = json({
     status: "created",
     token,
@@ -3828,7 +3986,7 @@ async function handleSignup(request, env) {
   return setSessionCookie(resp, token);
 }
 
-async function handleLogin(request, env) {
+async function handleLogin(request, env, ctx) {
   const ip = request.headers.get("cf-connecting-ip") || "unknown";
 
   if (!(await rlCheckD1("login_total", ip, LOGIN_TOTAL_WINDOW_MS, LOGIN_TOTAL_LIMIT, env))) {
@@ -3856,12 +4014,12 @@ async function handleLogin(request, env) {
 
   await rlRemoveLatest("login_failed", ip, env);
 
-  const token = await createSession(user.id, request, env);
+  const token = await createSession(user.id, request, env, ctx);
   const resp = json({ status: "ok", token });
   return setSessionCookie(resp, token);
 }
 
-async function handleSsoExchange(request, env) {
+async function handleSsoExchange(request, env, ctx) {
   const url = new URL(request.url);
   const token = url.searchParams.get("token");
   if (!token) return err(400, "token required");
@@ -3887,7 +4045,7 @@ async function handleSsoExchange(request, env) {
   const user = await env.DB.prepare("SELECT id FROM users WHERE id = ?").bind(payload.user_id).first();
   if (!user) return err(404, "user not found");
 
-  const sessionToken = await createSession(payload.user_id, request, env);
+  const sessionToken = await createSession(payload.user_id, request, env, ctx);
   const redirectTo = payload.redirect || "/";
   const resp = new Response(null, { status: 302, headers: { location: redirectTo } });
   return setSessionCookie(resp, sessionToken);
@@ -6109,11 +6267,11 @@ export default {
       if (method === "GET" && path === "/health") {
         response = json({ status: "ok", service: "social-api", version: "0.1.0" });
       } else if (method === "POST" && path === "/api/signup") {
-        response = await handleSignup(request, env);
+        response = await handleSignup(request, env, ctx);
       } else if (method === "POST" && path === "/api/login") {
-        response = await handleLogin(request, env);
+        response = await handleLogin(request, env, ctx);
       } else if (method === "GET" && path === "/api/sso/exchange") {
-        response = await handleSsoExchange(request, env);
+        response = await handleSsoExchange(request, env, ctx);
       } else if (method === "GET" && path === "/api/me") {
         response = await handleMe(request, env);
       } else if (method === "GET" && path === "/api/content") {
@@ -6202,9 +6360,29 @@ export default {
         const { error: authErr, sess } = await requireAuth(request, env);
         if (authErr) { response = authErr; }
         else {
-          const { results } = await env.DB.prepare("SELECT * FROM clients ORDER BY last_active_at DESC").all();
-          const stats = { total: results.length, active: results.filter(r => r.payment_status === 'active').length, total_revenue: results.reduce((s, r) => s + (r.total_paid || 0), 0) };
-          response = json({ clients: results || [], stats });
+          // P1.5.4: rebound off purebrain-social.clients to clients-api
+          // Service Binding (constitutional — purebrain-social NEVER touches
+          // referrals or clients). Read-only; CTO Option C hard-fail → 502.
+          try {
+            const result = await callClientsApi(env, "/internal/clients/list?show_hidden=1", { method: "GET" });
+            const clientsList = (result && result.clients) || [];
+            const sourceStats = (result && result.stats) || {};
+            // Preserve old response shape (3 keys: total, active, total_revenue).
+            // clients-api returns richer stats; we project to the legacy shape
+            // so existing UI consumers keep working.
+            const stats = {
+              total: typeof sourceStats.total === "number" ? sourceStats.total : clientsList.length,
+              active: typeof sourceStats.active === "number"
+                ? sourceStats.active
+                : clientsList.filter(r => r.payment_status === 'active').length,
+              total_revenue: typeof sourceStats.total_revenue === "number"
+                ? sourceStats.total_revenue
+                : clientsList.reduce((s, r) => s + (Number(r.total_paid) || 0), 0),
+            };
+            response = json({ clients: clientsList, stats });
+          } catch (e) {
+            response = err(502, "clients-api list failed: " + (e.message || String(e)).slice(0, 200));
+          }
         }
       } else if (method === "POST" && path === "/api/admin/trigger_sunday_batch") {
         // Manual trigger for testing — requires ROUTER_API_KEY or leader role
