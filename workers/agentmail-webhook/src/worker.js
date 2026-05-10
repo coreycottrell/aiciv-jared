@@ -1,3 +1,5 @@
+import { ensureDnsRecord, extractSlugFromLink } from '../../_shared/ensure-dns-record.js';
+
 /**
  * agentmail-webhook — Cloudflare Worker
  *
@@ -50,6 +52,10 @@ const SANDBOX_PATTERNS = [
   /example\.com/i,
 ];
 const SANDBOX_REDIRECT = 'jared@puretechnology.nyc';
+
+// Birth pipeline DNS automation constants (CTO build brief 2026-05-08)
+const BIRTH_DNS_TARGET_IP = '46.62.187.74';
+const BIRTH_DNS_FQDN_SUFFIX = '.app.purebrain.ai';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -153,25 +159,78 @@ async function sendTelegram(env, message) {
 }
 
 // ---------------------------------------------------------------------------
+// Birth pipeline DNS automation (feature-flagged)
+// ---------------------------------------------------------------------------
+
+async function ensureBirthDns(env, magicLink) {
+  const flagEnabled = env.ENABLE_BIRTH_DNS_AUTO === 'true' || env.ENABLE_BIRTH_DNS_AUTO === true;
+  if (!flagEnabled) {
+    console.log('[agentmail-webhook] DNS automation gated by ENABLE_BIRTH_DNS_AUTO=false (no-op)');
+    return { ok: true, action: 'flag_disabled' };
+  }
+
+  const slug = extractSlugFromLink(magicLink);
+  if (!slug) {
+    console.log(`[agentmail-webhook] No slug extracted from magic_link, skipping DNS ensure: ${magicLink}`);
+    return { ok: true, action: 'no_slug' };
+  }
+
+  const fqdn = `${slug}${BIRTH_DNS_FQDN_SUFFIX}`;
+  const result = await ensureDnsRecord(env, fqdn, BIRTH_DNS_TARGET_IP);
+
+  console.log(`[agentmail-webhook] BIRTH-DNS slug=${slug} fqdn=${fqdn} action=${result.action} ok=${result.ok}`);
+
+  if (!result.ok || result.action === 'drift_detected') {
+    await sendTelegram(env,
+      `🔴 BIRTH-DNS-FAIL (agentmail-webhook)\n` +
+      `slug=${slug}\n` +
+      `fqdn=${fqdn}\n` +
+      `action=${result.action}\n` +
+      `error=${result.error || result.alert || 'unknown'}`
+    );
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Welcome email trigger (calls welcome-email-api Worker)
 // ---------------------------------------------------------------------------
 
 async function sendWelcomeEmail(env, { human_email, human_first, ai_name, magic_link }) {
-  const url = `${env.WELCOME_EMAIL_URL}/send-welcome`;
-
+  // ROOT-CAUSE FIX 2026-05-08: Worker→Worker fetch via *.workers.dev is BLOCKED
+  // by Cloudflare for same-account scripts (returns 404 with empty body). The
+  // canonical mechanism is a Service Binding declared in wrangler.toml:
+  //   [[services]]
+  //   binding = "WELCOME_EMAIL_API"
+  //   service = "welcome-email-api"
+  // We then call env.WELCOME_EMAIL_API.fetch(...) — this bypasses the public
+  // internet, is free, and routes directly to the bound Worker's handler.
+  // HTTP fallback retained for local dev / cross-account scenarios only.
   console.log(`[agentmail-webhook] Sending welcome email to ${human_email} (AI=${ai_name})`);
 
+  const body = JSON.stringify({ human_email, human_first, ai_name, magic_link });
+
   try {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        human_email,
-        human_first,
-        ai_name,
-        magic_link,
-      }),
-    });
+    let resp;
+    if (env.WELCOME_EMAIL_API && typeof env.WELCOME_EMAIL_API.fetch === 'function') {
+      // Preferred path: Service Binding (same-account, free, internal)
+      resp = await env.WELCOME_EMAIL_API.fetch('https://welcome-email-api/send-welcome', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      console.log(`[agentmail-webhook] Welcome email called via Service Binding, status=${resp.status}`);
+    } else {
+      // Fallback: HTTP fetch (only works cross-account; same-account returns 404)
+      const url = `${env.WELCOME_EMAIL_URL}/send-welcome`;
+      console.log(`[agentmail-webhook] WARNING: Service Binding missing, falling back to HTTP fetch ${url}`);
+      resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+    }
 
     const result = await resp.json().catch(() => ({}));
 
@@ -180,10 +239,10 @@ async function sendWelcomeEmail(env, { human_email, human_first, ai_name, magic_
       return { ok: false, status: resp.status, error: result.error };
     }
 
-    console.log(`[agentmail-webhook] Welcome email sent successfully to ${human_email}`);
+    console.log(`[agentmail-webhook] Welcome email sent successfully to ${human_email} (log_id=${result.log_id})`);
     return { ok: true, log_id: result.log_id };
   } catch (e) {
-    console.log(`[agentmail-webhook] Welcome email fetch error: ${e.message}`);
+    console.log(`[agentmail-webhook] Welcome email call error: ${e.message}`);
     return { ok: false, error: e.message };
   }
 }
@@ -235,24 +294,101 @@ async function markWelcomeSent(env, magicLink) {
   ).bind(magicLink).run();
 }
 
+// ---------------------------------------------------------------------------
+// Client mutations — Service Binding to clients-api (P1.5.2)
+// ---------------------------------------------------------------------------
+//
+// Constitutional: ALL reads/writes against the `clients` table go through
+// clients-api via Service Binding. No direct env.DB.prepare(...clients...)
+// here. (cf-service-binding-pattern skill, 2026-05-07; CTO P1.5 brief
+// 2026-05-10.) The DB binding (env.DB → purebrain-social) remains for
+// magic_links table reads/writes only.
+//
+// Error handling per CTO brief (Option A — retry-once-with-backoff, then
+// log + 200): AgentMail does NOT retry on 5xx. Hard-fail would silently
+// lose the magic-link event. So we retry once with 250ms backoff and on
+// final failure log to surface in monitoring, then let the caller continue.
+// The webhook handler still returns 200 to AgentMail regardless.
+//
+// Retry-once helper.
+async function callClientsApi(env, path, { method = "POST", body = null } = {}) {
+  if (!env.CLIENTS_API) {
+    throw new Error("CLIENTS_API service binding not configured");
+  }
+  if (!env.INTERNAL_BINDING_SECRET) {
+    throw new Error("INTERNAL_BINDING_SECRET not configured");
+  }
+
+  const init = {
+    method,
+    headers: {
+      "content-type": "application/json",
+      "x-internal-binding": "clients-api",
+      "x-internal-binding-secret": env.INTERNAL_BINDING_SECRET,
+    },
+  };
+  if (body !== null) init.body = JSON.stringify(body);
+
+  const url = `https://clients-api${path}`;
+
+  let lastErr = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const req = new Request(url, init);
+      const resp = await env.CLIENTS_API.fetch(req);
+
+      if (resp.status === 404) {
+        // 404 = lookup miss (not_found). Return shape so caller can act.
+        const j = await resp.json().catch(() => ({}));
+        return { ok: false, status: 404, data: null, error: j.error || "not_found" };
+      }
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => "");
+        lastErr = new Error(`clients-api ${path} failed: ${resp.status} ${errText.slice(0, 200)}`);
+        if (attempt === 0) {
+          await new Promise(r => setTimeout(r, 250));
+          continue;
+        }
+        throw lastErr;
+      }
+
+      const j = await resp.json().catch(() => ({}));
+      if (j && j.ok === false) {
+        lastErr = new Error(`clients-api ${path} ok=false: ${JSON.stringify(j.error || j).slice(0, 200)}`);
+        if (attempt === 0) {
+          await new Promise(r => setTimeout(r, 250));
+          continue;
+        }
+        throw lastErr;
+      }
+      return j;
+    } catch (e) {
+      lastErr = e;
+      if (attempt === 0) {
+        await new Promise(r => setTimeout(r, 250));
+        continue;
+      }
+      throw lastErr;
+    }
+  }
+  throw lastErr || new Error("clients-api unknown error");
+}
+
 async function lookupPaypalEmail(env, humanEmail) {
   if (!humanEmail) return null;
 
   try {
-    const row = await env.DB.prepare(
-      'SELECT email, paypal_email FROM clients WHERE LOWER(email) = LOWER(?)'
-    ).bind(humanEmail).first();
-
-    if (row && row.paypal_email) {
-      return row.paypal_email;
+    const result = await callClientsApi(env, `/internal/clients/get-amount?email=${encodeURIComponent(humanEmail)}`, {
+      method: "GET",
+    });
+    if (result && result.ok && result.data && result.data.paypal_email) {
+      console.log(`[agentmail-webhook] paypal_email resolved via clients-api for ${humanEmail}`);
+      return result.data.paypal_email;
     }
-
-    // No paypal_email column? Try just seeing if there's a different email match
-    // PayPal email might be stored as the primary email in some cases
     return null;
   } catch (e) {
-    // clients table might not have paypal_email column yet — non-fatal
-    console.log(`[agentmail-webhook] PayPal email lookup error (non-fatal): ${e.message}`);
+    // Logged failure; webhook continues per CTO Option A.
+    console.log(`[agentmail-webhook] CLIENTS_API_FAILURE lookupPaypalEmail email=${humanEmail} err=${e.message}`);
     return null;
   }
 }
@@ -260,17 +396,24 @@ async function lookupPaypalEmail(env, humanEmail) {
 async function updateClientRecord(env, { email, ai_name, magic_link }) {
   if (!email) return;
 
-  try {
-    const result = await env.DB.prepare(
-      'UPDATE clients SET ai_name = ?, magic_link = ?, last_active_at = datetime(\'now\') WHERE LOWER(email) = LOWER(?)'
-    ).bind(ai_name, magic_link, email).run();
+  const fields = {};
+  if (ai_name !== undefined && ai_name !== null) fields.ai_name = ai_name;
+  if (magic_link !== undefined && magic_link !== null) fields.magic_link = magic_link;
+  // last_active_at is now() — clients-api accepts ISO string; allowlist permits it.
+  fields.last_active_at = new Date().toISOString();
 
-    const changed = result.meta?.changes || 0;
-    console.log(`[agentmail-webhook] Updated client record: email=${email}, ai_name=${ai_name}, rows=${changed}`);
+  try {
+    const result = await callClientsApi(env, "/internal/clients/update-fields", {
+      method: "POST",
+      body: { email, fields },
+    });
+    const changed = result?.data?.changes ?? 0;
+    console.log(`[agentmail-webhook] Updated client record via clients-api: email=${email}, ai_name=${ai_name}, rows=${changed}`);
   } catch (e) {
-    // Non-fatal: client might not exist yet (magic link arrived before PayPal webhook)
-    // or magic_link column might not exist
-    console.log(`[agentmail-webhook] Client update error (non-fatal): ${e.message}`);
+    // Logged failure; webhook continues per CTO Option A. Non-fatal: client
+    // may not exist yet (magic link arrived before PayPal webhook) — that
+    // surfaces here as result.changes=0 (200) or 404 from clients-api.
+    console.log(`[agentmail-webhook] CLIENTS_API_FAILURE updateClientRecord email=${email} err=${e.message}`);
   }
 }
 
@@ -390,6 +533,18 @@ async function handleWebhook(request, env) {
   const uuid = parsed.uuid || '';
   const container = parsed.container || '';
   const originalLink = parsed.magic_link;
+
+  // Step 1.5: Birth pipeline DNS automation (feature-flagged, default OFF)
+  // Runs BEFORE rewrite so we fail-fast before storing/sending a dead link.
+  const dnsResult = await ensureBirthDns(env, originalLink);
+  if (!dnsResult.ok && dnsResult.action !== 'flag_disabled' && dnsResult.action !== 'no_slug') {
+    console.log(`[agentmail-webhook] BIRTH-DNS failed, aborting magic link pipeline: ${JSON.stringify(dnsResult)}`);
+    return jsonResponse({
+      ok: false,
+      error: `Birth DNS automation failed: ${dnsResult.action} — ${dnsResult.error || dnsResult.alert || 'see logs'}`,
+      birth_dns: dnsResult,
+    }, 500);
+  }
 
   // Step 2: Domain rewrite (.ai-civ.com -> .app.purebrain.ai)
   const rewrittenLink = rewriteDomain(

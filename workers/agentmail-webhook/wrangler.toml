@@ -7,13 +7,40 @@ binding = "DB"
 database_name = "purebrain-social"
 database_id = "625dde70-0a60-45e7-bf81-e18e5ac4d854"
 
+# Service Binding to welcome-email-api Worker (CTO ROOT-CAUSE FIX 2026-05-08).
+# CF same-account *.workers.dev fetch returns 404 — Service Bindings are the
+# canonical mechanism for Worker-to-Worker calls.
+[[services]]
+binding = "WELCOME_EMAIL_API"
+service = "welcome-email-api"
+
+# P1.5.2 — Service Binding to clients-api for client-row reads/mutations
+# (cf-service-binding-pattern skill, constitutional 2026-05-07; CTO P1.5 brief
+# 2026-05-10). Replaces direct env.DB reads/writes against
+# purebrain-social.clients. DB binding above stays — magic_links table still
+# lives in purebrain-social. INTERNAL_BINDING_SECRET MUST be set via
+# `wrangler secret put` BEFORE deploy (rotated on this Worker as part of
+# P1.5.1 step 4 — same value across clients-api / admin-api / social-api /
+# agentmail-webhook / paypal-webhook).
+[[services]]
+binding = "CLIENTS_API"
+service = "clients-api"
+
 [vars]
+# Retained for fallback only (cross-account / local dev). Same-account hits 404.
 WELCOME_EMAIL_URL = "https://welcome-email-api.in0v8.workers.dev"
 TELEGRAM_CHAT_ID = "548906264"
 DOMAIN_REWRITE_FROM = ".ai-civ.com"
 DOMAIN_REWRITE_TO = ".app.purebrain.ai"
+# Birth pipeline DNS automation feature flag — default OFF until Witness confirms
+# Caddy on-demand TLS for *.app.purebrain.ai. See:
+# exports/portal-files/cto-prebuild-birth-pipeline-dns-automation-2026-05-08.md
+ENABLE_BIRTH_DNS_AUTO = "false"
+CF_ZONE_ID = "49400cad1527af716705f6cb8c22bb65"
 
 # Secrets (set via wrangler secret put):
 #   AGENTMAIL_WEBHOOK_SECRET - shared secret from AgentMail webhook config
 #   ADMIN_TOKEN              - bearer token for admin endpoints
 #   TELEGRAM_BOT_TOKEN       - Telegram bot token for notifications
+#   CF_DNS_EDIT_TOKEN        - scoped Zone.DNS.Edit token for purebrain.ai zone only
+#                              (REQUIRED before flipping ENABLE_BIRTH_DNS_AUTO=true)
