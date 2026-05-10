@@ -77,8 +77,53 @@ function extractSaleData(resource) {
 }
 
 // ---------------------------------------------------------------------------
-// D1 operations
+// Client mutations — Service Binding to clients-api (P1.5)
 // ---------------------------------------------------------------------------
+//
+// Constitutional: ALL writes to the `clients` table go through clients-api
+// via Service Binding. No direct env.DB.prepare(...UPDATE clients...) here.
+// (cf-service-binding-pattern skill, 2026-05-07; CTO P1.5 brief 2026-05-10.)
+//
+// The DB binding (env.DB → purebrain-social) remains for paypal_webhook_log
+// and no_referral_log only. clients-table writes have been redirected to
+// clients-api (env.CLIENTS_API → purebrain-clients DB).
+//
+// Error handling per CTO brief (Option C — hard-fail): on non-2xx from
+// clients-api we throw. The webhook handler returns 500, and PayPal retries
+// on its 24h exponential schedule. Better than silent loss.
+
+async function callClientsApi(env, path, { method = "POST", body = null } = {}) {
+  if (!env.CLIENTS_API) {
+    throw new Error("CLIENTS_API service binding not configured");
+  }
+  if (!env.INTERNAL_BINDING_SECRET) {
+    throw new Error("INTERNAL_BINDING_SECRET not configured");
+  }
+
+  const init = {
+    method,
+    headers: {
+      "content-type": "application/json",
+      "x-internal-binding": "clients-api",
+      "x-internal-binding-secret": env.INTERNAL_BINDING_SECRET,
+    },
+  };
+  if (body !== null) init.body = JSON.stringify(body);
+
+  const req = new Request(`https://clients-api${path}`, init);
+  const resp = await env.CLIENTS_API.fetch(req);
+
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => "");
+    throw new Error(`clients-api ${path} failed: ${resp.status} ${errText}`);
+  }
+
+  const json = await resp.json().catch(() => ({}));
+  if (json && json.ok === false) {
+    throw new Error(`clients-api ${path} returned ok=false: ${JSON.stringify(json.error || json)}`);
+  }
+  return json;
+}
 
 async function upsertClient(env, { email, name, tier, monthlyAmount, subscriptionId }) {
   if (!email) {
@@ -86,36 +131,19 @@ async function upsertClient(env, { email, name, tier, monthlyAmount, subscriptio
     return null;
   }
 
-  const now = new Date().toISOString();
+  const result = await callClientsApi(env, "/internal/clients/upsert", {
+    method: "POST",
+    body: {
+      email,
+      name: name || "",
+      tier: tier || "Unknown",
+      monthly_amount: monthlyAmount || 0,
+      paypal_subscription_id: subscriptionId || null,
+      source: "paypal",
+    },
+  });
 
-  const result = await env.DB.prepare(`
-    INSERT INTO clients (
-      email, name, tier, monthly_amount, status, payment_status,
-      paypal_subscription_id, total_paid, first_seen_at, last_active_at,
-      joined_date, source, hidden
-    ) VALUES (
-      ?1, ?2, ?3, ?4, 'active', 'active',
-      ?5, 0, ?6, ?6,
-      ?6, 'paypal', 0
-    )
-    ON CONFLICT(email) DO UPDATE SET
-      name = COALESCE(NULLIF(?2, ''), clients.name),
-      tier = COALESCE(NULLIF(?3, 'Unknown'), clients.tier),
-      monthly_amount = CASE WHEN ?4 > 0 THEN ?4 ELSE clients.monthly_amount END,
-      status = 'active',
-      payment_status = 'active',
-      paypal_subscription_id = COALESCE(?5, clients.paypal_subscription_id),
-      last_active_at = ?6
-  `).bind(
-    email,                         // ?1
-    name || "",                    // ?2
-    tier || "Unknown",             // ?3
-    monthlyAmount || 0,            // ?4
-    subscriptionId || null,        // ?5
-    now                            // ?6
-  ).run();
-
-  console.log(`[paypal-webhook] Upserted client: ${email}, tier=${tier}, amount=${monthlyAmount}`);
+  console.log(`[paypal-webhook] Upserted client via clients-api: ${email}, tier=${tier}, amount=${monthlyAmount}`);
   return result;
 }
 
@@ -125,15 +153,16 @@ async function updateClientStatus(env, subscriptionId, status, paymentStatus) {
     return null;
   }
 
-  const now = new Date().toISOString();
+  const result = await callClientsApi(env, "/internal/clients/update-status", {
+    method: "POST",
+    body: {
+      paypal_subscription_id: subscriptionId,
+      status,
+      payment_status: paymentStatus,
+    },
+  });
 
-  const result = await env.DB.prepare(`
-    UPDATE clients
-    SET status = ?, payment_status = ?, last_active_at = ?
-    WHERE paypal_subscription_id = ?
-  `).bind(status, paymentStatus, now, subscriptionId).run();
-
-  console.log(`[paypal-webhook] Updated status for sub=${subscriptionId}: status=${status}, payment=${paymentStatus}, rows=${result.meta?.changes || 0}`);
+  console.log(`[paypal-webhook] Updated status via clients-api for sub=${subscriptionId}: status=${status}, payment=${paymentStatus}, changes=${result?.data?.changes ?? 0}`);
   return result;
 }
 
@@ -143,17 +172,15 @@ async function incrementTotalPaid(env, subscriptionId, amount) {
     return null;
   }
 
-  const now = new Date().toISOString();
+  const result = await callClientsApi(env, "/internal/clients/increment-paid", {
+    method: "POST",
+    body: {
+      paypal_subscription_id: subscriptionId,
+      amount,
+    },
+  });
 
-  const result = await env.DB.prepare(`
-    UPDATE clients
-    SET total_paid = COALESCE(total_paid, 0) + ?,
-        last_active_at = ?,
-        payment_status = 'active'
-    WHERE paypal_subscription_id = ?
-  `).bind(amount, now, subscriptionId).run();
-
-  console.log(`[paypal-webhook] Incremented total_paid by ${amount} for sub=${subscriptionId}, rows=${result.meta?.changes || 0}`);
+  console.log(`[paypal-webhook] Incremented total_paid via clients-api by ${amount} for sub=${subscriptionId}, changes=${result?.data?.changes ?? 0}`);
   return result;
 }
 
@@ -429,14 +456,14 @@ async function handleSubscriptionSuspended(env, resource) {
   const subscriptionId = resource.id;
   console.log(`[paypal-webhook] SUBSCRIPTION.SUSPENDED: sub=${subscriptionId}`);
 
-  // Keep status as-is (they're still a client), just mark payment as suspended
-  const now = new Date().toISOString();
-  await env.DB.prepare(`
-    UPDATE clients
-    SET payment_status = 'suspended', last_active_at = ?
-    WHERE paypal_subscription_id = ?
-  `).bind(now, subscriptionId).run();
+  // Keep status as-is (they're still a client), just mark payment as suspended.
+  // Routed to clients-api per P1.5 (no direct env.DB write to clients).
+  const result = await callClientsApi(env, "/internal/clients/suspend", {
+    method: "POST",
+    body: { paypal_subscription_id: subscriptionId },
+  });
 
+  console.log(`[paypal-webhook] Suspended via clients-api for sub=${subscriptionId}, changes=${result?.data?.changes ?? 0}`);
   return { action: "suspended", subscriptionId };
 }
 
@@ -478,31 +505,40 @@ async function handleSubscriptionUpdated(env, resource) {
     }
   }
 
-  // Look up previous amount from clients table
-  const client = await env.DB.prepare(`
-    SELECT monthly_amount, previous_monthly_amount
-    FROM clients
-    WHERE paypal_subscription_id = ?
-  `).bind(subscriptionId).first();
-
-  if (client) {
-    oldAmount = client.monthly_amount || 0;
+  // Look up previous amount from clients table — via clients-api (P1.5).
+  // P1.4.1 extension: get-amount accepts ?paypal_subscription_id= as alternative
+  // to ?email= and returns { monthly_amount, previous_monthly_amount, ... }.
+  try {
+    const lookup = await callClientsApi(
+      env,
+      `/internal/clients/get-amount?paypal_subscription_id=${encodeURIComponent(subscriptionId)}`,
+      { method: "GET" }
+    );
+    const data = lookup?.data || {};
+    oldAmount = data.monthly_amount || 0;
+  } catch (e) {
+    // If lookup fails (404/500), proceed with oldAmount=0 — the plan-change
+    // branch below requires both > 0, so this naturally falls through to
+    // upsert (which is idempotent). Log loudly for monitoring.
+    console.log(`[paypal-webhook] get-amount lookup failed for sub=${subscriptionId}: ${e.message}`);
   }
 
   console.log(`[paypal-webhook] SUBSCRIPTION.UPDATED: sub=${subscriptionId}, old=${oldAmount}, new=${newAmount}`);
 
   // Detect plan change (amount differs)
   if (newAmount > 0 && oldAmount > 0 && newAmount !== oldAmount) {
-    // Store previous amount for audit trail
+    // Store previous amount for audit trail — via clients-api (P1.5).
+    // update-amount endpoint handles previous_monthly_amount, monthly_amount,
+    // plan_changed_at, last_active_at atomically.
     const now = new Date().toISOString();
-    await env.DB.prepare(`
-      UPDATE clients
-      SET previous_monthly_amount = ?,
-          monthly_amount = ?,
-          plan_changed_at = ?,
-          last_active_at = ?
-      WHERE paypal_subscription_id = ?
-    `).bind(oldAmount, newAmount, now, now, subscriptionId).run();
+    await callClientsApi(env, "/internal/clients/update-amount", {
+      method: "POST",
+      body: {
+        paypal_subscription_id: subscriptionId,
+        new_amount: newAmount,
+        old_amount: oldAmount,
+      },
+    });
 
     // Trigger commission recalculation via Service Binding to referrals-api
     // (if subscription has referral attribution)
