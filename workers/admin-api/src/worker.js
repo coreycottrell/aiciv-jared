@@ -63,24 +63,129 @@ const CLIENT_INTERNAL_ALLOWLIST = [
   "monthly_amount", "goes_by", "notes", "hidden", "email", "role", "goal",
 ];
 
-// Shared helper — interpolates ONLY allowlist KEYS into SET clause, never values.
-// All values bound parameterized via prepare(...).bind(...).
+// ---------------------------------------------------------------------------
+// Service Binding to clients-api (P1.5.3 — admin-api rebind)
+// ---------------------------------------------------------------------------
+//
+// Constitutional: ALL reads/writes against the `clients` table go through
+// clients-api via Service Binding. No direct env.DB.prepare(...clients...)
+// here. (cf-service-binding-pattern skill, 2026-05-07; CTO P1.5 brief
+// 2026-05-10.) The DB binding (env.DB → purebrain-social) remains for
+// admin tables: sessions, users, team_invites — those stay in social DB.
+//
+// Error handling per CTO brief (Option C — hard-fail, propagate 5xx to
+// portal). Admin operator sees error and retries manually. No silent
+// inconsistency. Modeled on paypal-webhook callClientsApi().
+//
+// THE GOTCHA (P1.5.2 lesson): "x-internal-binding" header MUST be the
+// CALLEE's identity ("clients-api"), NOT the caller's name. The marker is
+// a constant for ALL callers (paypal-webhook, agentmail-webhook, admin-api,
+// social-api).
+async function callClientsApi(env, path, { method = "POST", body = null } = {}) {
+  if (!env.CLIENTS_API) {
+    throw new Error("CLIENTS_API service binding not configured");
+  }
+  if (!env.INTERNAL_BINDING_SECRET) {
+    throw new Error("INTERNAL_BINDING_SECRET not configured");
+  }
+
+  const init = {
+    method,
+    headers: {
+      "content-type": "application/json",
+      "x-internal-binding": "clients-api",
+      "x-internal-binding-secret": env.INTERNAL_BINDING_SECRET,
+    },
+  };
+  if (body !== null) init.body = JSON.stringify(body);
+
+  const req = new Request(`https://clients-api${path}`, init);
+  const resp = await env.CLIENTS_API.fetch(req);
+
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => "");
+    throw new Error(`clients-api ${path} failed: ${resp.status} ${errText.slice(0, 200)}`);
+  }
+
+  const j = await resp.json().catch(() => ({}));
+  if (j && j.ok === false) {
+    throw new Error(`clients-api ${path} returned ok=false: ${JSON.stringify(j.error || j).slice(0, 200)}`);
+  }
+  return j;
+}
+
+// Resolve client email by id via clients-api list endpoint.
+// PATCH-by-id paths need email since update-fields is keyed by email.
+// Body usually contains email (frontend sends current values), so this is
+// only used as fallback. Single-shot list call; cheap relative to write.
+async function resolveEmailById(env, id) {
+  const result = await callClientsApi(env, "/internal/clients/list?show_hidden=1", { method: "GET" });
+  const clients = result?.clients || [];
+  const row = clients.find((c) => String(c.id) === String(id));
+  return row && row.email ? String(row.email).toLowerCase() : null;
+}
+
+// Shared helper — refactored for P1.5.3. All UPDATE clients SET ... goes
+// through clients-api Service Binding. monthly_amount is special-cased to
+// /internal/clients/update-amount (per CTO brief). Other fields go to
+// /internal/clients/update-fields (allowlist-bounded on the server).
+//
+// CTO Option C: hard-fail on Service Binding errors → propagate 5xx.
 async function updateClientFields(env, identifier, by, body, allowlist) {
-  const updates = [];
-  const params = [];
+  // Filter body to allowlist intersection BEFORE the call (preserves
+  // existing semantics — non-allowlist keys are dropped silently here AND
+  // on server). Build pre-filter so we can detect "no valid fields" same as before.
+  const filteredFields = {};
   for (const key of allowlist) {
     if (body[key] !== undefined) {
-      updates.push(key + " = ?");
-      params.push(body[key]);
+      filteredFields[key] = body[key];
     }
   }
-  if (updates.length === 0) return err(400, "no valid fields");
-  params.push(by === "email" ? String(identifier).toLowerCase() : identifier);
-  const where = by === "email" ? "LOWER(email) = ?" : "id = ?";
-  await env.DB.prepare(
-    "UPDATE clients SET " + updates.join(", ") + " WHERE " + where
-  ).bind(...params).run();
-  return json({ status: "ok" });
+  if (Object.keys(filteredFields).length === 0) return err(400, "no valid fields");
+
+  // Resolve email (clients-api update-fields keyed by email).
+  let email;
+  if (by === "email") {
+    email = String(identifier).toLowerCase();
+  } else {
+    // Try body.email first (Save modal usually sends it); fall back to list lookup.
+    if (body.email && typeof body.email === "string") {
+      email = String(body.email).toLowerCase();
+    } else {
+      try {
+        email = await resolveEmailById(env, identifier);
+      } catch (e) {
+        return err(502, "clients-api lookup failed: " + e.message);
+      }
+      if (!email) return err(404, "client not found");
+    }
+  }
+
+  try {
+    // Special-case: monthly_amount → /internal/clients/update-amount.
+    if (filteredFields.monthly_amount !== undefined) {
+      await callClientsApi(env, "/internal/clients/update-amount", {
+        method: "POST",
+        body: { email, new_amount: Number(filteredFields.monthly_amount) },
+      });
+      delete filteredFields.monthly_amount;
+    }
+
+    // Remaining fields → /internal/clients/update-fields.
+    // Server's CLIENT_UPDATE_FIELDS_ALLOWLIST is narrower than admin's
+    // CLIENT_INTERNAL_ALLOWLIST: server drops payment_status, hidden, role,
+    // goal silently. Documented behavior gap; future ticket may extend.
+    if (Object.keys(filteredFields).length > 0) {
+      await callClientsApi(env, "/internal/clients/update-fields", {
+        method: "POST",
+        body: { email, fields: filteredFields },
+      });
+    }
+    return json({ status: "ok" });
+  } catch (e) {
+    // CTO Option C: hard-fail propagated as 5xx so portal surfaces error.
+    return err(502, "clients-api update failed: " + e.message);
+  }
 }
 
 // Shared helper — hard delete from team_invites.
@@ -241,46 +346,27 @@ async function handleCheckName(env, url) {
 
   const humanName = (url.searchParams.get("human_name") || "").trim();
 
+  // P1.5.3: route to clients-api Service Binding (no direct env.DB on clients).
+  // CTO Option C — hard-fail on Service Binding error.
   try {
-    // Count how many clients already use this AI name (case-insensitive)
-    const { results } = await env.DB.prepare(
-      "SELECT ai_name, name FROM clients WHERE LOWER(ai_name) = LOWER(?)"
-    ).bind(aiName).all();
+    const params = new URLSearchParams();
+    params.set("ai_name", aiName);
+    if (humanName) params.set("human_name", humanName);
+    const result = await callClientsApi(env, `/internal/clients/check-ai-name?${params.toString()}`, {
+      method: "GET",
+    });
 
-    const existingCount = results ? results.length : 0;
-
-    if (existingCount === 0) {
-      return json({ ai_name_taken: false, existing_count: 0 });
-    }
-
-    // Check if exact match (same AI name + same human name)
-    let exactMatch = false;
-    if (humanName) {
-      exactMatch = results.some(
-        (r) => r.name && r.name.toLowerCase() === humanName.toLowerCase()
-      );
-    }
-
-    // Suggest a suffix (find the highest existing number suffix)
-    let maxSuffix = 1;
-    for (const r of results) {
-      const m = (r.ai_name || "").match(/(\d+)$/);
-      if (m) {
-        const num = parseInt(m[1], 10);
-        if (num >= maxSuffix) maxSuffix = num + 1;
-      }
-    }
-    const suggestedSuffix = maxSuffix > 1 ? maxSuffix : existingCount + 1;
-
+    // clients-api shape: {ok, taken, exact_match?, existing_count, suggested_suffix?, conflicts:[...]}
+    // admin-api legacy shape: {ai_name_taken, exact_match?, existing_count, suggested_suffix}
     return json({
-      ai_name_taken: true,
-      exact_match: exactMatch,
-      existing_count: existingCount,
-      suggested_suffix: suggestedSuffix,
+      ai_name_taken: !!result.taken,
+      exact_match: !!result.exact_match,
+      existing_count: Number(result.existing_count) || 0,
+      suggested_suffix: result.suggested_suffix,
     });
   } catch (e) {
-    // If clients table doesn't exist or query fails, assume name is available
-    return json({ ai_name_taken: false, existing_count: 0 });
+    // Hard-fail per CTO Option C — propagate 5xx so caller (portal/signup) sees error.
+    return err(502, "clients-api check-ai-name failed: " + e.message);
   }
 }
 
@@ -288,33 +374,23 @@ async function handleGetClients(request, env, url) {
   const { error: authErr } = await requireAuth(request, env);
   if (authErr) return authErr;
 
+  // P1.5.3: route to clients-api Service Binding. clients-api computes
+  // stats server-side using same logic that previously lived here.
+  // CTO Option C — hard-fail on Service Binding error.
   const showHidden = url.searchParams.get("show_hidden") === "1";
-  const { results } = await env.DB.prepare(
-    "SELECT * FROM clients ORDER BY last_active_at DESC"
-  ).all();
-  const visible = showHidden ? results : results.filter((r) => !r.hidden);
-  const activeVisible = visible.filter(
-    (r) => r.status === "active" && !r.hidden
-  );
-  const mrr = activeVisible.reduce(
-    (s, r) => s + (Number(r.monthly_amount) || 0),
-    0
-  );
-  const stats = {
-    total: visible.length,
-    active: activeVisible.length,
-    onboarding: visible.filter((r) => r.status === "onboarding").length,
-    churned: visible.filter(
-      (r) => r.status === "churned" || r.status === "cancelled"
-    ).length,
-    total_revenue: visible.reduce(
-      (s, r) => s + (Number(r.total_paid) || 0),
-      0
-    ),
-    mrr,
-    hidden_count: results.filter((r) => r.hidden).length,
-  };
-  return json({ clients: visible || [], stats });
+  try {
+    const path = `/internal/clients/list${showHidden ? "?show_hidden=1" : ""}`;
+    const result = await callClientsApi(env, path, { method: "GET" });
+    // clients-api shape: {ok, clients, stats}
+    // admin-api legacy shape: {clients, stats}
+    return json({
+      clients: result.clients || [],
+      stats: result.stats || {},
+    });
+  } catch (e) {
+    // Hard-fail per CTO Option C — propagate 5xx so portal surfaces error.
+    return err(502, "clients-api list failed: " + e.message);
+  }
 }
 
 async function handleUpdateClientByEmail(request, env, clientEmail) {
