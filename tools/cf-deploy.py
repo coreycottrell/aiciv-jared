@@ -75,6 +75,21 @@ PROTECTED_PATHS = {
     "investment-opportunity-backup/",
     "investment-opportunity-backup-3/",
     "user-guide/",
+    # 2026-05-11: brainiac mastermind training (M1-M10 + hub) added after
+    # M9/M10 restore. Frozen because (a) public training cohort relies on
+    # stable URLs, (b) hub references via JS array, (c) prior accidental
+    # erasure pattern (cf. user-guide 2026-05-08).
+    "brainiac-mastermind-training/",
+    "brainiac-mastermind-training/brainiac-module-1-foundations/",
+    "brainiac-mastermind-training/brainiac-module-2-ai-workflows/",
+    "brainiac-mastermind-training/brainiac-module-3-agent-delegation/",
+    "brainiac-mastermind-training/brainiac-module-4-multi-agent-teams/",
+    "brainiac-mastermind-training/brainiac-module-5-memory-context/",
+    "brainiac-mastermind-training/brainiac-module-6-self-assessment/",
+    "brainiac-mastermind-training/brainiac-module-7-shipping-measurement/",
+    "brainiac-mastermind-training/brainiac-module-8-software-building/",
+    "brainiac-mastermind-training/brainiac-module-9-10x-ai-partner/",
+    "brainiac-mastermind-training/brainiac-module-10-ai-workforce/",
 }
 
 def check_protected_paths(paths_to_deploy: list, force: bool = False) -> list:
