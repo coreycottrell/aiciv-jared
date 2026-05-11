@@ -212,12 +212,27 @@ export default {
         return new Response(resp.body, { status: resp.status, headers: resp.headers });
       }
       // Admin + Referral API → D1 Workers
-      // Login API → social-api Worker (for email/password auth)
+      // Login API → social-api Worker (for email/password auth).
+      //
+      // Phase 7c (2026-05-11): switched from outbound fetch() to Service
+      // Binding to preserve cf-connecting-ip across the Worker→Worker hop.
+      // Prior outbound fetch() caused social-api to see a shared edge IP
+      // (or null → "unknown") for ALL portal logins globally, saturating
+      // the LOGIN_TOTAL_LIMIT=20/60min bucket within minutes and 429ing
+      // every subsequent login. Service binding hands the receiving
+      // Worker the same Request object — cf-connecting-ip is the real
+      // client IP. Constitutional pattern: feedback_cf_service_binding_pattern.md
       if (url.pathname === '/api/login') {
-        const resp = await fetch(new Request('https://social-api.in0v8.workers.dev/api/login', {
-          method: request.method, headers: request.headers,
-          body: request.method !== 'GET' ? request.body : null,
-        }));
+        if (!env.SOCIAL_API) {
+          // Defensive: should be impossible if wrangler.toml is correct,
+          // but fail CLOSED if binding is missing (matches the
+          // CLIENTS_API fail-closed pattern at line 163-166).
+          return new Response(
+            JSON.stringify({ error: 'login service binding unavailable' }),
+            { status: 503, headers: { 'content-type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+          );
+        }
+        const resp = await env.SOCIAL_API.fetch(request);
         const respHeaders = new Headers(resp.headers);
         respHeaders.set('Access-Control-Allow-Origin', '*');
         return new Response(resp.body, { status: resp.status, headers: respHeaders });

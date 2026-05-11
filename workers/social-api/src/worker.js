@@ -3987,7 +3987,15 @@ async function handleSignup(request, env, ctx) {
 }
 
 async function handleLogin(request, env, ctx) {
+  // cf-connecting-ip is preserved across service-binding calls (Phase 7c).
+  // The "unknown" fallback is now genuinely a last-resort — if it ever
+  // fires in production, log it because it means either (a) a non-CF
+  // caller is hitting us directly (test harness) or (b) a future code
+  // path regressed back to outbound fetch().
   const ip = request.headers.get("cf-connecting-ip") || "unknown";
+  if (ip === "unknown") {
+    console.warn("handleLogin: cf-connecting-ip missing — possible service-binding regression or non-CF caller");
+  }
 
   if (!(await rlCheckD1("login_total", ip, LOGIN_TOTAL_WINDOW_MS, LOGIN_TOTAL_LIMIT, env))) {
     return err(429, "too many login attempts - try again later");
