@@ -1,0 +1,77 @@
+-- ================================================================
+-- PUREBRAIN PAYMENTS DATABASE SCHEMA
+-- ================================================================
+-- Purpose: Payment events, subscription tracking, PayPal webhook processing
+-- Migration Source: purebrain-social D1 (pre-Tier3-extraction)
+-- Migration Date: 2026-05-08 (Phase 0 gate-zero)
+-- Destination: purebrain-payments D1 (new database for payments-api Worker)
+--
+-- Constitutional Reference: feedback_project_domain_isolation_constitutional.md
+-- Spec: exports/portal-files/TIER3-EXTRACTION-SPEC-2026-05-08.md
+-- CTO Review: exports/portal-files/cto-prebuild-review-clients-extraction-2026-05-08.md
+-- ================================================================
+
+-- ----------------------------------------------------------------
+-- TABLE: paypal_events
+-- ----------------------------------------------------------------
+-- PayPal webhook event log
+-- 0 rows as of 2026-05-08
+--
+-- Status: Table schema does NOT exist in live purebrain-social D1.
+-- This is expected — paypal-webhook Worker currently writes directly
+-- to clients table, not to a dedicated paypal_events table.
+--
+-- ACTION REQUIRED (Phase 2):
+-- Define schema for paypal_events table based on paypal-webhook Worker
+-- actual webhook payload structure. Schema below is PLACEHOLDER and
+-- must be verified/updated during Phase 2 build.
+-- ----------------------------------------------------------------
+
+-- PLACEHOLDER SCHEMA (to be finalized in Phase 2):
+-- CREATE TABLE paypal_events (
+--     id TEXT PRIMARY KEY,
+--     event_type TEXT NOT NULL,
+--     subscription_id TEXT,
+--     customer_email TEXT,
+--     amount REAL,
+--     currency TEXT DEFAULT 'USD',
+--     status TEXT,
+--     raw_payload TEXT,
+--     processed_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+--     created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+-- );
+--
+-- CREATE INDEX idx_paypal_events_subscription ON paypal_events(subscription_id);
+-- CREATE INDEX idx_paypal_events_email ON paypal_events(customer_email);
+
+-- ================================================================
+-- MIGRATION NOTES
+-- ================================================================
+-- Phase 2 (Stand up payments-api) must:
+-- 1. Review paypal-webhook Worker code (workers/paypal-webhook/src/worker.js)
+-- 2. Extract actual PayPal webhook payload structure
+-- 3. Define production-ready paypal_events schema
+-- 4. Add any other payment-related tables (subscriptions, refunds, etc.)
+--
+-- Phase 4 (Migrate paypal-webhook code) will:
+-- 1. Copy paypal-webhook Worker code → payments-api
+-- 2. Add bridge API calls to clients-api when subscription state changes
+-- 3. Add bridge API calls to hancock-law-api for firm subscriptions
+--
+-- Workers to rebind from purebrain-social → purebrain-payments:
+-- - paypal-webhook (will fold into payments-api Worker)
+--
+-- Bridge API contracts:
+-- - payments-api → clients-api: POST /api/internal/subscription-changed
+-- - payments-api → hancock-law-api: POST /api/internal/subscription-changed
+-- ================================================================
+
+-- ================================================================
+-- CURRENT STATE (2026-05-08)
+-- ================================================================
+-- paypal_events table: DOES NOT EXIST in purebrain-social D1
+-- Row count: 0
+--
+-- This means Phase 6 data migration will skip paypal_events.
+-- Schema definition happens fresh in Phase 2 when payments-api is built.
+-- ================================================================

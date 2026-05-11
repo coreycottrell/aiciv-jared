@@ -411,14 +411,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     source: 'purebrain',
                     messages: state.conversationHistory,
                     aiName: state.aiName || null,
-                    session_uuid: (typeof payTestData !== 'undefined' && payTestData.sessionUuid) ? payTestData.sessionUuid : null,
+                    session_uuid: window.pbSessionUuid || null,
                     metadata: {
                         event_type: eventType,
                         ai_name: state.aiName || null,
                         message_count: state.messageCount,
                         timestamp: new Date().toISOString(),
                         page_url: window.location.href,
-                        sessionUuid: (typeof payTestData !== 'undefined' && payTestData.sessionUuid) ? payTestData.sessionUuid : null,
+                        sessionUuid: window.pbSessionUuid || null,
                         ...data
                     },
                     session_id: sessionId

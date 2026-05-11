@@ -558,16 +558,28 @@
   let partners = [];
 
   // --- Auth ---
-  function doAuth() {
+  async function doAuth() {
     const pw = document.getElementById('auth-pw').value;
-    if (pw === 'purebrain-admin-2026') {
-      TOKEN = pw;
-      sessionStorage.setItem('admin-token', pw);
-      document.getElementById('auth-gate').classList.add('hidden');
-      document.getElementById('app').classList.add('visible');
-      init();
-    } else {
-      document.getElementById('auth-err').textContent = 'Invalid password';
+    if (!pw) {
+      document.getElementById('auth-err').textContent = 'Enter password';
+      return;
+    }
+    // Validate against server (referrals-api has authoritative ADMIN_TOKENS allowlist)
+    try {
+      const res = await fetch(DIRECT_API + '/admin/stats', {
+        headers: { 'X-Admin-Token': pw }
+      });
+      if (res.ok) {
+        TOKEN = pw;
+        sessionStorage.setItem('admin-token', pw);
+        document.getElementById('auth-gate').classList.add('hidden');
+        document.getElementById('app').classList.add('visible');
+        init();
+      } else {
+        document.getElementById('auth-err').textContent = 'Invalid password';
+      }
+    } catch (e) {
+      document.getElementById('auth-err').textContent = 'Network error';
     }
   }
   window.doAuth = doAuth;
@@ -582,13 +594,21 @@
   }
   window.logout = logout;
 
-  // Check stored session
+  // Check stored session — validate stored token against server before bypassing auth gate
   const stored = sessionStorage.getItem('admin-token');
-  if (stored === 'purebrain-admin-2026') {
-    TOKEN = stored;
-    document.getElementById('auth-gate').classList.add('hidden');
-    document.getElementById('app').classList.add('visible');
-    setTimeout(init, 50);
+  if (stored) {
+    fetch(DIRECT_API + '/admin/stats', { headers: { 'X-Admin-Token': stored } })
+      .then(function(res) {
+        if (res.ok) {
+          TOKEN = stored;
+          document.getElementById('auth-gate').classList.add('hidden');
+          document.getElementById('app').classList.add('visible');
+          setTimeout(init, 50);
+        } else {
+          sessionStorage.removeItem('admin-token');
+        }
+      })
+      .catch(function() { sessionStorage.removeItem('admin-token'); });
   }
 
   // --- API Helpers ---

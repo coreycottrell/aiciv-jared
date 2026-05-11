@@ -1,0 +1,3912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CE SME — PureBrain.AI</title>
+    <meta name="description" content="Your operations, fully staffed — without the staff. AI-powered proposals, operations, and project control for SMEs.">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg: #080a12;
+            --bg-mid: #0d1020;
+            --bg-light: #131830;
+            --blue: #2a93c1;
+            --blue-light: #3eb5e6;
+            --red: #f1420b;
+            --white: #ffffff;
+            --off-white: #e8eaf0;
+            --muted: #7a8599;
+            --green: #34d399;
+            --yellow: #fbbf24;
+            --border: rgba(42,147,193,0.15);
+            --border-active: rgba(42,147,193,0.4);
+            --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+            --mono: 'SF Mono', 'Fira Code', monospace;
+            --container: 1280px;
+            --transition: 0.25s ease;
+            --radius: 6px;
+        }
+
+        /* Light mode */
+        .light {
+            --bg: #f4f6fa;
+            --bg-mid: #ffffff;
+            --bg-light: #edf0f5;
+            --white: #0a0e1a;
+            --off-white: #1a1e2e;
+            --muted: #5a6577;
+            --border: rgba(42,147,193,0.2);
+            --border-active: rgba(42,147,193,0.5);
+        }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: var(--sans);
+            background: var(--bg);
+            color: var(--white);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            min-height: 100vh;
+        }
+
+        .container { max-width: var(--container); margin: 0 auto; padding: 0 1.5rem; }
+
+        /* ── Auth Screen ── */
+        #auth-screen {
+            position: fixed; inset: 0; z-index: 9999;
+            background: var(--bg);
+            overflow-y: auto;
+        }
+        #auth-screen.hidden { display: none; }
+
+        .landing-hero {
+            padding-top: 2rem;
+        }
+
+        /* ── Onboarding Modal ── */
+        .onboarding-overlay {
+            position: fixed; inset: 0; z-index: 300;
+            background: rgba(0,0,0,0.8); display: none;
+            align-items: center; justify-content: center;
+            padding: 1rem;
+        }
+        .onboarding-overlay.visible { display: flex; }
+        .onboarding-modal {
+            background: var(--bg-mid); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 2.5rem;
+            width: 100%; max-width: 520px; text-align: center;
+        }
+        .onboarding-step { display: none; }
+        .onboarding-step.active { display: block; }
+        .onboarding-title { font-size: 1.4rem; font-weight: 800; margin-bottom: 0.75rem; }
+        .onboarding-sub { color: var(--muted); font-size: 0.95rem; margin-bottom: 1.5rem; }
+        .priority-grid {
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem;
+            text-align: left; margin-bottom: 1.5rem;
+        }
+        .priority-option {
+            background: var(--bg); border: 2px solid var(--border);
+            border-radius: var(--radius); padding: 0.85rem 1rem;
+            cursor: pointer; transition: all var(--transition);
+            font-size: 0.85rem; font-weight: 600;
+        }
+        .priority-option:hover { border-color: var(--blue); }
+        .priority-option.selected { border-color: var(--blue); background: rgba(42,147,193,0.08); }
+        .priority-option .prio-icon { margin-right: 0.5rem; }
+
+        /* ── Content Type Badges ── */
+        .badge-blog { background: rgba(42,147,193,0.15); color: var(--blue); }
+        .badge-social { background: rgba(52,211,153,0.15); color: var(--green); }
+        .badge-email { background: rgba(168,85,247,0.15); color: #a855f7; }
+        .badge-newsletter { background: rgba(251,146,60,0.15); color: #fb923c; }
+        .badge-idea { background: rgba(123,137,153,0.2); color: var(--muted); }
+        .badge-review { background: rgba(251,191,36,0.15); color: var(--yellow); }
+        .badge-scheduled { background: rgba(42,147,193,0.15); color: var(--blue); }
+        .badge-published { background: rgba(52,211,153,0.15); color: var(--green); }
+
+        /* ── Content Calendar Mini Grid ── */
+        .cal-grid {
+            display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
+            margin-bottom: 1rem;
+        }
+        .cal-header {
+            font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em;
+            color: var(--muted); font-weight: 600; text-align: center; padding: 0.4rem;
+        }
+        .cal-day {
+            background: var(--bg-mid); border: 1px solid var(--border);
+            border-radius: 3px; min-height: 60px; padding: 0.3rem;
+            font-size: 0.7rem; position: relative;
+        }
+        .cal-day-num {
+            font-weight: 700; font-size: 0.75rem; color: var(--muted);
+            margin-bottom: 0.2rem;
+        }
+        .cal-day.today { border-color: var(--blue); }
+        .cal-day.other-month { opacity: 0.3; }
+        .cal-dot {
+            display: inline-block; width: 6px; height: 6px;
+            border-radius: 50%; margin: 1px;
+        }
+        .cal-dot-blog { background: var(--blue); }
+        .cal-dot-social { background: var(--green); }
+        .cal-dot-email { background: #a855f7; }
+        .cal-dot-newsletter { background: #fb923c; }
+
+        .auth-logo {
+            font-size: 2.5rem; font-weight: 800; margin-bottom: 0.25rem;
+            letter-spacing: -0.02em;
+        }
+        .auth-logo .ce { color: var(--blue); }
+        .auth-logo .brand { color: var(--muted); font-size: 1rem; font-weight: 400; }
+        .auth-tagline {
+            color: var(--muted); font-size: 0.95rem;
+            margin-bottom: 2.5rem; text-align: center;
+            max-width: 360px; line-height: 1.5;
+        }
+        .auth-box {
+            background: var(--bg-mid); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 2rem;
+            width: 100%; max-width: 400px;
+        }
+        .auth-tabs {
+            display: flex; gap: 0; margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .auth-tab {
+            flex: 1; background: none; border: none; color: var(--muted);
+            padding: 0.6rem 0; font-size: 0.85rem; font-weight: 600;
+            cursor: pointer; border-bottom: 2px solid transparent;
+            transition: all var(--transition); font-family: var(--sans);
+        }
+        .auth-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+        .auth-field { margin-bottom: 1rem; }
+        .auth-field label {
+            display: block; font-size: 0.75rem; font-weight: 600;
+            color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em;
+            margin-bottom: 0.4rem;
+        }
+        .auth-field input {
+            width: 100%; background: var(--bg); border: 1px solid var(--border);
+            color: var(--white); padding: 0.7rem 1rem; border-radius: var(--radius);
+            font-size: 0.95rem; font-family: var(--sans);
+            transition: border-color var(--transition); outline: none;
+        }
+        .auth-field input:focus { border-color: var(--blue); }
+        .auth-field input::placeholder { color: var(--muted); opacity: 0.6; }
+
+        .auth-btn {
+            width: 100%; background: var(--blue); color: #fff;
+            border: none; padding: 0.75rem; border-radius: var(--radius);
+            font-size: 0.95rem; font-weight: 600; cursor: pointer;
+            font-family: var(--sans); transition: background var(--transition);
+            margin-top: 0.5rem;
+        }
+        .auth-btn:hover { background: var(--blue-light); }
+        .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .auth-error {
+            color: var(--red); font-size: 0.8rem; margin-top: 0.75rem;
+            display: none; text-align: center;
+        }
+
+        .register-extra { display: none; }
+        .register-extra.visible { display: block; }
+
+        /* ── Landing Page Premium Styles ── */
+        .landing-nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+            background: rgba(8,10,18,0.95); backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--border);
+            padding: 0.75rem 0; transition: background 0.3s ease;
+        }
+        .landing-nav-inner {
+            max-width: var(--container); margin: 0 auto; padding: 0 1.5rem;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .landing-nav-links { display: flex; gap: 1.5rem; align-items: center; }
+        .landing-nav-links a {
+            color: var(--muted); text-decoration: none; font-size: 0.82rem;
+            font-weight: 500; transition: color var(--transition);
+        }
+        .landing-nav-links a:hover { color: var(--white); }
+        .nav-cta {
+            background: var(--blue); color: #fff !important; padding: 0.5rem 1.25rem;
+            border-radius: var(--radius); font-weight: 600 !important;
+        }
+        .nav-cta:hover { background: var(--blue-light); }
+
+        .lp-hero {
+            padding: 8rem 0 4rem; position: relative; overflow: hidden;
+        }
+        .lp-hero::before {
+            content: ''; position: absolute; inset: 0;
+            background: radial-gradient(ellipse at 30% 40%, rgba(42,147,193,0.08) 0%, transparent 60%),
+                        radial-gradient(ellipse at 70% 20%, rgba(241,66,11,0.04) 0%, transparent 50%);
+            pointer-events: none;
+        }
+        .lp-hero-inner { position: relative; z-index: 1; max-width: 800px; }
+        .lp-hero h1 {
+            font-size: clamp(2.2rem, 5vw, 3.5rem); font-weight: 800;
+            line-height: 1.15; margin-bottom: 1.25rem; letter-spacing: -0.02em;
+        }
+        .lp-hero h1 span { color: var(--blue); }
+        .lp-hero .lp-sub {
+            font-size: clamp(1rem, 2vw, 1.15rem); color: var(--muted);
+            line-height: 1.7; max-width: 640px; margin-bottom: 2rem;
+        }
+        .lp-cta-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 3rem; }
+        .lp-btn {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            padding: 0.85rem 2rem; border-radius: var(--radius);
+            font-size: 1rem; font-weight: 700; cursor: pointer;
+            font-family: var(--sans); transition: all var(--transition);
+            text-decoration: none; border: none;
+        }
+        .lp-btn-primary { background: var(--blue); color: #fff; }
+        .lp-btn-primary:hover { background: var(--blue-light); transform: translateY(-1px); }
+        .lp-btn-outline {
+            background: transparent; color: var(--white);
+            border: 1px solid var(--border-active);
+        }
+        .lp-btn-outline:hover { border-color: var(--blue); background: rgba(42,147,193,0.08); }
+
+        .lp-stats-bar {
+            background: var(--bg-mid); border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border); padding: 2rem 0;
+        }
+        .lp-stats-grid {
+            display: grid; grid-template-columns: repeat(4, 1fr);
+            gap: 2rem; text-align: center;
+        }
+        .lp-stats-grid .lp-stat-num {
+            font-size: 1.5rem; font-weight: 800; color: var(--blue); line-height: 1;
+        }
+        .lp-stats-grid .lp-stat-label {
+            font-size: 0.72rem; color: var(--muted); text-transform: uppercase;
+            letter-spacing: 0.12em; margin-top: 0.4rem;
+        }
+
+        .lp-section {
+            padding: clamp(3.5rem, 8vw, 5.5rem) 0;
+        }
+        .lp-section-alt { background: var(--bg-mid); }
+        .lp-section-header {
+            text-align: center; margin-bottom: 3rem;
+        }
+        .lp-section-header .lp-label {
+            font-size: 0.72rem; letter-spacing: 0.15em; text-transform: uppercase;
+            color: var(--blue); font-weight: 600; margin-bottom: 0.75rem;
+        }
+        .lp-section-header h2 {
+            font-size: clamp(1.6rem, 3.5vw, 2.5rem); font-weight: 800;
+            line-height: 1.2; margin-bottom: 0.75rem;
+        }
+        .lp-section-header h2 em { font-style: normal; color: var(--blue); }
+        .lp-section-header p {
+            color: var(--muted); font-size: 1.05rem; max-width: 640px;
+            margin: 0 auto; line-height: 1.7;
+        }
+
+        .lp-pain-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+        .lp-pain-card {
+            background: var(--bg-mid); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 2rem; text-align: center;
+            transition: border-color var(--transition), transform var(--transition);
+        }
+        .lp-pain-card:hover { border-color: var(--border-active); transform: translateY(-3px); }
+        .lp-pain-icon { font-size: 2.5rem; margin-bottom: 1rem; }
+        .lp-pain-card h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .lp-pain-card p { color: var(--muted); font-size: 0.9rem; line-height: 1.6; }
+
+        .lp-module-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap: 1.5rem;
+        }
+        .lp-module-card {
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 2rem;
+            transition: border-color var(--transition), transform var(--transition);
+            backdrop-filter: blur(8px);
+        }
+        .lp-module-card:hover { border-color: var(--blue); transform: translateY(-3px); }
+        .lp-module-icon { font-size: 2rem; margin-bottom: 0.75rem; }
+        .lp-module-card h3 {
+            font-size: 1.1rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--white);
+        }
+        .lp-module-card > p {
+            color: var(--muted); font-size: 0.9rem; line-height: 1.6; margin-bottom: 1rem;
+        }
+        .lp-module-features {
+            list-style: none; padding: 0; margin: 0;
+        }
+        .lp-module-features li {
+            padding: 0.3rem 0; font-size: 0.85rem; color: var(--muted);
+        }
+        .lp-module-features li::before {
+            content: ''; display: inline-block; width: 6px; height: 6px;
+            border-radius: 50%; background: var(--blue); margin-right: 0.6rem;
+            vertical-align: middle;
+        }
+
+        .lp-steps-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem;
+        }
+        .lp-step { text-align: center; }
+        .lp-step-num {
+            width: 56px; height: 56px; border-radius: 50%;
+            background: linear-gradient(135deg, var(--blue), var(--blue-light));
+            color: #fff; display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 1.3rem; margin: 0 auto 1.25rem;
+            box-shadow: 0 4px 20px rgba(42,147,193,0.3);
+        }
+        .lp-step h3 { font-weight: 700; margin-bottom: 0.5rem; font-size: 1.05rem; }
+        .lp-step p { color: var(--muted); font-size: 0.88rem; line-height: 1.6; }
+
+        .lp-tie-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem; align-items: center;
+        }
+        .lp-tie-visual {
+            background: var(--bg-mid); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 3rem; text-align: center;
+        }
+        .lp-tie-glyph {
+            font-size: 4rem; margin-bottom: 1rem;
+            background: linear-gradient(135deg, var(--blue), var(--blue-light));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            font-weight: 900; letter-spacing: 0.05em;
+        }
+        .lp-tie-features { list-style: none; padding: 0; }
+        .lp-tie-features li {
+            padding: 0.75rem 0; border-bottom: 1px solid var(--border);
+            font-size: 0.95rem; color: var(--off-white);
+        }
+        .lp-tie-features li:last-child { border-bottom: none; }
+        .lp-tie-features li strong { color: var(--blue); display: block; font-size: 0.8rem;
+            text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.2rem; }
+
+        .lp-compare-table {
+            width: 100%; border-collapse: collapse;
+            border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+        }
+        .lp-compare-table th {
+            padding: 1rem 1rem; text-align: left;
+            font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase;
+            font-weight: 600; color: var(--muted); background: var(--bg-light);
+        }
+        .lp-compare-table th.lp-col-highlight {
+            background: rgba(42,147,193,0.12); color: var(--blue);
+        }
+        .lp-compare-table td {
+            padding: 0.85rem 1rem; border-top: 1px solid var(--border);
+            font-size: 0.88rem; vertical-align: top; color: var(--muted);
+        }
+        .lp-compare-table td:first-child {
+            font-weight: 600; color: var(--off-white); white-space: nowrap;
+            font-size: 0.82rem;
+        }
+        .lp-compare-table td.lp-val-highlight {
+            color: var(--white); background: rgba(42,147,193,0.04); font-weight: 500;
+        }
+        .lp-compare-table tr:hover td { background: rgba(42,147,193,0.03); }
+        .lp-compare-table tr:hover td.lp-val-highlight { background: rgba(42,147,193,0.07); }
+        .lp-check { color: var(--green); }
+        .lp-cross { color: var(--red); opacity: 0.7; }
+        .lp-table-wrap { overflow-x: auto; margin: 0 -1rem; padding: 0 1rem; }
+
+        .lp-pricing-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;
+        }
+        .lp-price-card {
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 2.25rem; position: relative;
+            transition: border-color var(--transition), transform var(--transition);
+        }
+        .lp-price-card:hover { border-color: var(--border-active); transform: translateY(-3px); }
+        .lp-price-card.lp-featured { border-color: var(--blue); }
+        .lp-price-card.lp-featured::after {
+            content: 'MOST POPULAR';
+            position: absolute; top: -12px; right: 1.5rem;
+            background: var(--blue); color: #fff;
+            font-size: 0.6rem; font-weight: 700; letter-spacing: 0.1em;
+            padding: 0.2rem 0.65rem; border-radius: var(--radius);
+        }
+        .lp-price-tier {
+            font-size: 1.15rem; font-weight: 700; color: var(--white); margin-bottom: 0.35rem;
+        }
+        .lp-price-for { color: var(--muted); font-size: 0.8rem; margin-bottom: 1.25rem; }
+        .lp-price-amount {
+            font-size: 2.75rem; font-weight: 800; color: var(--blue); line-height: 1;
+        }
+        .lp-price-amount small { font-size: 0.9rem; color: var(--muted); font-weight: 400; }
+        .lp-price-period { font-size: 0.78rem; color: var(--muted); margin-top: 0.25rem; margin-bottom: 1.25rem; }
+        .lp-price-features { list-style: none; padding: 0; margin: 0 0 1.5rem; }
+        .lp-price-features li {
+            padding: 0.35rem 0; font-size: 0.85rem; color: var(--muted);
+        }
+        .lp-price-features li::before {
+            content: ''; display: inline-block; width: 6px; height: 6px;
+            border-radius: 50%; background: var(--blue); margin-right: 0.6rem;
+            vertical-align: middle;
+        }
+
+        .lp-faq-list { max-width: 760px; margin: 0 auto; }
+        .lp-faq-item {
+            border-bottom: 1px solid var(--border); padding: 1.25rem 0;
+        }
+        .lp-faq-q {
+            font-weight: 700; font-size: 1rem; cursor: pointer;
+            display: flex; justify-content: space-between; align-items: center;
+            color: var(--white); transition: color var(--transition);
+        }
+        .lp-faq-q:hover { color: var(--blue); }
+        .lp-faq-q::after {
+            content: '+'; font-size: 1.4rem; font-weight: 300; color: var(--blue);
+            transition: transform 0.2s ease; flex-shrink: 0; margin-left: 1rem;
+        }
+        .lp-faq-item.open .lp-faq-q::after { transform: rotate(45deg); }
+        .lp-faq-a {
+            max-height: 0; overflow: hidden; transition: max-height 0.3s ease, padding 0.3s ease;
+            color: var(--muted); font-size: 0.92rem; line-height: 1.7;
+        }
+        .lp-faq-item.open .lp-faq-a {
+            max-height: 300px; padding-top: 0.75rem;
+        }
+
+        .lp-final-cta {
+            text-align: center; padding: 4rem 0;
+            background: linear-gradient(180deg, var(--bg-mid) 0%, var(--bg) 100%);
+        }
+        .lp-final-cta h2 {
+            font-size: clamp(1.6rem, 3.5vw, 2.25rem); font-weight: 800;
+            margin-bottom: 0.75rem;
+        }
+        .lp-final-cta p {
+            color: var(--muted); font-size: 1rem; margin-bottom: 2rem;
+        }
+
+        /* Landing fade-in animations */
+        .lp-fade { opacity: 0; transform: translateY(24px); transition: opacity 0.6s ease, transform 0.6s ease; }
+        .lp-fade.lp-visible { opacity: 1; transform: translateY(0); }
+
+        @media (max-width: 768px) {
+            .lp-stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .lp-steps-grid { grid-template-columns: 1fr; }
+            .lp-tie-grid { grid-template-columns: 1fr; }
+            .lp-pricing-grid { grid-template-columns: 1fr; }
+            .lp-module-grid { grid-template-columns: 1fr; }
+            .landing-nav-links a:not(.nav-cta) { display: none; }
+            .lp-compare-table { font-size: 0.78rem; }
+            .lp-compare-table td, .lp-compare-table th { padding: 0.6rem 0.6rem; }
+        }
+
+        /* ── Top Bar ── */
+        .top-bar {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            background: rgba(8,10,18,0.97); backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            padding: 0.75rem 0; height: 54px;
+        }
+        .light .top-bar { background: rgba(244,246,250,0.97); }
+        .top-bar-inner {
+            display: flex; align-items: center; justify-content: space-between;
+            max-width: var(--container); margin: 0 auto; padding: 0 1.5rem;
+        }
+        .top-logo {
+            font-size: 1.2rem; font-weight: 800; text-decoration: none;
+            color: var(--white); letter-spacing: -0.01em;
+        }
+        .top-logo .ce { color: var(--blue); }
+        .top-logo .dot { color: var(--red); }
+        .top-right { display: flex; align-items: center; gap: 1rem; }
+        .top-user {
+            font-size: 0.8rem; color: var(--muted); max-width: 180px;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .theme-toggle, .logout-btn {
+            background: none; border: 1px solid var(--border);
+            color: var(--muted); padding: 0.35rem 0.65rem; border-radius: var(--radius);
+            font-size: 0.75rem; cursor: pointer; font-family: var(--sans);
+            transition: all var(--transition);
+        }
+        .theme-toggle:hover, .logout-btn:hover {
+            border-color: var(--blue); color: var(--white);
+        }
+
+        /* ── Tab Navigation ── */
+        .tab-nav {
+            display: flex; gap: 0; overflow-x: auto;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-mid);
+            padding: 0 1.5rem;
+            position: fixed; top: 54px; left: 0; right: 0; z-index: 99;
+            -webkit-overflow-scrolling: touch;
+        }
+        .tab-btn {
+            background: none; border: none; color: var(--muted);
+            padding: 0.75rem 1.25rem; font-size: 0.78rem;
+            font-family: var(--sans); font-weight: 600;
+            letter-spacing: 0.06em; text-transform: uppercase;
+            cursor: pointer; white-space: nowrap;
+            border-bottom: 2px solid transparent;
+            transition: color var(--transition), border-color var(--transition);
+        }
+        .tab-btn:hover { color: var(--white); }
+        .tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+        .tab-panel { display: none; padding-top: 120px; padding-bottom: 3rem; }
+        .tab-panel.active { display: block; }
+
+        #main-app { display: none; }
+        #main-app.visible { display: block; }
+
+        /* ── Section ── */
+        .section { padding: 2rem 0; }
+        .section-label {
+            font-size: 0.7rem; letter-spacing: 0.15em; text-transform: uppercase;
+            color: var(--blue); font-weight: 600; margin-bottom: 0.5rem;
+        }
+        .section-title {
+            font-size: 1.6rem; font-weight: 700; margin-bottom: 0.5rem;
+        }
+        .section-title em { font-style: normal; color: var(--blue); }
+        .section-sub {
+            color: var(--muted); font-size: 0.95rem; max-width: 600px;
+            margin-bottom: 2rem;
+        }
+
+        /* ── Stats Cards ── */
+        .stats-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem; margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: var(--bg-mid); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 1.5rem;
+            transition: border-color var(--transition);
+        }
+        .stat-card:hover { border-color: var(--border-active); }
+        .stat-label {
+            font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em;
+            color: var(--muted); font-weight: 600; margin-bottom: 0.5rem;
+        }
+        .stat-value {
+            font-size: 2rem; font-weight: 800; color: var(--white);
+            letter-spacing: -0.02em;
+        }
+        .stat-sub { font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem; }
+        .stat-value.green { color: var(--green); }
+        .stat-value.blue { color: var(--blue); }
+        .stat-value.yellow { color: var(--yellow); }
+        .stat-value.red { color: var(--red); }
+
+        /* ── Cards / List ── */
+        .cards-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+        .card {
+            background: var(--bg-mid); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 1.25rem;
+            transition: border-color var(--transition);
+            cursor: default;
+        }
+        .card:hover { border-color: var(--border-active); }
+        .card-title {
+            font-size: 1rem; font-weight: 700; margin-bottom: 0.5rem;
+        }
+        .card-meta {
+            font-size: 0.8rem; color: var(--muted); margin-bottom: 0.5rem;
+        }
+        .card-meta span { margin-right: 1rem; }
+
+        .badge {
+            display: inline-block; font-size: 0.65rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.08em;
+            padding: 0.2rem 0.55rem; border-radius: 3px;
+        }
+        .badge-draft { background: rgba(123,137,153,0.2); color: var(--muted); }
+        .badge-sent { background: rgba(42,147,193,0.15); color: var(--blue); }
+        .badge-won { background: rgba(52,211,153,0.15); color: var(--green); }
+        .badge-lost { background: rgba(241,66,11,0.15); color: var(--red); }
+        .badge-active { background: rgba(42,147,193,0.15); color: var(--blue); }
+        .badge-completed { background: rgba(52,211,153,0.15); color: var(--green); }
+        .badge-pending { background: rgba(251,191,36,0.15); color: var(--yellow); }
+        .badge-in_progress { background: rgba(42,147,193,0.15); color: var(--blue); }
+        .badge-high { background: rgba(241,66,11,0.15); color: var(--red); }
+        .badge-medium { background: rgba(251,191,36,0.15); color: var(--yellow); }
+        .badge-low { background: rgba(123,137,153,0.15); color: var(--muted); }
+        .badge-overdue { background: rgba(241,66,11,0.25); color: var(--red); }
+        .badge-paid { background: rgba(52,211,153,0.15); color: var(--green); }
+        .badge-open { background: rgba(42,147,193,0.15); color: var(--blue); }
+        .badge-closed { background: rgba(123,137,153,0.2); color: var(--muted); }
+        .badge-applied { background: rgba(42,147,193,0.15); color: var(--blue); }
+        .badge-screening { background: rgba(251,191,36,0.15); color: var(--yellow); }
+        .badge-interview { background: rgba(42,147,193,0.25); color: var(--blue-light); }
+        .badge-offer { background: rgba(52,211,153,0.15); color: var(--green); }
+        .badge-hired { background: rgba(52,211,153,0.25); color: var(--green); }
+        .badge-rejected { background: rgba(241,66,11,0.15); color: var(--red); }
+
+        /* ── Table ── */
+        .data-table {
+            width: 100%; border-collapse: collapse;
+            background: var(--bg-mid); border: 1px solid var(--border);
+            border-radius: var(--radius); overflow: hidden;
+        }
+        .data-table th {
+            font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em;
+            color: var(--muted); font-weight: 600; padding: 0.75rem 1rem;
+            text-align: left; border-bottom: 1px solid var(--border);
+            background: var(--bg-light);
+        }
+        .data-table td {
+            padding: 0.75rem 1rem; font-size: 0.9rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .data-table tr:last-child td { border-bottom: none; }
+        .data-table tr:hover td { background: var(--bg-light); }
+        .data-table tr.row-overdue td { background: rgba(241,66,11,0.06); }
+
+        /* ── Buttons ── */
+        .btn {
+            display: inline-flex; align-items: center; gap: 0.4rem;
+            background: var(--blue); color: #fff; border: none;
+            padding: 0.6rem 1.2rem; border-radius: var(--radius);
+            font-size: 0.85rem; font-weight: 600; cursor: pointer;
+            font-family: var(--sans); transition: background var(--transition);
+        }
+        .btn:hover { background: var(--blue-light); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.75rem; }
+        .btn-outline {
+            background: transparent; border: 1px solid var(--border);
+            color: var(--white);
+        }
+        .btn-outline:hover { background: var(--bg-light); border-color: var(--blue); }
+        .btn-green { background: var(--green); color: #080a12; }
+        .btn-green:hover { background: #5fe8b5; }
+        .btn-red { background: var(--red); }
+        .btn-red:hover { background: #ff5c2b; }
+
+        .btn-row { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+
+        /* ── Modal ── */
+        .modal-overlay {
+            position: fixed; inset: 0; z-index: 200;
+            background: rgba(0,0,0,0.7); display: none;
+            align-items: center; justify-content: center;
+            padding: 1rem;
+        }
+        .modal-overlay.visible { display: flex; }
+        .modal {
+            background: var(--bg-mid); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 2rem;
+            width: 100%; max-width: 620px; max-height: 85vh;
+            overflow-y: auto; position: relative;
+        }
+        .modal-title {
+            font-size: 1.2rem; font-weight: 700; margin-bottom: 1.5rem;
+        }
+        .form-field { margin-bottom: 1rem; }
+        .form-field label {
+            display: block; font-size: 0.75rem; font-weight: 600;
+            color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;
+            margin-bottom: 0.35rem;
+        }
+        .form-field input, .form-field select, .form-field textarea {
+            width: 100%; background: var(--bg); border: 1px solid var(--border);
+            color: var(--white); padding: 0.65rem 0.9rem; border-radius: var(--radius);
+            font-size: 0.9rem; font-family: var(--sans);
+            transition: border-color var(--transition); outline: none;
+        }
+        .form-field select option { background: var(--bg); color: var(--white); }
+        .form-field input:focus, .form-field select:focus, .form-field textarea:focus {
+            border-color: var(--blue);
+        }
+        .form-field textarea { min-height: 100px; resize: vertical; }
+        .form-actions { display: flex; gap: 0.75rem; margin-top: 1.5rem; }
+
+        /* ── AI Draft (markdown-rendered) ── */
+        .ai-draft {
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 1.5rem;
+            font-size: 0.9rem; line-height: 1.7;
+            max-height: 500px; overflow-y: auto; margin-top: 1rem;
+        }
+        .ai-draft h1, .ai-draft h2, .ai-draft h3 { color: var(--blue); margin: 1rem 0 0.5rem; }
+        .ai-draft h1 { font-size: 1.3rem; }
+        .ai-draft h2 { font-size: 1.1rem; }
+        .ai-draft h3 { font-size: 0.95rem; }
+        .ai-draft p { margin-bottom: 0.75rem; }
+        .ai-draft ul, .ai-draft ol { margin: 0.5rem 0 0.75rem 1.5rem; }
+        .ai-draft li { margin-bottom: 0.25rem; }
+        .ai-draft strong { color: var(--white); }
+        .ai-draft hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
+
+        /* ── Empty State ── */
+        .empty-state {
+            text-align: center; padding: 4rem 2rem;
+            color: var(--muted);
+        }
+        .empty-state-icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.3; }
+        .empty-state-text { font-size: 1rem; margin-bottom: 1rem; }
+
+        /* ── Activity Feed ── */
+        .activity-item {
+            display: flex; gap: 0.75rem; padding: 0.6rem 0;
+            border-bottom: 1px solid var(--border); font-size: 0.85rem;
+        }
+        .activity-item:last-child { border-bottom: none; }
+        .activity-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--blue); margin-top: 0.4rem; flex-shrink: 0;
+        }
+        .activity-time { color: var(--muted); font-size: 0.75rem; }
+
+        /* ── Search Bar ── */
+        .search-bar {
+            width: 100%; background: var(--bg); border: 1px solid var(--border);
+            color: var(--white); padding: 0.6rem 1rem; border-radius: var(--radius);
+            font-size: 0.9rem; font-family: var(--sans); outline: none;
+            transition: border-color var(--transition); margin-bottom: 1rem;
+        }
+        .search-bar:focus { border-color: var(--blue); }
+        .search-bar::placeholder { color: var(--muted); opacity: 0.6; }
+
+        /* ── Compliance Calendar ── */
+        .compliance-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1rem;
+        }
+        .compliance-card {
+            background: var(--bg-mid); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 1rem 1.25rem;
+            border-left: 4px solid var(--muted);
+            transition: border-color var(--transition);
+        }
+        .compliance-card.urgency-green { border-left-color: var(--green); }
+        .compliance-card.urgency-yellow { border-left-color: var(--yellow); }
+        .compliance-card.urgency-red { border-left-color: var(--red); }
+        .compliance-card .cc-title { font-weight: 700; font-size: 0.95rem; margin-bottom: 0.25rem; }
+        .compliance-card .cc-meta { font-size: 0.8rem; color: var(--muted); }
+        .compliance-card .cc-days { font-size: 0.75rem; font-weight: 700; margin-top: 0.5rem; }
+        .compliance-card .cc-days.text-green { color: var(--green); }
+        .compliance-card .cc-days.text-yellow { color: var(--yellow); }
+        .compliance-card .cc-days.text-red { color: var(--red); }
+
+        /* ── Contract Expiry Warning ── */
+        .contract-warning {
+            font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.06em; margin-left: 0.5rem;
+        }
+        .contract-warning.warn-red { color: var(--red); }
+        .contract-warning.warn-yellow { color: var(--yellow); }
+
+        /* ── Budget Bar ── */
+        .budget-bar-outer {
+            background: var(--bg); border-radius: 3px; height: 8px; overflow: hidden;
+            margin-top: 0.5rem;
+        }
+        .budget-bar-inner {
+            height: 100%; transition: width 0.3s ease; border-radius: 3px;
+        }
+
+        /* ── Toast Notifications ── */
+        #toast-container {
+            position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 9999;
+            display: flex; flex-direction: column; gap: 0.5rem;
+            pointer-events: none;
+        }
+        .toast {
+            background: var(--bg-mid); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 0.75rem 1.25rem;
+            font-size: 0.85rem; font-weight: 500;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            animation: toastIn 0.3s ease forwards;
+            pointer-events: auto;
+            max-width: 360px;
+        }
+        .toast.toast-success { border-left: 3px solid var(--green); }
+        .toast.toast-error { border-left: 3px solid var(--red); }
+        .toast.toast-info { border-left: 3px solid var(--blue); }
+        .toast.toast-out { animation: toastOut 0.3s ease forwards; }
+        @keyframes toastIn { from { opacity: 0; transform: translateY(1rem); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes toastOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(1rem); } }
+
+        /* ── Powered By ── */
+        .powered-by {
+            text-align: center; padding: 2rem 0; font-size: 0.75rem;
+            color: var(--muted); border-top: 1px solid var(--border);
+            margin-top: 2rem;
+        }
+        .powered-by strong { color: var(--blue); }
+
+        /* ── Loading ── */
+        .spinner {
+            display: inline-block; width: 16px; height: 16px;
+            border: 2px solid var(--border); border-top-color: var(--blue);
+            border-radius: 50%; animation: spin 0.6s linear infinite;
+        }
+        .spinner-lg { width: 28px; height: 28px; border-width: 3px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-center {
+            display: flex; align-items: center; justify-content: center;
+            gap: 0.75rem; padding: 2rem; color: var(--muted); font-size: 0.9rem;
+        }
+
+        /* ── Delete Button ── */
+        .btn-delete {
+            background: none; border: none; color: var(--red);
+            cursor: pointer; font-size: 0.9rem; padding: 0.2rem 0.4rem;
+            border-radius: 3px; opacity: 0.5; transition: opacity var(--transition);
+            min-width: 28px; min-height: 28px; display: inline-flex;
+            align-items: center; justify-content: center;
+        }
+        .btn-delete:hover { opacity: 1; background: rgba(241,66,11,0.1); }
+
+        /* ── Quick Actions ── */
+        .quick-actions {
+            display: flex; gap: 0.75rem; flex-wrap: wrap;
+            margin-bottom: 2rem; padding: 1.25rem;
+            background: var(--bg-mid); border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+        .quick-actions .section-label { width: 100%; margin-bottom: 0.25rem; }
+
+        /* ── Footer ── */
+        .site-footer {
+            border-top: 1px solid var(--border); margin-top: 3rem;
+            padding: 2rem 0; text-align: center;
+        }
+        .site-footer .footer-brand {
+            font-size: 0.85rem; color: var(--muted); margin-bottom: 0.75rem;
+        }
+        .site-footer .footer-brand strong { color: var(--blue); }
+        .site-footer .footer-links {
+            display: flex; justify-content: center; gap: 1.5rem;
+            font-size: 0.8rem; margin-bottom: 0.75rem;
+        }
+        .site-footer .footer-links a {
+            color: var(--muted); text-decoration: none;
+            transition: color var(--transition);
+        }
+        .site-footer .footer-links a:hover { color: var(--blue); }
+        .site-footer .footer-copyright {
+            font-size: 0.7rem; color: var(--muted); opacity: 0.7;
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .cards-grid { grid-template-columns: 1fr; }
+            .compliance-grid { grid-template-columns: 1fr; }
+            .top-user { display: none; }
+            .tab-nav { -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+            .tab-nav::-webkit-scrollbar { display: none; }
+            .tab-btn { padding: 0.75rem 0.85rem; font-size: 0.7rem; min-height: 44px; }
+            .modal { width: 95%; max-width: none; padding: 1.25rem; }
+            .form-field input, .form-field select, .form-field textarea {
+                font-size: 16px; /* prevents iOS zoom */
+                padding: 0.75rem 0.9rem;
+            }
+            .btn { min-height: 44px; padding: 0.65rem 1.2rem; }
+            .btn-sm { min-height: 44px; padding: 0.5rem 0.8rem; }
+            .auth-btn { min-height: 44px; }
+            .quick-actions { flex-direction: column; }
+            .quick-actions .btn { width: 100%; justify-content: center; }
+            .data-table { font-size: 0.8rem; }
+            .data-table th, .data-table td { padding: 0.5rem 0.6rem; }
+        }
+        @media (max-width: 480px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .stat-card { padding: 1rem; }
+            .stat-value { font-size: 1.5rem; }
+            .section-title { font-size: 1.3rem; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══ Landing Page + Auth Screen ═══ -->
+<div id="auth-screen">
+
+    <!-- Landing Nav -->
+    <nav class="landing-nav">
+        <div class="landing-nav-inner">
+            <div class="auth-logo" style="font-size:1.3rem;margin-bottom:0;">
+                <span class="ce">CE</span> <span style="font-weight:800;color:var(--white);">SME</span>
+                <span style="color:var(--muted);font-size:0.75rem;margin-left:0.5rem;font-weight:400;">by PureBrain.AI</span>
+            </div>
+            <div class="landing-nav-links">
+                <a href="#lp-modules">Modules</a>
+                <a href="#lp-pricing">Pricing</a>
+                <a href="#lp-faq">FAQ</a>
+                <a href="#landing-auth" class="nav-cta">Get Started</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- SECTION 1: HERO -->
+    <div class="lp-hero">
+        <div class="container">
+            <div class="lp-hero-inner lp-fade">
+                <div style="margin-bottom:1.5rem;">
+                    <span style="display:inline-block;background:rgba(42,147,193,0.12);color:var(--blue);font-size:0.72rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;padding:0.35rem 0.85rem;border-radius:20px;border:1px solid rgba(42,147,193,0.2);">Built for Canadian SMEs</span>
+                </div>
+                <h1>Your Operations, Fully Staffed <span>&mdash; Without the Staff</span></h1>
+                <p class="lp-sub">AI-powered proposals, operations, project control, billing, HR, and content management &mdash; all powered by TIE, The Intelligence Engine that learns your business.</p>
+                <div class="lp-cta-row">
+                    <a href="#landing-auth" class="lp-btn lp-btn-primary">Start Free Trial</a>
+                    <a href="#lp-modules" class="lp-btn lp-btn-outline">See All Modules</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- HERO STATS BAR -->
+    <div class="lp-stats-bar">
+        <div class="container">
+            <div class="lp-stats-grid">
+                <div>
+                    <div class="lp-stat-num">6</div>
+                    <div class="lp-stat-label">Modules</div>
+                </div>
+                <div>
+                    <div class="lp-stat-num" style="color:var(--green);">50+</div>
+                    <div class="lp-stat-label">AI Endpoints</div>
+                </div>
+                <div>
+                    <div class="lp-stat-num" style="color:var(--yellow);">Canada-First</div>
+                    <div class="lp-stat-label">Intelligence</div>
+                </div>
+                <div>
+                    <div class="lp-stat-num" style="color:var(--red);">$0</div>
+                    <div class="lp-stat-label">Setup Cost</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECTION 2: PROBLEM -->
+    <div class="lp-section">
+        <div class="container">
+            <div class="lp-section-header lp-fade">
+                <div class="lp-label">The Problem</div>
+                <h2>Running a Small Business Shouldn't Require a <em>Big Team</em></h2>
+                <p>You started a business to do great work, not to drown in admin. But growing means more proposals, more tracking, more everything.</p>
+            </div>
+            <div class="lp-pain-grid">
+                <div class="lp-pain-card lp-fade">
+                    <div class="lp-pain-icon">&#9200;</div>
+                    <h3>Lost Hours Writing Proposals</h3>
+                    <p>Every new opportunity means hours crafting proposals from scratch. Time you should be spending on billable work or growing your business.</p>
+                </div>
+                <div class="lp-pain-card lp-fade">
+                    <div class="lp-pain-icon">&#129504;</div>
+                    <h3>Critical Knowledge Trapped in People's Heads</h3>
+                    <p>SOPs live in someone's memory. When they leave, the knowledge walks out the door. Your business runs on institutional memory, not systems.</p>
+                </div>
+                <div class="lp-pain-card lp-fade">
+                    <div class="lp-pain-icon">&#128202;</div>
+                    <h3>Spreadsheets Aren't Project Management</h3>
+                    <p>Tabs for invoices, tabs for projects, tabs for HR. Nothing talks to each other. You're the integration layer, and it's exhausting.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECTION 3: THE 6 MODULES -->
+    <div class="lp-section lp-section-alt" id="lp-modules">
+        <div class="container">
+            <div class="lp-section-header lp-fade">
+                <div class="lp-label">The Solution</div>
+                <h2>Six Modules. <em>One Platform.</em> Zero Busywork.</h2>
+                <p>Every module is powered by TIE &mdash; The Intelligence Engine that understands Canadian business context.</p>
+            </div>
+            <div class="lp-module-grid">
+                <div class="lp-module-card lp-fade">
+                    <div class="lp-module-icon">&#9998;</div>
+                    <h3>Proposals</h3>
+                    <p>AI generates branded proposals from a one-line brief. Track pipeline from draft to won.</p>
+                    <ul class="lp-module-features">
+                        <li>AI-generated from a single sentence brief</li>
+                        <li>Branded PDF output with your logo</li>
+                        <li>Pipeline tracking: Draft, Sent, Won, Lost</li>
+                    </ul>
+                </div>
+                <div class="lp-module-card lp-fade">
+                    <div class="lp-module-icon">&#9881;</div>
+                    <h3>Operations</h3>
+                    <p>SOPs, task management, vendor tracking, and compliance &mdash; all in one place.</p>
+                    <ul class="lp-module-features">
+                        <li>AI-drafted SOPs from a description</li>
+                        <li>Recurring task management with deadlines</li>
+                        <li>Vendor directory + compliance tracking</li>
+                    </ul>
+                </div>
+                <div class="lp-module-card lp-fade">
+                    <div class="lp-module-icon">&#128203;</div>
+                    <h3>Project Control</h3>
+                    <p>Milestone tracking, budget vs actual, and AI-generated client status updates.</p>
+                    <ul class="lp-module-features">
+                        <li>Milestone tracking with deadlines</li>
+                        <li>Budget vs actual monitoring</li>
+                        <li>AI client update emails in one click</li>
+                    </ul>
+                </div>
+                <div class="lp-module-card lp-fade">
+                    <div class="lp-module-icon">&#128176;</div>
+                    <h3>Billing</h3>
+                    <p>Invoicing, expense tracking, and a real-time cash flow dashboard in CAD.</p>
+                    <ul class="lp-module-features">
+                        <li>Professional invoice generation</li>
+                        <li>Expense tracking with categories</li>
+                        <li>Cash flow dashboard (inflows vs outflows)</li>
+                    </ul>
+                </div>
+                <div class="lp-module-card lp-fade">
+                    <div class="lp-module-icon">&#128101;</div>
+                    <h3>HR</h3>
+                    <p>Job postings, AI candidate screening, onboarding checklists, and performance reviews.</p>
+                    <ul class="lp-module-features">
+                        <li>Post jobs and track applicants</li>
+                        <li>AI candidate screening and scoring</li>
+                        <li>Performance review templates</li>
+                    </ul>
+                </div>
+                <div class="lp-module-card lp-fade">
+                    <div class="lp-module-icon">&#128221;</div>
+                    <h3>Content</h3>
+                    <p>Content calendar, AI draft generation, and a publish pipeline for every channel.</p>
+                    <ul class="lp-module-features">
+                        <li>Calendar with blog, social, email, newsletter</li>
+                        <li>AI content generation from topics</li>
+                        <li>Multi-channel publish pipeline</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECTION 4: HOW IT WORKS -->
+    <div class="lp-section">
+        <div class="container">
+            <div class="lp-section-header lp-fade">
+                <div class="lp-label">Simple Setup</div>
+                <h2>Up and Running in <em>Three Steps</em></h2>
+            </div>
+            <div class="lp-steps-grid">
+                <div class="lp-step lp-fade">
+                    <div class="lp-step-num">1</div>
+                    <h3>Sign Up</h3>
+                    <p>Create your account in 30 seconds. No credit card required to start your free trial.</p>
+                </div>
+                <div class="lp-step lp-fade">
+                    <div class="lp-step-num">2</div>
+                    <h3>Configure Your Business</h3>
+                    <p>Set your rate card, industry, team size, and priorities. TIE adapts its intelligence to your context.</p>
+                </div>
+                <div class="lp-step lp-fade">
+                    <div class="lp-step-num">3</div>
+                    <h3>Let TIE Handle the Rest</h3>
+                    <p>AI proposals, smart SOPs, automated tracking. TIE learns from every interaction and gets smarter over time.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECTION 5: TIE - THE INTELLIGENCE ENGINE -->
+    <div class="lp-section lp-section-alt">
+        <div class="container">
+            <div class="lp-section-header lp-fade">
+                <div class="lp-label">The Engine</div>
+                <h2>Every Module is Powered by <em>TIE</em></h2>
+                <p>The Intelligence Engine &mdash; AI that actually understands Canadian business.</p>
+            </div>
+            <div class="lp-tie-grid lp-fade">
+                <div class="lp-tie-visual">
+                    <div class="lp-tie-glyph">TIE</div>
+                    <p style="color:var(--muted);font-size:0.9rem;">The Intelligence Engine</p>
+                    <p style="color:var(--muted);font-size:0.82rem;margin-top:0.5rem;">Learns your business. Gets smarter every day.</p>
+                </div>
+                <div>
+                    <ul class="lp-tie-features">
+                        <li>
+                            <strong>Canadian Business Context</strong>
+                            GST/HST calculations, CRA compliance awareness, PIPEDA privacy standards, and provincial regulation knowledge baked in.
+                        </li>
+                        <li>
+                            <strong>Cross-Module Intelligence</strong>
+                            Win a proposal? TIE auto-creates the project. Complete a project? TIE generates the invoice. Everything connects.
+                        </li>
+                        <li>
+                            <strong>Compounds With Every Interaction</strong>
+                            TIE learns your writing style, your rate card, your client preferences. Month 3 is smarter than month 1.
+                        </li>
+                        <li>
+                            <strong>Industry-Aware AI</strong>
+                            Whether you're in construction, consulting, professional services, or creative &mdash; TIE adapts its language and templates.
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECTION 6: COMPARISON TABLE -->
+    <div class="lp-section" id="lp-compare">
+        <div class="container">
+            <div class="lp-section-header lp-fade">
+                <div class="lp-label">The Comparison</div>
+                <h2>One Subscription <em>Replaces Everything</em></h2>
+                <p>Stop paying for 5 separate tools that don't talk to each other.</p>
+            </div>
+            <div class="lp-table-wrap lp-fade">
+                <table class="lp-compare-table">
+                    <thead>
+                        <tr>
+                            <th>Capability</th>
+                            <th class="lp-col-highlight">CE SME ($199/mo)</th>
+                            <th>Manual (Your Time)</th>
+                            <th>Hire Staff ($4,000+/mo)</th>
+                            <th>5 Separate Tools ($500+/mo)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Proposals</td>
+                            <td class="lp-val-highlight">AI-generated in minutes</td>
+                            <td>Hours per proposal</td>
+                            <td>Delegated but expensive</td>
+                            <td>HoneyBook ($39/mo)</td>
+                        </tr>
+                        <tr>
+                            <td>Operations</td>
+                            <td class="lp-val-highlight">SOPs + compliance auto</td>
+                            <td>In your head</td>
+                            <td>Needs training</td>
+                            <td>Monday.com ($36/mo)</td>
+                        </tr>
+                        <tr>
+                            <td>Projects</td>
+                            <td class="lp-val-highlight">Real-time tracking</td>
+                            <td>Spreadsheets</td>
+                            <td>PM hire needed</td>
+                            <td>Asana ($30/mo)</td>
+                        </tr>
+                        <tr>
+                            <td>Billing</td>
+                            <td class="lp-val-highlight">Auto-invoicing</td>
+                            <td>Manual QuickBooks</td>
+                            <td>Bookkeeper ($800+/mo)</td>
+                            <td>QuickBooks ($90/mo)</td>
+                        </tr>
+                        <tr>
+                            <td>HR</td>
+                            <td class="lp-val-highlight">AI screening + onboarding</td>
+                            <td>Ad hoc</td>
+                            <td>HR person ($3,500+/mo)</td>
+                            <td>BambooHR ($99/mo)</td>
+                        </tr>
+                        <tr>
+                            <td>Content</td>
+                            <td class="lp-val-highlight">AI-drafted + scheduled</td>
+                            <td>Neglected</td>
+                            <td>Content person ($3,000+/mo)</td>
+                            <td>HubSpot ($90/mo)</td>
+                        </tr>
+                        <tr>
+                            <td>Cross-module intelligence</td>
+                            <td class="lp-val-highlight"><span class="lp-check">&#10003;</span> Built-in</td>
+                            <td><span class="lp-cross">&#10007;</span></td>
+                            <td><span class="lp-cross">&#10007;</span></td>
+                            <td><span class="lp-cross">&#10007;</span></td>
+                        </tr>
+                        <tr>
+                            <td>Canadian context</td>
+                            <td class="lp-val-highlight"><span class="lp-check">&#10003;</span> GST/HST, CRA, PIPEDA</td>
+                            <td>Manual research</td>
+                            <td>Maybe</td>
+                            <td><span class="lp-cross">&#10007;</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECTION 7: PRICING -->
+    <div class="lp-section lp-section-alt" id="lp-pricing">
+        <div class="container">
+            <div class="lp-section-header lp-fade">
+                <div class="lp-label">Pricing</div>
+                <h2>Simple, Transparent <em>Pricing</em></h2>
+                <p>All plans include TIE intelligence engine and Canadian business context.</p>
+            </div>
+            <div class="lp-pricing-grid lp-fade">
+                <div class="lp-price-card">
+                    <div class="lp-price-tier">Starter</div>
+                    <div class="lp-price-for">For solopreneurs and micro-teams</div>
+                    <div class="lp-price-amount">$199<small>/mo CAD</small></div>
+                    <div class="lp-price-period">Billed monthly. Cancel anytime.</div>
+                    <ul class="lp-price-features">
+                        <li>Proposals module</li>
+                        <li>Operations module</li>
+                        <li>Project Control module</li>
+                        <li>TIE intelligence engine</li>
+                        <li>Canadian business context</li>
+                        <li>Email support</li>
+                    </ul>
+                    <a href="#landing-auth" class="lp-btn lp-btn-outline" style="width:100%;justify-content:center;text-decoration:none;">Start Free Trial</a>
+                </div>
+                <div class="lp-price-card lp-featured">
+                    <div class="lp-price-tier">Professional</div>
+                    <div class="lp-price-for">For growing businesses</div>
+                    <div class="lp-price-amount">$399<small>/mo CAD</small></div>
+                    <div class="lp-price-period">Billed monthly. Cancel anytime.</div>
+                    <ul class="lp-price-features">
+                        <li>Everything in Starter</li>
+                        <li>Billing module</li>
+                        <li>HR module</li>
+                        <li>Cross-module automation</li>
+                        <li>Priority support</li>
+                        <li>Custom rate cards</li>
+                    </ul>
+                    <a href="#landing-auth" class="lp-btn lp-btn-primary" style="width:100%;justify-content:center;text-decoration:none;">Start Free Trial</a>
+                </div>
+                <div class="lp-price-card">
+                    <div class="lp-price-tier">Enterprise</div>
+                    <div class="lp-price-for">For established SMEs</div>
+                    <div class="lp-price-amount">$599<small>/mo CAD</small></div>
+                    <div class="lp-price-period">Billed monthly. Cancel anytime.</div>
+                    <ul class="lp-price-features">
+                        <li>Everything in Professional</li>
+                        <li>Content module</li>
+                        <li>White-label proposals</li>
+                        <li>Priority AI processing</li>
+                        <li>Dedicated onboarding</li>
+                        <li>Phone + Slack support</li>
+                    </ul>
+                    <a href="#landing-auth" class="lp-btn lp-btn-outline" style="width:100%;justify-content:center;text-decoration:none;">Contact Sales</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECTION 8: FAQ -->
+    <div class="lp-section" id="lp-faq">
+        <div class="container">
+            <div class="lp-section-header lp-fade">
+                <div class="lp-label">Questions</div>
+                <h2>Frequently Asked <em>Questions</em></h2>
+            </div>
+            <div class="lp-faq-list lp-fade">
+                <div class="lp-faq-item">
+                    <div class="lp-faq-q" onclick="this.parentElement.classList.toggle('open')">What is TIE?</div>
+                    <div class="lp-faq-a">TIE stands for The Intelligence Engine. It's the AI backbone of CE SME that learns your business over time &mdash; your writing style, your rate card, your client preferences, your industry norms. Every module is powered by TIE, which means cross-module intelligence comes standard.</div>
+                </div>
+                <div class="lp-faq-item">
+                    <div class="lp-faq-q" onclick="this.parentElement.classList.toggle('open')">Is my data secure?</div>
+                    <div class="lp-faq-a">Yes. CE SME runs on Cloudflare infrastructure with data isolated per business. Your data is never shared between accounts, never used to train AI models, and stored in compliance with PIPEDA privacy standards. All connections are encrypted end-to-end.</div>
+                </div>
+                <div class="lp-faq-item">
+                    <div class="lp-faq-q" onclick="this.parentElement.classList.toggle('open')">Can I use this outside Canada?</div>
+                    <div class="lp-faq-a">Yes. CE SME works globally, but Canadian business context (GST/HST, CRA compliance, PIPEDA, provincial regulations) is the default intelligence layer. If you operate internationally, TIE adapts while keeping Canadian compliance as the foundation.</div>
+                </div>
+                <div class="lp-faq-item">
+                    <div class="lp-faq-q" onclick="this.parentElement.classList.toggle('open')">What integrations are available?</div>
+                    <div class="lp-faq-a">QuickBooks, Wave, and FreshBooks integrations are on the roadmap. Currently, CE SME is a standalone platform with import/export capabilities. The billing module generates standard invoice formats compatible with major accounting software.</div>
+                </div>
+                <div class="lp-faq-item">
+                    <div class="lp-faq-q" onclick="this.parentElement.classList.toggle('open')">Can my team access it?</div>
+                    <div class="lp-faq-a">Multi-user team access is coming in v2. Currently, each account supports a single user. Team collaboration features including role-based permissions and shared dashboards are actively in development.</div>
+                </div>
+                <div class="lp-faq-item">
+                    <div class="lp-faq-q" onclick="this.parentElement.classList.toggle('open')">How is this different from HoneyBook or Dubsado?</div>
+                    <div class="lp-faq-a">CE SME is AI-native, not AI-bolted-on. While tools like HoneyBook focus on one domain (proposals/CRM), CE SME covers proposals, operations, projects, billing, HR, and content in a single platform. The key difference is cross-module intelligence &mdash; TIE connects everything so a won proposal automatically creates a project, which feeds billing when complete. No other tool does this.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECTION 9: CTA + AUTH -->
+    <div class="lp-final-cta" id="landing-auth">
+        <div class="container">
+            <h2 class="lp-fade">Ready to Staff Your Operations?</h2>
+            <p class="lp-fade">Sign in or create your account to get started. Free trial, no credit card required.</p>
+            <div style="display:flex;flex-direction:column;align-items:center;">
+                <div class="auth-box lp-fade">
+                    <div class="auth-tabs">
+                        <button class="auth-tab active" data-auth="login">Sign In</button>
+                        <button class="auth-tab" data-auth="register">Register</button>
+                    </div>
+                    <form id="auth-form">
+                        <div class="auth-field">
+                            <label>Email</label>
+                            <input type="email" id="auth-email" placeholder="you@company.com" required>
+                        </div>
+                        <div class="auth-field">
+                            <label>Password</label>
+                            <input type="password" id="auth-password" placeholder="Min 6 characters" required>
+                        </div>
+                        <div class="register-extra" id="register-fields">
+                            <div class="auth-field">
+                                <label>Company Name</label>
+                                <input type="text" id="auth-company" placeholder="Your company">
+                            </div>
+                            <div class="auth-field">
+                                <label>Industry</label>
+                                <input type="text" id="auth-industry" placeholder="e.g. Construction, Consulting">
+                            </div>
+                        </div>
+                        <button type="submit" class="auth-btn" id="auth-submit">Sign In</button>
+                        <div class="auth-error" id="auth-error"></div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECTION 10: FOOTER -->
+    <div class="site-footer" style="margin-top:0;">
+        <div class="footer-brand">Powered by <strong>PureBrain.AI</strong> &times; Canada's Entrepreneur</div>
+        <div class="footer-links">
+            <a href="#">Privacy Policy</a>
+            <a href="#">Terms of Service</a>
+            <a href="#">Contact Us</a>
+        </div>
+        <div class="footer-copyright">&copy; 2026 Pure Technology Inc. All rights reserved.</div>
+    </div>
+</div>
+
+<!-- ═══ Main App ═══ -->
+<div id="main-app">
+
+    <!-- Top Bar -->
+    <div class="top-bar">
+        <div class="top-bar-inner">
+            <a class="top-logo" href="#">
+                <span class="ce">CE</span> PUREBRAIN<span class="dot">.</span>AI
+            </a>
+            <div class="top-right">
+                <span class="top-user" id="user-display"></span>
+                <button class="theme-toggle" onclick="toggleTheme()">Light</button>
+                <button class="logout-btn" onclick="logout()">Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="tab-nav">
+        <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+        <button class="tab-btn" data-tab="proposals">Proposals</button>
+        <button class="tab-btn" data-tab="operations">Operations</button>
+        <button class="tab-btn" data-tab="projects">Projects</button>
+        <button class="tab-btn" data-tab="billing">Billing</button>
+        <button class="tab-btn" data-tab="hr">HR</button>
+        <button class="tab-btn" data-tab="content">Content</button>
+    </div>
+
+    <!-- ═══ Dashboard Tab ═══ -->
+    <div class="tab-panel active" id="tab-dashboard">
+        <div class="container">
+            <div class="section">
+                <div class="section-label">Command Center</div>
+                <div class="section-title">Your Business at a <em>Glance</em></div>
+                <div class="section-sub">Real-time visibility across proposals, projects, tasks, and revenue.</div>
+
+                <div class="stats-grid" id="dashboard-stats">
+                    <div class="stat-card">
+                        <div class="stat-label">Active Proposals</div>
+                        <div class="stat-value blue" id="stat-proposals">--</div>
+                        <div class="stat-sub" id="stat-proposals-sub">Loading...</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Open Projects</div>
+                        <div class="stat-value" id="stat-projects">--</div>
+                        <div class="stat-sub" id="stat-projects-sub">Loading...</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Pending Tasks</div>
+                        <div class="stat-value yellow" id="stat-tasks">--</div>
+                        <div class="stat-sub" id="stat-tasks-sub">Loading...</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Revenue Pipeline</div>
+                        <div class="stat-value green" id="stat-revenue">--</div>
+                        <div class="stat-sub" id="stat-revenue-sub">Loading...</div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="quick-actions">
+                    <div class="section-label">Quick Actions</div>
+                    <button class="btn" onclick="openModal('proposal'); switchToTab('proposals');">+ New Proposal</button>
+                    <button class="btn btn-outline" onclick="openModal('task'); switchToTab('operations');">+ New Task</button>
+                    <button class="btn btn-outline" onclick="openModal('invoice'); switchToTab('billing');">+ New Invoice</button>
+                    <button class="btn btn-outline" onclick="seedDemoData()" id="btn-seed-demo">Seed Demo Data</button>
+                </div>
+
+                <div class="section-label" style="margin-top:2rem;">Recent Activity</div>
+                <div id="activity-feed" class="card" style="padding:1rem 1.25rem;">
+                    <div class="loading-center"><span class="spinner"></span> Loading activity...</div>
+                </div>
+            </div>
+
+            <div class="site-footer">
+                <div class="footer-brand">Powered by <strong>PureBrain.AI</strong> &times; Canada's Entrepreneur</div>
+                <div class="footer-links">
+                    <a href="#">Privacy Policy</a>
+                    <a href="#">Terms of Service</a>
+                    <a href="#">Contact Us</a>
+                </div>
+                <div class="footer-copyright">&copy; 2026 Pure Technology Inc. All rights reserved.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Proposals Tab ═══ -->
+    <div class="tab-panel" id="tab-proposals">
+        <div class="container">
+            <div class="section">
+                <div class="section-label">Module 1</div>
+                <div class="section-title">Proposal <em>Engine</em></div>
+                <div class="section-sub">Create proposals from a brief. AI generates professional drafts. Track win/loss.</div>
+
+                <div class="btn-row">
+                    <button class="btn" onclick="openModal('proposal')">+ New Proposal</button>
+                </div>
+
+                <div class="stats-grid" id="proposal-stats-row" style="margin-bottom:1.5rem;">
+                    <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value" id="ps-total">--</div></div>
+                    <div class="stat-card"><div class="stat-label">Won</div><div class="stat-value green" id="ps-won">--</div></div>
+                    <div class="stat-card"><div class="stat-label">Pipeline</div><div class="stat-value blue" id="ps-pipeline">--</div></div>
+                    <div class="stat-card"><div class="stat-label">Won Revenue</div><div class="stat-value green" id="ps-revenue">--</div></div>
+                </div>
+
+                <div id="proposals-list" class="cards-grid">
+                    <div class="loading-center"><span class="spinner"></span> Loading proposals...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Operations Tab ═══ -->
+    <div class="tab-panel" id="tab-operations">
+        <div class="container">
+            <div class="section">
+                <div class="section-label">Module 3</div>
+                <div class="section-title">Operations <em>Hub</em></div>
+                <div class="section-sub">SOPs, recurring tasks, vendors, and compliance tracking in one place.</div>
+
+                <!-- Sub-tabs for operations -->
+                <div style="display:flex;gap:0.5rem;margin-bottom:1.5rem;flex-wrap:wrap;">
+                    <button class="btn btn-sm ops-sub active" data-ops="sops" onclick="switchOpsTab('sops')">SOPs</button>
+                    <button class="btn btn-sm btn-outline ops-sub" data-ops="tasks" onclick="switchOpsTab('tasks')">Tasks</button>
+                    <button class="btn btn-sm btn-outline ops-sub" data-ops="vendors" onclick="switchOpsTab('vendors')">Vendors</button>
+                    <button class="btn btn-sm btn-outline ops-sub" data-ops="compliance" onclick="switchOpsTab('compliance')">Compliance</button>
+                </div>
+
+                <!-- SOPs -->
+                <div class="ops-panel active" id="ops-sops">
+                    <div class="btn-row">
+                        <button class="btn" onclick="openModal('sop')">+ New SOP</button>
+                    </div>
+                    <input class="search-bar" id="sop-search" placeholder="Search SOPs by title, category, or content..." oninput="filterSops()">
+                    <div id="sops-list" class="cards-grid">
+                        <div class="loading-center"><span class="spinner"></span> Loading SOPs...</div>
+                    </div>
+                </div>
+
+                <!-- Tasks -->
+                <div class="ops-panel" id="ops-tasks" style="display:none;">
+                    <div class="btn-row"><button class="btn" onclick="openModal('task')">+ New Task</button></div>
+                    <div id="tasks-list">
+                        <div class="loading-center"><span class="spinner"></span> Loading tasks...</div>
+                    </div>
+                </div>
+
+                <!-- Vendors -->
+                <div class="ops-panel" id="ops-vendors" style="display:none;">
+                    <div class="btn-row"><button class="btn" onclick="openModal('vendor')">+ New Vendor</button></div>
+                    <div id="vendors-list">
+                        <div class="loading-center"><span class="spinner"></span> Loading vendors...</div>
+                    </div>
+                </div>
+
+                <!-- Compliance -->
+                <div class="ops-panel" id="ops-compliance" style="display:none;">
+                    <div class="btn-row"><button class="btn" onclick="openModal('compliance')">+ Add Reminder</button></div>
+                    <div id="compliance-list">
+                        <div class="loading-center"><span class="spinner"></span> Loading compliance...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Projects Tab ═══ -->
+    <div class="tab-panel" id="tab-projects">
+        <div class="container">
+            <div class="section">
+                <div class="section-label">Module 4</div>
+                <div class="section-title">Project <em>Control</em></div>
+                <div class="section-sub">Track projects, milestones, and budgets. Generate client status updates.</div>
+
+                <div class="btn-row">
+                    <button class="btn" onclick="openModal('project')">+ New Project</button>
+                </div>
+
+                <div id="projects-list" class="cards-grid">
+                    <div class="loading-center"><span class="spinner"></span> Loading projects...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Billing Tab ═══ -->
+    <div class="tab-panel" id="tab-billing">
+        <div class="container">
+            <div class="section">
+                <div class="section-label">Module 5</div>
+                <div class="section-title">Billing &amp; <em>Invoicing</em></div>
+                <div class="section-sub">Create invoices, track expenses, and monitor cash flow in real time.</div>
+
+                <!-- Cash Flow Summary Cards -->
+                <div class="stats-grid" id="cashflow-stats" style="margin-bottom:2rem;">
+                    <div class="stat-card"><div class="stat-label">Total Owed</div><div class="stat-value blue" id="cf-owed">--</div></div>
+                    <div class="stat-card"><div class="stat-label">Coming In</div><div class="stat-value green" id="cf-incoming">--</div></div>
+                    <div class="stat-card"><div class="stat-label">Overdue</div><div class="stat-value red" id="cf-overdue">--</div></div>
+                    <div class="stat-card"><div class="stat-label">Paid This Month</div><div class="stat-value green" id="cf-paid">--</div></div>
+                </div>
+
+                <!-- Billing sub-tabs -->
+                <div style="display:flex;gap:0.5rem;margin-bottom:1.5rem;flex-wrap:wrap;">
+                    <button class="btn btn-sm billing-sub active" data-billing="invoices" onclick="switchBillingTab('invoices')">Invoices</button>
+                    <button class="btn btn-sm btn-outline billing-sub" data-billing="expenses" onclick="switchBillingTab('expenses')">Expenses</button>
+                </div>
+
+                <!-- Invoices -->
+                <div class="billing-panel" id="billing-invoices">
+                    <div class="btn-row">
+                        <button class="btn" onclick="openModal('invoice')">+ New Invoice</button>
+                    </div>
+                    <div id="invoices-list">
+                        <div class="loading-center"><span class="spinner"></span> Loading invoices...</div>
+                    </div>
+                </div>
+
+                <!-- Expenses -->
+                <div class="billing-panel" id="billing-expenses" style="display:none;">
+                    <div class="btn-row">
+                        <button class="btn" onclick="openModal('expense')">+ Add Expense</button>
+                    </div>
+                    <div id="expenses-list">
+                        <div class="loading-center"><span class="spinner"></span> Loading expenses...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Content Tab ═══ -->
+    <div class="tab-panel" id="tab-content">
+        <div class="container">
+            <div class="section">
+                <div class="section-label">Module 7</div>
+                <div class="section-title">Content &amp; <em>Website</em></div>
+                <div class="section-sub">Plan, create, and publish content across all channels. AI generates drafts tailored to your brand.</div>
+
+                <!-- Content Stats -->
+                <div class="stats-grid" id="content-stats" style="margin-bottom:2rem;">
+                    <div class="stat-card"><div class="stat-label">Published This Month</div><div class="stat-value green" id="cs-published">--</div></div>
+                    <div class="stat-card"><div class="stat-label">Scheduled</div><div class="stat-value blue" id="cs-scheduled">--</div></div>
+                    <div class="stat-card"><div class="stat-label">Drafts Pending</div><div class="stat-value yellow" id="cs-drafts">--</div></div>
+                    <div class="stat-card"><div class="stat-label">In Review</div><div class="stat-value" id="cs-review">--</div></div>
+                </div>
+
+                <div class="btn-row">
+                    <button class="btn" onclick="openModal('content')">+ New Content</button>
+                    <div style="display:flex;gap:0.5rem;align-items:center;margin-left:auto;">
+                        <label style="font-size:0.75rem;color:var(--muted);font-weight:600;">FILTER:</label>
+                        <select id="content-filter-type" onchange="loadContent()" style="background:var(--bg);color:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:0.35rem 0.6rem;font-size:0.8rem;">
+                            <option value="">All Types</option>
+                            <option value="blog">Blog</option>
+                            <option value="social">Social</option>
+                            <option value="email">Email</option>
+                            <option value="newsletter">Newsletter</option>
+                        </select>
+                        <input type="month" id="content-filter-month" onchange="loadContent()" style="background:var(--bg);color:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:0.35rem 0.6rem;font-size:0.8rem;">
+                    </div>
+                </div>
+
+                <!-- Calendar Grid View -->
+                <div id="content-calendar-view">
+                    <div class="loading-center"><span class="spinner"></span> Loading content calendar...</div>
+                </div>
+
+                <!-- Content List -->
+                <div id="content-list" class="cards-grid" style="margin-top:1.5rem;">
+                    <div class="loading-center"><span class="spinner"></span> Loading content...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ HR Tab ═══ -->
+    <div class="tab-panel" id="tab-hr">
+        <div class="container">
+            <div class="section">
+                <div class="section-label">Module 6</div>
+                <div class="section-title">HR <em>Management</em></div>
+                <div class="section-sub">Job postings, candidate tracking, AI screening, onboarding, and performance reviews.</div>
+
+                <!-- HR sub-tabs -->
+                <div style="display:flex;gap:0.5rem;margin-bottom:1.5rem;flex-wrap:wrap;">
+                    <button class="btn btn-sm hr-sub active" data-hr="jobs" onclick="switchHrTab('jobs')">Jobs</button>
+                    <button class="btn btn-sm btn-outline hr-sub" data-hr="onboarding" onclick="switchHrTab('onboarding')">Onboarding</button>
+                    <button class="btn btn-sm btn-outline hr-sub" data-hr="reviews" onclick="switchHrTab('reviews')">Reviews</button>
+                </div>
+
+                <!-- Jobs & Candidates -->
+                <div class="hr-panel" id="hr-jobs">
+                    <div class="btn-row">
+                        <button class="btn" onclick="openModal('job')">+ Post Job</button>
+                    </div>
+                    <div id="jobs-list" class="cards-grid">
+                        <div class="loading-center"><span class="spinner"></span> Loading jobs...</div>
+                    </div>
+                </div>
+
+                <!-- Onboarding -->
+                <div class="hr-panel" id="hr-onboarding" style="display:none;">
+                    <div class="btn-row">
+                        <button class="btn" onclick="openModal('onboarding')">+ New Hire Onboarding</button>
+                    </div>
+                    <div id="onboarding-list">
+                        <div class="loading-center"><span class="spinner"></span> Loading onboarding records...</div>
+                    </div>
+                </div>
+
+                <!-- Performance Reviews -->
+                <div class="hr-panel" id="hr-reviews" style="display:none;">
+                    <div class="btn-row">
+                        <button class="btn" onclick="openModal('review')">+ New Review</button>
+                    </div>
+                    <div id="reviews-list">
+                        <div class="loading-center"><span class="spinner"></span> Loading reviews...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ═══ Modal ═══ -->
+<div class="modal-overlay" id="modal-overlay">
+    <div class="modal" id="modal-content"></div>
+</div>
+
+<!-- ═══ Onboarding Modal ═══ -->
+<div class="onboarding-overlay" id="onboarding-overlay">
+    <div class="onboarding-modal">
+        <!-- Step 1: Welcome -->
+        <div class="onboarding-step active" id="ob-step-1">
+            <div style="font-size:2.5rem;margin-bottom:0.5rem;">&#x1F44B;</div>
+            <div class="onboarding-title">Welcome to PureBrain SME!</div>
+            <div class="onboarding-sub">Let's set up your business in 30 seconds. TIE will learn your priorities and help you get started fast.</div>
+            <button class="btn" onclick="nextOnboardingStep(2)" style="padding:0.75rem 2.5rem;">Let's Go</button>
+        </div>
+
+        <!-- Step 2: Priorities -->
+        <div class="onboarding-step" id="ob-step-2">
+            <div class="onboarding-title">What matters most?</div>
+            <div class="onboarding-sub">Pick your top 3 priorities. We'll customise your dashboard accordingly.</div>
+            <div class="priority-grid" id="priority-grid">
+                <div class="priority-option" data-prio="proposals" onclick="togglePriority(this)"><span class="prio-icon">&#9998;</span> Proposals</div>
+                <div class="priority-option" data-prio="operations" onclick="togglePriority(this)"><span class="prio-icon">&#9881;</span> Operations</div>
+                <div class="priority-option" data-prio="projects" onclick="togglePriority(this)"><span class="prio-icon">&#9776;</span> Projects</div>
+                <div class="priority-option" data-prio="billing" onclick="togglePriority(this)"><span class="prio-icon">&#36;</span> Billing</div>
+                <div class="priority-option" data-prio="hr" onclick="togglePriority(this)"><span class="prio-icon">&#128101;</span> HR</div>
+                <div class="priority-option" data-prio="content" onclick="togglePriority(this)"><span class="prio-icon">&#9997;</span> Content</div>
+            </div>
+            <button class="btn" onclick="nextOnboardingStep(3)" style="padding:0.75rem 2.5rem;">Continue</button>
+        </div>
+
+        <!-- Step 3: First Task -->
+        <div class="onboarding-step" id="ob-step-3">
+            <div class="onboarding-title">Your First Task</div>
+            <div class="onboarding-sub" id="ob-suggestion">Based on your priorities, we recommend starting with your first proposal.</div>
+            <button class="btn btn-green" onclick="completeOnboarding()" style="padding:0.75rem 2.5rem;">Let's Go!</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Toast Container ═══ -->
+<div id="toast-container"></div>
+
+<script>
+// ─── Config ──────────────────────────────────────────────
+const API_BASE = window.location.hostname === 'localhost'
+    ? 'http://localhost:8787'
+    : 'https://ce-sme-api.in0v8.workers.dev';
+
+let authToken = localStorage.getItem('ce_token') || '';
+let currentUser = JSON.parse(localStorage.getItem('ce_user') || 'null');
+let authMode = 'login';
+
+// ─── Toast System ────────────────────────────────────────
+function toast(msg, type = 'info') {
+    const container = document.getElementById('toast-container');
+    const el = document.createElement('div');
+    el.className = `toast toast-${type}`;
+    el.textContent = msg;
+    container.appendChild(el);
+    setTimeout(() => {
+        el.classList.add('toast-out');
+        setTimeout(() => el.remove(), 300);
+    }, 3500);
+}
+
+// ─── API Helper ──────────────────────────────────────────
+async function api(path, opts = {}) {
+    const resp = await fetch(`${API_BASE}${path}`, {
+        ...opts,
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`,
+            ...(opts.headers || {}),
+        },
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+        if (resp.status === 401) { logout(); return null; }
+        throw new Error(data.error || 'Request failed');
+    }
+    return data;
+}
+
+// ─── Auth ────────────────────────────────────────────────
+document.querySelectorAll('.auth-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        authMode = tab.dataset.auth;
+        document.getElementById('register-fields').classList.toggle('visible', authMode === 'register');
+        document.getElementById('auth-submit').textContent = authMode === 'login' ? 'Sign In' : 'Create Account';
+        document.getElementById('auth-error').style.display = 'none';
+    });
+});
+
+document.getElementById('auth-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('auth-submit');
+    const errEl = document.getElementById('auth-error');
+    btn.disabled = true;
+    btn.textContent = authMode === 'login' ? 'Signing in...' : 'Creating account...';
+    errEl.style.display = 'none';
+
+    const body = {
+        email: document.getElementById('auth-email').value,
+        password: document.getElementById('auth-password').value,
+    };
+    if (authMode === 'register') {
+        body.company_name = document.getElementById('auth-company').value;
+        body.industry = document.getElementById('auth-industry').value;
+    }
+
+    try {
+        const data = await fetch(`${API_BASE}/api/auth/${authMode}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        }).then(r => r.json());
+
+        if (data.error) throw new Error(data.error);
+
+        authToken = data.token;
+        currentUser = data.user;
+        localStorage.setItem('ce_token', authToken);
+        localStorage.setItem('ce_user', JSON.stringify(currentUser));
+        showApp();
+        toast('Welcome back!', 'success');
+    } catch (err) {
+        errEl.textContent = err.message;
+        errEl.style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = authMode === 'login' ? 'Sign In' : 'Create Account';
+    }
+});
+
+async function logout() {
+    try {
+        await fetch(`${API_BASE}/api/auth/logout`, {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + authToken },
+        });
+    } catch { /* proceed with client-side cleanup even if server call fails */ }
+    authToken = '';
+    currentUser = null;
+    localStorage.removeItem('ce_token');
+    localStorage.removeItem('ce_user');
+    document.getElementById('auth-screen').classList.remove('hidden');
+    document.getElementById('main-app').classList.remove('visible');
+}
+
+function showApp() {
+    document.getElementById('auth-screen').classList.add('hidden');
+    document.getElementById('main-app').classList.add('visible');
+    document.getElementById('user-display').textContent = currentUser?.email || '';
+    loadDashboard();
+    loadProposals();
+    loadProposalStats();
+    loadSops();
+    loadTasks();
+    loadVendors();
+    loadCompliance();
+    loadProjects();
+    loadInvoices();
+    loadExpenses();
+    loadCashFlow();
+    loadJobs();
+    loadReviews();
+    loadContent();
+    loadContentStats();
+    checkOnboarding();
+}
+
+// ─── Theme Toggle ────────────────────────────────────────
+function toggleTheme() {
+    document.body.classList.toggle('light');
+    const isLight = document.body.classList.contains('light');
+    document.querySelector('.theme-toggle').textContent = isLight ? 'Dark' : 'Light';
+    localStorage.setItem('ce_theme', isLight ? 'light' : 'dark');
+}
+
+if (localStorage.getItem('ce_theme') === 'light') {
+    document.body.classList.add('light');
+    document.querySelector('.theme-toggle').textContent = 'Dark';
+}
+
+// ─── Tab Navigation ──────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+});
+
+// ─── Operations Sub-tabs ─────────────────────────────────
+function switchOpsTab(tab) {
+    document.querySelectorAll('.ops-sub').forEach(b => {
+        b.classList.toggle('btn-outline', b.dataset.ops !== tab);
+        b.classList.toggle('active', b.dataset.ops === tab);
+    });
+    document.querySelectorAll('.ops-panel').forEach(p => {
+        p.style.display = p.id === 'ops-' + tab ? 'block' : 'none';
+    });
+}
+
+// ─── Billing Sub-tabs ───────────────────────────────────
+function switchBillingTab(tab) {
+    document.querySelectorAll('.billing-sub').forEach(b => {
+        b.classList.toggle('btn-outline', b.dataset.billing !== tab);
+        b.classList.toggle('active', b.dataset.billing === tab);
+    });
+    document.querySelectorAll('.billing-panel').forEach(p => {
+        p.style.display = p.id === 'billing-' + tab ? 'block' : 'none';
+    });
+}
+
+// ─── HR Sub-tabs ────────────────────────────────────────
+function switchHrTab(tab) {
+    document.querySelectorAll('.hr-sub').forEach(b => {
+        b.classList.toggle('btn-outline', b.dataset.hr !== tab);
+        b.classList.toggle('active', b.dataset.hr === tab);
+    });
+    document.querySelectorAll('.hr-panel').forEach(p => {
+        p.style.display = p.id === 'hr-' + tab ? 'block' : 'none';
+    });
+    if (tab === 'onboarding') loadOnboarding();
+    if (tab === 'jobs') loadJobs();
+    if (tab === 'reviews') loadReviews();
+}
+
+// ─── Dashboard ───────────────────────────────────────────
+async function loadDashboard() {
+    try {
+        const d = await api('/api/dashboard');
+        if (!d) return;
+        document.getElementById('stat-proposals').textContent = d.proposals?.active || 0;
+        document.getElementById('stat-proposals-sub').textContent =
+            `${d.proposals?.total || 0} total | $${(d.revenue?.pipeline || 0).toLocaleString()} pipeline`;
+        document.getElementById('stat-projects').textContent = d.projects?.active || 0;
+        document.getElementById('stat-projects-sub').textContent = `${d.projects?.total || 0} total`;
+        document.getElementById('stat-tasks').textContent = d.tasks?.pending || 0;
+
+        const overdue = d.tasks?.overdue || 0;
+        const taskSub = document.getElementById('stat-tasks-sub');
+        if (overdue > 0) {
+            taskSub.innerHTML = `${d.tasks?.due_soon || 0} due soon | <span style="color:var(--red);font-weight:700;">${overdue} overdue</span>`;
+        } else {
+            taskSub.textContent = `${d.tasks?.due_soon || 0} due this week`;
+        }
+
+        document.getElementById('stat-revenue').textContent = '$' + (d.revenue?.won_revenue || 0).toLocaleString();
+        document.getElementById('stat-revenue-sub').textContent = `$${(d.revenue?.pipeline || 0).toLocaleString()} in pipeline`;
+
+        const feed = document.getElementById('activity-feed');
+        if (d.recent_activity && d.recent_activity.length > 0) {
+            feed.innerHTML = d.recent_activity.map(a => `
+                <div class="activity-item">
+                    <div class="activity-dot" style="background:${activityColor(a.action)};"></div>
+                    <div style="flex:1;">
+                        <div>${esc(a.action)} <strong>${esc(a.entity_type)}</strong></div>
+                        <div class="activity-time">${timeAgo(a.created_at)}</div>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            feed.innerHTML = '<div class="empty-state" style="padding:1.5rem 0;">No activity yet. Start by creating a proposal or task.</div>';
+        }
+    } catch (e) {
+        console.error('Dashboard load error:', e);
+    }
+}
+
+function activityColor(action) {
+    if (action.includes('creat')) return 'var(--green)';
+    if (action.includes('won') || action.includes('complet')) return 'var(--green)';
+    if (action.includes('lost') || action.includes('delet')) return 'var(--red)';
+    return 'var(--blue)';
+}
+
+function timeAgo(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    const diff = (Date.now() - d.getTime()) / 1000;
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+    if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+    return d.toLocaleDateString();
+}
+
+// ─── Proposals ───────────────────────────────────────────
+let proposals = [];
+async function loadProposals() {
+    try {
+        const d = await api('/api/proposals');
+        if (!d) return;
+        proposals = d.proposals || [];
+        renderProposals();
+    } catch (e) { console.error(e); }
+}
+
+function renderProposals() {
+    const el = document.getElementById('proposals-list');
+    if (!proposals.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&equiv;</div><div class="empty-state-text">No proposals yet. Create your first one.</div></div>';
+        return;
+    }
+    el.innerHTML = proposals.map(p => `
+        <div class="card" style="cursor:pointer;" onclick="viewProposal(${p.id})">
+            <div style="display:flex;justify-content:space-between;align-items:start;">
+                <div class="card-title">${esc(p.client_name || 'Untitled')}</div>
+                <div style="display:flex;align-items:center;gap:0.35rem;">
+                    <span class="badge badge-${p.status}">${p.status}</span>
+                    <button class="btn-delete" onclick="event.stopPropagation();deleteEntity('Proposal',${p.id},'/api/proposals/${p.id}')" title="Delete">&#x1F5D1;</button>
+                </div>
+            </div>
+            <div class="card-meta">
+                <span>${esc(p.project_type || 'General')}</span>
+                <span>$${(p.pricing || 0).toLocaleString()} CAD</span>
+            </div>
+            <div style="font-size:0.82rem;color:var(--muted);max-height:40px;overflow:hidden;margin-top:0.25rem;">
+                ${esc((p.scope || p.brief || '').substring(0, 120))}${(p.scope || p.brief || '').length > 120 ? '...' : ''}
+            </div>
+            <div style="margin-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap;" onclick="event.stopPropagation();">
+                <button class="btn btn-sm btn-green" onclick="generateAiDraft(${p.id})">AI Generate</button>
+                ${p.status === 'won' ? `<button class="btn btn-sm" onclick="createProjectFromProposal(${p.id})">Create Project</button>` : ''}
+                <select onchange="updateProposalStatus(${p.id}, this.value)" style="background:var(--bg);color:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:0.3rem 0.5rem;font-size:0.75rem;">
+                    <option value="draft" ${p.status==='draft'?'selected':''}>Draft</option>
+                    <option value="sent" ${p.status==='sent'?'selected':''}>Sent</option>
+                    <option value="won" ${p.status==='won'?'selected':''}>Won</option>
+                    <option value="lost" ${p.status==='lost'?'selected':''}>Lost</option>
+                </select>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function loadProposalStats() {
+    try {
+        const d = await api('/api/proposals/stats');
+        if (!d) return;
+        const s = d.stats || d;
+        document.getElementById('ps-total').textContent = s.total || 0;
+        document.getElementById('ps-won').textContent = s.won || 0;
+        document.getElementById('ps-pipeline').textContent = '$' + (s.pipeline_value || 0).toLocaleString();
+        document.getElementById('ps-revenue').textContent = '$' + (s.won_revenue || 0).toLocaleString();
+    } catch (e) { console.error(e); }
+}
+
+async function updateProposalStatus(id, status) {
+    try {
+        await api(`/api/proposals/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+        toast(`Proposal marked as ${status}`, 'success');
+        loadProposals();
+        loadProposalStats();
+        loadDashboard();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function generateAiDraft(id) {
+    const p = proposals.find(x => x.id === id);
+    if (!p) return;
+    const brief = p.scope || p.brief || '';
+
+    // Show loading in modal
+    showModal(`
+        <div class="modal-title">Generating AI Proposal...</div>
+        <div class="loading-center" style="padding:3rem;">
+            <span class="spinner spinner-lg"></span>
+            <span>AI is drafting your proposal. This may take 15-30 seconds...</span>
+        </div>
+    `);
+
+    try {
+        const d = await api(`/api/proposals/${id}/generate`, {
+            method: 'POST',
+            body: JSON.stringify({ brief }),
+        });
+        if (d && d.ai_draft) {
+            showDraftModal(d.ai_draft, p.client_name);
+            toast('AI proposal generated', 'success');
+            loadProposals();
+        }
+    } catch (e) {
+        closeModal();
+        toast('AI generation failed: ' + e.message, 'error');
+    }
+}
+
+function viewProposal(id) {
+    const p = proposals.find(x => x.id === id);
+    if (!p) return;
+    const html = `
+        <div class="modal-title">${esc(p.client_name || 'Untitled Proposal')}</div>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
+            <span class="badge badge-${p.status}">${p.status}</span>
+            <span class="badge badge-active">${esc(p.project_type || 'General')}</span>
+        </div>
+        <div class="card-meta">
+            <span>Price: $${(p.pricing||0).toLocaleString()} CAD</span>
+            <span>Created: ${new Date(p.created_at).toLocaleDateString()}</span>
+        </div>
+        <div style="margin-top:1rem;">
+            <strong style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">Scope</strong>
+            <div style="margin-top:0.5rem;font-size:0.9rem;white-space:pre-wrap;">${esc(p.scope || p.brief || 'No scope provided')}</div>
+        </div>
+        ${p.ai_draft ? `
+            <div style="margin-top:1.5rem;">
+                <strong style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">AI-Generated Draft</strong>
+                <div class="ai-draft">${renderMarkdown(p.ai_draft)}</div>
+            </div>
+        ` : `
+            <div style="margin-top:1.5rem;text-align:center;padding:1.5rem;border:1px dashed var(--border);border-radius:var(--radius);">
+                <div style="color:var(--muted);margin-bottom:0.75rem;">No AI draft yet.</div>
+                <button class="btn btn-green" onclick="generateAiDraft(${p.id})">Generate AI Proposal</button>
+            </div>
+        `}
+        <div class="form-actions">
+            <button class="btn" onclick="exportProposalPdf(${p.id})">Print / Export PDF</button>
+            ${p.status === 'won' ? `<button class="btn btn-green" onclick="createProjectFromProposal(${p.id})">Create Project from This</button>` : ''}
+            <button class="btn btn-outline" onclick="closeModal()">Close</button>
+        </div>
+    `;
+    showModal(html);
+}
+
+async function exportProposalPdf(id) {
+    try {
+        const d = await api('/api/proposals/' + id + '/pdf', { method: 'POST' });
+        if (!d || !d.pdf_data) { toast('Failed to generate PDF data', 'error'); return; }
+        const p = d.pdf_data.proposal;
+        const items = d.pdf_data.items || [];
+        const win = window.open('', '_blank');
+        if (!win) { toast('Pop-up blocked. Please allow pop-ups for this site.', 'error'); return; }
+        const itemsHtml = items.length ? `
+            <h3>Line Items</h3>
+            <table border="1" cellpadding="8" cellspacing="0" style="width:100%;border-collapse:collapse;margin-bottom:1.5rem;">
+                <thead><tr style="background:#f5f5f5;"><th>Description</th><th style="text-align:right;">Qty</th><th style="text-align:right;">Rate</th><th style="text-align:right;">Amount</th></tr></thead>
+                <tbody>${items.map(i => `<tr><td>${i.description || ''}</td><td style="text-align:right;">${i.quantity || 1}</td><td style="text-align:right;">$${(i.rate || 0).toLocaleString()}</td><td style="text-align:right;">$${(i.amount || 0).toLocaleString()}</td></tr>`).join('')}</tbody>
+            </table>` : '';
+        const draftHtml = p.ai_draft ? `<div style="margin-top:2rem;border-top:2px solid #333;padding-top:1rem;">${renderMarkdown(p.ai_draft)}</div>` : '';
+        win.document.write(`<!DOCTYPE html><html><head><title>Proposal - ${(p.client_name || 'Untitled').replace(/"/g, '')}</title>
+            <style>body{font-family:Georgia,serif;max-width:800px;margin:2rem auto;padding:0 2rem;color:#222;line-height:1.6;}
+            h1{font-size:1.8rem;margin-bottom:0.25rem;}h2{font-size:1.3rem;color:#555;margin-top:0;}h3{font-size:1.1rem;margin-top:1.5rem;}
+            .meta{color:#666;font-size:0.9rem;margin-bottom:1.5rem;}.badge{display:inline-block;padding:0.15rem 0.6rem;border-radius:4px;font-size:0.8rem;font-weight:700;text-transform:uppercase;}
+            @media print{body{margin:0;padding:1rem;}}</style></head>
+            <body>
+                <h1>Proposal: ${p.client_name || 'Untitled'}</h1>
+                <h2>${p.project_type || 'General Project'}</h2>
+                <div class="meta">Status: <span class="badge">${p.status || 'draft'}</span> | Price: $${(p.pricing || 0).toLocaleString()} CAD | Date: ${new Date(p.created_at).toLocaleDateString()}</div>
+                ${p.scope || p.brief ? `<h3>Scope</h3><div style="white-space:pre-wrap;">${p.scope || p.brief}</div>` : ''}
+                ${itemsHtml}
+                ${draftHtml}
+                <div style="margin-top:3rem;text-align:center;color:#999;font-size:0.8rem;">Generated ${new Date().toLocaleDateString()} | Use Ctrl+P / Cmd+P to save as PDF</div>
+            </body></html>`);
+        win.document.close();
+    } catch (e) { toast('Error exporting PDF: ' + e.message, 'error'); }
+}
+
+function showDraftModal(draft, clientName) {
+    showModal(`
+        <div class="modal-title">AI-Generated Proposal${clientName ? ' for ' + esc(clientName) : ''}</div>
+        <div class="ai-draft">${renderMarkdown(draft)}</div>
+        <div class="form-actions">
+            <button class="btn btn-green" onclick="copyDraft(this)">Copy to Clipboard</button>
+            <button class="btn btn-outline" onclick="closeModal()">Close</button>
+        </div>
+    `);
+}
+
+function copyDraft(btn) {
+    const draftEl = btn.closest('.modal').querySelector('.ai-draft');
+    navigator.clipboard.writeText(draftEl.innerText).then(() => {
+        btn.textContent = 'Copied!';
+        toast('Draft copied to clipboard', 'success');
+        setTimeout(() => { btn.textContent = 'Copy to Clipboard'; }, 2000);
+    });
+}
+
+// ─── Simple Markdown Renderer ────────────────────────────
+function renderMarkdown(text) {
+    if (!text) return '';
+    return esc(text)
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/^- (.+)$/gm, '<li>$1</li>')
+        .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+        .replace(/^---$/gm, '<hr>')
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/\n/g, '<br>');
+}
+
+// ─── SOPs ────────────────────────────────────────────────
+let sops = [];
+async function loadSops() {
+    try {
+        const d = await api('/api/sops');
+        if (!d) return;
+        sops = d.sops || [];
+        renderSops();
+    } catch (e) { console.error(e); }
+}
+
+function filterSops() {
+    const q = (document.getElementById('sop-search').value || '').toLowerCase();
+    renderSops(q);
+}
+
+function renderSops(filter = '') {
+    const el = document.getElementById('sops-list');
+    let filtered = sops;
+    if (filter) {
+        filtered = sops.filter(s =>
+            (s.title || '').toLowerCase().includes(filter) ||
+            (s.category || '').toLowerCase().includes(filter) ||
+            (s.content || '').toLowerCase().includes(filter)
+        );
+    }
+    if (!filtered.length) {
+        el.innerHTML = `<div class="empty-state"><div class="empty-state-text">${filter ? 'No SOPs match your search.' : 'No SOPs yet. Document your first procedure.'}</div></div>`;
+        return;
+    }
+    el.innerHTML = filtered.map(s => `
+        <div class="card" style="cursor:pointer;" onclick="viewSop(${s.id})">
+            <div style="display:flex;justify-content:space-between;align-items:start;">
+                <div class="card-title">${esc(s.title)}</div>
+                <div style="display:flex;align-items:center;gap:0.35rem;">
+                    <span class="badge badge-active">${esc(s.category || 'general')}</span>
+                    <button class="btn-delete" onclick="event.stopPropagation();deleteEntity('SOP',${s.id},'/api/sops/${s.id}')" title="Delete">&#x1F5D1;</button>
+                </div>
+            </div>
+            <div class="card-meta"><span>Updated: ${new Date(s.updated_at).toLocaleDateString()}</span></div>
+            <div style="margin-top:0.5rem;font-size:0.85rem;color:var(--muted);max-height:60px;overflow:hidden;">${esc((s.content || '').substring(0, 200))}</div>
+        </div>
+    `).join('');
+}
+
+function viewSop(id) {
+    const s = sops.find(x => x.id === id);
+    if (!s) return;
+    showModal(`
+        <div class="modal-title">${esc(s.title)}</div>
+        <div style="display:flex;gap:0.5rem;margin-bottom:1rem;">
+            <span class="badge badge-active">${esc(s.category || 'general')}</span>
+            <span style="font-size:0.8rem;color:var(--muted);">Last updated: ${new Date(s.updated_at).toLocaleDateString()}</span>
+        </div>
+        <div style="white-space:pre-wrap;font-size:0.9rem;line-height:1.7;">${esc(s.content || '')}</div>
+        <div class="form-actions">
+            <button class="btn" onclick="editSop(${s.id})">Edit</button>
+            <button class="btn btn-outline" onclick="closeModal()">Close</button>
+        </div>
+    `);
+}
+
+function editSop(id) {
+    const s = sops.find(x => x.id === id);
+    if (!s) return;
+    showModal(`
+        <div class="modal-title">Edit SOP</div>
+        <form onsubmit="submitSopEdit(event, ${s.id})">
+            <div class="form-field"><label>Title</label><input id="fe-title" value="${esc(s.title)}" required></div>
+            <div class="form-field"><label>Category</label>
+                <select id="fe-category">
+                    ${['general','operations','safety','hr','finance','customer-service'].map(c =>
+                        `<option ${s.category === c ? 'selected' : ''}>${c}</option>`
+                    ).join('')}
+                </select>
+            </div>
+            <div class="form-field"><label>Content</label><textarea id="fe-content" style="min-height:200px;">${esc(s.content || '')}</textarea></div>
+            <div class="form-actions">
+                <button type="submit" class="btn">Save Changes</button>
+                <button type="button" class="btn btn-outline" onclick="viewSop(${s.id})">Cancel</button>
+            </div>
+        </form>
+    `);
+}
+
+async function submitSopEdit(e, id) {
+    e.preventDefault();
+    try {
+        await api(`/api/sops/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+                title: document.getElementById('fe-title').value,
+                category: document.getElementById('fe-category').value,
+                content: document.getElementById('fe-content').value,
+            }),
+        });
+        toast('SOP updated', 'success');
+        closeModal();
+        loadSops();
+    } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ─── Tasks ───────────────────────────────────────────────
+let tasks = [];
+async function loadTasks() {
+    try {
+        const d = await api('/api/tasks');
+        if (!d) return;
+        tasks = d.tasks || [];
+        renderTasks();
+    } catch (e) { console.error(e); }
+}
+
+function isOverdue(dateStr) {
+    if (!dateStr) return false;
+    const due = new Date(dateStr + 'T23:59:59');
+    return due < new Date();
+}
+
+function renderTasks() {
+    const el = document.getElementById('tasks-list');
+    if (!tasks.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-text">No tasks yet. Create your first task.</div></div>';
+        return;
+    }
+    // Sort: overdue first, then by due date, then priority
+    const priorityOrder = { high: 0, medium: 1, low: 2 };
+    const sorted = [...tasks].sort((a, b) => {
+        const aOver = a.status !== 'completed' && isOverdue(a.due_date) ? 0 : 1;
+        const bOver = b.status !== 'completed' && isOverdue(b.due_date) ? 0 : 1;
+        if (aOver !== bOver) return aOver - bOver;
+        return (priorityOrder[a.priority] || 1) - (priorityOrder[b.priority] || 1);
+    });
+
+    el.innerHTML = `<table class="data-table">
+        <thead><tr><th>Task</th><th>Due</th><th>Priority</th><th>Recurrence</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody>${sorted.map(t => {
+            const overdue = t.status !== 'completed' && isOverdue(t.due_date);
+            return `
+            <tr class="${overdue ? 'row-overdue' : ''}">
+                <td>
+                    <div style="font-weight:600;">${esc(t.title)}</div>
+                    ${t.description ? `<div style="font-size:0.78rem;color:var(--muted);max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.description)}</div>` : ''}
+                </td>
+                <td>
+                    ${t.due_date || '--'}
+                    ${overdue ? '<span class="badge badge-overdue" style="margin-left:0.25rem;">OVERDUE</span>' : ''}
+                </td>
+                <td><span class="badge badge-${t.priority}">${t.priority}</span></td>
+                <td style="font-size:0.8rem;color:var(--muted);">${t.recurrence && t.recurrence !== 'none' ? t.recurrence : '--'}</td>
+                <td><span class="badge badge-${t.status}">${(t.status || '').replace('_', ' ')}</span></td>
+                <td style="display:flex;gap:0.3rem;align-items:center;">
+                    <select onchange="updateTaskStatus(${t.id}, this.value)" style="background:var(--bg);color:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:0.2rem 0.4rem;font-size:0.75rem;">
+                        <option value="pending" ${t.status==='pending'?'selected':''}>Pending</option>
+                        <option value="in_progress" ${t.status==='in_progress'?'selected':''}>In Progress</option>
+                        <option value="completed" ${t.status==='completed'?'selected':''}>Completed</option>
+                    </select>
+                    <button class="btn-delete" onclick="deleteEntity('Task',${t.id},'/api/tasks/${t.id}')" title="Delete">&#x1F5D1;</button>
+                </td>
+            </tr>`;
+        }).join('')}</tbody>
+    </table>`;
+}
+
+async function updateTaskStatus(id, status) {
+    try {
+        await api(`/api/tasks/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+        toast(`Task marked as ${status.replace('_', ' ')}`, 'success');
+        loadTasks();
+        loadDashboard();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+// ─── Vendors ─────────────────────────────────────────────
+let vendors = [];
+async function loadVendors() {
+    try {
+        const d = await api('/api/vendors');
+        if (!d) return;
+        vendors = d.vendors || [];
+        renderVendors();
+    } catch (e) { console.error(e); }
+}
+
+function daysUntil(dateStr) {
+    if (!dateStr) return Infinity;
+    const d = new Date(dateStr + 'T23:59:59');
+    return Math.ceil((d - new Date()) / 86400000);
+}
+
+function renderVendors() {
+    const el = document.getElementById('vendors-list');
+    if (!vendors.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-text">No vendors yet. Add your first vendor.</div></div>';
+        return;
+    }
+    el.innerHTML = `<table class="data-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Contract End</th><th>Notes</th><th></th></tr></thead>
+        <tbody>${vendors.map(v => {
+            const days = daysUntil(v.contract_end);
+            let warning = '';
+            if (days < 0) warning = '<span class="contract-warning warn-red">EXPIRED</span>';
+            else if (days <= 30) warning = '<span class="contract-warning warn-red">Expiring soon</span>';
+            else if (days <= 90) warning = '<span class="contract-warning warn-yellow">Renewal coming</span>';
+            return `
+            <tr>
+                <td style="font-weight:600;">${esc(v.name)}</td>
+                <td>${v.contact_email ? `<a href="mailto:${esc(v.contact_email)}" style="color:var(--blue);text-decoration:none;">${esc(v.contact_email)}</a>` : '--'}</td>
+                <td>${esc(v.phone || '--')}</td>
+                <td>${v.contract_end || '--'}${warning}</td>
+                <td style="font-size:0.8rem;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(v.notes || '')}</td>
+                <td><button class="btn-delete" onclick="deleteEntity('Vendor',${v.id},'/api/vendors/${v.id}')" title="Delete">&#x1F5D1;</button></td>
+            </tr>`;
+        }).join('')}</tbody>
+    </table>`;
+}
+
+// ─── Compliance ──────────────────────────────────────────
+let complianceItems = [];
+async function loadCompliance() {
+    try {
+        const d = await api('/api/compliance');
+        if (!d) return;
+        complianceItems = d.compliance || d.items || [];
+        renderCompliance();
+    } catch (e) { console.error(e); }
+}
+
+function renderCompliance() {
+    const el = document.getElementById('compliance-list');
+    if (!complianceItems.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-text">No compliance reminders yet. Add your first one.</div></div>';
+        return;
+    }
+
+    // Sort by deadline
+    const sorted = [...complianceItems].sort((a, b) => {
+        if (!a.deadline) return 1;
+        if (!b.deadline) return -1;
+        return new Date(a.deadline) - new Date(b.deadline);
+    });
+
+    el.innerHTML = `<div class="compliance-grid">${sorted.map(c => {
+        const days = daysUntil(c.deadline);
+        let urgencyClass = 'urgency-green';
+        let daysClass = 'text-green';
+        let daysText = '';
+        if (days < 0) {
+            urgencyClass = 'urgency-red';
+            daysClass = 'text-red';
+            daysText = Math.abs(days) + ' days overdue';
+        } else if (days <= 7) {
+            urgencyClass = 'urgency-red';
+            daysClass = 'text-red';
+            daysText = days + ' days remaining';
+        } else if (days <= 30) {
+            urgencyClass = 'urgency-yellow';
+            daysClass = 'text-yellow';
+            daysText = days + ' days remaining';
+        } else {
+            daysText = days === Infinity ? 'No deadline' : days + ' days remaining';
+        }
+        return `
+        <div class="compliance-card ${urgencyClass}">
+            <div class="cc-title">${esc(c.title)}</div>
+            <div class="cc-meta">
+                <span>${esc(c.category || 'General')}</span>
+                ${c.deadline ? ` | Due: ${c.deadline}` : ''}
+            </div>
+            <div class="cc-days ${daysClass}">${daysText}</div>
+        </div>`;
+    }).join('')}</div>`;
+}
+
+// ─── Projects ────────────────────────────────────────────
+let projects = [];
+async function loadProjects() {
+    try {
+        const d = await api('/api/projects');
+        if (!d) return;
+        projects = d.projects || [];
+        renderProjects();
+    } catch (e) { console.error(e); }
+}
+
+function renderProjects() {
+    const el = document.getElementById('projects-list');
+    if (!projects.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&equiv;</div><div class="empty-state-text">No projects yet. Create one or convert a won proposal.</div></div>';
+        return;
+    }
+    el.innerHTML = projects.map(p => {
+        const budget = p.budget || 0;
+        const spent = p.actual_spend || 0;
+        const pct = budget > 0 ? ((spent / budget) * 100).toFixed(0) : 0;
+        const barColor = pct > 90 ? 'var(--red)' : pct > 70 ? 'var(--yellow)' : 'var(--green)';
+        const milestoneCount = p.milestone_count || 0;
+        return `
+        <div class="card" style="cursor:pointer;" onclick="viewProject(${p.id})">
+            <div style="display:flex;justify-content:space-between;align-items:start;">
+                <div class="card-title">${esc(p.name)}</div>
+                <span class="badge badge-${p.status}">${p.status}</span>
+            </div>
+            <div class="card-meta">
+                <span>${esc(p.client_name || 'Internal')}</span>
+                <span>Budget: $${budget.toLocaleString()}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:0.8rem;color:var(--muted);margin-top:0.25rem;">
+                <span>Spent: $${spent.toLocaleString()} (${pct}%)</span>
+                <span>${milestoneCount} milestone${milestoneCount !== 1 ? 's' : ''}</span>
+            </div>
+            <div class="budget-bar-outer">
+                <div class="budget-bar-inner" style="background:${barColor};width:${Math.min(pct,100)}%;"></div>
+            </div>
+            <div style="margin-top:0.75rem;display:flex;gap:0.5rem;" onclick="event.stopPropagation();">
+                <button class="btn btn-sm btn-outline" onclick="viewProject(${p.id})">Details</button>
+                <button class="btn btn-sm btn-outline" onclick="generateStatusUpdate(${p.id})">Status Email</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function viewProject(id) {
+    // Show loading
+    showModal(`
+        <div class="modal-title">Loading project...</div>
+        <div class="loading-center"><span class="spinner spinner-lg"></span></div>
+    `);
+    try {
+        const d = await api(`/api/projects/${id}`);
+        if (!d) return;
+        const p = d.project || d;
+        const ms = d.milestones || p.milestones || [];
+        const budget = p.budget || 0;
+        const spent = p.actual_spend || 0;
+        const pct = budget > 0 ? ((spent / budget) * 100).toFixed(0) : 0;
+        const barColor = pct > 90 ? 'var(--red)' : pct > 70 ? 'var(--yellow)' : 'var(--green)';
+
+        showModal(`
+            <div class="modal-title">${esc(p.name)}</div>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
+                <span class="badge badge-${p.status}">${p.status}</span>
+            </div>
+            <div class="card-meta">
+                <span>Client: ${esc(p.client_name||'Internal')}</span>
+                ${p.start_date ? `<span>Start: ${p.start_date}</span>` : ''}
+                ${p.end_date ? `<span>End: ${p.end_date}</span>` : ''}
+            </div>
+
+            <div style="margin-top:1.25rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;">
+                <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:0.5rem;">
+                    <span>Budget: <strong>$${budget.toLocaleString()}</strong></span>
+                    <span>Spent: <strong style="color:${barColor};">$${spent.toLocaleString()}</strong> (${pct}%)</span>
+                </div>
+                <div class="budget-bar-outer" style="height:12px;">
+                    <div class="budget-bar-inner" style="background:${barColor};width:${Math.min(pct,100)}%;height:100%;"></div>
+                </div>
+                ${pct > 90 ? '<div style="color:var(--red);font-size:0.8rem;margin-top:0.5rem;font-weight:600;">Warning: Budget nearly exhausted</div>' : ''}
+            </div>
+
+            <div style="margin-top:1.5rem;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+                    <strong style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">Milestones (${ms.length})</strong>
+                    <button class="btn btn-sm" onclick="openMilestoneForm(${id})">+ Add</button>
+                </div>
+                ${ms.length ? ms.map(m => {
+                    const mOverdue = m.status !== 'completed' && isOverdue(m.due_date);
+                    return `
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:0.6rem 0;border-bottom:1px solid var(--border);${mOverdue ? 'background:rgba(241,66,11,0.06);padding-left:0.5rem;padding-right:0.5rem;border-radius:var(--radius);' : ''}">
+                        <div>
+                            <div style="font-size:0.9rem;font-weight:${m.status === 'completed' ? '400' : '600'};${m.status === 'completed' ? 'text-decoration:line-through;color:var(--muted);' : ''}">${esc(m.title)}</div>
+                            <div style="font-size:0.75rem;color:var(--muted);">
+                                Due: ${m.due_date || 'TBD'}
+                                ${mOverdue ? '<span style="color:var(--red);font-weight:700;margin-left:0.5rem;">OVERDUE</span>' : ''}
+                            </div>
+                        </div>
+                        <select onchange="updateMilestone(${id},${m.id},this.value)" style="background:var(--bg);color:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:0.2rem 0.4rem;font-size:0.75rem;">
+                            <option value="pending" ${m.status==='pending'?'selected':''}>Pending</option>
+                            <option value="in_progress" ${m.status==='in_progress'?'selected':''}>In Progress</option>
+                            <option value="completed" ${m.status==='completed'?'selected':''}>Completed</option>
+                        </select>
+                    </div>`;
+                }).join('') : '<div class="empty-state" style="padding:1rem 0;">No milestones yet.</div>'}
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-green" onclick="generateStatusUpdate(${id})">Generate Status Email</button>
+                ${ms.filter(m => m.status === 'completed').length > 0 ? `<button class="btn" onclick="createInvoiceFromProject(${id})">Create Invoice</button>` : ''}
+                <button class="btn btn-outline" onclick="closeModal()">Close</button>
+            </div>
+        `);
+    } catch (e) {
+        closeModal();
+        toast(e.message, 'error');
+    }
+}
+
+async function updateMilestone(projectId, milestoneId, status) {
+    try {
+        await api(`/api/projects/${projectId}/milestones/${milestoneId}`, { method: 'PUT', body: JSON.stringify({ status }) });
+        toast(`Milestone marked as ${status.replace('_', ' ')}`, 'success');
+        viewProject(projectId);
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+function openMilestoneForm(projectId) {
+    showModal(`
+        <div class="modal-title">Add Milestone</div>
+        <form onsubmit="submitMilestone(event, ${projectId})">
+            <div class="form-field"><label>Title</label><input id="ms-title" required></div>
+            <div class="form-field"><label>Due Date</label><input type="date" id="ms-due"></div>
+            <div class="form-field"><label>Notes</label><textarea id="ms-notes"></textarea></div>
+            <div class="form-actions">
+                <button type="submit" class="btn">Add Milestone</button>
+                <button type="button" class="btn btn-outline" onclick="viewProject(${projectId})">Cancel</button>
+            </div>
+        </form>
+    `);
+}
+
+async function submitMilestone(e, projectId) {
+    e.preventDefault();
+    try {
+        await api(`/api/projects/${projectId}/milestones`, {
+            method: 'POST',
+            body: JSON.stringify({
+                title: document.getElementById('ms-title').value,
+                due_date: document.getElementById('ms-due').value,
+                notes: document.getElementById('ms-notes').value,
+            }),
+        });
+        toast('Milestone added', 'success');
+        viewProject(projectId);
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function generateStatusUpdate(id) {
+    showModal(`
+        <div class="modal-title">Generating Status Update...</div>
+        <div class="loading-center" style="padding:3rem;">
+            <span class="spinner spinner-lg"></span>
+            <span>Drafting client status email...</span>
+        </div>
+    `);
+    try {
+        const d = await api(`/api/projects/${id}/status-update`, { method: 'POST' });
+        if (d && d.status_email) {
+            showModal(`
+                <div class="modal-title">Client Status Email</div>
+                <div class="ai-draft">${renderMarkdown(d.status_email)}</div>
+                <div class="form-actions">
+                    <button class="btn btn-green" onclick="copyDraft(this)">Copy to Clipboard</button>
+                    <button class="btn btn-outline" onclick="closeModal()">Close</button>
+                </div>
+            `);
+            toast('Status email generated', 'success');
+        }
+    } catch (e) {
+        closeModal();
+        toast('Status generation failed: ' + e.message, 'error');
+    }
+}
+
+// ─── Invoices ───────────────────────────────────────────
+let invoices = [];
+async function loadInvoices() {
+    try {
+        const d = await api('/api/invoices');
+        if (!d) return;
+        invoices = d.invoices || [];
+        renderInvoices();
+    } catch (e) { console.error(e); }
+}
+
+function renderInvoices() {
+    const el = document.getElementById('invoices-list');
+    if (!invoices.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-text">No invoices yet. Create your first invoice.</div></div>';
+        return;
+    }
+    el.innerHTML = `<table class="data-table">
+        <thead><tr><th>Client</th><th>Amount</th><th>Due Date</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>${invoices.map(inv => {
+            const overdue = inv.status !== 'paid' && inv.due_date && isOverdue(inv.due_date);
+            return `
+            <tr class="${overdue ? 'row-overdue' : ''}">
+                <td>
+                    <div style="font-weight:600;">${esc(inv.client_name)}</div>
+                    ${inv.notes ? `<div style="font-size:0.78rem;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(inv.notes)}</div>` : ''}
+                </td>
+                <td style="font-weight:700;">$${(inv.amount || 0).toLocaleString()}</td>
+                <td>
+                    ${inv.due_date || '--'}
+                    ${overdue ? '<span class="badge badge-overdue" style="margin-left:0.25rem;">OVERDUE</span>' : ''}
+                </td>
+                <td><span class="badge badge-${inv.status}">${inv.status}</span></td>
+                <td style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+                    <select onchange="updateInvoiceStatus(${inv.id}, this.value)" style="background:var(--bg);color:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:0.2rem 0.4rem;font-size:0.75rem;">
+                        <option value="draft" ${inv.status==='draft'?'selected':''}>Draft</option>
+                        <option value="sent" ${inv.status==='sent'?'selected':''}>Sent</option>
+                        <option value="paid" ${inv.status==='paid'?'selected':''}>Paid</option>
+                        <option value="overdue" ${inv.status==='overdue'?'selected':''}>Overdue</option>
+                    </select>
+                    ${inv.status === 'draft' ? `<button class="btn btn-sm btn-green" onclick="sendInvoice(${inv.id})">Send</button>` : ''}
+                    <button class="btn-delete" onclick="deleteEntity('Invoice',${inv.id},'/api/invoices/${inv.id}')" title="Delete">&#x1F5D1;</button>
+                </td>
+            </tr>`;
+        }).join('')}</tbody>
+    </table>`;
+}
+
+async function updateInvoiceStatus(id, status) {
+    try {
+        const body = { status };
+        if (status === 'paid') body.paid_date = new Date().toISOString().split('T')[0];
+        await api(`/api/invoices/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+        toast(`Invoice marked as ${status}`, 'success');
+        loadInvoices();
+        loadCashFlow();
+        loadDashboard();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function sendInvoice(id) {
+    try {
+        await api(`/api/invoices/${id}/send`, { method: 'POST' });
+        toast('Invoice marked as sent', 'success');
+        loadInvoices();
+        loadCashFlow();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+// ─── Expenses ───────────────────────────────────────────
+let expenses = [];
+async function loadExpenses() {
+    try {
+        const d = await api('/api/expenses');
+        if (!d) return;
+        expenses = d.expenses || [];
+        renderExpenses();
+    } catch (e) { console.error(e); }
+}
+
+function renderExpenses() {
+    const el = document.getElementById('expenses-list');
+    if (!expenses.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-text">No expenses yet. Track your first expense.</div></div>';
+        return;
+    }
+    el.innerHTML = `<table class="data-table">
+        <thead><tr><th>Category</th><th>Amount</th><th>Date</th><th>Description</th><th>Receipt</th><th></th></tr></thead>
+        <tbody>${expenses.map(ex => `
+            <tr>
+                <td><span class="badge badge-active">${esc(ex.category)}</span></td>
+                <td style="font-weight:700;color:var(--red);">-$${(ex.amount || 0).toLocaleString()}</td>
+                <td>${ex.expense_date || '--'}</td>
+                <td style="font-size:0.85rem;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(ex.description || '')}</td>
+                <td>${ex.receipt_url ? `<a href="${esc(ex.receipt_url)}" target="_blank" style="color:var(--blue);font-size:0.8rem;">View</a>` : '--'}</td>
+                <td><button class="btn-delete" onclick="deleteEntity('Expense',${ex.id},'/api/expenses/${ex.id}')" title="Delete">&#x1F5D1;</button></td>
+            </tr>
+        `).join('')}</tbody>
+    </table>`;
+}
+
+// ─── Cash Flow ──────────────────────────────────────────
+async function loadCashFlow() {
+    try {
+        const d = await api('/api/cashflow');
+        if (!d) return;
+        document.getElementById('cf-owed').textContent = '$' + (d.total_owed || 0).toLocaleString();
+        document.getElementById('cf-incoming').textContent = '$' + (d.incoming || 0).toLocaleString();
+        document.getElementById('cf-overdue').textContent = '$' + (d.overdue || 0).toLocaleString();
+        document.getElementById('cf-paid').textContent = '$' + (d.paid_this_month || 0).toLocaleString();
+    } catch (e) { console.error(e); }
+}
+
+// ─── Jobs ───────────────────────────────────────────────
+let jobs = [];
+async function loadJobs() {
+    try {
+        const d = await api('/api/jobs');
+        if (!d) return;
+        jobs = d.jobs || [];
+        renderJobs();
+    } catch (e) { console.error(e); }
+}
+
+function renderJobs() {
+    const el = document.getElementById('jobs-list');
+    if (!jobs.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&equiv;</div><div class="empty-state-text">No job postings yet. Create your first one.</div></div>';
+        return;
+    }
+    el.innerHTML = jobs.map(j => `
+        <div class="card" style="cursor:pointer;" onclick="viewJob(${j.id})">
+            <div style="display:flex;justify-content:space-between;align-items:start;">
+                <div class="card-title">${esc(j.title)}</div>
+                <div style="display:flex;align-items:center;gap:0.35rem;">
+                    <span class="badge badge-${j.status}">${j.status}</span>
+                    <button class="btn-delete" onclick="event.stopPropagation();deleteEntity('Job',${j.id},'/api/jobs/${j.id}')" title="Delete">&#x1F5D1;</button>
+                </div>
+            </div>
+            <div class="card-meta">
+                <span>${esc(j.salary_range || 'Salary TBD')}</span>
+                <span>${j.candidate_count || 0} candidate${(j.candidate_count||0) !== 1 ? 's' : ''}</span>
+            </div>
+            <div style="font-size:0.82rem;color:var(--muted);max-height:40px;overflow:hidden;margin-top:0.25rem;">
+                ${esc((j.description || '').substring(0, 120))}${(j.description || '').length > 120 ? '...' : ''}
+            </div>
+            <div style="margin-top:0.75rem;display:flex;gap:0.5rem;" onclick="event.stopPropagation();">
+                <button class="btn btn-sm" onclick="openAddCandidate(${j.id})">+ Candidate</button>
+                <select onchange="updateJobStatus(${j.id}, this.value)" style="background:var(--bg);color:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:0.2rem 0.4rem;font-size:0.75rem;">
+                    <option value="open" ${j.status==='open'?'selected':''}>Open</option>
+                    <option value="closed" ${j.status==='closed'?'selected':''}>Closed</option>
+                </select>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function updateJobStatus(id, status) {
+    try {
+        await api(`/api/jobs/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+        toast(`Job marked as ${status}`, 'success');
+        loadJobs();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function viewJob(id) {
+    showModal(`
+        <div class="modal-title">Loading job...</div>
+        <div class="loading-center"><span class="spinner spinner-lg"></span></div>
+    `);
+    try {
+        const j = jobs.find(x => x.id === id);
+        const d = await api(`/api/candidates?job_id=${id}`);
+        const candidates = d?.candidates || [];
+
+        showModal(`
+            <div class="modal-title">${esc(j?.title || 'Job')}</div>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
+                <span class="badge badge-${j?.status || 'open'}">${j?.status || 'open'}</span>
+                <span style="font-size:0.85rem;color:var(--muted);">${esc(j?.salary_range || '')}</span>
+            </div>
+            ${j?.description ? `<div style="margin-bottom:1rem;font-size:0.9rem;">${esc(j.description)}</div>` : ''}
+            ${j?.requirements ? `<div style="margin-bottom:1rem;"><strong style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">Requirements</strong><div style="margin-top:0.5rem;font-size:0.9rem;white-space:pre-wrap;">${esc(j.requirements)}</div></div>` : ''}
+
+            <div style="margin-top:1.5rem;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+                    <strong style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">Candidates (${candidates.length})</strong>
+                    <button class="btn btn-sm" onclick="openAddCandidate(${id})">+ Add</button>
+                </div>
+                ${candidates.length ? `<table class="data-table">
+                    <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Rating</th><th>Actions</th></tr></thead>
+                    <tbody>${candidates.map(c => `
+                        <tr>
+                            <td style="font-weight:600;">${esc(c.name)}</td>
+                            <td style="font-size:0.85rem;">${esc(c.email || '--')}</td>
+                            <td>
+                                <select onchange="updateCandidateStatus(${c.id}, this.value, ${id})" style="background:var(--bg);color:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:0.2rem 0.4rem;font-size:0.7rem;">
+                                    ${['applied','screening','interview','offer','hired','rejected'].map(s =>
+                                        `<option value="${s}" ${c.status===s?'selected':''}>${s}</option>`
+                                    ).join('')}
+                                </select>
+                            </td>
+                            <td>${c.rating ? c.rating + '/5' : '--'}</td>
+                            <td style="display:flex;gap:0.4rem;">
+                                <button class="btn btn-sm btn-green" onclick="screenCandidate(${c.id}, ${id})">AI Screen</button>
+                                ${c.ai_screening ? `<button class="btn btn-sm btn-outline" onclick="viewScreening(${c.id}, ${id})">View</button>` : ''}
+                            </td>
+                        </tr>
+                    `).join('')}</tbody>
+                </table>` : '<div class="empty-state" style="padding:1rem 0;">No candidates yet.</div>'}
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-outline" onclick="closeModal()">Close</button>
+            </div>
+        `);
+    } catch (e) {
+        closeModal();
+        toast(e.message, 'error');
+    }
+}
+
+function openAddCandidate(jobId) {
+    showModal(`
+        <div class="modal-title">Add Candidate</div>
+        <form onsubmit="submitCandidate(event, ${jobId})">
+            <div class="form-field"><label>Name</label><input id="fc-name" required placeholder="Candidate name"></div>
+            <div class="form-field"><label>Email</label><input type="email" id="fc-email" placeholder="candidate@email.com"></div>
+            <div class="form-field"><label>Phone</label><input id="fc-phone" placeholder="555-123-4567"></div>
+            <div class="form-field"><label>Resume / Background</label><textarea id="fc-resume" placeholder="Paste resume text or background notes..." style="min-height:150px;"></textarea></div>
+            <div class="form-field"><label>Notes</label><textarea id="fc-notes" placeholder="Additional notes..."></textarea></div>
+            <div class="form-actions">
+                <button type="submit" class="btn">Add Candidate</button>
+                <button type="button" class="btn btn-outline" onclick="viewJob(${jobId})">Cancel</button>
+            </div>
+        </form>
+    `);
+}
+
+async function submitCandidate(e, jobId) {
+    e.preventDefault();
+    try {
+        await api('/api/candidates', {
+            method: 'POST',
+            body: JSON.stringify({
+                job_id: jobId,
+                name: document.getElementById('fc-name').value,
+                email: document.getElementById('fc-email').value,
+                phone: document.getElementById('fc-phone').value,
+                resume_text: document.getElementById('fc-resume').value,
+                notes: document.getElementById('fc-notes').value,
+            }),
+        });
+        toast('Candidate added', 'success');
+        loadJobs();
+        viewJob(jobId);
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function updateCandidateStatus(candidateId, status, jobId) {
+    try {
+        await api(`/api/candidates/${candidateId}`, { method: 'PUT', body: JSON.stringify({ status }) });
+        toast(`Candidate marked as ${status}`, 'success');
+        viewJob(jobId);
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function screenCandidate(candidateId, jobId) {
+    showModal(`
+        <div class="modal-title">AI Screening Candidate...</div>
+        <div class="loading-center" style="padding:3rem;">
+            <span class="spinner spinner-lg"></span>
+            <span>AI is evaluating the candidate against job requirements...</span>
+        </div>
+    `);
+    try {
+        const d = await api(`/api/candidates/${candidateId}/screen`, { method: 'POST' });
+        if (d && d.ai_screening) {
+            showModal(`
+                <div class="modal-title">AI Screening Results</div>
+                <div class="ai-draft">${renderMarkdown(d.ai_screening)}</div>
+                <div class="form-actions">
+                    <button class="btn btn-green" onclick="copyDraft(this)">Copy</button>
+                    <button class="btn btn-outline" onclick="viewJob(${jobId})">Back to Job</button>
+                </div>
+            `);
+            toast('AI screening complete', 'success');
+        }
+    } catch (e) {
+        closeModal();
+        toast('AI screening failed: ' + e.message, 'error');
+    }
+}
+
+async function viewScreening(candidateId, jobId) {
+    try {
+        const d = await api(`/api/candidates?job_id=${jobId}`);
+        const c = (d?.candidates || []).find(x => x.id === candidateId);
+        if (c && c.ai_screening) {
+            showModal(`
+                <div class="modal-title">AI Screening: ${esc(c.name)}</div>
+                <div class="ai-draft">${renderMarkdown(c.ai_screening)}</div>
+                <div class="form-actions">
+                    <button class="btn btn-green" onclick="copyDraft(this)">Copy</button>
+                    <button class="btn btn-outline" onclick="viewJob(${jobId})">Back to Job</button>
+                </div>
+            `);
+        }
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+// ─── Reviews ────────────────────────────────────────────
+let reviews = [];
+async function loadReviews() {
+    try {
+        const d = await api('/api/reviews');
+        if (!d) return;
+        reviews = d.reviews || [];
+        renderReviews();
+    } catch (e) { console.error(e); }
+}
+
+function renderReviews() {
+    const el = document.getElementById('reviews-list');
+    if (!reviews.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-text">No performance reviews yet. Create your first one.</div></div>';
+        return;
+    }
+    el.innerHTML = `<table class="data-table">
+        <thead><tr><th>Employee</th><th>Position</th><th>Period</th><th>Rating</th><th>Actions</th></tr></thead>
+        <tbody>${reviews.map(r => `
+            <tr>
+                <td style="font-weight:600;">${esc(r.employee_name)}</td>
+                <td style="font-size:0.85rem;">${esc(r.position || '--')}</td>
+                <td style="font-size:0.85rem;">${esc(r.review_period || '--')}</td>
+                <td>${r.rating ? `<span style="font-weight:700;color:${r.rating >= 4 ? 'var(--green)' : r.rating >= 3 ? 'var(--yellow)' : 'var(--red)'};">${r.rating}/5</span>` : '--'}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline" onclick="viewReview(${r.id})">View</button>
+                </td>
+            </tr>
+        `).join('')}</tbody>
+    </table>`;
+}
+
+function viewReview(id) {
+    const r = reviews.find(x => x.id === id);
+    if (!r) return;
+    showModal(`
+        <div class="modal-title">Performance Review: ${esc(r.employee_name)}</div>
+        <div class="card-meta" style="margin-bottom:1rem;">
+            <span>Position: ${esc(r.position || 'N/A')}</span>
+            <span>Period: ${esc(r.review_period || 'N/A')}</span>
+            <span>Rating: ${r.rating ? r.rating + '/5' : 'N/A'}</span>
+        </div>
+        ${r.strengths ? `<div style="margin-bottom:0.75rem;"><strong style="font-size:0.8rem;color:var(--green);text-transform:uppercase;letter-spacing:0.08em;">Strengths</strong><div style="margin-top:0.25rem;font-size:0.9rem;white-space:pre-wrap;">${esc(r.strengths)}</div></div>` : ''}
+        ${r.improvements ? `<div style="margin-bottom:0.75rem;"><strong style="font-size:0.8rem;color:var(--yellow);text-transform:uppercase;letter-spacing:0.08em;">Areas for Improvement</strong><div style="margin-top:0.25rem;font-size:0.9rem;white-space:pre-wrap;">${esc(r.improvements)}</div></div>` : ''}
+        ${r.goals ? `<div style="margin-bottom:0.75rem;"><strong style="font-size:0.8rem;color:var(--blue);text-transform:uppercase;letter-spacing:0.08em;">Goals</strong><div style="margin-top:0.25rem;font-size:0.9rem;white-space:pre-wrap;">${esc(r.goals)}</div></div>` : ''}
+        ${r.ai_draft ? `<div style="margin-top:1rem;"><strong style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">AI-Generated Review</strong><div class="ai-draft">${renderMarkdown(r.ai_draft)}</div></div>` : ''}
+        <div class="form-actions">
+            <button class="btn btn-outline" onclick="closeModal()">Close</button>
+        </div>
+    `);
+}
+
+// ─── Onboarding ────────────────────────────────────────
+let onboardingRecords = [];
+async function loadOnboarding() {
+    try {
+        const d = await api('/api/onboarding');
+        if (!d) return;
+        onboardingRecords = d.onboarding || [];
+        renderOnboarding();
+    } catch (e) { console.error(e); }
+}
+
+function renderOnboarding() {
+    const el = document.getElementById('onboarding-list');
+    if (!onboardingRecords.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-text">No onboarding records yet. Start a new hire onboarding.</div></div>';
+        return;
+    }
+    el.innerHTML = `<table class="data-table">
+        <thead><tr><th>Employee</th><th>Position</th><th>Start Date</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>${onboardingRecords.map(o => {
+            const statusColor = o.status === 'completed' ? 'var(--green)' : o.status === 'in_progress' ? 'var(--yellow)' : 'var(--muted)';
+            return `
+            <tr>
+                <td style="font-weight:600;">${esc(o.employee_name)}</td>
+                <td style="font-size:0.85rem;">${esc(o.position || '--')}</td>
+                <td style="font-size:0.85rem;">${o.start_date || '--'}</td>
+                <td><span class="badge" style="background:${statusColor};color:#fff;">${esc(o.status || 'pending')}</span></td>
+                <td>
+                    <button class="btn btn-sm btn-outline" onclick="viewOnboarding(${o.id})">View</button>
+                </td>
+            </tr>`;
+        }).join('')}</tbody>
+    </table>`;
+}
+
+async function viewOnboarding(id) {
+    try {
+        const d = await api('/api/onboarding/' + id);
+        if (!d) return;
+        const checklist = d.checklist_parsed || [];
+        showModal(`
+            <div class="modal-title">Onboarding: ${esc(d.employee_name)}</div>
+            <div class="card-meta" style="margin-bottom:1rem;">
+                <span>Position: ${esc(d.position || 'N/A')}</span>
+                <span>Start: ${d.start_date || 'N/A'}</span>
+                <span>Status: ${esc(d.status || 'pending')}</span>
+            </div>
+            <div style="margin-top:0.5rem;">
+                <strong style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">Checklist</strong>
+                <div style="margin-top:0.5rem;">
+                    ${checklist.map((item, i) => `
+                        <div style="padding:0.4rem 0;display:flex;align-items:center;gap:0.5rem;border-bottom:1px solid var(--border);">
+                            <span style="color:${item.done ? 'var(--green)' : 'var(--muted)'};">${item.done ? '[x]' : '[ ]'}</span>
+                            <span style="font-size:0.9rem;${item.done ? 'text-decoration:line-through;color:var(--muted);' : ''}">${esc(item.task || item)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-outline" onclick="closeModal()">Close</button>
+            </div>
+        `);
+    } catch (e) { toast('Error loading onboarding: ' + e.message, 'error'); }
+}
+
+// ─── Modal System ────────────────────────────────────────
+function showModal(html) {
+    document.getElementById('modal-content').innerHTML = html;
+    document.getElementById('modal-overlay').classList.add('visible');
+}
+
+function closeModal() {
+    document.getElementById('modal-overlay').classList.remove('visible');
+}
+
+document.getElementById('modal-overlay').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('modal-overlay')) closeModal();
+});
+
+// Close modal on Escape
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeModal();
+});
+
+function openModal(type) {
+    // Build "From Proposal" dropdown for projects
+    const wonProposals = proposals.filter(p => p.status === 'won');
+    const proposalDropdown = wonProposals.length > 0
+        ? `<div class="form-field"><label>From Won Proposal (optional)</label>
+            <select id="f-proposal_id" onchange="fillFromProposal(this.value)">
+                <option value="">-- None --</option>
+                ${wonProposals.map(p => `<option value="${p.id}">${esc(p.client_name)} - $${(p.pricing||0).toLocaleString()}</option>`).join('')}
+            </select>
+           </div>`
+        : '';
+
+    const forms = {
+        proposal: `
+            <div class="modal-title">New Proposal</div>
+            <form onsubmit="submitForm(event, 'proposal')">
+                <div class="form-field"><label>Client Name</label><input id="f-client_name" required placeholder="Client or company name"></div>
+                <div class="form-field"><label>Project Type</label>
+                    <select id="f-project_type">
+                        <option value="Consulting">Consulting</option>
+                        <option value="Development">Development</option>
+                        <option value="Design">Design</option>
+                        <option value="Marketing">Marketing</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div class="form-field"><label>Scope</label><textarea id="f-scope" placeholder="Describe the project scope, deliverables, and timeline..."></textarea></div>
+                <div class="form-field"><label>Pricing (CAD)</label><input type="number" id="f-pricing" step="0.01" placeholder="0.00"></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Create Proposal</button>
+                    <button type="button" class="btn btn-green" onclick="submitAndGenerate(event)">Create + AI Generate</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>`,
+        sop: `
+            <div class="modal-title">New SOP</div>
+            <form onsubmit="submitForm(event, 'sop')">
+                <div class="form-field"><label>Title</label><input id="f-title" required placeholder="e.g. Client Onboarding Process"></div>
+                <div class="form-field"><label>Category</label>
+                    <select id="f-category">
+                        <option>general</option><option>operations</option><option>safety</option>
+                        <option>hr</option><option>finance</option><option>customer-service</option>
+                    </select>
+                </div>
+                <div class="form-field"><label>Content</label><textarea id="f-content" placeholder="Step-by-step procedure..." style="min-height:200px;"></textarea></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Create SOP</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>`,
+        task: `
+            <div class="modal-title">New Task</div>
+            <form onsubmit="submitForm(event, 'task')">
+                <div class="form-field"><label>Title</label><input id="f-title" required placeholder="What needs to be done?"></div>
+                <div class="form-field"><label>Description</label><textarea id="f-description" placeholder="Optional details..."></textarea></div>
+                <div class="form-field"><label>Due Date</label><input type="date" id="f-due_date"></div>
+                <div class="form-field"><label>Priority</label>
+                    <select id="f-priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
+                </div>
+                <div class="form-field"><label>Recurrence</label>
+                    <select id="f-recurrence"><option value="none">None</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option></select>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Create Task</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>`,
+        vendor: `
+            <div class="modal-title">Add Vendor</div>
+            <form onsubmit="submitForm(event, 'vendor')">
+                <div class="form-field"><label>Company Name</label><input id="f-name" required placeholder="Vendor or supplier name"></div>
+                <div class="form-field"><label>Contact Email</label><input type="email" id="f-contact_email" placeholder="contact@vendor.com"></div>
+                <div class="form-field"><label>Phone</label><input id="f-phone" placeholder="555-123-4567"></div>
+                <div class="form-field"><label>Contract End Date</label><input type="date" id="f-contract_end"></div>
+                <div class="form-field"><label>Notes</label><textarea id="f-notes" placeholder="Contract details, renewal terms, etc."></textarea></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Add Vendor</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>`,
+        compliance: `
+            <div class="modal-title">Add Compliance Reminder</div>
+            <form onsubmit="submitForm(event, 'compliance')">
+                <div class="form-field"><label>Title</label><input id="f-title" required placeholder="e.g. Annual Safety Audit"></div>
+                <div class="form-field"><label>Category</label>
+                    <select id="f-category">
+                        <option>Regulatory</option><option>Safety</option><option>Financial</option>
+                        <option>Environmental</option><option>HR</option><option>Insurance</option><option>Other</option>
+                    </select>
+                </div>
+                <div class="form-field"><label>Deadline</label><input type="date" id="f-deadline" required></div>
+                <div class="form-field"><label>Reminder Days Before</label><input type="number" id="f-reminder_days" value="30" min="1"></div>
+                <div class="form-field"><label>Notes</label><textarea id="f-notes" placeholder="Requirements, contacts, documentation needed..."></textarea></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Add Reminder</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>`,
+        project: `
+            <div class="modal-title">New Project</div>
+            <form onsubmit="submitForm(event, 'project')">
+                ${proposalDropdown}
+                <div class="form-field"><label>Project Name</label><input id="f-name" required placeholder="Project name"></div>
+                <div class="form-field"><label>Client Name</label><input id="f-client_name" placeholder="Client or company"></div>
+                <div class="form-field"><label>Budget (CAD)</label><input type="number" id="f-budget" step="0.01" placeholder="0.00"></div>
+                <div class="form-field"><label>Start Date</label><input type="date" id="f-start_date"></div>
+                <div class="form-field"><label>End Date</label><input type="date" id="f-end_date"></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Create Project</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>`,
+        invoice: `
+            <div class="modal-title">New Invoice</div>
+            <form onsubmit="submitForm(event, 'invoice')">
+                <div class="form-field"><label>Client Name</label><input id="f-client_name" required placeholder="Client or company name"></div>
+                <div class="form-field"><label>Amount (CAD)</label><input type="number" id="f-amount" step="0.01" required placeholder="0.00"></div>
+                <div class="form-field"><label>Due Date</label><input type="date" id="f-due_date"></div>
+                <div class="form-field"><label>Link to Project (optional)</label>
+                    <select id="f-project_id">
+                        <option value="">-- None --</option>
+                        ${projects.map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('')}
+                    </select>
+                </div>
+                <div class="form-field"><label>Notes</label><textarea id="f-notes" placeholder="Invoice details, line items, etc."></textarea></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Create Invoice</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>`,
+        expense: `
+            <div class="modal-title">Add Expense</div>
+            <form onsubmit="submitForm(event, 'expense')">
+                <div class="form-field"><label>Category</label>
+                    <select id="f-category">
+                        <option>Office Supplies</option><option>Software</option><option>Travel</option>
+                        <option>Marketing</option><option>Equipment</option><option>Subcontractor</option>
+                        <option>Insurance</option><option>Utilities</option><option>Other</option>
+                    </select>
+                </div>
+                <div class="form-field"><label>Amount (CAD)</label><input type="number" id="f-amount" step="0.01" required placeholder="0.00"></div>
+                <div class="form-field"><label>Date</label><input type="date" id="f-expense_date"></div>
+                <div class="form-field"><label>Description</label><textarea id="f-description" placeholder="What was this expense for?"></textarea></div>
+                <div class="form-field"><label>Receipt URL (optional)</label><input id="f-receipt_url" placeholder="https://..."></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Add Expense</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>`,
+        job: `
+            <div class="modal-title">Post Job</div>
+            <form onsubmit="submitForm(event, 'job')">
+                <div class="form-field"><label>Job Title</label><input id="f-title" required placeholder="e.g. Senior Project Manager"></div>
+                <div class="form-field"><label>Description</label><textarea id="f-description" placeholder="Role overview, responsibilities..."></textarea></div>
+                <div class="form-field"><label>Requirements</label><textarea id="f-requirements" placeholder="Required skills, experience, certifications..."></textarea></div>
+                <div class="form-field"><label>Salary Range</label><input id="f-salary_range" placeholder="e.g. $60,000 - $80,000"></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Post Job</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>`,
+        onboarding: `
+            <div class="modal-title">New Hire Onboarding</div>
+            <form onsubmit="submitForm(event, 'onboarding')">
+                <div class="form-field"><label>Employee Name</label><input id="f-employee_name" required placeholder="New hire name"></div>
+                <div class="form-field"><label>Position</label><input id="f-position" placeholder="Job title"></div>
+                <div class="form-field"><label>Start Date</label><input type="date" id="f-start_date"></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Create Onboarding Checklist</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>`,
+        content: `
+            <div class="modal-title">New Content</div>
+            <form onsubmit="submitForm(event, 'content')">
+                <div class="form-field"><label>Title</label><input id="f-title" required placeholder="Content title"></div>
+                <div class="form-field"><label>Type</label>
+                    <select id="f-type">
+                        <option value="blog">Blog Post</option>
+                        <option value="social">Social Media</option>
+                        <option value="email">Email</option>
+                        <option value="newsletter">Newsletter</option>
+                    </select>
+                </div>
+                <div class="form-field"><label>Topic</label><input id="f-topic" placeholder="What is this content about?"></div>
+                <div class="form-field"><label>Target Audience</label><input id="f-audience" placeholder="e.g. Small business owners, HR managers"></div>
+                <div class="form-field"><label>Brand Voice</label>
+                    <select id="f-brand_voice">
+                        <option value="professional">Professional</option>
+                        <option value="friendly">Friendly &amp; Approachable</option>
+                        <option value="authoritative">Authoritative</option>
+                        <option value="conversational">Conversational</option>
+                        <option value="technical">Technical</option>
+                    </select>
+                </div>
+                <div class="form-field"><label>Scheduled Date</label><input type="date" id="f-scheduled_date"></div>
+                <div class="form-field"><label>Channel</label><input id="f-channel" placeholder="e.g. Website, LinkedIn, Email list"></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Create Content</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>`,
+        review: `
+            <div class="modal-title">Performance Review</div>
+            <form onsubmit="submitForm(event, 'review')">
+                <div class="form-field"><label>Employee Name</label><input id="f-employee_name" required placeholder="Employee name"></div>
+                <div class="form-field"><label>Position</label><input id="f-position" placeholder="Job title"></div>
+                <div class="form-field"><label>Review Period</label><input id="f-review_period" placeholder="e.g. Q1 2026, Annual 2025"></div>
+                <div class="form-field"><label>Rating (1-5)</label><input type="number" id="f-rating" min="1" max="5" placeholder="1-5"></div>
+                <div class="form-field"><label>Strengths</label><textarea id="f-strengths" placeholder="Key strengths observed..."></textarea></div>
+                <div class="form-field"><label>Areas for Improvement</label><textarea id="f-improvements" placeholder="Areas to develop..."></textarea></div>
+                <div class="form-field"><label>Goals</label><textarea id="f-goals" placeholder="Goals for next period..."></textarea></div>
+                <div class="form-field" style="display:flex;align-items:center;gap:0.75rem;">
+                    <input type="checkbox" id="f-generate_ai" style="width:auto;">
+                    <label for="f-generate_ai" style="margin-bottom:0;text-transform:none;letter-spacing:normal;font-size:0.85rem;">Generate AI-assisted review draft</label>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Create Review</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>`,
+    };
+    showModal(forms[type] || '');
+}
+
+// Fill project form from won proposal
+function fillFromProposal(proposalId) {
+    if (!proposalId) return;
+    const p = proposals.find(x => x.id == proposalId);
+    if (!p) return;
+    const nameEl = document.getElementById('f-name');
+    const clientEl = document.getElementById('f-client_name');
+    const budgetEl = document.getElementById('f-budget');
+    if (nameEl && !nameEl.value) nameEl.value = (p.project_type || 'Project') + ' - ' + (p.client_name || '');
+    if (clientEl) clientEl.value = p.client_name || '';
+    if (budgetEl) budgetEl.value = p.pricing || '';
+}
+
+// Create proposal and immediately generate AI draft
+async function submitAndGenerate(e) {
+    e.preventDefault();
+    const body = {};
+    for (const field of formFieldMap['proposal']) {
+        const el = document.getElementById('f-' + field);
+        if (el) body[field] = el.type === 'number' ? parseFloat(el.value || 0) : el.value;
+    }
+    try {
+        const result = await api('/api/proposals', { method: 'POST', body: JSON.stringify(body) });
+        if (!result) return;
+        toast('Proposal created', 'success');
+        loadProposals();
+        loadProposalStats();
+        loadDashboard();
+
+        // Now generate AI draft
+        const newId = result.id;
+        if (newId) {
+            showModal(`
+                <div class="modal-title">Generating AI Proposal...</div>
+                <div class="loading-center" style="padding:3rem;">
+                    <span class="spinner spinner-lg"></span>
+                    <span>AI is drafting your proposal...</span>
+                </div>
+            `);
+            try {
+                const d = await api(`/api/proposals/${newId}/generate`, {
+                    method: 'POST',
+                    body: JSON.stringify({ brief: body.scope || body.brief || '' }),
+                });
+                if (d && d.ai_draft) {
+                    showDraftModal(d.ai_draft, body.client_name);
+                    toast('AI proposal generated', 'success');
+                    loadProposals();
+                }
+            } catch (genErr) {
+                closeModal();
+                toast('Proposal created but AI generation failed: ' + genErr.message, 'error');
+            }
+        } else {
+            closeModal();
+        }
+    } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+const formFieldMap = {
+    proposal: ['client_name', 'project_type', 'scope', 'pricing'],
+    sop: ['title', 'content', 'category'],
+    task: ['title', 'description', 'due_date', 'priority', 'recurrence'],
+    vendor: ['name', 'contact_email', 'phone', 'contract_end', 'notes'],
+    compliance: ['title', 'category', 'deadline', 'reminder_days', 'notes'],
+    project: ['name', 'client_name', 'budget', 'start_date', 'end_date', 'proposal_id'],
+    invoice: ['client_name', 'amount', 'due_date', 'project_id', 'notes'],
+    expense: ['category', 'amount', 'expense_date', 'description', 'receipt_url'],
+    job: ['title', 'description', 'requirements', 'salary_range'],
+    onboarding: ['employee_name', 'position', 'start_date'],
+    review: ['employee_name', 'position', 'review_period', 'rating', 'strengths', 'improvements', 'goals', 'generate_ai'],
+    content: ['title', 'type', 'topic', 'audience', 'brand_voice', 'scheduled_date', 'channel'],
+};
+
+const formEndpoints = {
+    proposal: '/api/proposals',
+    sop: '/api/sops',
+    task: '/api/tasks',
+    vendor: '/api/vendors',
+    compliance: '/api/compliance',
+    project: '/api/projects',
+    invoice: '/api/invoices',
+    expense: '/api/expenses',
+    job: '/api/jobs',
+    onboarding: '/api/onboarding',
+    review: '/api/reviews',
+    content: '/api/content/calendar',
+};
+
+const formReloaders = {
+    proposal: () => { loadProposals(); loadProposalStats(); loadDashboard(); },
+    sop: () => { loadSops(); },
+    task: () => { loadTasks(); loadDashboard(); },
+    vendor: () => { loadVendors(); },
+    compliance: () => { loadCompliance(); },
+    project: () => { loadProjects(); loadDashboard(); },
+    invoice: () => { loadInvoices(); loadCashFlow(); loadDashboard(); },
+    expense: () => { loadExpenses(); loadCashFlow(); },
+    job: () => { loadJobs(); },
+    onboarding: () => { loadOnboarding(); },
+    review: () => { loadReviews(); },
+    content: () => { loadContent(); loadContentStats(); },
+};
+
+async function submitForm(e, type) {
+    e.preventDefault();
+    const btn = e.target.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+    const body = {};
+    for (const field of formFieldMap[type]) {
+        const el = document.getElementById('f-' + field);
+        if (el) {
+            if (el.type === 'checkbox') body[field] = el.checked;
+            else if (el.type === 'number') body[field] = parseFloat(el.value || 0);
+            else body[field] = el.value;
+        }
+    }
+    try {
+        await api(formEndpoints[type], { method: 'POST', body: JSON.stringify(body) });
+        closeModal();
+        toast(type.charAt(0).toUpperCase() + type.slice(1) + ' created', 'success');
+        formReloaders[type]();
+    } catch (e) {
+        toast('Error: ' + e.message, 'error');
+        if (btn) { btn.disabled = false; btn.textContent = btn.textContent.replace('Saving...', 'Create'); }
+    }
+}
+
+// ─── Utilities ───────────────────────────────────────────
+function esc(str) {
+    if (!str) return '';
+    const d = document.createElement('div');
+    d.textContent = String(str);
+    return d.innerHTML;
+}
+
+// ─── Content Calendar ───────────────────────────────────
+let contentItems = [];
+async function loadContent() {
+    try {
+        const typeFilter = document.getElementById('content-filter-type')?.value || '';
+        const monthFilter = document.getElementById('content-filter-month')?.value || '';
+        let path = '/api/content/calendar?';
+        if (typeFilter) path += `type=${typeFilter}&`;
+        if (monthFilter) path += `month=${monthFilter}&`;
+        const d = await api(path);
+        if (!d) return;
+        contentItems = d.content || [];
+        renderContentCalendar();
+        renderContentList();
+    } catch (e) { console.error(e); }
+}
+
+async function loadContentStats() {
+    try {
+        const d = await api('/api/content/stats');
+        if (!d) return;
+        const s = d.stats || d;
+        document.getElementById('cs-published').textContent = s.published_this_month || 0;
+        document.getElementById('cs-scheduled').textContent = s.scheduled || 0;
+        document.getElementById('cs-drafts').textContent = s.drafts_pending || 0;
+        document.getElementById('cs-review').textContent = s.in_review || 0;
+    } catch (e) { console.error(e); }
+}
+
+function renderContentCalendar() {
+    const el = document.getElementById('content-calendar-view');
+    const now = new Date();
+    const monthInput = document.getElementById('content-filter-month')?.value;
+    let year = now.getFullYear(), month = now.getMonth();
+    if (monthInput) {
+        const parts = monthInput.split('-');
+        year = parseInt(parts[0]); month = parseInt(parts[1]) - 1;
+    }
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const today = now.getDate();
+    const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+    const monthName = new Date(year, month).toLocaleDateString('en-CA', { month: 'long', year: 'numeric' });
+
+    // Group content by day
+    const byDay = {};
+    contentItems.forEach(c => {
+        if (c.scheduled_date) {
+            const day = parseInt(c.scheduled_date.split('-')[2]);
+            const m = c.scheduled_date.substring(0, 7);
+            const targetMonth = `${year}-${String(month + 1).padStart(2, '0')}`;
+            if (m === targetMonth) {
+                if (!byDay[day]) byDay[day] = [];
+                byDay[day].push(c);
+            }
+        }
+    });
+
+    let html = `<div style="font-weight:700;font-size:1rem;margin-bottom:0.75rem;">${monthName}</div>`;
+    html += '<div class="cal-grid">';
+    ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => {
+        html += `<div class="cal-header">${d}</div>`;
+    });
+    // Empty cells before first day
+    for (let i = 0; i < firstDay; i++) {
+        html += '<div class="cal-day other-month"></div>';
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+        const isToday = isCurrentMonth && d === today;
+        const items = byDay[d] || [];
+        html += `<div class="cal-day${isToday ? ' today' : ''}">`;
+        html += `<div class="cal-day-num">${d}</div>`;
+        items.forEach(c => {
+            html += `<span class="cal-dot cal-dot-${c.type}" title="${esc(c.title)}"></span>`;
+        });
+        html += '</div>';
+    }
+    html += '</div>';
+    // Legend
+    html += '<div style="display:flex;gap:1rem;font-size:0.7rem;color:var(--muted);">';
+    html += '<span><span class="cal-dot cal-dot-blog"></span> Blog</span>';
+    html += '<span><span class="cal-dot cal-dot-social"></span> Social</span>';
+    html += '<span><span class="cal-dot cal-dot-email"></span> Email</span>';
+    html += '<span><span class="cal-dot cal-dot-newsletter"></span> Newsletter</span>';
+    html += '</div>';
+    el.innerHTML = html;
+}
+
+function renderContentList() {
+    const el = document.getElementById('content-list');
+    if (!contentItems.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-text">No content yet. Create your first piece of content.</div></div>';
+        return;
+    }
+    el.innerHTML = contentItems.map(c => `
+        <div class="card" style="cursor:pointer;" onclick="viewContent(${c.id})">
+            <div style="display:flex;justify-content:space-between;align-items:start;">
+                <div class="card-title">${esc(c.title)}</div>
+                <div style="display:flex;gap:0.35rem;align-items:center;">
+                    <span class="badge badge-${c.type}">${c.type}</span>
+                    <span class="badge badge-${c.status}">${c.status}</span>
+                    <button class="btn-delete" onclick="event.stopPropagation();deleteEntity('Content',${c.id},'/api/content/calendar/${c.id}')" title="Delete">&#x1F5D1;</button>
+                </div>
+            </div>
+            <div class="card-meta">
+                ${c.topic ? `<span>Topic: ${esc(c.topic)}</span>` : ''}
+                ${c.scheduled_date ? `<span>Scheduled: ${c.scheduled_date}</span>` : ''}
+                ${c.audience ? `<span>Audience: ${esc(c.audience)}</span>` : ''}
+            </div>
+            <div style="margin-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap;" onclick="event.stopPropagation();">
+                <button class="btn btn-sm btn-green" onclick="generateContentDraft(${c.id})">AI Draft</button>
+                <select onchange="updateContentStatus(${c.id}, this.value)" style="background:var(--bg);color:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:0.3rem 0.5rem;font-size:0.75rem;">
+                    <option value="idea" ${c.status==='idea'?'selected':''}>Idea</option>
+                    <option value="draft" ${c.status==='draft'?'selected':''}>Draft</option>
+                    <option value="review" ${c.status==='review'?'selected':''}>Review</option>
+                    <option value="scheduled" ${c.status==='scheduled'?'selected':''}>Scheduled</option>
+                    <option value="published" ${c.status==='published'?'selected':''}>Published</option>
+                </select>
+                ${c.status !== 'published' ? `<button class="btn btn-sm btn-outline" onclick="publishContent(${c.id})">Publish</button>` : ''}
+            </div>
+        </div>
+    `).join('');
+}
+
+async function viewContent(id) {
+    try {
+        const d = await api(`/api/content/calendar/${id}`);
+        if (!d) return;
+        const c = d;
+        showModal(`
+            <div class="modal-title">${esc(c.title)}</div>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
+                <span class="badge badge-${c.type}">${c.type}</span>
+                <span class="badge badge-${c.status}">${c.status}</span>
+            </div>
+            <div class="card-meta">
+                ${c.topic ? `<span>Topic: ${esc(c.topic)}</span>` : ''}
+                ${c.audience ? `<span>Audience: ${esc(c.audience)}</span>` : ''}
+                ${c.brand_voice ? `<span>Voice: ${esc(c.brand_voice)}</span>` : ''}
+                ${c.scheduled_date ? `<span>Scheduled: ${c.scheduled_date}</span>` : ''}
+                ${c.published_date ? `<span>Published: ${c.published_date}</span>` : ''}
+            </div>
+            ${c.ai_draft ? `
+                <div style="margin-top:1.5rem;">
+                    <strong style="font-size:0.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">AI-Generated Draft</strong>
+                    <div class="ai-draft">${renderMarkdown(c.ai_draft)}</div>
+                </div>
+            ` : `
+                <div style="margin-top:1.5rem;text-align:center;padding:1.5rem;border:1px dashed var(--border);border-radius:var(--radius);">
+                    <div style="color:var(--muted);margin-bottom:0.75rem;">No AI draft yet.</div>
+                    <button class="btn btn-green" onclick="generateContentDraft(${c.id})">Generate AI Draft</button>
+                </div>
+            `}
+            <div class="form-actions">
+                <button class="btn btn-outline" onclick="closeModal()">Close</button>
+            </div>
+        `);
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function generateContentDraft(id) {
+    const c = contentItems.find(x => x.id === id);
+    if (!c) return;
+
+    showModal(`
+        <div class="modal-title">Generating AI Content Draft...</div>
+        <div class="loading-center" style="padding:3rem;">
+            <span class="spinner spinner-lg"></span>
+            <span>AI is drafting your ${c.type || 'blog'} content. This may take 15-30 seconds...</span>
+        </div>
+    `);
+
+    try {
+        const d = await api('/api/content/generate', {
+            method: 'POST',
+            body: JSON.stringify({
+                type: c.type,
+                topic: c.topic || c.title,
+                brand_voice: c.brand_voice,
+                audience: c.audience,
+            }),
+        });
+        if (d && d.ai_draft) {
+            // Save draft to this content entry
+            await api(`/api/content/calendar/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ ai_draft: d.ai_draft, status: c.status === 'idea' ? 'draft' : c.status }),
+            });
+            showModal(`
+                <div class="modal-title">AI-Generated ${(c.type || 'Blog').charAt(0).toUpperCase() + (c.type || 'blog').slice(1)} Draft</div>
+                <div class="ai-draft">${renderMarkdown(d.ai_draft)}</div>
+                <div class="form-actions">
+                    <button class="btn btn-green" onclick="copyDraft(this)">Copy to Clipboard</button>
+                    <button class="btn btn-outline" onclick="closeModal()">Close</button>
+                </div>
+            `);
+            toast('AI content draft generated', 'success');
+            loadContent();
+            loadContentStats();
+        }
+    } catch (e) {
+        closeModal();
+        toast('AI generation failed: ' + e.message, 'error');
+    }
+}
+
+async function updateContentStatus(id, status) {
+    try {
+        await api(`/api/content/calendar/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+        toast(`Content marked as ${status}`, 'success');
+        loadContent();
+        loadContentStats();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function publishContent(id) {
+    try {
+        await api('/api/content/publish', { method: 'POST', body: JSON.stringify({ id }) });
+        toast('Content published', 'success');
+        loadContent();
+        loadContentStats();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+// ─── Onboarding Flow ───────────────────────────────────
+let selectedPriorities = [];
+
+function checkOnboarding() {
+    if (!localStorage.getItem('ce_onboarding_complete')) {
+        document.getElementById('onboarding-overlay').classList.add('visible');
+    }
+}
+
+function nextOnboardingStep(step) {
+    document.querySelectorAll('.onboarding-step').forEach(s => s.classList.remove('active'));
+    document.getElementById('ob-step-' + step).classList.add('active');
+
+    if (step === 3) {
+        // Generate suggestion based on priorities
+        const suggestions = {
+            proposals: 'Create your first proposal',
+            operations: 'Add your first SOP',
+            projects: 'Set up your first project',
+            billing: 'Create your first invoice',
+            hr: 'Post your first job listing',
+            content: 'Plan your first blog post',
+        };
+        const top = selectedPriorities[0] || 'proposals';
+        document.getElementById('ob-suggestion').textContent =
+            `Based on your priorities, we recommend: "${suggestions[top] || 'Create your first proposal'}."`;
+    }
+}
+
+function togglePriority(el) {
+    const prio = el.dataset.prio;
+    if (el.classList.contains('selected')) {
+        el.classList.remove('selected');
+        selectedPriorities = selectedPriorities.filter(p => p !== prio);
+    } else if (selectedPriorities.length < 3) {
+        el.classList.add('selected');
+        selectedPriorities.push(prio);
+    } else {
+        toast('You can select up to 3 priorities', 'info');
+    }
+}
+
+function completeOnboarding() {
+    localStorage.setItem('ce_onboarding_complete', 'true');
+    localStorage.setItem('ce_priorities', JSON.stringify(selectedPriorities));
+    document.getElementById('onboarding-overlay').classList.remove('visible');
+    toast('Setup complete! Welcome to PureBrain SME.', 'success');
+    // Navigate to top priority tab
+    const top = selectedPriorities[0] || 'dashboard';
+    const tabBtn = document.querySelector(`.tab-btn[data-tab="${top}"]`);
+    if (tabBtn) tabBtn.click();
+}
+
+// ─── Tab Switching Helper ───────────────────────────────
+function switchToTab(tab) {
+    const btn = document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+    if (btn) btn.click();
+}
+
+// ─── Demo Seed ──────────────────────────────────────────
+async function seedDemoData() {
+    const btn = document.getElementById('btn-seed-demo');
+    if (btn) { btn.disabled = true; btn.textContent = 'Seeding...'; }
+    try {
+        const d = await api('/api/demo/seed', { method: 'POST' });
+        if (d && d.ok) {
+            toast('Demo data seeded! Refreshing...', 'success');
+            // Reload all data
+            loadDashboard(); loadProposals(); loadProposalStats();
+            loadSops(); loadTasks(); loadVendors(); loadCompliance();
+            loadProjects(); loadInvoices(); loadExpenses(); loadCashFlow();
+            loadJobs(); loadReviews(); loadContent(); loadContentStats();
+        }
+    } catch (e) { toast('Seed failed: ' + e.message, 'error'); }
+    if (btn) { btn.disabled = false; btn.textContent = 'Seed Demo Data'; }
+}
+
+// ─── Delete Functions ───────────────────────────────────
+async function deleteEntity(type, id, endpoint) {
+    if (!confirm('Delete this item? This cannot be undone.')) return;
+    try {
+        await api(endpoint, { method: 'DELETE' });
+        toast(`${type} deleted`, 'success');
+        // Reload relevant data
+        if (type === 'Proposal') { loadProposals(); loadProposalStats(); loadDashboard(); }
+        else if (type === 'Task') { loadTasks(); loadDashboard(); }
+        else if (type === 'SOP') { loadSops(); }
+        else if (type === 'Vendor') { loadVendors(); }
+        else if (type === 'Invoice') { loadInvoices(); loadCashFlow(); loadDashboard(); }
+        else if (type === 'Expense') { loadExpenses(); loadCashFlow(); }
+        else if (type === 'Job') { loadJobs(); }
+        else if (type === 'Content') { loadContent(); loadContentStats(); }
+    } catch (e) { toast('Delete failed: ' + e.message, 'error'); }
+}
+
+// ─── Cross-Module: Create Project from Won Proposal ─────
+function createProjectFromProposal(proposalId) {
+    const p = proposals.find(x => x.id === proposalId);
+    if (!p) return;
+    closeModal();
+    openModal('project');
+    // Pre-fill after modal renders
+    setTimeout(() => {
+        const nameEl = document.getElementById('f-name');
+        const clientEl = document.getElementById('f-client_name');
+        const budgetEl = document.getElementById('f-budget');
+        const pidEl = document.getElementById('f-proposal_id');
+        if (nameEl) nameEl.value = (p.project_type || 'Project') + ' - ' + (p.client_name || '');
+        if (clientEl) clientEl.value = p.client_name || '';
+        if (budgetEl) budgetEl.value = p.pricing || '';
+        if (pidEl) pidEl.value = proposalId;
+    }, 50);
+}
+
+// ─── Cross-Module: Create Invoice from Project ──────────
+function createInvoiceFromProject(projectId) {
+    const p = projects.find(x => x.id === projectId);
+    if (!p) return;
+    closeModal();
+    openModal('invoice');
+    setTimeout(() => {
+        const clientEl = document.getElementById('f-client_name');
+        const pidEl = document.getElementById('f-project_id');
+        if (clientEl) clientEl.value = p.client_name || '';
+        if (pidEl) pidEl.value = projectId;
+    }, 50);
+}
+
+// ─── Landing Page Scroll Animations ─────────────────────
+const lpObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            entry.target.classList.add('lp-visible');
+            lpObserver.unobserve(entry.target);
+        }
+    });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+document.querySelectorAll('.lp-fade').forEach(el => lpObserver.observe(el));
+
+// ─── Phil Auto-Setup ────────────────────────────────────
+(async function philSetup() {
+    if (new URLSearchParams(window.location.search).get('setup') !== 'phil') return;
+
+    // SECURITY 2026-05-08: ?setup=phil disabled in production (hardcoded creds → public auth bypass).
+    // Tactical guard pending Morphe's server-side magic-link rebuild. See SECURITY-FLAG-2026-05-07-ce-sme-phil-creds.md
+    const PROD_HOSTS = ['ce.purebrain.ai', 'purebrain-production-23b.pages.dev'];
+    if (PROD_HOSTS.includes(window.location.hostname)) {
+        console.warn('[security] setup=phil flow disabled in production');
+        return;
+    }
+
+    const PHIL_EMAIL = 'phil@canadasentrepreneur.com';
+    const PHIL_PASS = 'CESME2026!';
+    const PHIL_COMPANY = "Canada's Entrepreneur";
+    const PHIL_INDUSTRY = 'professional_development';
+
+    try {
+        // Register Phil
+        const regResp = await fetch(`${API_BASE}/api/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                email: PHIL_EMAIL,
+                password: PHIL_PASS,
+                company_name: PHIL_COMPANY,
+                industry: PHIL_INDUSTRY,
+            }),
+        });
+        const regData = await regResp.json();
+
+        // If already exists, try login instead
+        let token, user;
+        if (regData.error && regData.error.includes('exists')) {
+            const loginResp = await fetch(`${API_BASE}/api/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: PHIL_EMAIL, password: PHIL_PASS }),
+            });
+            const loginData = await loginResp.json();
+            token = loginData.token;
+            user = loginData.user;
+        } else {
+            token = regData.token;
+            user = regData.user;
+        }
+
+        if (!token) {
+            console.error('Phil setup: could not authenticate', regData);
+            return;
+        }
+
+        // Seed demo data
+        try {
+            await fetch(`${API_BASE}/api/demo/seed`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
+        } catch (seedErr) {
+            console.warn('Phil setup: demo seed call failed (may not exist yet)', seedErr);
+        }
+
+        // Auto-login
+        authToken = token;
+        currentUser = user;
+        localStorage.setItem('ce_token', authToken);
+        localStorage.setItem('ce_user', JSON.stringify(currentUser));
+        showApp();
+        toast('Phil account ready!', 'success');
+
+        // Clean URL
+        window.history.replaceState({}, '', window.location.pathname);
+    } catch (err) {
+        console.error('Phil setup failed:', err);
+    }
+})();
+
+// ─── Init ────────────────────────────────────────────────
+if (authToken && currentUser) {
+    showApp();
+}
+</script>
+</body>
+</html>
