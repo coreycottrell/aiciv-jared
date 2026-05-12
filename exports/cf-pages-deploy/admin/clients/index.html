@@ -540,9 +540,34 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--blue);cursor:poin
     $app.style.display = 'none';
   }
 
+  // Allowlist for ?next= post-login redirect — only same-origin admin paths.
+  // Prevents open-redirect to attacker domains while honoring unified-login UX
+  // (e.g., /admin/referrals?... → /admin/clients?next=/admin/referrals → land back).
+  function _safeNextPath(){
+    try {
+      var qp = new URLSearchParams(window.location.search).get('next');
+      if(!qp) return null;
+      // Must start with /admin/ and not contain protocol/host/parent-escape.
+      if(qp.charAt(0) !== '/') return null;
+      if(qp.indexOf('//') === 0) return null;
+      if(qp.indexOf('\\') !== -1) return null;
+      if(qp.indexOf('://') !== -1) return null;
+      if(!/^\/admin\//.test(qp)) return null;
+      return qp;
+    } catch(_e){ return null; }
+  }
+
   function showApp(){
     $login.style.display = 'none';
     $app.style.display = 'block';
+    // Honor ?next=/admin/<path> AFTER successful auth (unified-login redirect).
+    var nxt = _safeNextPath();
+    if(nxt){
+      // Strip ?next= so a refresh of /admin/clients doesn't bounce again.
+      try { history.replaceState({}, '', window.location.pathname); } catch(_e){}
+      window.location.assign(nxt);
+      return;
+    }
     loadClients();
   }
 

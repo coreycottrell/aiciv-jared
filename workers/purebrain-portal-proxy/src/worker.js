@@ -281,10 +281,23 @@ export default {
         url.pathname.startsWith('/api/admin/payments/manual') ||
         url.pathname.startsWith('/api/admin/applications')
       ) {
+        // CTO 2026-05-12 unified login (Commit C):
+        //   Stop injecting X-Admin-Token for referrals admin routes. referrals-api
+        //   now validates the user session via Service Binding to social-api
+        //   (requireAdminViaSession). Forward Authorization + Cookie headers
+        //   UNTOUCHED so the worker can extract Bearer/social_session.
+        //
+        //   LEGACY_ADMIN_TOKEN_ENABLED=true on referrals-api keeps the X-Admin-Token
+        //   fallback alive for 1-week rollback window, BUT we no longer mint it
+        //   here — the only callers using it now are deliberate (out-of-band ops
+        //   scripts, etc.), which is the desired pruning.
+        //
+        //   The X-Admin-Token injection for /api/admin/clients/* below is
+        //   UNCHANGED (different path family, different worker).
         const workerPath = url.pathname.replace('/api/admin', '/admin');
         const workerUrl = `https://referrals-api.in0v8.workers.dev${workerPath}${url.search}`;
         const proxyHeaders = new Headers(request.headers);
-        if (env.ADMIN_TOKEN) proxyHeaders.set('X-Admin-Token', env.ADMIN_TOKEN);
+        // No X-Admin-Token injection. Authorization + Cookie pass through.
         const resp = await fetch(new Request(workerUrl, {
           method: request.method, headers: proxyHeaders,
           body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : null,

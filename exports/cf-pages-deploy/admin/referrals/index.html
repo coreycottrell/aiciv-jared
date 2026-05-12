@@ -260,19 +260,8 @@ tr:hover td{background:rgba(42,147,193,0.04)}
 </head>
 <body>
 
-<!-- Simple Password Gate for Staging -->
-<div id="loginScreen" class="login-wrap">
-  <div class="login-box">
-    <h1>PUREBR<span style="color:#2a93c1">AI</span>N</h1>
-    <p class="sub">Referrals Admin Panel</p>
-    <form id="loginForm">
-      <label>Admin Password</label>
-      <input type="password" id="loginPassword" required autocomplete="current-password" placeholder="Enter admin password">
-      <div id="loginError" class="err"></div>
-      <button type="submit" class="btn-primary" id="loginBtn">Sign In</button>
-    </form>
-  </div>
-</div>
+<!-- Unified login: no standalone gate. If no session, init() redirects to
+     /admin/clients?next=/admin/referrals (CTO 2026-05-12 unified-login). -->
 
 <!-- App -->
 <div id="app" class="app">
@@ -698,43 +687,57 @@ tr:hover td{background:rgba(42,147,193,0.04)}
     partners: []
   };
 
-  /* === Auth === */
+  /* === Auth (CTO 2026-05-12 unified login) === */
+  // localStorage key matches admin/clients (shared session across both pages).
+  var TOKEN_KEY = 'pb_admin_token';
+
   function getToken() {
+    // Viewer-mode override (legacy ?admin_token= deep-link) — kept for partner views.
     var params = new URLSearchParams(window.location.search);
     var qt = params.get('admin_token');
     if (qt) {
       state.viewerMode = true;
       return qt;
     }
-    return localStorage.getItem('pb_admin_token');
+    return localStorage.getItem(TOKEN_KEY);
   }
 
-  function setToken(t) {
-    localStorage.setItem('pb_admin_token', t);
-    state.token = t;
+  function clearToken() {
+    localStorage.removeItem(TOKEN_KEY);
+    state.token = null;
+  }
+
+  function redirectToLogin() {
+    // Drop us at the unified login (admin/clients) with ?next= back to here.
+    var next = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.assign('/admin/clients/?next=' + next);
   }
 
   function logout() {
-    localStorage.removeItem('pb_admin_token');
-    state.token = null;
-    document.getElementById('app').style.display = 'none';
-    document.getElementById('loginScreen').style.display = 'flex';
+    clearToken();
+    redirectToLogin();
   }
 
-  /* === API === */
+  /* === API (unified-session bearer + method-aware 401) === */
+  // Method-aware 401 handler — mirrors admin/clients commit dd3ab0f:
+  //   GET 401 = read auth genuinely failed = clearToken + redirect to login
+  //   Mutating verbs 401 = transient/RBAC/server-misconfig = toast + ONE retry, no bounce
+  function _isMutating(method){
+    if(!method) return false;
+    method = String(method).toUpperCase();
+    return method === 'PATCH' || method === 'POST' || method === 'PUT' || method === 'DELETE';
+  }
+
   function api(method, path, body) {
     var isStaging = window.location.hostname !== 'portal.purebrain.ai';
     var opts = {
       method: method,
+      credentials: 'include', // send social_session cookie on prod (same-origin) + viewer cookies
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + (state.token || '')
       }
     };
-    if (isStaging) {
-      opts.headers['X-Admin-Token'] = state.token || '';
-    } else {
-      opts.headers['Authorization'] = 'Bearer ' + state.token;
-    }
     if (body && method !== 'GET') {
       opts.body = JSON.stringify(body);
     }
@@ -755,11 +758,51 @@ tr:hover td{background:rgba(42,147,193,0.04)}
     } else {
       base = '';
     }
-    return fetch(base + path, opts).then(function(r) {
-      if (r.status === 401) {
-        logout();
-        toast('Session expired. Please login again.', 'error');
-        return Promise.reject(new Error('Unauthorized'));
+
+    var retryBody = opts.body;
+    var mutating = _isMutating(method);
+
+    function _doFetch(fetchOpts){
+      return fetch(base + path, fetchOpts);
+    }
+
+    return _doFetch(opts).then(function(r) {
+      if (r.status === 401 || r.status === 403) {
+        if (!mutating) {
+          // Read auth failed → real session expiry → redirect to unified login
+          clearToken();
+          redirectToLogin();
+          return Promise.reject(new Error('Unauthorized'));
+        }
+        // Write auth failed → could be session, RBAC, or transient. Single retry.
+        toast('Session check failed - retrying...', 'info');
+        var retryOpts = {
+          method: method,
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + (state.token || '')
+          },
+          body: retryBody
+        };
+        if(opts.mode) retryOpts.mode = opts.mode;
+        return _doFetch(retryOpts).then(function(r2){
+          if (r2.status === 401 || r2.status === 403) {
+            // Persistent auth-fail on write: do NOT redirect. Surface the error.
+            return r2.json().catch(function(){ return {}; }).then(function(j){
+              var msg = (j && j.error) ? j.error : 'Server auth misconfigured - contact admin';
+              toast(msg, 'error');
+              return Promise.reject(new Error('write_unauth_persistent'));
+            });
+          }
+          return r2.json().then(function(data){
+            if (!r2.ok) {
+              var errMsg = (data && data.error) || ('HTTP ' + r2.status);
+              return Promise.reject(new Error(errMsg));
+            }
+            return data;
+          });
+        });
       }
       return r.json().then(function(data) {
         if (!r.ok) {
@@ -771,47 +814,11 @@ tr:hover td{background:rgba(42,147,193,0.04)}
     });
   }
 
-  /* === Login === */
-  document.getElementById('loginForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    var btn = document.getElementById('loginBtn');
-    var errEl = document.getElementById('loginError');
-    var pw = document.getElementById('loginPassword').value;
-    btn.disabled = true;
-    errEl.style.display = 'none';
-
-    if (!pw) {
-      btn.disabled = false;
-      errEl.textContent = 'Enter password';
-      errEl.style.display = 'block';
-      return;
-    }
-    // Validate password against API (server has authoritative ADMIN_TOKENS allowlist)
-    setToken(pw);
-    fetch('https://referrals-api.in0v8.workers.dev/admin/stats', {
-      headers: { 'X-Admin-Token': pw }
-    }).then(function(r) {
-      if (r.ok) {
-        showApp();
-      } else {
-        logout();
-        btn.disabled = false;
-        errEl.textContent = 'Incorrect password';
-        errEl.style.display = 'block';
-      }
-    }).catch(function() {
-      logout();
-      btn.disabled = false;
-      errEl.textContent = 'Network error';
-      errEl.style.display = 'block';
-    });
-  });
-
   document.getElementById('btnLogout').addEventListener('click', logout);
 
   /* === Show App === */
   function showApp() {
-    document.getElementById('loginScreen').style.display = 'none';
+    // loginScreen removed in unified-login refactor (CTO 2026-05-12).
     document.getElementById('app').style.display = 'block';
 
     if (state.viewerMode) {
@@ -2200,10 +2207,16 @@ tr:hover td{background:rgba(42,147,193,0.04)}
   });
 
   /* === Init === */
+  // Unified-login (CTO 2026-05-12): if no session token in localStorage AND
+  // no viewer-mode deep-link, redirect to /admin/clients?next=/admin/referrals.
+  // After successful login at the unified UI, showApp() there honors ?next= and
+  // bounces back here with the session token populated.
   var token = getToken();
   if (token) {
     state.token = token;
     showApp();
+  } else {
+    redirectToLogin();
   }
 })();
 </script>
