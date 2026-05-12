@@ -142,7 +142,7 @@ function json(body, init = {}) {
       "x-content-type-options": "nosniff",
       "access-control-allow-origin": "*",
       "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "access-control-allow-headers": "x-admin-token, content-type",
+      "access-control-allow-headers": "x-admin-token, content-type, authorization",
       ...(init.headers || {}),
     },
   });
@@ -160,6 +160,182 @@ async function requireAdmin(request, env) {
   if (!token) return false;
   const allow = (env.ADMIN_TOKENS || "").split(",").map(s => s.trim()).filter(Boolean);
   return allow.includes(token);
+}
+
+/* ---------- session-based admin auth (CTO 2026-05-12 unified login) ---------- */
+
+/**
+ * 60-second in-memory cache for validate-session results.
+ * Mirrors the social-api pattern (line 3707) — acceptable lag per CTO brief.
+ * Keys: bearer token string. Values: { session, expires_ms } or { ok: false, expires_ms }.
+ */
+const _SESSION_CACHE = new Map();
+const SESSION_CACHE_TTL_MS = 60_000;
+
+function _cacheGet(key) {
+  const v = _SESSION_CACHE.get(key);
+  if (!v) return null;
+  if (Date.now() > v.expires_ms) {
+    _SESSION_CACHE.delete(key);
+    return null;
+  }
+  return v;
+}
+
+function _cacheSet(key, value) {
+  _SESSION_CACHE.set(key, { ...value, expires_ms: Date.now() + SESSION_CACHE_TTL_MS });
+}
+
+const ADMIN_ROLES = new Set(["owner", "admin", "leader", "system"]);
+
+/**
+ * Validate a session token by calling social-api via Service Binding.
+ *
+ * Token sourced from (in priority order):
+ *   1. Authorization: Bearer <token>
+ *   2. social_session cookie
+ *
+ * Returns { ok: true, session: {user_id, email, name, team_id, role, billing_tier, expires_at} }
+ * Returns { ok: false, status: 401|403 } on failure.
+ *
+ * 60s in-memory cache to mirror social-api pattern.
+ *
+ * Requires:
+ *   - env.SOCIAL_API service binding
+ *   - env.INTERNAL_BINDING_SECRET — must match the 6-Worker family value
+ *     (per feedback_secret_rotation_must_include_portal_proxy.md)
+ */
+async function requireAdminViaSession(request, env) {
+  // Extract token from Bearer header or cookie
+  let token = "";
+  const auth = (request.headers.get("authorization") || "").trim();
+  if (auth.toLowerCase().startsWith("bearer ")) {
+    token = auth.slice(7).trim();
+  }
+  if (!token) {
+    const cookie = request.headers.get("cookie") || "";
+    const m = cookie.match(/(?:^|;\s*)social_session=([^;]+)/);
+    if (m) token = decodeURIComponent(m[1]).trim();
+  }
+  if (!token) return { ok: false, status: 401 };
+
+  // Check cache
+  const cached = _cacheGet(token);
+  if (cached) {
+    if (cached.session) {
+      return { ok: true, session: cached.session };
+    }
+    return { ok: false, status: cached.status || 401 };
+  }
+
+  // Service Binding required
+  if (!env.SOCIAL_API || typeof env.SOCIAL_API.fetch !== "function") {
+    return { ok: false, status: 503 };
+  }
+  const secret = (env.INTERNAL_BINDING_SECRET || "").trim();
+  if (!secret) return { ok: false, status: 503 };
+
+  try {
+    const req = new Request("https://social-api/internal/validate-session", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-internal-binding-secret": secret,
+      },
+      body: JSON.stringify({ token }),
+    });
+    const resp = await env.SOCIAL_API.fetch(req);
+    if (!resp.ok) {
+      _cacheSet(token, { ok: false, status: resp.status });
+      return { ok: false, status: resp.status };
+    }
+    const data = await resp.json().catch(() => ({}));
+    if (!data || data.valid !== true) {
+      _cacheSet(token, { ok: false, status: 401 });
+      return { ok: false, status: 401 };
+    }
+    const role = String(data.role || "").toLowerCase();
+    if (!ADMIN_ROLES.has(role)) {
+      _cacheSet(token, { ok: false, status: 403 });
+      return { ok: false, status: 403 };
+    }
+    const session = {
+      user_id: data.user_id,
+      email: data.email,
+      name: data.name,
+      team_id: data.team_id,
+      role,
+      billing_tier: data.billing_tier,
+      expires_at: data.expires_at,
+    };
+    _cacheSet(token, { session });
+    return { ok: true, session };
+  } catch (e) {
+    return { ok: false, status: 503 };
+  }
+}
+
+/**
+ * Unified admin gate — session-first, X-Admin-Token fallback.
+ *
+ * Fallback is behind LEGACY_ADMIN_TOKEN_ENABLED env var (default "true" for
+ * 1-week rollback window per CTO brief; flip to "false" after stability, then
+ * remove the entire fallback branch in v2).
+ *
+ * Returns { ok: true, source: 'session'|'token', user: {email, user_id?} } on success.
+ * Returns { ok: false, status } on failure.
+ *
+ * Caller convention (for sweep-replace):
+ *   const gate = await requireAdminUnified(request, env);
+ *   if (!gate.ok) return err(gate.status || 401, "unauthorized");
+ *   // gate.user.email available for audit logging
+ */
+async function requireAdminUnified(request, env) {
+  // Session-first (new path)
+  const viaSession = await requireAdminViaSession(request, env);
+  if (viaSession.ok) {
+    // Audit log: attribute action to real user (Worker tail-accessible)
+    try {
+      const url = new URL(request.url);
+      console.log(JSON.stringify({
+        event: "admin_action",
+        source: "session",
+        user_id: viaSession.session.user_id,
+        email: viaSession.session.email,
+        role: viaSession.session.role,
+        method: request.method,
+        path: url.pathname,
+        ts: new Date().toISOString(),
+      }));
+    } catch (_e) { /* logging best-effort */ }
+    return { ok: true, source: "session", user: viaSession.session };
+  }
+  // 503 means service-binding unavailable — don't degrade silently; surface
+  if (viaSession.status === 503) {
+    // fall through to token if enabled (rollback path)
+  } else if (viaSession.status === 403) {
+    // Valid session but insufficient role — do NOT fall through to token
+    // (otherwise viewer-with-token could escalate).
+    return { ok: false, status: 403 };
+  }
+  // X-Admin-Token fallback (legacy, gated by feature flag)
+  const legacyEnabled = String(env.LEGACY_ADMIN_TOKEN_ENABLED || "true").toLowerCase() === "true";
+  if (legacyEnabled && (await requireAdmin(request, env))) {
+    try {
+      const url = new URL(request.url);
+      console.log(JSON.stringify({
+        event: "admin_action",
+        source: "token",
+        user_id: null,
+        email: "legacy-token-user",
+        method: request.method,
+        path: url.pathname,
+        ts: new Date().toISOString(),
+      }));
+    } catch (_e) {}
+    return { ok: true, source: "token", user: { email: "legacy-token-user" } };
+  }
+  return { ok: false, status: viaSession.status || 401 };
 }
 
 /**
@@ -241,7 +417,7 @@ export default {
         headers: {
           "access-control-allow-origin": "*",
           "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS",
-          "access-control-allow-headers": "x-admin-token, content-type",
+          "access-control-allow-headers": "x-admin-token, content-type, authorization",
           "access-control-max-age": "86400",
         },
       });
@@ -253,7 +429,7 @@ export default {
       // ─────────────────────────────────────────────
 
       if (method === "POST" && path === "/referrers/upsert") {
-        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
         const body = await parseBody(request);
         if (!body) return err(400, "invalid json");
 
@@ -358,7 +534,7 @@ export default {
       // ─────────────────────────────────────────────
       const applicationActionMatch = path.match(/^\/admin\/applications\/(\d+)\/(approve|reject)$/);
       if (method === "POST" && applicationActionMatch) {
-        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
         const appId = Number(applicationActionMatch[1]);
         const action = applicationActionMatch[2];
         const body = (await parseBody(request)) || {};
@@ -432,7 +608,7 @@ export default {
       // (Public application path is /partners/apply; this is admin-direct provisioning.)
       // ─────────────────────────────────────────────
       if (method === "POST" && path === "/partners/signup") {
-        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
         const body = await parseBody(request);
         if (!body) return err(400, "invalid json");
 
@@ -488,7 +664,7 @@ export default {
 
         // Mode 1: admin legacy path — mark existing referral completed by id
         if (body.referral_id !== undefined && !body.pb_ref) {
-          if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+          { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
           const referral_id = body.referral_id;
           const now = new Date().toISOString();
           const res = await env.DB.prepare(
@@ -548,7 +724,7 @@ export default {
       }
 
       if (method === "POST" && path === "/commission_payments") {
-        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
         const body = await parseBody(request);
         if (!body) return err(400, "invalid json");
 
@@ -632,7 +808,7 @@ export default {
       //   - Marks referrals.status='completed' if currently 'pending'.
       // ─────────────────────────────────────────────
       if (method === "POST" && path === "/admin/payments/manual") {
-        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
         const body = await parseBody(request);
         if (!body) return err(400, "invalid json");
 
@@ -1060,7 +1236,7 @@ export default {
 
       // POST /admin/payout/mark-paid — mark a payout request as paid
       if (method === "POST" && path === "/admin/payout/mark-paid") {
-        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
         const body = await parseBody(request);
         if (!body) return err(400, "invalid json");
 
@@ -1099,7 +1275,7 @@ export default {
       //   - Logs to rate_adjustments only on chunks that actually recalculated rows
       // ─────────────────────────────────────────────
       if (method === "POST" && path === "/admin/recalc-tier") {
-        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
         const body = await parseBody(request);
         if (!body) return err(400, "invalid json");
 
@@ -1218,7 +1394,7 @@ export default {
 
       // POST /admin/referral/assign — manually assign a client to a referrer
       if (method === "POST" && path === "/admin/referral/assign") {
-        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
         const body = await parseBody(request);
         if (!body) return err(400, "invalid json");
 
@@ -1241,7 +1417,7 @@ export default {
       // ─────────────────────────────────────────────
 
       if (method === "PUT" && path === "/admin/affiliate/update") {
-        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
         const body = await parseBody(request);
         if (!body) return err(400, "invalid json");
 
@@ -1278,7 +1454,7 @@ export default {
       }
 
       if (method === "PUT" && path === "/admin/referral/update") {
-        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
         const body = await parseBody(request);
         if (!body) return err(400, "invalid json");
 
@@ -1312,7 +1488,7 @@ export default {
       // ─────────────────────────────────────────────
 
       if (method === "DELETE" && path === "/admin/affiliate/delete") {
-        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
         const body = await parseBody(request);
         if (!body) return err(400, "invalid json");
 
@@ -1506,7 +1682,7 @@ export default {
 
       // GET /admin/emails
       if (path === "/admin/emails") {
-        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
         const { results } = await env.DB.prepare(
           `SELECT user_email, referral_code FROM referrers`
         ).all();
@@ -1515,7 +1691,7 @@ export default {
 
       // GET /admin/affiliates
       if (path === "/admin/affiliates") {
-        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
 
         // Single aggregated query instead of N+1 per-referrer
         const { results: referrers } = await env.DB.prepare(
@@ -1589,7 +1765,7 @@ export default {
       // SPEC C4: v2 table payout_requests_v2 holds partner-self requests with
       // $50 min CHECK. Legacy payout_requests retained for historical records.
       if (path === "/admin/payouts") {
-        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
         const legacyP = env.DB.prepare(
           `SELECT 'legacy' AS source, p.*, ref.user_name AS referrer_name, ref.user_email AS referrer_email,
                   ref.paypal_email AS referrer_paypal
@@ -1614,7 +1790,7 @@ export default {
       // GET /admin/applications — list partner applications (SPEC C2)
       // Optional query: ?status=pending|approved|rejected|needs_30d_use
       if (path === "/admin/applications") {
-        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
         const status = (url.searchParams.get("status") || "").trim();
         const stmt = status
           ? env.DB.prepare(
@@ -1632,7 +1808,7 @@ export default {
       // Default window: current calendar month UTC.
       // Returns { report: [...], totals: {gross,paid,pending,count}, period: {start,end} }
       if (path === "/admin/commission-report") {
-        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
 
         const isoDateRe = /^\d{4}-\d{2}-\d{2}$/;
         const now = new Date();
@@ -1705,7 +1881,7 @@ export default {
 
       // GET /admin/stats — overview stats
       if (path === "/admin/stats") {
-        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
 
         const affiliatesQ = await env.DB.prepare(
           `SELECT COUNT(*) AS c FROM referrers`
