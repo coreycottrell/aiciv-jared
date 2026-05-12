@@ -162,6 +162,54 @@ async function requireAdmin(request, env) {
   return allow.includes(token);
 }
 
+/**
+ * Auth gate for /internal/* endpoints (CTO 2026-05-12 Track E).
+ *
+ * Service Binding traffic between Workers is in-CF and never reaches the
+ * public internet, but per `feedback_purebrain_social_never_touches_referral_or_clients.md`
+ * defense-in-depth rigor: gate every internal hop with a shared secret.
+ *
+ * NEW SECRET (referrals-api isolation boundary):
+ *   env.REFERRALS_INTERNAL_SECRET — separate from the 6-Worker
+ *   `INTERNAL_BINDING_SECRET` used by clients-api ↔ social/admin/agentmail/paypal.
+ *   Keeping a distinct value here means the referrals trust boundary is
+ *   independent — rotation of one secret doesn't force coordinated 6-Worker
+ *   redeploy + risks. Aligns with constitutional rule
+ *   `feedback_purebrain_social_never_touches_referral_or_clients.md`
+ *   (referrals domain is isolated).
+ *
+ * Backward-compat: also accepts env.INTERNAL_BINDING_SECRET so that if the
+ * paypal-webhook propagation hasn't completed yet, the legacy 6-Worker secret
+ * still authenticates the binding call. Either value MUST match for true.
+ *
+ * Headers accepted (any one matches):
+ *   - x-internal-binding-secret  (matches paypal-webhook + clients-api convention)
+ *   - x-internal-secret           (legacy alias)
+ *   - authorization: Bearer <secret>
+ *
+ * Returns true on match. False if neither secret configured (fail-closed).
+ */
+function checkInternalBinding(request, env) {
+  const primary = (env.REFERRALS_INTERNAL_SECRET || "").trim();
+  const legacy  = (env.INTERNAL_BINDING_SECRET   || "").trim();
+  if (!primary && !legacy) return false; // fail-closed
+
+  const candidates = [];
+  const h1 = (request.headers.get("x-internal-binding-secret") || "").trim();
+  if (h1) candidates.push(h1);
+  const h2 = (request.headers.get("x-internal-secret") || "").trim();
+  if (h2) candidates.push(h2);
+  const auth = (request.headers.get("authorization") || "").trim();
+  if (auth.toLowerCase().startsWith("bearer ")) {
+    candidates.push(auth.slice(7).trim());
+  }
+  for (const c of candidates) {
+    if (primary && c === primary) return true;
+    if (legacy  && c === legacy)  return true;
+  }
+  return false;
+}
+
 function pick(row, cols) {
   const out = {};
   for (const c of cols) out[c] = row[c];
@@ -178,8 +226,13 @@ async function parseBody(request) {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    const path = url.pathname.replace(/\/+$/, "") || "/";
+    let path = url.pathname.replace(/\/+$/, "") || "/";
     const method = request.method.toUpperCase();
+
+    // Path aliases (CTO 2026-05-12 Track B.1)
+    // /admin/partners is a frontend-friendly alias for /admin/affiliates.
+    // Rewriting here is DRY and ensures all auth + caching behavior is identical.
+    if (path === "/admin/partners") path = "/admin/affiliates";
 
     // CORS preflight
     if (method === "OPTIONS") {
@@ -561,6 +614,370 @@ export default {
         ).all();
         const row = res.results && res.results[0];
         return json({ ok: true, payment: row });
+      }
+
+      // ─────────────────────────────────────────────
+      // POST /admin/payments/manual — admin records a commission that didn't auto-attribute
+      // (CTO 2026-05-12 Track B.3)
+      //
+      // Body: { referral_id, payment_id, payment_amount, commission_rate?, note?, tier_at_write? }
+      //
+      // Behavior:
+      //   - Looks up referral → referrer → partner_tier.
+      //   - commission_value = payment_amount * rate (server-authoritative).
+      //   - Idempotent via check-then-insert on (referral_id, order_id) — no DB UNIQUE.
+      //   - Stores admin payment_id in order_id column (which is the closest
+      //     existing identifier on commission_payments per current schema).
+      //   - Returns existing row if duplicate detected (idempotent_skip=true).
+      //   - Marks referrals.status='completed' if currently 'pending'.
+      // ─────────────────────────────────────────────
+      if (method === "POST" && path === "/admin/payments/manual") {
+        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+        const body = await parseBody(request);
+        if (!body) return err(400, "invalid json");
+
+        const referral_id     = Number(body.referral_id);
+        const payment_id      = String(body.payment_id || "").trim();
+        const payment_amount  = Number(body.payment_amount);
+        const note            = String(body.note || "").trim().slice(0, 500);
+        const overrideTierRaw = body.tier_at_write ? String(body.tier_at_write).toLowerCase().trim() : "";
+        const overrideRate    = body.commission_rate !== undefined ? Number(body.commission_rate) : null;
+
+        if (!Number.isFinite(referral_id) || referral_id <= 0) return err(400, "invalid referral_id");
+        if (!payment_id) return err(400, "payment_id required");
+        if (!Number.isFinite(payment_amount) || payment_amount < 0) return err(400, "invalid payment_amount");
+
+        // Look up referral + referrer
+        const refRow = await env.DB.prepare(
+          `SELECT r.referrer_id, r.status AS referral_status, r.referred_email,
+                  rr.partner_tier
+             FROM referrals r
+             LEFT JOIN referrers rr ON rr.id = r.referrer_id
+            WHERE r.id = ?`
+        ).bind(referral_id).first();
+        if (!refRow) return err(404, "referral not found");
+
+        const referrer_id = refRow.referrer_id;
+        const partner_tier = overrideTierRaw || refRow.partner_tier || "silver";
+        const tier_at_write = String(partner_tier);
+
+        // Server-authoritative rate (allow admin override; default to tier rate)
+        const commission_rate = Number.isFinite(overrideRate) && overrideRate > 0
+          ? overrideRate
+          : rateForTier(partner_tier);
+        const commission_value = Math.round((payment_amount * commission_rate) * 100) / 100;
+
+        // Idempotency check: (referral_id, order_id) where order_id = payment_id.
+        // commission_payments has no UNIQUE on (referral_id, order_id) in current
+        // schema, so check-then-insert is the safest path.
+        const existing = await env.DB.prepare(
+          `SELECT * FROM commission_payments
+            WHERE referral_id = ? AND order_id = ?
+            LIMIT 1`
+        ).bind(referral_id, payment_id).first();
+        if (existing) {
+          return json({
+            ok: true,
+            payment: existing,
+            idempotent_skip: true,
+            message: "duplicate (referral_id, payment_id) — returning existing row",
+          });
+        }
+
+        const now = new Date().toISOString();
+        const audit_payer = (refRow.referred_email || "").trim();
+        const audit_order = payment_id + (note ? ` | note:${note}` : "");
+
+        const res = await env.DB.prepare(
+          `INSERT INTO commission_payments
+             (referrer_id, referral_id, payer_email, order_id,
+              payment_amount, commission_rate, commission_value, tier,
+              tier_at_write, commission_source, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           RETURNING *`
+        ).bind(
+          referrer_id, referral_id,
+          audit_payer, audit_order,
+          Number(payment_amount) || 0,
+          commission_rate, commission_value,
+          tier_at_write,
+          tier_at_write,
+          "standard",
+          now
+        ).all();
+
+        // Mark referral completed if currently pending
+        if (refRow.referral_status === "pending") {
+          try {
+            await env.DB.prepare(
+              `UPDATE referrals SET status='completed' WHERE id = ? AND status='pending'`
+            ).bind(referral_id).run();
+          } catch (_e) { /* non-fatal */ }
+        }
+
+        const row = res.results && res.results[0];
+        console.log(`[referrals-api] manual payment recorded: referral_id=${referral_id} payment_id=${payment_id} value=${commission_value}`);
+        return json({ ok: true, payment: row, idempotent_skip: false });
+      }
+
+      // ─────────────────────────────────────────────
+      // POST /internal/complete-by-email — paypal-webhook Service Binding attribution
+      // (CTO 2026-05-12 Track E.1)
+      //
+      // Auth: INTERNAL_BINDING_SECRET header (defense-in-depth even though
+      // Service Binding traffic is in-CF). Per
+      // feedback_purebrain_social_never_touches_referral_or_clients.md
+      // rigor — secret-gate every internal hop.
+      //
+      // Body: { customer_email | email, subscription_id, payment_amount, plan_id?, event_id?, event_time? }
+      //
+      // Behavior:
+      //   1. Find latest pending referral by referred_email.
+      //   2. If found → write commission via same logic as POST /commission_payments
+      //      (respects tier_at_write + Support Tier detect), mark referral completed.
+      //   3. If not found → return 200 with {matched: false} (no retry storm).
+      //   4. Idempotent: dedupe on (referral_id, order_id=subscription_id).
+      // ─────────────────────────────────────────────
+      if (method === "POST" && path === "/internal/complete-by-email") {
+        if (!checkInternalBinding(request, env)) return err(401, "unauthorized");
+        const body = await parseBody(request);
+        if (!body) return err(400, "invalid json");
+
+        const email = String(body.customer_email || body.email || "").trim().toLowerCase();
+        const subscription_id = String(body.subscription_id || body.payment_id || "").trim();
+        const payment_amount = Number(body.payment_amount) || 0;
+        const plan_id = body.plan_id ? String(body.plan_id) : null;
+        const event_id = body.event_id ? String(body.event_id) : null;
+        const event_time = body.event_time ? String(body.event_time) : null;
+
+        if (!email || !email.includes("@")) return err(400, "invalid email");
+        if (!subscription_id) return err(400, "subscription_id (or payment_id) required");
+
+        // Find the latest pending referral for this email.
+        // Excludes synthetic 'paypal_*@pending' rejected placeholders.
+        const refRow = await env.DB.prepare(
+          `SELECT r.id, r.referrer_id, rr.partner_tier
+             FROM referrals r
+             LEFT JOIN referrers rr ON rr.id = r.referrer_id
+            WHERE LOWER(r.referred_email) = ?
+              AND r.status = 'pending'
+              AND NOT (r.status = 'rejected' AND r.referred_email LIKE 'paypal_%@pending')
+            ORDER BY r.created_at DESC
+            LIMIT 1`
+        ).bind(email).first();
+
+        if (!refRow) {
+          console.log(`[referrals-api] /internal/complete-by-email no pending referral for ${email}`);
+          return json({ matched: false, email, message: "no pending referral" });
+        }
+
+        const partner_tier = refRow.partner_tier || "silver";
+        const tier_at_write = String(partner_tier);
+
+        // Idempotency: detect prior commission for this (referral_id, subscription_id)
+        const existing = await env.DB.prepare(
+          `SELECT * FROM commission_payments
+            WHERE referral_id = ? AND order_id = ?
+            LIMIT 1`
+        ).bind(refRow.id, subscription_id).first();
+        if (existing) {
+          // Already attributed — still mark referral completed if needed.
+          try {
+            await env.DB.prepare(
+              `UPDATE referrals SET status='completed' WHERE id = ? AND status='pending'`
+            ).bind(refRow.id).run();
+          } catch (_e) { /* non-fatal */ }
+          return json({
+            matched: true, idempotent_skip: true,
+            referral_id: refRow.id, payment: existing,
+          });
+        }
+
+        // Compute commission (handles Support Tier override via plan_id)
+        const computed = computeCommission({
+          paymentAmount: payment_amount,
+          partnerTier: partner_tier,
+          planId: plan_id,
+          env,
+        });
+
+        const now = (event_time && /^\d{4}-\d{2}-\d{2}T/.test(event_time))
+          ? event_time
+          : new Date().toISOString();
+        const order_id_audit = subscription_id + (event_id ? `|evt:${event_id}` : "");
+
+        const res = await env.DB.prepare(
+          `INSERT INTO commission_payments
+             (referrer_id, referral_id, payer_email, order_id,
+              payment_amount, commission_rate, commission_value, tier,
+              tier_at_write, commission_source, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           RETURNING *`
+        ).bind(
+          refRow.referrer_id, refRow.id,
+          email, order_id_audit,
+          payment_amount,
+          computed.rate, computed.value,
+          tier_at_write,
+          tier_at_write,
+          computed.source,
+          now
+        ).all();
+
+        // Mark referral completed
+        try {
+          await env.DB.prepare(
+            `UPDATE referrals SET status='completed' WHERE id = ? AND status='pending'`
+          ).bind(refRow.id).run();
+        } catch (_e) { /* non-fatal */ }
+
+        const row = res.results && res.results[0];
+        console.log(`[referrals-api] /internal/complete-by-email attribution: email=${email} referral_id=${refRow.id} subscription_id=${subscription_id} value=${computed.value}`);
+        return json({
+          matched: true,
+          idempotent_skip: false,
+          referral_id: refRow.id,
+          referrer_id: refRow.referrer_id,
+          payment: row,
+        });
+      }
+
+      // ─────────────────────────────────────────────
+      // POST /internal/recalc-subscription — paypal-webhook commission recalc on plan change/refund
+      // (CTO 2026-05-12 Track E.2)
+      //
+      // Body: { subscription_id, event_type?, old_amount?, new_amount?, payment_amount?, event_id?, changed_at? }
+      //
+      // Behavior:
+      //   - Looks up commission_payments rows where order_id contains subscription_id.
+      //     (No paypal_subscription_id column in current schema — match via order_id prefix.)
+      //   - For RENEWED / new payment event_type → write a NEW commission row using
+      //     current referrer tier (separate row per renewal).
+      //   - For REFUNDED → mark existing rows' commission_source='refunded' (note: this
+      //     uses commission_source CHECK constraint which does NOT include 'refunded' —
+      //     so we instead record a NEGATIVE commission row as the audit trail and let
+      //     admin reconcile via /admin/payments/manual). Safe, no schema migration.
+      // ─────────────────────────────────────────────
+      if (method === "POST" && path === "/internal/recalc-subscription") {
+        if (!checkInternalBinding(request, env)) return err(401, "unauthorized");
+        const body = await parseBody(request);
+        if (!body) return err(400, "invalid json");
+
+        const subscription_id = String(body.subscription_id || "").trim();
+        const event_type = String(body.event_type || "BILLING.SUBSCRIPTION.UPDATED").trim();
+        const payment_amount = Number(body.payment_amount || body.new_amount || 0);
+        const old_amount = Number(body.old_amount || 0);
+        const event_id = body.event_id ? String(body.event_id) : null;
+
+        if (!subscription_id) return err(400, "subscription_id required");
+
+        // Find commission rows matching this subscription_id via order_id pattern.
+        // order_id was written as "<subscription_id>|evt:<eid>" by /internal/complete-by-email.
+        const { results: priorRows } = await env.DB.prepare(
+          `SELECT cp.*, r.partner_tier AS current_tier
+             FROM commission_payments cp
+             LEFT JOIN referrers r ON r.id = cp.referrer_id
+            WHERE cp.order_id = ? OR cp.order_id LIKE ?
+            ORDER BY cp.created_at DESC`
+        ).bind(subscription_id, subscription_id + "|%").all();
+
+        if (!priorRows || priorRows.length === 0) {
+          console.log(`[referrals-api] /internal/recalc-subscription no prior commissions for ${subscription_id}`);
+          return json({ updated: 0, matched: false, subscription_id });
+        }
+
+        const isRefund = /REFUND/i.test(event_type);
+        const isRenewal = /PAYMENT\.COMPLETED|RENEW|RECURRING/i.test(event_type)
+                         || (payment_amount > 0 && !isRefund);
+
+        const referrer_id = priorRows[0].referrer_id;
+        const referral_id = priorRows[0].referral_id;
+        const partner_tier = priorRows[0].current_tier || priorRows[0].tier_at_write || "silver";
+        const tier_at_write = String(partner_tier);
+        const now = new Date().toISOString();
+
+        if (isRefund) {
+          // Negative audit row (commission_source='standard' to satisfy CHECK).
+          // Admin reconciles via /admin/payments/manual or direct D1 for full clawback.
+          const refundAmount = -Math.abs(payment_amount || priorRows[0].payment_amount || 0);
+          const refundCommission = -Math.abs(priorRows[0].commission_value || 0);
+          const order_id_audit = subscription_id + (event_id ? `|refund:${event_id}` : "|refund");
+          const res = await env.DB.prepare(
+            `INSERT INTO commission_payments
+               (referrer_id, referral_id, payer_email, order_id,
+                payment_amount, commission_rate, commission_value, tier,
+                tier_at_write, commission_source, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             RETURNING *`
+          ).bind(
+            referrer_id, referral_id,
+            priorRows[0].payer_email || "",
+            order_id_audit,
+            refundAmount,
+            priorRows[0].commission_rate || 0,
+            refundCommission,
+            tier_at_write, tier_at_write,
+            "standard", now
+          ).all();
+          console.log(`[referrals-api] /internal/recalc-subscription refund recorded: subscription_id=${subscription_id} amount=${refundCommission}`);
+          return json({
+            updated: 1, action: "refund_recorded",
+            subscription_id, payment: (res.results && res.results[0]) || null,
+          });
+        }
+
+        if (isRenewal && payment_amount > 0) {
+          // Idempotency: skip if we already wrote a renewal for this event_id
+          if (event_id) {
+            const dup = await env.DB.prepare(
+              `SELECT * FROM commission_payments
+                WHERE referral_id = ? AND order_id LIKE ?
+                LIMIT 1`
+            ).bind(referral_id, `%|evt:${event_id}%`).first();
+            if (dup) {
+              return json({
+                updated: 0, action: "idempotent_skip",
+                subscription_id, payment: dup,
+              });
+            }
+          }
+          const computed = computeCommission({
+            paymentAmount: payment_amount,
+            partnerTier: partner_tier,
+            planId: null,
+            env,
+          });
+          const order_id_audit = subscription_id + (event_id ? `|evt:${event_id}` : `|renewal:${Date.now()}`);
+          const res = await env.DB.prepare(
+            `INSERT INTO commission_payments
+               (referrer_id, referral_id, payer_email, order_id,
+                payment_amount, commission_rate, commission_value, tier,
+                tier_at_write, commission_source, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             RETURNING *`
+          ).bind(
+            referrer_id, referral_id,
+            priorRows[0].payer_email || "",
+            order_id_audit,
+            payment_amount,
+            computed.rate, computed.value,
+            tier_at_write, tier_at_write,
+            computed.source, now
+          ).all();
+          console.log(`[referrals-api] /internal/recalc-subscription renewal recorded: subscription_id=${subscription_id} value=${computed.value}`);
+          return json({
+            updated: 1, action: "renewal_recorded",
+            subscription_id, payment: (res.results && res.results[0]) || null,
+          });
+        }
+
+        // Plan change with no immediate payment: just log; future PAYMENT.COMPLETED
+        // event will trigger the renewal write path above.
+        console.log(`[referrals-api] /internal/recalc-subscription plan_change_acknowledged: subscription_id=${subscription_id} old=${old_amount} new=${payment_amount}`);
+        return json({
+          updated: 0, action: "plan_change_acknowledged",
+          subscription_id, old_amount, new_amount: payment_amount,
+        });
       }
 
       // ─────────────────────────────────────────────
@@ -1208,6 +1625,82 @@ export default {
             );
         const { results } = await stmt.all();
         return json({ applications: results || [], count: (results || []).length });
+      }
+
+      // GET /admin/commission-report — grouped commissions per referrer (CTO 2026-05-12 Track B.2)
+      // Query: ?start=YYYY-MM-DD&end=YYYY-MM-DD&referrer_id=N (all optional)
+      // Default window: current calendar month UTC.
+      // Returns { report: [...], totals: {gross,paid,pending,count}, period: {start,end} }
+      if (path === "/admin/commission-report") {
+        if (!(await requireAdmin(request, env))) return err(401, "unauthorized");
+
+        const isoDateRe = /^\d{4}-\d{2}-\d{2}$/;
+        const now = new Date();
+        const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+          .toISOString().slice(0, 10);
+        const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
+          .toISOString().slice(0, 10);
+
+        let start = (url.searchParams.get("start") || "").trim();
+        let end   = (url.searchParams.get("end")   || "").trim();
+        const referrer_id_raw = (url.searchParams.get("referrer_id") || "").trim();
+
+        if (start && !isoDateRe.test(start)) return err(400, "invalid start (YYYY-MM-DD)");
+        if (end   && !isoDateRe.test(end))   return err(400, "invalid end (YYYY-MM-DD)");
+        if (!start) start = monthStart;
+        if (!end)   end   = nextMonth; // exclusive upper bound
+
+        const referrer_id = referrer_id_raw ? Number(referrer_id_raw) : null;
+        if (referrer_id_raw && !Number.isFinite(referrer_id)) return err(400, "invalid referrer_id");
+
+        // D1 TEXT date columns sort lexicographically when format is consistent.
+        // commission_payments.created_at is ISO-8601 UTC, prefix matches YYYY-MM-DD.
+        const { results } = await env.DB.prepare(
+          `SELECT
+              r.id AS referrer_id,
+              r.user_name AS referrer_name,
+              r.user_email AS referrer_email,
+              r.referral_code,
+              r.partner_tier,
+              COUNT(cp.id) AS commission_count,
+              COALESCE(SUM(cp.commission_value), 0) AS gross_commissions,
+              SUM(CASE WHEN cp.commission_source = 'support_tier' THEN 1 ELSE 0 END) AS support_tier_count
+           FROM referrers r
+           LEFT JOIN commission_payments cp
+             ON cp.referrer_id = r.id
+             AND cp.created_at >= ?
+             AND cp.created_at < ?
+           WHERE (? IS NULL OR r.id = ?)
+           GROUP BY r.id
+           HAVING COUNT(cp.id) > 0
+           ORDER BY gross_commissions DESC
+           LIMIT 1000`
+        ).bind(start, end, referrer_id, referrer_id).all();
+
+        const report = (results || []).map(row => ({
+          referrer_id: row.referrer_id,
+          referrer_name: row.referrer_name,
+          referrer_email: row.referrer_email,
+          referral_code: row.referral_code,
+          partner_tier: row.partner_tier || "silver",
+          tier_rate: rateForTier(row.partner_tier),
+          commission_count: row.commission_count || 0,
+          gross_commissions: Math.round((row.gross_commissions || 0) * 100) / 100,
+          support_tier_count: row.support_tier_count || 0,
+        }));
+
+        const totals = report.reduce((acc, r) => {
+          acc.count += r.commission_count;
+          acc.gross += r.gross_commissions;
+          return acc;
+        }, { count: 0, gross: 0 });
+        totals.gross = Math.round(totals.gross * 100) / 100;
+
+        return json({
+          report,
+          totals,
+          period: { start, end },
+        });
       }
 
       // GET /admin/stats — overview stats
