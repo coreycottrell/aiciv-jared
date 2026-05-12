@@ -36,6 +36,7 @@
  *   POST /referrals/complete (admin mode)     — mark existing row completed by id
  *   PUT  /admin/affiliate/update              — update affiliate (incl. partner_tier, split_config)
  *   PUT  /admin/referral/update               — update a referral record
+ *   POST /admin/referral/delete               — delete single referral assignment + cascade commission_payments
  *   DELETE /admin/affiliate/delete            — delete affiliate + cascade
  *
  * Auth model:
@@ -2270,6 +2271,72 @@ export default {
         ).bind(referrer_id).run();
 
         return json({ ok: true, deleted: del.meta?.changes > 0 });
+      }
+
+      // ─────────────────────────────────────────────
+      // POST /admin/referral/delete — delete a single referral assignment by id
+      //
+      // Used by admin/referrals UI (data-refdelete button) to remove an erroneous
+      // assignment so it can be re-made against a different referrer. Distinct from
+      // /admin/affiliate/delete which cascades an entire referrer + all their
+      // referrals.
+      //
+      // Cascade: commission_payments rows with this referral_id are also deleted
+      // (commission_payments.referral_id is the FK column per
+      // backfillRetroactiveCommissions() + POST /commission_payments handlers
+      // above; pb_ref lives on the referrals table, NOT commission_payments).
+      //
+      // Audit: logs an admin_action JSON line to worker tail for forensic recall.
+      // ─────────────────────────────────────────────
+      if (method === "POST" && path === "/admin/referral/delete") {
+        const gate = await requireAdminUnified(request, env);
+        if (!gate.ok) return err(gate.status || 401, "unauthorized");
+        const body = await parseBody(request);
+        if (!body) return err(400, "invalid json");
+
+        const referral_id = Number(body.referral_id);
+        if (!Number.isFinite(referral_id) || !Number.isInteger(referral_id) || referral_id <= 0) {
+          return err(400, "referral_id required (positive integer)");
+        }
+
+        // Confirm row exists + capture for audit
+        const ref = await env.DB.prepare(
+          `SELECT id, referrer_id, referred_email, referred_name, status FROM referrals WHERE id = ?`
+        ).bind(referral_id).first();
+
+        if (!ref) return err(404, "referral not found");
+
+        // Audit log (visible via `wrangler tail referrals-api`)
+        console.log(JSON.stringify({
+          event: "admin_action",
+          action: "referral_delete",
+          actor_email: (gate && gate.session && gate.session.email) || "unknown",
+          referral_id,
+          referrer_id: ref.referrer_id,
+          referred_email: ref.referred_email,
+          status_at_delete: ref.status,
+          ts: new Date().toISOString(),
+        }));
+
+        // Cascade: commission_payments.referral_id is the link column
+        const cpDel = await env.DB.prepare(
+          `DELETE FROM commission_payments WHERE referral_id = ?`
+        ).bind(referral_id).run();
+
+        // Delete the referral row itself
+        const refDel = await env.DB.prepare(
+          `DELETE FROM referrals WHERE id = ?`
+        ).bind(referral_id).run();
+
+        return json({
+          ok: true,
+          deleted_id: referral_id,
+          referred_email: ref.referred_email,
+          cascade: {
+            commission_payments_deleted: cpDel.meta?.changes || 0,
+            referrals_deleted: refDel.meta?.changes || 0,
+          },
+        });
       }
 
       // ─────────────────────────────────────────────
