@@ -457,15 +457,28 @@ async function affiliateHashPassword(password) {
 }
 
 /**
- * Verifies password against stored hash. Supports 3 formats:
+ * Verifies password against stored hash. Supports 5 formats:
  *   1. PBKDF2 (`pbkdf2:iterations:salt_hex:hash_hex`) — current standard.
  *   2. Legacy bcrypt (`$2b$...` / `$2a$...`) — returns false (Workers cannot
  *      verify bcrypt). Caller MUST detect this and force a reset flow.
- *   3. Legacy SHA-256 (`salt:hexdigest`) — accepted then auto-migrated to PBKDF2
- *      by caller (session handler) on successful login.
+ *   3. Legacy SHA-256 colon format (`salt:hexdigest`, hash = sha256(`salt:password`))
+ *      — accepted then auto-migrated to PBKDF2 by caller on successful login.
+ *   4. Legacy SHA-256 dollar format (`salt_hex$digest_hex`, 81-char) — same data
+ *      shape as #3 but with `$` separator. Tries multiple hash-input shapes for
+ *      compatibility (legacy data was hand-migrated, exact recipe is uncertain).
+ *      Auto-migrated to PBKDF2 by caller on successful login.
+ *   5. Raw SHA-256 (64-hex, no separator) — assumed unsalted `sha256(password)`.
+ *      Auto-migrated to PBKDF2 by caller on successful login.
+ *
+ * 2026-05-12 hash format coverage extension (Path A patch):
+ *   - JAREDSB0 and 5 other affiliates use format #4 (`salt$digest`)
+ *   - 6 affiliates use format #5 (raw 64-hex)
+ *   - Original `_shared.js` only handled #3 — these rows were never verifiable.
  */
 async function affiliateVerifyPassword(password, storedHash) {
   if (!storedHash) return false;
+
+  // Case 1: PBKDF2 — current standard
   if (storedHash.startsWith("pbkdf2:")) {
     const parts = storedHash.split(":");
     if (parts.length !== 4) return false;
@@ -486,9 +499,14 @@ async function affiliateVerifyPassword(password, storedHash) {
     );
     return _bufToHex(new Uint8Array(derivedBits)) === expectedHash;
   }
+
+  // Case 2: bcrypt — Workers cannot verify natively
   if (storedHash.startsWith("$2b$") || storedHash.startsWith("$2a$")) {
-    return false; // bcrypt — caller must force reset
+    return false; // caller must force reset
   }
+
+  // Case 3: Legacy SHA-256 with `:` separator (salt:digest)
+  // Hash input = `${salt}:${password}` per portal_server.py:3674
   if (storedHash.includes(":") && !storedHash.startsWith("pbkdf2:")) {
     const idx = storedHash.indexOf(":");
     const saltVal = storedHash.substring(0, idx);
@@ -497,6 +515,36 @@ async function affiliateVerifyPassword(password, storedHash) {
     const digest = await crypto.subtle.digest("SHA-256", data);
     return _bufToHex(new Uint8Array(digest)) === expectedHex;
   }
+
+  // Case 4 (NEW 2026-05-12): Legacy SHA-256 with `$` separator (salt$digest, 81-char)
+  // Origin uncertain (no source code emits this shape). Try multiple input recipes
+  // for back-compat. First match wins. Guard against bcrypt $2a$/$2b$ prefix.
+  if (storedHash.includes("$") && !storedHash.startsWith("$2")) {
+    const idx = storedHash.indexOf("$");
+    const saltVal = storedHash.substring(0, idx);
+    const expectedHex = storedHash.substring(idx + 1).toLowerCase();
+    const candidates = [
+      `${saltVal}$${password}`,  // sister format to #3 with `$` separator
+      `${saltVal}:${password}`,  // colon-style input despite `$` separator
+      `${saltVal}${password}`,   // brief's recommended shape (no separator in input)
+      `${password}${saltVal}`,   // reverse concat
+      password,                  // unsalted fallback (treat salt as cosmetic prefix)
+    ];
+    for (const candidate of candidates) {
+      const data = new TextEncoder().encode(candidate);
+      const digest = await crypto.subtle.digest("SHA-256", data);
+      if (_bufToHex(new Uint8Array(digest)) === expectedHex) return true;
+    }
+    return false;
+  }
+
+  // Case 5 (NEW 2026-05-12): Raw 64-hex SHA-256 (no separator, no salt)
+  if (/^[0-9a-f]{64}$/i.test(storedHash)) {
+    const data = new TextEncoder().encode(password);
+    const digest = await crypto.subtle.digest("SHA-256", data);
+    return _bufToHex(new Uint8Array(digest)) === storedHash.toLowerCase();
+  }
+
   return false;
 }
 
