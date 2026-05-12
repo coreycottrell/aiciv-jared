@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rental Application Fraud Check — PureBrain.AI</title>
+<meta name="description" content="Spot rental application red flags in seconds. Free, private, in-browser screening aid. Nothing is stored or transmitted.">
+<link rel="icon" href="/assets/favicon-192x192.png" sizes="192x192" />
+<link rel="shortcut icon" href="/assets/favicon.ico" />
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:#080a12;color:#e8eef5;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+  body{min-height:100vh;display:flex;flex-direction:column}
+  a{color:#2a93c1;text-decoration:none}
+  a:hover{text-decoration:underline}
+  /* HEADER */
+  header.site{padding:18px 24px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:14px}
+  header.site .hex{width:38px;height:38px;display:inline-block;flex-shrink:0;background:linear-gradient(135deg,#2a93c1 0%,#1a5d80 100%);clip-path:polygon(25% 6.7%,75% 6.7%,100% 50%,75% 93.3%,25% 93.3%,0% 50%);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px;letter-spacing:.5px}
+  .brand{font-weight:700;font-size:18px;letter-spacing:.5px}
+  .brand .c1{color:#2a93c1}
+  .brand .c2{color:#f1420b}
+  .brand .c3{color:#2a93c1}
+  .brand .c4{color:#fff}
+  /* MAIN */
+  main{flex:1;max-width:980px;width:100%;margin:0 auto;padding:32px 24px 60px}
+  h1{font-size:34px;font-weight:800;letter-spacing:-.5px;margin-bottom:8px;color:#fff}
+  h1 .accent{color:#f1420b}
+  .sub{color:#9ab1c4;font-size:17px;margin-bottom:32px}
+  /* SECTIONS */
+  details.section{background:#0e1320;border:1px solid rgba(255,255,255,.08);border-radius:10px;margin-bottom:14px;overflow:hidden}
+  details.section[open]{border-color:rgba(42,147,193,.4)}
+  summary{padding:18px 22px;font-weight:600;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;color:#e8eef5;list-style:none;user-select:none}
+  summary::-webkit-details-marker{display:none}
+  summary::after{content:"+";font-size:24px;color:#2a93c1;font-weight:300;transition:transform .2s}
+  details[open] summary::after{content:"−"}
+  .section-body{padding:8px 22px 22px;border-top:1px solid rgba(255,255,255,.05)}
+  /* FORM */
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:14px}
+  .grid .full{grid-column:1/-1}
+  label{display:block;font-size:13px;color:#9ab1c4;margin-bottom:6px;font-weight:500}
+  input[type=text],input[type=email],input[type=tel],input[type=number],input[type=date],select,textarea{
+    width:100%;padding:10px 12px;background:#080a12;border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:14px;font-family:inherit
+  }
+  input:focus,select:focus,textarea:focus{outline:none;border-color:#2a93c1;box-shadow:0 0 0 3px rgba(42,147,193,.15)}
+  textarea{resize:vertical;min-height:60px}
+  .radio-row{display:flex;gap:18px;margin-top:6px}
+  .radio-row label{display:inline-flex;align-items:center;gap:6px;color:#e8eef5;font-size:14px;cursor:pointer;margin-bottom:0}
+  .radio-row input[type=radio]{accent-color:#2a93c1}
+  .checks{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+  .checks label{display:flex;align-items:flex-start;gap:10px;color:#e8eef5;font-size:14px;cursor:pointer;padding:8px 10px;background:#080a12;border:1px solid rgba(255,255,255,.06);border-radius:6px;margin-bottom:0;line-height:1.4}
+  .checks label:hover{border-color:rgba(42,147,193,.3)}
+  .checks input[type=checkbox]{accent-color:#f1420b;margin-top:2px;flex-shrink:0}
+  .hint{font-size:12px;color:#6b8195;margin-top:4px;font-style:italic}
+  /* CTA */
+  .cta-row{margin-top:28px;text-align:center}
+  button.evaluate{background:#2a93c1;color:#fff;border:none;padding:14px 42px;font-size:17px;font-weight:700;border-radius:8px;cursor:pointer;letter-spacing:.3px;transition:all .15s}
+  button.evaluate:hover{background:#1f7ba5;transform:translateY(-1px);box-shadow:0 8px 20px rgba(42,147,193,.3)}
+  button.reset{background:transparent;color:#9ab1c4;border:1px solid rgba(255,255,255,.15);padding:14px 28px;font-size:15px;border-radius:8px;cursor:pointer;margin-left:12px}
+  button.reset:hover{color:#fff;border-color:rgba(255,255,255,.3)}
+  /* RESULT */
+  #result{margin-top:36px;display:none}
+  #result.show{display:block;animation:fadeIn .3s ease-out}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+  .score-card{padding:32px 28px;border-radius:14px;text-align:center;margin-bottom:24px;border:2px solid}
+  .score-card.high{background:linear-gradient(135deg,rgba(241,66,11,.15),rgba(241,66,11,.05));border-color:#f1420b}
+  .score-card.medium{background:linear-gradient(135deg,rgba(244,167,42,.15),rgba(244,167,42,.05));border-color:#f4a72a}
+  .score-card.low{background:linear-gradient(135deg,rgba(42,215,127,.15),rgba(42,215,127,.05));border-color:#2ad77f}
+  .score-num{font-size:64px;font-weight:800;line-height:1}
+  .score-card.high .score-num{color:#f1420b}
+  .score-card.medium .score-num{color:#f4a72a}
+  .score-card.low .score-num{color:#2ad77f}
+  .score-of{font-size:18px;color:#9ab1c4;margin-top:4px}
+  .score-tier{font-size:22px;font-weight:700;margin-top:14px;letter-spacing:.5px;text-transform:uppercase}
+  .score-card.high .score-tier{color:#f1420b}
+  .score-card.medium .score-tier{color:#f4a72a}
+  .score-card.low .score-tier{color:#2ad77f}
+  .score-msg{margin-top:10px;color:#e8eef5;font-size:15px}
+  .panel{background:#0e1320;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:22px;margin-bottom:18px}
+  .panel h3{font-size:18px;color:#fff;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+  .signal{padding:12px 14px;background:#080a12;border-left:3px solid #f1420b;border-radius:4px;margin-bottom:10px}
+  .signal.tier2{border-left-color:#f4a72a}
+  .signal.tier3{border-left-color:#6b8195}
+  .signal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+  .signal-name{font-weight:600;color:#fff;font-size:14px}
+  .signal-weight{font-size:13px;color:#f1420b;font-weight:700}
+  .signal.tier2 .signal-weight{color:#f4a72a}
+  .signal.tier3 .signal-weight{color:#9ab1c4}
+  .signal-desc{font-size:13px;color:#9ab1c4}
+  .steps{counter-reset:step;list-style:none;padding:0}
+  .steps li{position:relative;padding:10px 0 10px 38px;border-bottom:1px solid rgba(255,255,255,.05);color:#e8eef5;font-size:14px}
+  .steps li:last-child{border-bottom:none}
+  .steps li::before{counter-increment:step;content:counter(step);position:absolute;left:0;top:10px;width:26px;height:26px;background:#2a93c1;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+  .disclaimer{background:#1a1408;border:1px solid rgba(244,167,42,.3);border-radius:8px;padding:16px 18px;margin-top:18px;font-size:13px;color:#d6c8a8;line-height:1.6}
+  .disclaimer strong{color:#f4a72a}
+  .privacy-note{margin-top:18px;padding:14px 18px;background:rgba(42,215,127,.08);border:1px solid rgba(42,215,127,.25);border-radius:8px;font-size:13px;color:#a8d6c0;text-align:center}
+  .privacy-note strong{color:#2ad77f}
+  /* FOOTER */
+  footer{padding:30px 24px;border-top:1px solid rgba(255,255,255,.06);text-align:center;color:#6b8195;font-size:13px;margin-top:auto}
+  footer .links{margin-bottom:8px}
+  footer a{color:#9ab1c4;margin:0 10px}
+  /* RESPONSIVE */
+  @media (max-width:680px){
+    h1{font-size:26px}
+    .sub{font-size:15px}
+    .grid{grid-template-columns:1fr}
+    main{padding:24px 16px 50px}
+    .score-num{font-size:52px}
+    summary{padding:16px 18px;font-size:15px}
+    .section-body{padding:8px 18px 18px}
+    button.evaluate{width:100%;padding:14px}
+    button.reset{width:100%;margin-left:0;margin-top:10px}
+  }
+</style>
+</head>
+<body>
+
+<header class="site">
+  <span class="hex">PT</span>
+  <span class="brand"><span class="c1">PUREBR</span><span class="c2">AI</span><span class="c3">N</span><span class="c4">.AI</span></span>
+</header>
+
+<main>
+  <h1>Rental Application <span class="accent">Fraud Check</span></h1>
+  <p class="sub">Spot red flags in seconds. Private, instant, in-browser screening aid.</p>
+
+  <form id="fraudForm" autocomplete="off">
+
+    <!-- SECTION A: APPLICANT -->
+    <details class="section" open>
+      <summary>A. Applicant Information</summary>
+      <div class="section-body">
+        <div class="grid">
+          <div><label>Full name</label><input type="text" id="a_name" placeholder="Jane Doe"></div>
+          <div><label>Email address</label><input type="email" id="a_email" placeholder="jane@example.com"></div>
+          <div><label>Phone number</label><input type="tel" id="a_phone" placeholder="(555) 555-5555"></div>
+          <div><label>SSN (last 4 only)</label><input type="text" id="a_ssn" maxlength="4" placeholder="1234"><div class="hint">Last 4 digits only for privacy.</div></div>
+          <div><label>Date of birth</label><input type="date" id="a_dob"></div>
+          <div><label>Current address (city, state)</label><input type="text" id="a_addr" placeholder="Brooklyn, NY"></div>
+          <div class="full"><label>Address history — past 24 months (oldest to newest)</label><textarea id="a_hist" placeholder="e.g. 2024-01 to 2024-08 — Queens NY&#10;2024-09 to present — Brooklyn NY"></textarea><div class="hint">Note unexplained gaps — we'll flag them.</div></div>
+          <div><label>Reference 1 — name &amp; phone</label><input type="text" id="a_ref1" placeholder="Prior landlord — (555) 123-4567"></div>
+          <div><label>Reference 2 — name &amp; phone</label><input type="text" id="a_ref2" placeholder="Employer — (555) 987-6543"></div>
+        </div>
+      </div>
+    </details>
+
+    <!-- SECTION B: FINANCIALS -->
+    <details class="section">
+      <summary>B. Financials &amp; Employment</summary>
+      <div class="section-body">
+        <div class="grid">
+          <div><label>Stated monthly income (gross)</label><input type="number" id="b_income" placeholder="6500"></div>
+          <div><label>Monthly rent for unit</label><input type="number" id="b_rent" placeholder="2200"></div>
+          <div><label>Employer name</label><input type="text" id="b_employer" placeholder="Acme Corp"></div>
+          <div><label>Job title</label><input type="text" id="b_title" placeholder="Project Manager"></div>
+          <div><label>Length of employment (months)</label><input type="number" id="b_emplen" placeholder="18"></div>
+          <div><label>Pay stub: stated gross income (YTD)</label><input type="number" id="b_gross" placeholder="42000"></div>
+          <div><label>Pay stub: stated net income (YTD)</label><input type="number" id="b_net" placeholder="32000"></div>
+          <div><label>Pay stub: deductions sum (YTD)</label><input type="number" id="b_ded" placeholder="10000"></div>
+          <div><label>Willing to pay above asking?</label>
+            <div class="radio-row">
+              <label><input type="radio" name="b_above" value="yes"> Yes</label>
+              <label><input type="radio" name="b_above" value="no" checked> No</label>
+            </div>
+          </div>
+          <div><label>Offered cash multi-month upfront?</label>
+            <div class="radio-row">
+              <label><input type="radio" name="b_upfront" value="yes"> Yes</label>
+              <label><input type="radio" name="b_upfront" value="no" checked> No</label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- SECTION C: HISTORY -->
+    <details class="section">
+      <summary>C. History &amp; Behavior</summary>
+      <div class="section-body">
+        <div class="grid">
+          <div><label>Address gap months in last 24 mo (unexplained)</label><input type="number" id="c_gap" placeholder="0"></div>
+          <div><label>Number of moves in past 24 months</label><input type="number" id="c_moves" placeholder="1"></div>
+          <div><label>Move-in urgency (days from now)</label><input type="number" id="c_urgency" placeholder="30"><div class="hint">If applicant wants to move in 1–3 days, that's a red flag.</div></div>
+          <div><label>Has prior eviction?</label>
+            <div class="radio-row">
+              <label><input type="radio" name="c_evict" value="yes"> Yes</label>
+              <label><input type="radio" name="c_evict" value="no" checked> No</label>
+              <label><input type="radio" name="c_evict" value="unknown"> Unknown</label>
+            </div>
+          </div>
+          <div><label>Credit available?</label>
+            <div class="radio-row">
+              <label><input type="radio" name="c_credit" value="yes" checked> Yes</label>
+              <label><input type="radio" name="c_credit" value="no"> No / refuses</label>
+            </div>
+          </div>
+          <div><label>Credit score range (if available)</label>
+            <select id="c_score">
+              <option value="">— select —</option>
+              <option value="excellent">740+ (Excellent)</option>
+              <option value="good">670–739 (Good)</option>
+              <option value="fair">580–669 (Fair)</option>
+              <option value="poor">&lt;580 (Poor)</option>
+              <option value="thin">Thin / no file</option>
+            </select>
+          </div>
+          <div class="full"><label>Reason for moving / notes</label><textarea id="c_notes" placeholder="Optional — context, urgency reasons, etc."></textarea></div>
+        </div>
+      </div>
+    </details>
+
+    <!-- SECTION D: DOCUMENT VERIFICATION -->
+    <details class="section">
+      <summary>D. Document Verification Checks</summary>
+      <div class="section-body">
+        <p class="hint" style="margin-bottom:14px;font-style:normal">Check the boxes below for any verified anomaly. These carry the heaviest weights — fabricated documents are the #1 fraud signal.</p>
+        <div class="checks">
+          <label><input type="checkbox" id="d_meta_recent"> <span><strong>PDF metadata: creation date is &lt; 7 days old</strong> — fresh fabrication signal</span></label>
+          <label><input type="checkbox" id="d_meta_software"> <span><strong>PDF metadata shows Photoshop, GIMP, Canva, or other image-editor in Creator field</strong> — pay stubs come from accounting software, not Photoshop</span></label>
+          <label><input type="checkbox" id="d_math"> <span><strong>Pay stub math is impossible</strong> — gross − deductions ≠ net (±$5 tolerance)</span></label>
+          <label><input type="checkbox" id="d_round"> <span><strong>Over 80% of dollar amounts are perfectly round</strong> (.00) — real paychecks have cents</span></label>
+          <label><input type="checkbox" id="d_visual"> <span><strong>Font / spacing / alignment inconsistencies</strong> — different fonts in same document, misaligned columns</span></label>
+          <label><input type="checkbox" id="d_employer"> <span><strong>Employer does NOT exist</strong> per Secretary of State / LinkedIn / public records search</span></label>
+          <label><input type="checkbox" id="d_voip"> <span><strong>Reference phone number is VoIP / Google Voice</strong> (no carrier match, free numbering pool)</span></label>
+          <label><input type="checkbox" id="d_bank"> <span><strong>Bank statement does NOT show payroll deposits matching stated income</strong> — direct deposit absent or amounts don't reconcile</span></label>
+          <label><input type="checkbox" id="d_ssn"> <span><strong>SSN does not match name on credit report</strong> (identity mismatch)</span></label>
+        </div>
+      </div>
+    </details>
+
+    <div class="cta-row">
+      <button type="button" class="evaluate" id="evalBtn">Evaluate Application</button>
+      <button type="button" class="reset" id="resetBtn">Reset</button>
+    </div>
+  </form>
+
+  <!-- RESULT PANEL -->
+  <section id="result" aria-live="polite">
+    <div class="score-card" id="scoreCard">
+      <div class="score-num" id="scoreNum">0</div>
+      <div class="score-of">of 273 possible risk points</div>
+      <div class="score-tier" id="scoreTier">—</div>
+      <div class="score-msg" id="scoreMsg"></div>
+    </div>
+
+    <div class="panel" id="signalsPanel">
+      <h3>Triggered Risk Signals</h3>
+      <div id="signalsList"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Recommended Next Steps</h3>
+      <ol class="steps" id="stepsList"></ol>
+    </div>
+
+    <div class="disclaimer">
+      <strong>Fair Housing Act notice.</strong> This tool scores only stated facts (income, documents, urgency, behavior). It does NOT consider protected classes (race, color, religion, national origin, sex, familial status, disability) per the Fair Housing Act. Use as a screening aid, not a decision-maker. Consult your legal counsel before using for actual tenant decisions.
+    </div>
+
+    <div class="privacy-note">
+      <strong>Privacy by design.</strong> Nothing is stored, sent, or transmitted. All evaluation happens in your browser. Refresh the page to wipe everything.
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="links">
+    <a href="https://purebrain.ai">PureBrain.AI</a> ·
+    <a href="https://purebrain.ai/blog/">Blog</a> ·
+    <a href="https://purebrain.ai/about-aether/">About</a>
+  </div>
+  <div>© 2026 Pure Technology · Built by Aether · Private by design</div>
+</footer>
+
+<script>
+// =========================================================================
+// CONFIGURABLE WEIGHTS — Edit here to tune scoring
+// =========================================================================
+const WEIGHTS = {
+  // Tier 1 — Critical (30-40 pts each)
+  bank_data_mismatch:        40,
+  pdf_metadata_tampering:    35,
+  math_impossibility:        35,
+  employer_nonexistent:      30,
+  ssn_identity_mismatch:     30,
+
+  // Tier 2 — Moderate (15-20 pts each)
+  round_numbers:             20,
+  visual_inconsistencies:    18,
+  excessive_urgency:         18,
+  reference_fraud:           15,
+  bank_anomalies:            15,
+
+  // Tier 3 — Informational (5-10 pts each)
+  income_job_mismatch:       10,
+  incomplete_application:     8,
+  address_history_gaps:       8,
+  credit_anomalies:           6,
+  behavioral_red_flags:       5
+};
+
+// Tier classification — used for color-coding in output
+const TIER = {
+  bank_data_mismatch: 1, pdf_metadata_tampering: 1, math_impossibility: 1,
+  employer_nonexistent: 1, ssn_identity_mismatch: 1,
+  round_numbers: 2, visual_inconsistencies: 2, excessive_urgency: 2,
+  reference_fraud: 2, bank_anomalies: 2,
+  income_job_mismatch: 3, incomplete_application: 3, address_history_gaps: 3,
+  credit_anomalies: 3, behavioral_red_flags: 3
+};
+
+// Thresholds
+const THRESHOLD_HIGH = 40;
+const THRESHOLD_MED  = 15;
+
+// =========================================================================
+// SCORING ENGINE
+// =========================================================================
+function evaluate() {
+  const v = id => (document.getElementById(id)?.value || "").trim();
+  const num = id => parseFloat(v(id)) || 0;
+  const checked = id => document.getElementById(id)?.checked || false;
+  const radio = name => (document.querySelector(`input[name="${name}"]:checked`)?.value) || "";
+
+  const triggered = [];
+  const add = (key, why) => triggered.push({ key, why, weight: WEIGHTS[key], tier: TIER[key] });
+
+  // ---- TIER 1: Critical ----
+  if (checked("d_bank")) {
+    add("bank_data_mismatch", "Bank statement deposits do not match stated income — strongest single fraud indicator.");
+  }
+  if (checked("d_meta_recent") || checked("d_meta_software")) {
+    add("pdf_metadata_tampering", "PDF metadata shows recent creation or image-editor software — pay stubs come from accounting systems, not Photoshop/Canva.");
+  }
+  if (checked("d_math")) {
+    add("math_impossibility", "Pay stub gross − deductions ≠ net within $5 — arithmetic doesn't reconcile.");
+  }
+  if (checked("d_employer")) {
+    add("employer_nonexistent", "Employer cannot be verified via Secretary of State / LinkedIn / public records.");
+  }
+  if (checked("d_ssn")) {
+    add("ssn_identity_mismatch", "SSN does not match the name on the credit report — identity fraud signal.");
+  }
+
+  // ---- TIER 2: Moderate ----
+  if (checked("d_round")) {
+    add("round_numbers", "Over 80% of dollar amounts are perfectly round (.00) — real paychecks have cents from tax withholding.");
+  }
+  if (checked("d_visual")) {
+    add("visual_inconsistencies", "Font, spacing, or alignment inconsistencies in documents — copy-paste fabrication signal.");
+  }
+  const urgency = num("c_urgency");
+  if (urgency > 0 && urgency <= 3) {
+    add("excessive_urgency", `Move-in requested in ${urgency} day(s) — extreme urgency is a classic pressure tactic to bypass screening.`);
+  } else if (urgency > 0 && urgency <= 7) {
+    triggered.push({ key: "excessive_urgency", why: `Move-in requested in ${urgency} days — fast but not extreme; verify reason.`, weight: Math.round(WEIGHTS.excessive_urgency * 0.5), tier: 2 });
+  }
+  if (checked("d_voip")) {
+    add("reference_fraud", "Reference phone is VoIP / Google Voice — references should be reachable via verifiable carrier numbers.");
+  }
+  const above = radio("b_above");
+  const upfront = radio("b_upfront");
+  if (above === "yes" || upfront === "yes") {
+    add("bank_anomalies", "Applicant offers above-asking rent or cash upfront — common tactic to bypass verification and credit checks.");
+  }
+
+  // ---- TIER 3: Informational ----
+  const income = num("b_income");
+  const rent = num("b_rent");
+  if (income > 0 && rent > 0 && income < rent * 3) {
+    add("income_job_mismatch", `Stated monthly income ($${income.toLocaleString()}) is less than 3× rent ($${rent.toLocaleString()}) — affordability strain.`);
+  }
+  const requiredFields = ["a_name","a_email","a_phone","a_addr","b_employer","b_income"];
+  const missing = requiredFields.filter(f => !v(f));
+  if (missing.length >= 2) {
+    add("incomplete_application", `${missing.length} key fields are blank — applicants who skip fields often have something to hide.`);
+  }
+  const gap = num("c_gap");
+  if (gap >= 3) {
+    add("address_history_gaps", `${gap} unexplained months in 24-month address history — could indicate jail, eviction, or fabricated history.`);
+  }
+  const credit = radio("c_credit");
+  const scoreRange = v("c_score");
+  if (credit === "no" || scoreRange === "thin" || scoreRange === "poor") {
+    add("credit_anomalies", "Applicant refuses credit check, has thin file, or score below 580 — request additional documentation.");
+  }
+  const moves = num("c_moves");
+  const evict = radio("c_evict");
+  let behavioralCount = 0;
+  let behavioralReasons = [];
+  if (moves >= 3) { behavioralCount++; behavioralReasons.push(`${moves} moves in 24 months`); }
+  if (evict === "yes") { behavioralCount++; behavioralReasons.push("prior eviction"); }
+  if (evict === "unknown") { behavioralCount++; behavioralReasons.push("eviction status unknown"); }
+  if (behavioralCount >= 1) {
+    add("behavioral_red_flags", `Behavioral patterns: ${behavioralReasons.join(", ")}.`);
+  }
+
+  // ---- TOTAL ----
+  const total = triggered.reduce((s, t) => s + t.weight, 0);
+  return { total, triggered };
+}
+
+// =========================================================================
+// RECOMMENDED NEXT STEPS — derived from triggered signals
+// =========================================================================
+function recommendedSteps(triggered) {
+  const keys = new Set(triggered.map(t => t.key));
+  const steps = [];
+
+  if (keys.has("bank_data_mismatch")) {
+    steps.push("Request 2–3 months of bank statements with payroll deposits visible. Verify deposit amounts match stated pay stubs.");
+  }
+  if (keys.has("pdf_metadata_tampering") || keys.has("math_impossibility") || keys.has("round_numbers") || keys.has("visual_inconsistencies")) {
+    steps.push("Request employer to send pay stubs directly via verified work email (not applicant-forwarded). Use a third-party employment verification service.");
+  }
+  if (keys.has("employer_nonexistent")) {
+    steps.push("Decline application — unverifiable employer is a near-certain fraud indicator. Document refusal reason in writing.");
+  }
+  if (keys.has("ssn_identity_mismatch")) {
+    steps.push("DO NOT proceed. SSN/name mismatch is identity fraud. Report to local police and FTC at IdentityTheft.gov.");
+  }
+  if (keys.has("excessive_urgency")) {
+    steps.push("Apply a mandatory cooling-off period (48–72 hours minimum) regardless of applicant pressure. Legitimate renters can wait.");
+  }
+  if (keys.has("reference_fraud")) {
+    steps.push("Independently look up references via a public search — do not rely on numbers/emails provided by the applicant.");
+  }
+  if (keys.has("bank_anomalies")) {
+    steps.push("Above-asking / cash-upfront offers should INCREASE scrutiny, not decrease it. Insist on standard verification regardless.");
+  }
+  if (keys.has("income_job_mismatch") || keys.has("credit_anomalies")) {
+    steps.push("Require a qualified co-signer with a credit score 700+ and 5× rent verifiable income.");
+  }
+  if (keys.has("address_history_gaps") || keys.has("behavioral_red_flags")) {
+    steps.push("Request a written explanation for gaps and prior moves. Genuine applicants explain readily; evasive answers escalate concern.");
+  }
+
+  if (steps.length === 0) {
+    steps.push("Proceed with standard verification: prior landlord call, employer verification, credit check, ID verification.");
+    steps.push("Always verify references using independently-sourced contact info, not applicant-provided.");
+    steps.push("Document your screening process in writing — protects you under Fair Housing Act audits.");
+  } else {
+    steps.push("Document your decision and the specific signals in writing — Fair Housing Act compliance requires consistent, non-discriminatory criteria applied to every applicant.");
+  }
+  return steps;
+}
+
+// =========================================================================
+// RENDER
+// =========================================================================
+function render(result) {
+  const { total, triggered } = result;
+  const card = document.getElementById("scoreCard");
+  const tier = document.getElementById("scoreTier");
+  const msg = document.getElementById("scoreMsg");
+  const numEl = document.getElementById("scoreNum");
+
+  numEl.textContent = total;
+
+  card.classList.remove("high", "medium", "low");
+  if (total >= THRESHOLD_HIGH) {
+    card.classList.add("high");
+    tier.textContent = "🔴 HIGH RISK";
+    msg.textContent = "Multiple critical fraud indicators. Auto-reject or require full manual review.";
+  } else if (total >= THRESHOLD_MED) {
+    card.classList.add("medium");
+    tier.textContent = "🟡 MEDIUM RISK";
+    msg.textContent = "Notable concerns present. Request additional documentation before deciding.";
+  } else {
+    card.classList.add("low");
+    tier.textContent = "🟢 LOW RISK";
+    msg.textContent = "Few or no red flags. Proceed with standard verification process.";
+  }
+
+  // Signals list
+  const list = document.getElementById("signalsList");
+  if (triggered.length === 0) {
+    list.innerHTML = '<p style="color:#9ab1c4;font-size:14px">No risk signals triggered. Standard caution still advised — fraud can also be subtle.</p>';
+  } else {
+    // Sort by weight desc
+    triggered.sort((a, b) => b.weight - a.weight);
+    list.innerHTML = triggered.map(t => `
+      <div class="signal tier${t.tier}">
+        <div class="signal-head">
+          <span class="signal-name">${t.key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}</span>
+          <span class="signal-weight">+${t.weight} pts</span>
+        </div>
+        <div class="signal-desc">${t.why}</div>
+      </div>
+    `).join("");
+  }
+
+  // Steps
+  const stepsEl = document.getElementById("stepsList");
+  stepsEl.innerHTML = recommendedSteps(triggered).map(s => `<li>${s}</li>`).join("");
+
+  // Show + scroll
+  const r = document.getElementById("result");
+  r.classList.add("show");
+  setTimeout(() => r.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+}
+
+// =========================================================================
+// EVENT HANDLERS
+// =========================================================================
+document.getElementById("evalBtn").addEventListener("click", () => {
+  const result = evaluate();
+  render(result);
+});
+
+document.getElementById("resetBtn").addEventListener("click", () => {
+  document.getElementById("fraudForm").reset();
+  document.getElementById("result").classList.remove("show");
+  // Re-open section A
+  document.querySelectorAll("details.section").forEach((d, i) => d.open = (i === 0));
+  window.scrollTo({ top: 0, behavior: "smooth" });
+});
+
+// Submit on Enter inside any input (except textarea)
+document.getElementById("fraudForm").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") {
+    e.preventDefault();
+    document.getElementById("evalBtn").click();
+  }
+});
+</script>
+
+</body>
+</html>
