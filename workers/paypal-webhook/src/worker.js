@@ -399,9 +399,22 @@ async function checkReferralAttribution(env, data, retryCount) {
 
   try {
     // Call referrals-api to complete attribution
+    // Header: x-internal-binding-secret. Prefers REFERRALS_INTERNAL_SECRET (separate
+    // trust boundary for referrals domain isolation per
+    // feedback_purebrain_social_never_touches_referral_or_clients.md) and
+    // falls back to legacy INTERNAL_BINDING_SECRET for backward compat
+    // during rollout.
+    const referralsSecret = (env.REFERRALS_INTERNAL_SECRET || env.INTERNAL_BINDING_SECRET || "");
+    if (!referralsSecret) {
+      console.warn("[paypal-webhook] REFERRALS_INTERNAL_SECRET / INTERNAL_BINDING_SECRET not set — referrals attribution will 401");
+    }
     const attributionRequest = new Request("https://referrals-api/internal/complete-by-email", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-internal-binding": "referrals-api",
+        "x-internal-binding-secret": referralsSecret,
+      },
       body: JSON.stringify({
         customer_email: email,
         subscription_id: subscriptionId,
@@ -546,7 +559,11 @@ async function handleSubscriptionUpdated(env, resource) {
       if (env.REFERRALS_API) {
         const recalcRequest = new Request("https://referrals-api/internal/recalc-subscription", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-internal-binding": "referrals-api",
+            "x-internal-binding-secret": (env.REFERRALS_INTERNAL_SECRET || env.INTERNAL_BINDING_SECRET || ""),
+          },
           body: JSON.stringify({
             subscription_id: subscriptionId,
             old_amount: oldAmount,
