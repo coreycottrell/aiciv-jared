@@ -312,6 +312,7 @@ export default {
         url.pathname.startsWith('/api/admin/referral/') ||
         url.pathname === '/api/admin/stats' ||
         url.pathname === '/api/admin/partners' ||
+        url.pathname.startsWith('/api/admin/partners/') ||
         url.pathname === '/api/admin/commission-report' ||
         url.pathname.startsWith('/api/admin/payments/manual') ||
         url.pathname.startsWith('/api/admin/applications')
