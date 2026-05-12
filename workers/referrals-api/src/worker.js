@@ -629,6 +629,163 @@ function affiliateReferralLink(code) {
   return `https://purebrain.ai/?ref=${code}`;
 }
 
+/* ---------- retroactive backfill helper (CTO 2026-05-12 Bug 2) ---------- */
+
+/**
+ * Backfill commission_payments rows for past payments by a client who was
+ * just manually assigned to a referrer.
+ *
+ * Called from POST /admin/referral/assign immediately after the referrals row
+ * INSERT succeeds. Also reachable directly via POST /admin/referral/:id/retro-backfill
+ * (companion retry endpoint).
+ *
+ * Strategy (CTO Edit, locked):
+ *   1. Look up the new referrer's CURRENT partner_tier — that becomes
+ *      tier_at_write for every retro commission row. Matches the
+ *      "tier_at_write doctrine" locked 2026-05-07.
+ *   2. Call CLIENTS_API.fetch("/internal/client-payments?email=...") for
+ *      historical payment events for this email.
+ *   3. For each payment with a positive amount and a stable order_id:
+ *      INSERT into commission_payments with commission_source='retroactive_assign'.
+ *      Idempotent via (referral_id, order_id) check-then-insert (no DB UNIQUE).
+ *   4. Return summary { ok, commissions_written, skipped, total_dollars,
+ *      payments_seen, tier_at_write, commission_rate }.
+ *
+ * Graceful degradation:
+ *   - CLIENTS_API binding missing → ok:false, error:"clients_api_binding_missing".
+ *   - CLIENTS_API returns 404 (endpoint not shipped yet) →
+ *     ok:true, commissions_written:0, error:"endpoint_pending". This lets Bug 1
+ *     ship standalone while the clients-api side catches up.
+ *   - Any non-404 non-2xx → ok:false, error:"clients_api_<status>".
+ *   - Per-row INSERT failure (UNIQUE conflict, CHECK failure) → skip + continue.
+ *   - Empty payments list → ok:true, commissions_written:0.
+ *
+ * Constitutional:
+ *   - paymentAmount * rate (NO $35 deduction here; ops fee handled at payout).
+ *   - tier_at_write set on EVERY commission_payments INSERT (CTO Edit #2).
+ *   - Service Binding only — no HTTP+token cross-Worker call.
+ */
+async function backfillRetroactiveCommissions(env, { referral_id, referrer_id, referred_email }) {
+  // Step 1: load referrer's current tier + rate.
+  const referrer = await env.DB.prepare(
+    `SELECT id, partner_tier FROM referrers WHERE id = ?`
+  ).bind(referrer_id).first();
+  if (!referrer) return { ok: false, error: "referrer_not_found", commissions_written: 0 };
+
+  const partner_tier = String(referrer.partner_tier || "silver").toLowerCase();
+  const commission_rate = TIER_RATES[partner_tier];
+  if (!commission_rate) {
+    return { ok: false, error: `invalid_tier:${partner_tier}`, commissions_written: 0 };
+  }
+
+  // Step 2: fetch historical payments via Service Binding.
+  if (!env.CLIENTS_API) {
+    return { ok: false, error: "clients_api_binding_missing", commissions_written: 0 };
+  }
+  if (!env.INTERNAL_BINDING_SECRET) {
+    return { ok: false, error: "internal_binding_secret_missing", commissions_written: 0 };
+  }
+
+  const url = `https://clients-api/internal/client-payments?email=${encodeURIComponent(referred_email)}`;
+  let resp;
+  try {
+    resp = await env.CLIENTS_API.fetch(new Request(url, {
+      method: "GET",
+      headers: {
+        "x-internal-binding": "clients-api",
+        "x-internal-binding-secret": env.INTERNAL_BINDING_SECRET,
+      },
+    }));
+  } catch (e) {
+    return { ok: false, error: `clients_api_throw:${String(e && e.message || e).slice(0, 80)}`, commissions_written: 0 };
+  }
+
+  if (resp.status === 404) {
+    // Endpoint not yet shipped on clients-api. Graceful degradation per Bug 2 plan.
+    return {
+      ok: true,
+      commissions_written: 0,
+      skipped: 0,
+      total_dollars: 0,
+      payments_seen: 0,
+      tier_at_write: partner_tier,
+      commission_rate,
+      error: "endpoint_pending",
+      message: "clients-api /internal/client-payments not yet shipped. Retry via POST /admin/referral/:id/retro-backfill once available.",
+    };
+  }
+  if (!resp.ok) {
+    return { ok: false, error: `clients_api_${resp.status}`, commissions_written: 0 };
+  }
+
+  let data;
+  try { data = await resp.json(); }
+  catch (_e) { return { ok: false, error: "clients_api_bad_json", commissions_written: 0 }; }
+
+  const payments = Array.isArray(data && data.payments) ? data.payments : [];
+  if (payments.length === 0) {
+    return { ok: true, commissions_written: 0, skipped: 0, total_dollars: 0, payments_seen: 0, tier_at_write: partner_tier, commission_rate };
+  }
+
+  // Step 3: write commission rows.
+  let written = 0;
+  let skipped = 0;
+  let total_dollars = 0;
+  const now = new Date().toISOString();
+
+  for (const p of payments) {
+    const payment_amount = Number(p && p.amount);
+    if (!(payment_amount > 0)) { skipped++; continue; }
+
+    const commission_value = Math.round(payment_amount * commission_rate * 100) / 100;
+    const order_id = String((p && (p.payment_id || p.order_id || p.id)) || "").trim();
+    if (!order_id) { skipped++; continue; }
+
+    // Idempotency: skip if a commission row for this referral + order_id already exists.
+    const dup = await env.DB.prepare(
+      `SELECT id FROM commission_payments WHERE referral_id = ? AND order_id = ? LIMIT 1`
+    ).bind(referral_id, order_id).first();
+    if (dup) { skipped++; continue; }
+
+    try {
+      await env.DB.prepare(
+        `INSERT INTO commission_payments
+           (referrer_id, referral_id, payer_email, order_id,
+            payment_amount, commission_rate, commission_value,
+            tier, tier_at_write, commission_source, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        referrer_id,
+        referral_id,
+        referred_email,
+        order_id,
+        payment_amount,
+        commission_rate,
+        commission_value,
+        partner_tier,            // legacy `tier` col mirrors tier_at_write
+        partner_tier,            // tier_at_write — CTO Edit #2 constitutional
+        "retroactive_assign",    // commission_source (CHECK extended in migration 0003)
+        now
+      ).run();
+      written++;
+      total_dollars += commission_value;
+    } catch (_e) {
+      // UNIQUE / CHECK / FK failure — skip and continue.
+      skipped++;
+    }
+  }
+
+  return {
+    ok: true,
+    commissions_written: written,
+    skipped,
+    total_dollars: Math.round(total_dollars * 100) / 100,
+    payments_seen: payments.length,
+    tier_at_write: partner_tier,
+    commission_rate,
+  };
+}
+
 /* ---------- route handler ---------- */
 
 export default {
@@ -1794,9 +1951,19 @@ export default {
       }
 
       // POST /admin/referral/assign — manually assign a client to a referrer
+      // CONSTITUTIONAL: one referred_email = one referral, ever (Jared rule, CTO 2026-05-12).
+      // Structurally enforced by UNIQUE INDEX uniq_referrals_referred_email (migration 0003).
+      // Reassignment to a different referrer is BLOCKED. Splits handled separately in
+      // elite settings.
+      //
       // Accepts both naming conventions:
       //   { referrer_id, referred_email, referred_name }           — original
       //   { referral_code, client_email, client_name }             — admin/referrals frontend
+      //
+      // On successful new INSERT, triggers retroactive commission backfill via
+      // CLIENTS_API for any past payments by this client. Backfill failure does
+      // NOT block the assignment; surfaces in response.retroactive for retry via
+      // POST /admin/referral/:id/retro-backfill.
       if (method === "POST" && path === "/admin/referral/assign") {
         { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
         const body = await parseBody(request);
@@ -1804,8 +1971,11 @@ export default {
 
         let referrer_id = body.referrer_id;
         const referral_code = body.referral_code;
-        const referred_email = body.referred_email || body.client_email;
+        const referred_email_raw = body.referred_email || body.client_email;
         const referred_name = body.referred_name || body.client_name;
+
+        if (!referred_email_raw) return err(400, "referred_email or client_email required");
+        const referred_email = String(referred_email_raw).trim().toLowerCase();
 
         // Resolve referral_code → referrer_id when only the human-readable code is supplied
         if (!referrer_id && referral_code) {
@@ -1815,18 +1985,170 @@ export default {
           if (!lookup) return err(404, "referrer not found for code: " + referral_code);
           referrer_id = lookup.id;
         }
-
         if (!referrer_id) return err(400, "referrer_id or referral_code required");
-        if (!referred_email) return err(400, "referred_email or client_email required");
+
+        // Pre-INSERT idempotency check — friendly 409 BEFORE relying on UNIQUE INDEX.
+        // The UNIQUE INDEX (migration 0003) is the structural guarantee; this query
+        // surfaces a clear error message with existing referrer info.
+        const existing = await env.DB.prepare(
+          `SELECT r.id, r.referrer_id, r.status, r.created_at,
+                  rr.user_name AS existing_referrer_name,
+                  rr.referral_code AS existing_referrer_code
+             FROM referrals r
+             LEFT JOIN referrers rr ON rr.id = r.referrer_id
+            WHERE LOWER(r.referred_email) = ?
+              AND r.referred_email NOT LIKE 'paypal_%@pending'
+            LIMIT 1`
+        ).bind(referred_email).first();
+
+        if (existing) {
+          return json({
+            ok: false,
+            error: "already_assigned",
+            message: "This client is already assigned and cannot be reassigned. Splits are handled separately in elite settings.",
+            existing_referral_id: existing.id,
+            existing_referrer_id: existing.referrer_id,
+            existing_referrer_code: existing.existing_referrer_code,
+            existing_referrer_name: existing.existing_referrer_name,
+            existing_status: existing.status,
+            existing_created_at: existing.created_at,
+          }, { status: 409 });
+        }
 
         const now = new Date().toISOString();
-        const res = await env.DB.prepare(
-          `INSERT INTO referrals (referrer_id, referred_email, referred_name, status, created_at)
-           VALUES (?, ?, ?, 'pending', ?)
-           RETURNING *`
-        ).bind(referrer_id, String(referred_email).trim().toLowerCase(), String(referred_name || "").trim(), now).all();
-        const row = res.results && res.results[0];
-        return json({ ok: true, referral: row });
+        let row;
+        try {
+          const res = await env.DB.prepare(
+            `INSERT INTO referrals (referrer_id, referred_email, referred_name, status, created_at)
+             VALUES (?, ?, ?, 'pending', ?)
+             RETURNING *`
+          ).bind(referrer_id, referred_email, String(referred_name || "").trim(), now).all();
+          row = res.results && res.results[0];
+        } catch (e) {
+          // Belt-and-suspenders: pre-check race-loses to UNIQUE INDEX → SQLite returns
+          // "UNIQUE constraint failed" → map to 409.
+          const msg = String(e && e.message || e);
+          if (/UNIQUE constraint failed.*referred_email/i.test(msg)) {
+            return json({
+              ok: false,
+              error: "already_assigned",
+              message: "Race-condition duplicate blocked by UNIQUE INDEX. Refresh and retry.",
+            }, { status: 409 });
+          }
+          throw e;
+        }
+
+        // Retroactive commission backfill (Bug 2). MUST NOT block assignment.
+        let retro_summary;
+        try {
+          retro_summary = await backfillRetroactiveCommissions(env, {
+            referral_id: row.id,
+            referrer_id,
+            referred_email,
+          });
+        } catch (e) {
+          retro_summary = {
+            ok: false,
+            error: `backfill_throw:${String(e && e.message || e).slice(0, 80)}`,
+            commissions_written: 0,
+          };
+        }
+
+        return json({ ok: true, referral: row, retroactive: retro_summary });
+      }
+
+      // POST /admin/referral/:id/retro-backfill — retry retroactive commission backfill.
+      // CTO 2026-05-12 Bug 2 companion endpoint. Idempotent: existing commission rows
+      // (matched by referral_id, order_id) are skipped. Useful when CLIENTS_API was
+      // briefly unavailable during the original assign call, OR when clients-api ships
+      // /internal/client-payments AFTER the assign happened.
+      {
+        const retroMatch = path.match(/^\/admin\/referral\/(\d+)\/retro-backfill$/);
+        if (method === "POST" && retroMatch) {
+          { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
+          const referral_id = Number(retroMatch[1]);
+          if (!Number.isFinite(referral_id) || referral_id <= 0) return err(400, "invalid referral_id");
+
+          const refRow = await env.DB.prepare(
+            `SELECT id, referrer_id, referred_email FROM referrals WHERE id = ?`
+          ).bind(referral_id).first();
+          if (!refRow) return err(404, "referral not found");
+          if (!refRow.referred_email) return err(400, "referral has no referred_email");
+
+          let retro_summary;
+          try {
+            retro_summary = await backfillRetroactiveCommissions(env, {
+              referral_id: refRow.id,
+              referrer_id: refRow.referrer_id,
+              referred_email: refRow.referred_email,
+            });
+          } catch (e) {
+            retro_summary = {
+              ok: false,
+              error: `backfill_throw:${String(e && e.message || e).slice(0, 80)}`,
+              commissions_written: 0,
+            };
+          }
+          return json({ ok: true, referral_id, retroactive: retro_summary });
+        }
+      }
+
+      // Bug 3 (CTO 2026-05-12): splits-save 404 routing fix.
+      // Frontend (admin/referrals/index.html line 1940-1951) tries:
+      //   PATCH /api/admin/partners/{id}/splits
+      //   PUT   /api/admin/partners/{id}/splits
+      //   PUT   /api/admin/partners/{id}    (with split_config in body)
+      // Portal-proxy strips /api/admin → /admin so we receive:
+      //   PATCH /admin/partners/{id}/splits
+      //   PUT   /admin/partners/{id}/splits
+      //   PUT   /admin/partners/{id}
+      // All three are forwarded here to the existing PUT /admin/affiliate/update
+      // logic, but constrained to split_config-only updates (no tier mutation
+      // via this path — keeps the surface narrow).
+      {
+        const splitsMatch = path.match(/^\/admin\/partners\/(\d+)(\/splits)?$/);
+        if (splitsMatch && (method === "PATCH" || method === "PUT")) {
+          { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
+          const referrer_id = Number(splitsMatch[1]);
+          if (!Number.isFinite(referrer_id) || referrer_id <= 0) return err(400, "invalid partner id");
+
+          const body = await parseBody(request);
+          if (!body) return err(400, "invalid json");
+          if (body.split_config === undefined) return err(400, "split_config required");
+
+          // Normalize: accept array OR pre-stringified JSON, mirroring /admin/affiliate/update line 1858.
+          const sc = typeof body.split_config === "string" ? body.split_config : JSON.stringify(body.split_config);
+
+          // Validate it parses to an array (cheap sanity check — prevents storing garbage).
+          try {
+            const parsed = JSON.parse(sc);
+            if (!Array.isArray(parsed)) return err(400, "split_config must be an array");
+          } catch (_e) {
+            return err(400, "split_config invalid JSON");
+          }
+
+          const res = await env.DB.prepare(
+            `UPDATE referrers SET split_config = ? WHERE id = ? RETURNING *`
+          ).bind(sc, referrer_id).all();
+          const row = res.results && res.results[0];
+          if (!row) return err(404, "partner not found");
+
+          // Inline parseSplit — accept array, pre-stringified JSON, or null/empty → []
+          // (function-scoped parseSplit exists elsewhere; safer to inline here).
+          let savedSplits = [];
+          if (Array.isArray(row.split_config)) savedSplits = row.split_config;
+          else if (row.split_config) {
+            try { savedSplits = JSON.parse(row.split_config); } catch (_e) { savedSplits = []; }
+          }
+
+          // Return shape compatible with frontend handleSaveSuccess() in admin/referrals/index.html:
+          //   resp.partner.split_config OR resp.split_config — both supported here.
+          return json({
+            ok: true,
+            partner: pick(row, REFERRER_PUBLIC_COLS),
+            split_config: savedSplits,
+          });
+        }
       }
 
       // ─────────────────────────────────────────────

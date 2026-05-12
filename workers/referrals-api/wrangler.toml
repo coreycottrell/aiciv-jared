@@ -15,6 +15,21 @@ database_id = "cdd9a522-f947-42a6-b9a3-c30534e02c3f"
 binding = "SOCIAL_API"
 service = "social-api"
 
+# Service Binding to clients-api — needed for retroactive commission backfill
+# on POST /admin/referral/assign (CTO 2026-05-12 Bug 2 fix). Mirrors the binding
+# already present on paypal-webhook / agentmail-webhook / purebrain-portal-proxy /
+# social-api. Uses env.INTERNAL_BINDING_SECRET (6-Worker family value).
+#
+# Per CTO Risk #4: this binding is in place even though
+# `GET /internal/client-payments?email=...` is not yet shipped on clients-api.
+# backfillRetroactiveCommissions() degrades gracefully (404 → ok:true,
+# commissions_written:0, error:"endpoint_pending") so Bug 1 ships standalone.
+# Companion endpoint POST /admin/referral/:id/retro-backfill activates Bug 2
+# once clients-api ships /internal/client-payments.
+[[services]]
+binding = "CLIENTS_API"
+service = "clients-api"
+
 [vars]
 # Admin endpoints require X-Admin-Token header matching one of these
 # (comma-separated). Set via `wrangler secret put ADMIN_TOKENS` in prod.
