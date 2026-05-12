@@ -258,7 +258,16 @@ export default {
         const tail = url.pathname === '/api/referral'
           ? ''
           : url.pathname.slice('/api/referral'.length); // includes leading '/'
-        const workerPath = '/referrals' + tail; // e.g. /referrals/complete, /referrals/track
+        // 2026-05-12 PTT# leaderboard routing fix:
+        //   /api/referral/leaderboard is a PUBLIC endpoint exposed at root path
+        //   /leaderboard on the referrals-api worker — NOT under /referrals/*.
+        //   Map it directly. All other /api/referral/* paths still rewrite to
+        //   /referrals/<tail> (e.g. /referrals/complete, /referrals/track).
+        //   Live probe confirmed: GET /leaderboard?limit=20 returns 200 with
+        //   {leaderboard: [...]}; GET /referrals/leaderboard returns 404.
+        const workerPath = (tail === '/leaderboard')
+          ? '/leaderboard'
+          : '/referrals' + tail; // e.g. /referrals/complete, /referrals/track
         const workerUrl = `https://referrals-api.in0v8.workers.dev${workerPath}${url.search}`;
         const resp = await fetch(new Request(workerUrl, {
           method: request.method,
