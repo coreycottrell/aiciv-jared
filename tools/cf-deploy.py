@@ -478,6 +478,85 @@ def collect_files(paths: list, base_dir: Path) -> dict:
 
 CRED_SCAN_SKILL = PROJECT_ROOT / ".claude" / "skills" / "pre-deploy-credential-scan" / "scan.sh"
 
+PARITY_CHECK_SCRIPT = PROJECT_ROOT / "tools" / "check-dual-source-parity.sh"
+EXTERNAL_PUREBRAIN_SITE = Path(os.environ.get("EXTERNAL_DIR", "/home/jared/purebrain-site"))
+
+
+class _ParityDriftError(Exception):
+    """Raised when dual-source parity check fails for files in the deploy set."""
+
+
+def _parity_pre_deploy_check(new_files: dict) -> None:
+    """Dual-source parity gate for CF Pages dual-source race condition.
+
+    Per feedback_dual_source_cf_pages_silent_overwrite.md: this CF Pages project
+    has TWO writers — cf-deploy.py (this script) AND github:push from
+    `puretechnyc/purebrain-site`. Every shared file MUST stay byte-identical
+    across both repos. Drift means the next external push (Lumen update,
+    investor gift page, pitch deck, partner page) atomically regresses prod.
+
+    This gate fires on every cf-deploy.py invocation, checking ONLY the files
+    being deployed against their counterparts in the external repo. If the
+    external repo's copy differs from what we're about to upload, drift exists
+    NOW (or will after this push) — block until reconciled.
+
+    Skips files that don't exist in the external repo (those are aether-only,
+    no drift possible). Skips binary files (no semantic compare relevant for
+    parity beyond byte-identity, which is what md5 already does).
+
+    Set CF_DEPLOY_SKIP_PARITY=1 to bypass (emergency only).
+    """
+    import hashlib
+
+    if not EXTERNAL_PUREBRAIN_SITE.exists():
+        # No external repo cloned locally — parity check is a no-op (deployer
+        # may be running from a CI host without the second repo).
+        print(
+            "  ⚠️  parity-check: external repo not found at "
+            f"{EXTERNAL_PUREBRAIN_SITE} (skipping)",
+            file=sys.stderr,
+        )
+        return
+
+    drifted = []
+    checked = 0
+    for site_path, (content, _ct) in new_files.items():
+        rel = site_path.lstrip("/")
+        external_path = EXTERNAL_PUREBRAIN_SITE / rel
+        if not external_path.exists():
+            continue  # external doesn't have this — no shared-path drift
+        try:
+            external_bytes = external_path.read_bytes()
+        except Exception as e:
+            print(f"  ⚠️  parity-check: could not read {external_path}: {e}", file=sys.stderr)
+            continue
+        h_new = hashlib.md5(content).hexdigest()
+        h_ext = hashlib.md5(external_bytes).hexdigest()
+        checked += 1
+        if h_new != h_ext:
+            drifted.append((rel, h_new, h_ext))
+
+    if drifted:
+        print(
+            f"\n🛡️  DRIFT GATE: {len(drifted)} file(s) being deployed differ "
+            "from external purebrain-site:",
+            file=sys.stderr,
+        )
+        for rel, h_new, h_ext in drifted:
+            print(f"   - {rel}", file=sys.stderr)
+            print(f"       this deploy: {h_new}", file=sys.stderr)
+            print(f"       external:    {h_ext}", file=sys.stderr)
+        raise _ParityDriftError(
+            f"{len(drifted)} file(s) in this deploy diverge from "
+            "puretechnyc/purebrain-site. Sync the two repos before deploying."
+        )
+
+    if checked > 0:
+        print(
+            f"  🛡️  parity-check: {checked} shared file(s) match external repo",
+            file=sys.stderr,
+        )
+
 def pre_deploy_credential_scan(new_files: dict) -> None:
     """Block deploy if hardcoded credentials detected in actual upload payload.
 
@@ -588,6 +667,24 @@ def deploy(paths: list, base_dir: Path, dry_run: bool = False,
     # so dry-runs also surface credential leaks. Exits 2 on any finding.
     if new_files:
         pre_deploy_credential_scan(new_files)
+
+    # 2.6. DRIFT GATE — dual-source parity check (CONSTITUTIONAL, CTO 2026-05-12)
+    # Per feedback_dual_source_cf_pages_silent_overwrite.md: CF Pages production
+    # has TWO writers (this cf-deploy.py + github:push from puretechnyc/purebrain-site).
+    # Drift on any path means the next external push regresses production.
+    # Pre-deploy parity check on the files being deployed catches drift before
+    # we make it worse. Set CF_DEPLOY_SKIP_PARITY=1 to bypass (emergency-only).
+    if new_files and os.environ.get("CF_DEPLOY_SKIP_PARITY") != "1":
+        try:
+            _parity_pre_deploy_check(new_files)
+        except _ParityDriftError as e:
+            print(f"\nDRIFT GATE FAILED — {e}", file=sys.stderr)
+            print(
+                "Run: tools/check-dual-source-parity.sh --paths <comma-sep>\n"
+                "Or set CF_DEPLOY_SKIP_PARITY=1 to bypass (emergency-only).",
+                file=sys.stderr,
+            )
+            sys.exit(3)
 
     # 3. Compute hashes for new files
     print(f"Computing hashes for {len(new_files)} file(s)...", file=sys.stderr)
