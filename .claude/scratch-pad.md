@@ -1,7 +1,19 @@
 # Aether Scratch Pad
 
 **Purpose**: Persistent state across BOOPs and sessions. Prevents redoing work.
-**Last Updated**: 2026-04-11 (post-midnight, massive session)
+**Last Updated**: 2026-05-12
+
+## ✅ RESOLVED 2026-05-12 03:48 UTC — Synthetic Monitor False-Alert Storm
+- **Issue**: `tools/synthetic-monitor-critical-pages.sh` writing 12 false alerts/hour for /user-guide/ (393 files accumulated) due to CF edge-config rewriting `?_cb=*` cache-bust query strings to 404 while clean URL serves 200. 4-BOOP convergence (00:46 / 01:47 / 02:47 sub-agent BOOPs + 03:48 main-thread).
+- **Fix**: Patched script with paired-probe gate. Cache-bust 404 + clean 200 = log to `logs/critical-pages-edge-divergence.log` (informational, no alert). Both probes 404 = real-outage alert (preserved). Verified 0 new alerts after fix run.
+- **Archive**: 390 noise files moved to `inbox/archived/monitor-false-alerts-2026-05-11-to-12/` (evidence preserved, not deleted).
+- **Memory referenced**: `feedback_synthetic_monitors_must_match_real_user_traffic.md`, `feedback_query_string_routing_rules_can_break_cache_bust_probes.md`, `feedback_out_of_repo_edge_config_is_blind_spot.md`. Direct execution per "delegation chain structurally fails 2+ times" rule.
+
+## 🔴 TIER-1 BLOCKER (2026-05-11) — STILL OPEN
+- **PureSurf API auth broken**: surf.purebrain.ai health=200 but BOTH stored keys (jared `WtHJY1zr...` + aether `O_EnHpl...`) return `401 Invalid API key`. Discovered during morning profile-viewing BOOP — full LinkedIn profile-viewer + comment-scheduler pipeline BLOCKED.
+- **Affected**: `tools/linkedin_profile_viewer.py`, `tools/linkedin_daily_pipeline.py`, `tools/linkedin_comment_scheduler.py`, surf.purebrain.ai consumers.
+- **ROUTE**: ST# investigate PureSurf API key rotation/discovery. Likely keys rotated server-side without consumer update.
+- **Day-3 default activation**: 17h+ elapsed since 09:03 UTC 2026-05-11 — pending main-thread Aether→ST# dispatch at next ~12:00 UTC wake-window per bundled-relay cadence.
 
 ## ACTIVE RIGHT NOW
 - 777 Command Center v2 LIVE at 777.purebrain.ai (password: 777grind)
