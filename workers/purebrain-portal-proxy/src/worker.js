@@ -136,7 +136,9 @@ async function proxyToContainer(request, targetHost, originalHost) {
  * admin token + full invitee list (including role:leader grants).
  *
  * Reuses the existing `/internal/validate-session` Service Binding contract on
- * `clients-api` (already production-hardened by admin-api + social-api callers).
+ * `social-api` (the new auth authority per CTO spec UL-SEC-003, 2026-05-12).
+ * Previously routed to clients-api; swapped to social-api which shipped its
+ * own /internal/validate-session at Chy commit f7d0428.
  *
  * Failure modes (fail CLOSED — security gate):
  *   - missing token        → 401 unauthorized
@@ -160,26 +162,34 @@ async function validateLeaderSession(request, env) {
   }
   if (!token) return { ok: false, status: 401 };
 
-  if (!env.CLIENTS_API || !env.INTERNAL_BINDING_SECRET) {
+  if (!env.SOCIAL_API || !env.INTERNAL_BINDING_SECRET) {
     // Fail CLOSED — emergency security gate. Better 503 than bypass.
     return { ok: false, status: 503 };
   }
 
   try {
-    const req = new Request("https://clients-api/internal/validate-session", {
+    // 2026-05-12: Swapped CLIENTS_API → SOCIAL_API per CTO spec UL-SEC-003.
+    // Chy shipped /internal/validate-session on social-api at commit f7d0428;
+    // social-api is now the canonical auth authority. Verified LIVE:
+    //   POST https://social-api.in0v8.workers.dev/internal/validate-session → 403
+    //   (route exists, secret-gated). Aether-local source mirror is STALE
+    //   for Chy's domain — verified via live probe per
+    //   feedback_architectural_truth_first.md.
+    const req = new Request("https://social-api/internal/validate-session", {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-internal-binding": "clients-api",
+        "x-internal-binding": "social-api",
         "x-internal-binding-secret": env.INTERNAL_BINDING_SECRET,
       },
       body: JSON.stringify({ token }),
     });
-    const resp = await env.CLIENTS_API.fetch(req);
+    const resp = await env.SOCIAL_API.fetch(req);
     if (!resp.ok) return { ok: false, status: 401 };
     const j = await resp.json();
     if (!j || j.valid !== true) return { ok: false, status: 401 };
-    if (!["leader","owner"].includes(j.role)) return { ok: false, status: 403 };
+    // Expanded role list per CTO spec UL-SEC-003 (owner/admin/leader/system).
+    if (!["owner","admin","leader","system"].includes(j.role)) return { ok: false, status: 403 };
     return { ok: true, session: j };
   } catch {
     // Bridge unreachable — fail CLOSED for security routes.
