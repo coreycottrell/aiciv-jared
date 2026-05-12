@@ -265,8 +265,24 @@ export default {
         //   /referrals/<tail> (e.g. /referrals/complete, /referrals/track).
         //   Live probe confirmed: GET /leaderboard?limit=20 returns 200 with
         //   {leaderboard: [...]}; GET /referrals/leaderboard returns 404.
-        const workerPath = (tail === '/leaderboard')
-          ? '/leaderboard'
+        //
+        // 2026-05-12 PTT# dashboard routing fix (same bug class):
+        //   /api/referral/dashboard was 404ing because portal-proxy mapped it
+        //   to /referrals/dashboard, but referrals-api exposes /dashboard at
+        //   ROOT (worker.js:1999). Live probe:
+        //     GET /dashboard?code=JAREDSB0 → 200 {referrer_id, earnings, history,...}
+        //     GET /referrals/dashboard?code=JAREDSB0 → 404
+        //   Converted leaderboard exception into a set-based allowlist so future
+        //   root-level public endpoints can be added in one line instead of
+        //   whack-a-mole'ing this every time.
+        //   Audit of referrals-api root-level routes (grep `path === "/...`):
+        //     /health, /referrers, /referrals, /commission_payments, /dashboard,
+        //     /leaderboard, /admin/* (separate handler block below).
+        //   Of these, only /dashboard and /leaderboard are called from the
+        //   public refer/ UI via /api/referral/* — others are admin/internal.
+        const ROOT_LEVEL_REFERRAL_PATHS = new Set(['/leaderboard', '/dashboard']);
+        const workerPath = ROOT_LEVEL_REFERRAL_PATHS.has(tail)
+          ? tail
           : '/referrals' + tail; // e.g. /referrals/complete, /referrals/track
         const workerUrl = `https://referrals-api.in0v8.workers.dev${workerPath}${url.search}`;
         const resp = await fetch(new Request(workerUrl, {
