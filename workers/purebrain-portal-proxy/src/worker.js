@@ -259,34 +259,32 @@ export default {
         respHeaders.set('Access-Control-Allow-Origin', '*');
         return new Response(resp.body, { status: resp.status, headers: respHeaders });
       }
-      // Admin referral endpoints → referrals-api Worker (D1)
+      // Admin referral endpoints → referrals-api Worker (D1 purebrain-referrals)
+      //
       // SECURITY (2026-05-09 V-11 regression on referral-v1): X-Admin-Token now sourced from
       // env.ADMIN_TOKEN secret. Hardcoded literal `purebrain-admin-2026` was retired on `main`
       // by commit 1fe0a3e (2026-05-07) but branch divergence left it live on referral-v1 until
       // this commit. Token rotated and bound via wrangler secret put on both portal-proxy and
       // admin-api workers concurrent with this change.
-      if (url.pathname.startsWith('/api/admin/affiliat') || url.pathname.startsWith('/api/admin/payout') || url.pathname.startsWith('/api/admin/referral/') || url.pathname === '/api/admin/stats') {
+      //
+      // EXPANDED 2026-05-12 (CTO Track B/C cutover): added /partners, /commission-report,
+      // /payments/manual, /applications. Old duplicate dead-code block below this one
+      // removed in same commit per Blocker #6. Single block now handles all admin
+      // referral paths routed to referrals-api.
+      if (
+        url.pathname.startsWith('/api/admin/affiliat') ||
+        url.pathname.startsWith('/api/admin/payout') ||
+        url.pathname.startsWith('/api/admin/referral/') ||
+        url.pathname === '/api/admin/stats' ||
+        url.pathname === '/api/admin/partners' ||
+        url.pathname === '/api/admin/commission-report' ||
+        url.pathname.startsWith('/api/admin/payments/manual') ||
+        url.pathname.startsWith('/api/admin/applications')
+      ) {
         const workerPath = url.pathname.replace('/api/admin', '/admin');
         const workerUrl = `https://referrals-api.in0v8.workers.dev${workerPath}${url.search}`;
         const proxyHeaders = new Headers(request.headers);
         if (env.ADMIN_TOKEN) proxyHeaders.set('X-Admin-Token', env.ADMIN_TOKEN);
-        const resp = await fetch(new Request(workerUrl, {
-          method: request.method, headers: proxyHeaders,
-          body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : null,
-        }));
-        const respHeaders = new Headers(resp.headers);
-        respHeaders.set('Access-Control-Allow-Origin', '*');
-        return new Response(resp.body, { status: resp.status, headers: respHeaders });
-      }
-      // Admin referral endpoints → referrals-api Worker (D1)
-      // NOTE: duplicate dead-code block of the above (identical `if` always matches first block).
-      // Left in place per dispatch scope; token literal patched defensively so any future code
-      // shuffle cannot reintroduce the leak. Separate cleanup will remove the dead block.
-      if (url.pathname.startsWith('/api/admin/affiliat') || url.pathname.startsWith('/api/admin/payout') || url.pathname.startsWith('/api/admin/referral/') || url.pathname === '/api/admin/stats') {
-        const workerPath = url.pathname.replace('/api/admin', '/admin');
-        const proxyHeaders = new Headers(request.headers);
-        if (env.ADMIN_TOKEN) proxyHeaders.set('X-Admin-Token', env.ADMIN_TOKEN);
-        const workerUrl = `https://referrals-api.in0v8.workers.dev${workerPath}${url.search}`;
         const resp = await fetch(new Request(workerUrl, {
           method: request.method, headers: proxyHeaders,
           body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : null,
