@@ -1794,21 +1794,37 @@ export default {
       }
 
       // POST /admin/referral/assign — manually assign a client to a referrer
+      // Accepts both naming conventions:
+      //   { referrer_id, referred_email, referred_name }           — original
+      //   { referral_code, client_email, client_name }             — admin/referrals frontend
       if (method === "POST" && path === "/admin/referral/assign") {
         { const gate = await requireAdminUnified(request, env); if (!gate.ok) return err(gate.status || 401, "unauthorized"); }
         const body = await parseBody(request);
         if (!body) return err(400, "invalid json");
 
-        const { referrer_id, referred_email, referred_name } = body;
-        if (!referrer_id) return err(400, "referrer_id required");
-        if (!referred_email) return err(400, "referred_email required");
+        let referrer_id = body.referrer_id;
+        const referral_code = body.referral_code;
+        const referred_email = body.referred_email || body.client_email;
+        const referred_name = body.referred_name || body.client_name;
+
+        // Resolve referral_code → referrer_id when only the human-readable code is supplied
+        if (!referrer_id && referral_code) {
+          const lookup = await env.DB
+            .prepare("SELECT id FROM referrers WHERE referral_code = ? COLLATE NOCASE")
+            .bind(String(referral_code).trim()).first();
+          if (!lookup) return err(404, "referrer not found for code: " + referral_code);
+          referrer_id = lookup.id;
+        }
+
+        if (!referrer_id) return err(400, "referrer_id or referral_code required");
+        if (!referred_email) return err(400, "referred_email or client_email required");
 
         const now = new Date().toISOString();
         const res = await env.DB.prepare(
           `INSERT INTO referrals (referrer_id, referred_email, referred_name, status, created_at)
            VALUES (?, ?, ?, 'pending', ?)
            RETURNING *`
-        ).bind(referrer_id, referred_email.trim().toLowerCase(), (referred_name || "").trim(), now).all();
+        ).bind(referrer_id, String(referred_email).trim().toLowerCase(), String(referred_name || "").trim(), now).all();
         const row = res.results && res.results[0];
         return json({ ok: true, referral: row });
       }
