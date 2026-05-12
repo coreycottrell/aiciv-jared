@@ -397,6 +397,190 @@ async function parseBody(request) {
   catch (_e) { return null; }
 }
 
+/* ---------- affiliate auth helpers (PTT# Fix B, 2026-05-12) ----------
+ *
+ * Ported from purebrain-site/functions/api/referral/_shared.js (dead CF Pages
+ * Functions). Reason: CF Pages `_worker.js` override has dropped the entire
+ * functions/ directory from prod routing — affiliate login broke for all 66
+ * affiliates. Owner per `feedback_aether_chy_domain_boundaries.md`: Aether.
+ *
+ * CONSTITUTIONAL CONSTRAINTS:
+ *   - PBKDF2-SHA256 @ 100k iterations ONLY. NO bcrypt introduction.
+ *   - NO logging of email, password, password_hash, token, or IP.
+ *   - NO Resend / NO email send paths (per Jared 2026-05-12 + feedback_no_resend_ever.md).
+ *     forgot-password / reset-password DEFERRED — manual D1 reset via support
+ *     for affiliates who forget their password.
+ *
+ * Session token model: opaque 32-byte random hex, server-side validated by
+ * lookup in `affiliate_sessions` D1 table. NOT a JWT. 7-day TTL. Server-side
+ * revocable via DELETE.
+ */
+
+const AFFILIATE_SESSION_TTL_SECS = 86400 * 7;       // 7 days
+const AFFILIATE_LOGIN_MAX_ATTEMPTS = 10;            // per 15-min window
+const AFFILIATE_LOGIN_WINDOW_SECS = 900;            // 15 minutes
+const AFFILIATE_REGISTER_MAX_ATTEMPTS = 5;          // per hour (CTO Q6 add)
+const AFFILIATE_REGISTER_WINDOW_SECS = 3600;        // 1 hour
+const PBKDF2_ITERATIONS = 100000;
+const REFERRAL_CODE_PREFIX = "PB-";
+const REFERRAL_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const REFERRAL_CODE_LENGTH = 4;
+
+function _bufToHex(buf) {
+  return Array.from(buf).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function _hexToBuf(hex) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+  }
+  return bytes;
+}
+
+async function affiliateHashPassword(password) {
+  const salt = new Uint8Array(16);
+  crypto.getRandomValues(salt);
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+  const derivedBits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
+    keyMaterial,
+    256
+  );
+  return `pbkdf2:${PBKDF2_ITERATIONS}:${_bufToHex(salt)}:${_bufToHex(new Uint8Array(derivedBits))}`;
+}
+
+/**
+ * Verifies password against stored hash. Supports 3 formats:
+ *   1. PBKDF2 (`pbkdf2:iterations:salt_hex:hash_hex`) — current standard.
+ *   2. Legacy bcrypt (`$2b$...` / `$2a$...`) — returns false (Workers cannot
+ *      verify bcrypt). Caller MUST detect this and force a reset flow.
+ *   3. Legacy SHA-256 (`salt:hexdigest`) — accepted then auto-migrated to PBKDF2
+ *      by caller (session handler) on successful login.
+ */
+async function affiliateVerifyPassword(password, storedHash) {
+  if (!storedHash) return false;
+  if (storedHash.startsWith("pbkdf2:")) {
+    const parts = storedHash.split(":");
+    if (parts.length !== 4) return false;
+    const iterations = parseInt(parts[1], 10);
+    const salt = _hexToBuf(parts[2]);
+    const expectedHash = parts[3];
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(password),
+      "PBKDF2",
+      false,
+      ["deriveBits"]
+    );
+    const derivedBits = await crypto.subtle.deriveBits(
+      { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
+      keyMaterial,
+      256
+    );
+    return _bufToHex(new Uint8Array(derivedBits)) === expectedHash;
+  }
+  if (storedHash.startsWith("$2b$") || storedHash.startsWith("$2a$")) {
+    return false; // bcrypt — caller must force reset
+  }
+  if (storedHash.includes(":") && !storedHash.startsWith("pbkdf2:")) {
+    const idx = storedHash.indexOf(":");
+    const saltVal = storedHash.substring(0, idx);
+    const expectedHex = storedHash.substring(idx + 1);
+    const data = new TextEncoder().encode(`${saltVal}:${password}`);
+    const digest = await crypto.subtle.digest("SHA-256", data);
+    return _bufToHex(new Uint8Array(digest)) === expectedHex;
+  }
+  return false;
+}
+
+async function affiliateCreateSession(db, referralCode) {
+  const arr = new Uint8Array(32);
+  crypto.getRandomValues(arr);
+  const token = _bufToHex(arr);
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAt = now + AFFILIATE_SESSION_TTL_SECS;
+  await db
+    .prepare("INSERT INTO affiliate_sessions (token, referral_code, expires_at) VALUES (?, ?, ?)")
+    .bind(token, referralCode.toUpperCase(), expiresAt)
+    .run();
+  return token;
+}
+
+function affiliateGetClientIP(request) {
+  return request.headers.get("CF-Connecting-IP")
+      || request.headers.get("X-Forwarded-For")
+      || "0.0.0.0";
+}
+
+async function affiliateHashIP(ip) {
+  const data = new TextEncoder().encode(ip);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return _bufToHex(new Uint8Array(digest)).substring(0, 16);
+}
+
+/**
+ * D1-backed rate limiter. Same algorithm as _shared.js:isRateLimited.
+ * Key namespaces (constitutional, must not cross-pollinate):
+ *   "login:<ip_hash>"     → /referrals/session
+ *   "register:<ip_hash>"  → /referrals/register
+ */
+async function affiliateIsRateLimited(db, key, maxPerWindow, windowSecs) {
+  const now = Math.floor(Date.now() / 1000);
+  const row = await db
+    .prepare("SELECT count, window_start FROM rate_limits WHERE key = ?")
+    .bind(key)
+    .first();
+  if (!row) {
+    await db
+      .prepare("INSERT OR REPLACE INTO rate_limits (key, count, window_start) VALUES (?, 1, ?)")
+      .bind(key, now).run();
+    return false;
+  }
+  if (now - row.window_start > windowSecs) {
+    await db
+      .prepare("UPDATE rate_limits SET count = 1, window_start = ? WHERE key = ?")
+      .bind(now, key).run();
+    return false;
+  }
+  if (row.count >= maxPerWindow) return true;
+  await db
+    .prepare("UPDATE rate_limits SET count = count + 1 WHERE key = ?")
+    .bind(key).run();
+  return false;
+}
+
+function _generateReferralCode() {
+  const arr = new Uint8Array(REFERRAL_CODE_LENGTH);
+  crypto.getRandomValues(arr);
+  let suffix = "";
+  for (let i = 0; i < REFERRAL_CODE_LENGTH; i++) {
+    suffix += REFERRAL_CODE_CHARS[arr[i] % REFERRAL_CODE_CHARS.length];
+  }
+  return `${REFERRAL_CODE_PREFIX}${suffix}`;
+}
+
+async function affiliateGenerateUniqueCode(db) {
+  for (let i = 0; i < 50; i++) {
+    const code = _generateReferralCode();
+    const existing = await db
+      .prepare("SELECT id FROM referrers WHERE referral_code = ? COLLATE NOCASE")
+      .bind(code).first();
+    if (!existing) return code;
+  }
+  throw new Error("could not generate unique referral code after 50 attempts");
+}
+
+function affiliateReferralLink(code) {
+  return `https://purebrain.ai/?ref=${code}`;
+}
+
 /* ---------- route handler ---------- */
 
 export default {
@@ -424,6 +608,175 @@ export default {
     }
 
     try {
+      // ─────────────────────────────────────────────
+      // POST /referrals/session — affiliate login (PTT# Fix B, 2026-05-12)
+      //
+      // Ported from purebrain-site/functions/api/referral/session.js (dead CF
+      // Pages Function — _worker.js override stripped functions/ routing).
+      //
+      // Body: { email? | referral_code?, password }
+      // Returns: { ok, session_token, referral_code, expires_in }
+      //
+      // First-login flow: if password_hash is empty, the first POST CLAIMS
+      // the password (sets it for that referrer). This is intentional — all
+      // 66 legacy affiliates have empty hashes until they log in once. No
+      // affiliate-comms blast required to "set" a password; they choose it
+      // on first login.
+      //
+      // Rate limit: 10 attempts / 15 min per IP hash.
+      // ─────────────────────────────────────────────
+      if (method === "POST" && path === "/referrals/session") {
+        const body = await parseBody(request);
+        if (!body) return err(400, "invalid json");
+
+        const code = String(body.referral_code || "").trim().toUpperCase();
+        const email = String(body.email || "").trim().toLowerCase();
+        const password = String(body.password || "").trim();
+
+        if (!password) return err(400, "password required");
+        if (!code && !email) return err(400, "referral_code or email required");
+
+        const ipHash = await affiliateHashIP(affiliateGetClientIP(request));
+        const limited = await affiliateIsRateLimited(
+          env.DB,
+          `login:${ipHash}`,
+          AFFILIATE_LOGIN_MAX_ATTEMPTS,
+          AFFILIATE_LOGIN_WINDOW_SECS
+        );
+        if (limited) {
+          return err(429, "too many login attempts. Please wait 15 minutes.");
+        }
+
+        let row;
+        if (code) {
+          row = await env.DB
+            .prepare("SELECT referral_code, password_hash FROM referrers WHERE referral_code = ? COLLATE NOCASE")
+            .bind(code).first();
+        } else {
+          row = await env.DB
+            .prepare("SELECT referral_code, password_hash FROM referrers WHERE user_email = ? COLLATE NOCASE")
+            .bind(email).first();
+        }
+        if (!row) return err(404, "account not found");
+
+        const storedHash = row.password_hash;
+
+        if (!storedHash) {
+          // First login — claim the password
+          const newHash = await affiliateHashPassword(password);
+          await env.DB
+            .prepare("UPDATE referrers SET password_hash = ? WHERE referral_code = ? COLLATE NOCASE")
+            .bind(newHash, row.referral_code).run();
+          // Audit log — code is NOT PII; never log email/password/token/IP.
+          console.log(`[SECURITY] First-login password claim for affiliate code ${row.referral_code}`);
+        } else {
+          const valid = await affiliateVerifyPassword(password, storedHash);
+          if (!valid) {
+            // Legacy bcrypt rows cannot be verified in Workers — direct user
+            // to forgot-password flow. (forgot/reset endpoints DEFERRED per
+            // 2026-05-12 constitutional ruling: no Resend. Interim: manual
+            // D1 reset via support — admin sets password_hash='' for the
+            // affiliate, then they re-claim on next login.)
+            if (storedHash.startsWith("$2b$") || storedHash.startsWith("$2a$")) {
+              return err(401, "Your account requires a password reset. Contact support.");
+            }
+            return err(401, "incorrect password");
+          }
+          // Auto-migrate legacy SHA-256 hashes to PBKDF2 on successful login.
+          if (!storedHash.startsWith("pbkdf2:")) {
+            const migratedHash = await affiliateHashPassword(password);
+            await env.DB
+              .prepare("UPDATE referrers SET password_hash = ? WHERE referral_code = ? COLLATE NOCASE")
+              .bind(migratedHash, row.referral_code).run();
+          }
+        }
+
+        const sessionToken = await affiliateCreateSession(env.DB, row.referral_code);
+        return json({
+          ok: true,
+          session_token: sessionToken,
+          referral_code: row.referral_code,
+          expires_in: AFFILIATE_SESSION_TTL_SECS,
+        });
+      }
+
+      // ─────────────────────────────────────────────
+      // POST /referrals/register — new affiliate signup (PTT# Fix B, 2026-05-12)
+      //
+      // Ported from purebrain-site/functions/api/referral/register.js (dead).
+      // Body: { name, email, password?, paypal_email? }
+      // Returns: { ok, referral_code, referral_link, existing }
+      //
+      // Idempotent on email: existing referrer returned with existing:true.
+      // Auto-generates a random password if caller doesn't supply one (or
+      // supplies <6 chars). Password_hash stored, raw password discarded.
+      //
+      // Rate limit: 5 attempts / hour per IP hash (CTO Q6 add — not in source).
+      // ─────────────────────────────────────────────
+      if (method === "POST" && path === "/referrals/register") {
+        const body = await parseBody(request);
+        if (!body) return err(400, "invalid json");
+
+        const name = String(body.name || "").trim();
+        const email = String(body.email || "").trim().toLowerCase();
+        const password = String(body.password || "").trim();
+        const paypalEmail = String(body.paypal_email || "").trim();
+
+        if (!email || !email.includes("@") || !email.split("@").pop().includes(".")) {
+          return err(400, "invalid email");
+        }
+
+        const ipHash = await affiliateHashIP(affiliateGetClientIP(request));
+        const limited = await affiliateIsRateLimited(
+          env.DB,
+          `register:${ipHash}`,
+          AFFILIATE_REGISTER_MAX_ATTEMPTS,
+          AFFILIATE_REGISTER_WINDOW_SECS
+        );
+        if (limited) {
+          return err(429, "too many registration attempts. Please wait an hour.");
+        }
+
+        // Auto-generate a password if not provided or too short.
+        let pw = password;
+        if (!pw || pw.length < 6) {
+          const arr = new Uint8Array(16);
+          crypto.getRandomValues(arr);
+          pw = Array.from(arr).map((b) => b.toString(36)).join("").substring(0, 20);
+        }
+        const pwHash = await affiliateHashPassword(pw);
+
+        // Idempotent: existing referrer → return existing code, do NOT overwrite hash.
+        const existing = await env.DB
+          .prepare("SELECT id, referral_code FROM referrers WHERE user_email = ? COLLATE NOCASE")
+          .bind(email).first();
+        if (existing) {
+          return json({
+            ok: true,
+            referral_code: existing.referral_code,
+            referral_link: affiliateReferralLink(existing.referral_code),
+            existing: true,
+            message: "You are already registered. Here is your existing referral link.",
+          });
+        }
+
+        const code = await affiliateGenerateUniqueCode(env.DB);
+        const now = new Date().toISOString();
+        // Default partner_tier='silver' (15%) matches /partners/signup convention.
+        await env.DB.prepare(
+          `INSERT INTO referrers (user_name, user_email, referral_code, password_hash, paypal_email, created_at, partner_tier, total_sales)
+           VALUES (?, ?, ?, ?, ?, ?, 'silver', 0)`
+        ).bind(name, email, code, pwHash, paypalEmail, now).run();
+
+        return json({
+          ok: true,
+          referral_code: code,
+          referral_link: affiliateReferralLink(code),
+          existing: false,
+          message: "Registration successful!",
+        });
+      }
+
       // ─────────────────────────────────────────────
       // POST endpoints
       // ─────────────────────────────────────────────
