@@ -6,13 +6,27 @@ Module 1: 332MB, Module 2: 604MB
 import boto3
 import os
 import sys
+from pathlib import Path
 from botocore.config import Config
 
-# R2 credentials
-ACCOUNT_ID = "19bb52a20bc7fc1b34036fea91f6860c"
-ACCESS_KEY = "6c0d119663825c37e74c915df3a38864"
-SECRET_KEY = "30c40c061fd2a920824fae3fbc05db69fc1d39199d5821fa9841e08223b73136"
-BUCKET = "purebrain-video"
+# R2 credentials — loaded from .env (chmod 600), NEVER hardcoded.
+# Moved out of source 2026-05-13 per Jared. Repo grep should never find these values again.
+def _load_env(env_path=Path(__file__).parent.parent / ".env"):
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+_load_env()
+
+ACCOUNT_ID = os.environ["R2_BRAINIAC_ACCOUNT_ID"]
+ACCESS_KEY = os.environ["R2_BRAINIAC_ACCESS_KEY"]
+SECRET_KEY = os.environ["R2_BRAINIAC_SECRET_KEY"]
+BUCKET = os.environ.get("R2_BRAINIAC_BUCKET", "purebrain-video")
 ENDPOINT = f"https://{ACCOUNT_ID}.r2.cloudflarestorage.com"
 
 # File paths
