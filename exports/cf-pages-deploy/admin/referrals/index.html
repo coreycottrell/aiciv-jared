@@ -425,11 +425,12 @@ tr:hover td{background:rgba(42,147,193,0.04)}
         <table>
           <thead>
             <tr>
-              <th>Date</th>
               <th>Referrer</th>
-              <th>Referred Email</th>
-              <th>Status</th>
-              <th>Commission</th>
+              <th>Email</th>
+              <th>Code</th>
+              <th>Tier</th>
+              <th>Commissions</th>
+              <th>Gross</th>
             </tr>
           </thead>
           <tbody id="commBody"></tbody>
@@ -1981,96 +1982,97 @@ tr:hover td{background:rgba(42,147,193,0.04)}
     }).catch(function() { /* non-fatal */ });
   }
 
-  function loadCommissionReport() {
+  /* P1 #6 (CTS 2026-05-13): Aligned to worker contract.
+     Worker accepts ?start=YYYY-MM-DD&end=YYYY-MM-DD&referrer_id=N and returns
+     { report: [...], totals: {...}, period: {start,end} } where each report row is
+     a per-referrer GROUPED aggregate (referrer_id, referrer_name, referrer_email,
+     referral_code, partner_tier, tier_rate, commission_count, gross_commissions,
+     support_tier_count). The previous client-side fallback was masking the
+     server filter being silently broken — removed. */
+  function commPeriodRange() {
     var period = document.getElementById('commPeriod').value;
+    var now = new Date();
+    var y = now.getUTCFullYear();
+    var m = now.getUTCMonth();
+    function iso(d) { return d.toISOString().slice(0, 10); }
+    if (period === 'month') {
+      return { start: iso(new Date(Date.UTC(y, m, 1))), end: iso(new Date(Date.UTC(y, m + 1, 1))) };
+    }
+    if (period === 'quarter') {
+      var qStart = Math.floor(m / 3) * 3;
+      return { start: iso(new Date(Date.UTC(y, qStart, 1))), end: iso(new Date(Date.UTC(y, qStart + 3, 1))) };
+    }
+    if (period === 'year') {
+      return { start: iso(new Date(Date.UTC(y, 0, 1))), end: iso(new Date(Date.UTC(y + 1, 0, 1))) };
+    }
+    /* 'all' — wide window */
+    return { start: '2020-01-01', end: iso(new Date(Date.UTC(y + 1, 0, 1))) };
+  }
+
+  function loadCommissionReport() {
+    var range = commPeriodRange();
     var partnerId = document.getElementById('commPartner').value;
-    var params = '?period=' + period;
-    if (partnerId) params += '&partner_id=' + partnerId;
+    var params = '?start=' + range.start + '&end=' + range.end;
+    if (partnerId) params += '&referrer_id=' + encodeURIComponent(partnerId);
 
     api('GET', '/api/admin/commission-report' + params).then(function(d) {
-      state.commissionData = d.commissions || d.data || [];
+      state.commissionData = d.report || [];
+      state.commissionTotals = d.totals || null;
+      state.commissionPeriod = d.period || range;
       renderCommissionReport();
     }).catch(function(err) {
-      /* Fallback: build from affiliates data */
-      buildCommissionFromAffiliates();
+      state.commissionData = [];
+      state.commissionTotals = null;
+      renderCommissionReport();
+      toast('Commission report failed: ' + (err && err.message ? err.message : 'unknown'), 'error');
     });
   }
 
-  function buildCommissionFromAffiliates() {
-    /* Fix: only show commissions for affiliates who have referrals */
-    var partnerId = document.getElementById('commPartner').value;
-    var period = document.getElementById('commPeriod').value;
-    var now = new Date();
-    var all = [];
-    for (var i = 0; i < state.affiliates.length; i++) {
-      var a = state.affiliates[i];
-      if (partnerId && String(a.id) !== partnerId) continue;
-      var hist = a.history || [];
-      if (hist.length === 0) continue; /* Fix: skip affiliates with no referrals */
-      for (var j = 0; j < hist.length; j++) {
-        var h = hist[j];
-        /* Period filter */
-        if (period !== 'all' && h.created_at) {
-          var d = new Date(h.created_at);
-          if (period === 'month' && (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear())) continue;
-          if (period === 'quarter') {
-            var cq = Math.floor(now.getMonth() / 3);
-            var hq = Math.floor(d.getMonth() / 3);
-            if (hq !== cq || d.getFullYear() !== now.getFullYear()) continue;
-          }
-          if (period === 'year' && d.getFullYear() !== now.getFullYear()) continue;
-        }
-        all.push({
-          created_at: h.created_at,
-          referrer_name: a.name,
-          payer_email: h.referred_email,
-          status: h.status,
-          commission: h.earnings || 0
-        });
-      }
-    }
-    state.commissionData = all;
-    renderCommissionReport();
-  }
-
   function renderCommissionReport() {
-    var data = state.commissionData;
+    var data = state.commissionData || [];
     var rows = [];
-    var totalComm = 0;
-    var countCompleted = 0;
+    var grossSum = 0;
+    var countSum = 0;
     for (var i = 0; i < data.length; i++) {
       var c = data[i];
-      var statusCls = (c.status === 'completed') ? 'status-completed' : 'status-pending';
-      totalComm += Number(c.commission || c.amount || 0);
-      if (c.status === 'completed') countCompleted++;
+      var gross = Number(c.gross_commissions || 0);
+      var count = Number(c.commission_count || 0);
+      grossSum += gross;
+      countSum += count;
+      var tierPct = c.tier_rate ? (Math.round(c.tier_rate * 10000) / 100) + '%' : '--';
       rows.push('<tr>'
-        + '<td>' + formatDate(c.created_at || c.date) + '</td>'
-        + '<td>' + esc(c.referrer_name || c.partner_name || '--') + '</td>'
-        + '<td>' + esc(c.payer_email || c.referred_email || '--') + '</td>'
-        + '<td><span class="status ' + statusCls + '">' + esc(c.status || '--') + '</span></td>'
-        + '<td>' + formatMoney(c.commission || c.amount) + '</td>'
+        + '<td>' + esc(c.referrer_name || '--') + '</td>'
+        + '<td>' + esc(c.referrer_email || '--') + '</td>'
+        + '<td>' + esc(c.referral_code || '--') + '</td>'
+        + '<td>' + esc(c.partner_tier || '--') + ' (' + tierPct + ')</td>'
+        + '<td>' + count + '</td>'
+        + '<td>' + formatMoney(gross) + '</td>'
         + '</tr>');
     }
-    document.getElementById('commBody').innerHTML = rows.join('') || '<tr><td colspan="5" style="text-align:center;color:var(--dim);padding:2rem">No commission data</td></tr>';
+    document.getElementById('commBody').innerHTML = rows.join('') || '<tr><td colspan="6" style="text-align:center;color:var(--dim);padding:2rem">No commission data</td></tr>';
 
+    /* Prefer server-supplied totals when present (consistent with worker schema). */
+    var totals = state.commissionTotals;
+    var grossDisplay = totals && totals.gross !== undefined ? totals.gross : grossSum;
+    var countDisplay = totals && totals.count !== undefined ? totals.count : countSum;
     document.getElementById('commTotals').innerHTML =
-      '<div class="report-total"><div class="rt-label">Total Commissions</div><div class="rt-value">' + formatMoney(totalComm) + '</div></div>'
-      + '<div class="report-total"><div class="rt-label">Records</div><div class="rt-value">' + data.length + '</div></div>'
-      + '<div class="report-total"><div class="rt-label">Completed</div><div class="rt-value" style="color:var(--green)">' + countCompleted + '</div></div>';
+      '<div class="report-total"><div class="rt-label">Total Gross</div><div class="rt-value">' + formatMoney(grossDisplay) + '</div></div>'
+      + '<div class="report-total"><div class="rt-label">Referrers</div><div class="rt-value">' + data.length + '</div></div>'
+      + '<div class="report-total"><div class="rt-label">Commission Records</div><div class="rt-value" style="color:var(--green)">' + countDisplay + '</div></div>';
   }
 
   document.getElementById('btnCommLoad').addEventListener('click', function() {
     loadCommissionReport();
   });
 
-  /* CSV Export */
+  /* CSV Export — grouped commission report (P1 #6 contract alignment) */
   document.getElementById('btnCommExport').addEventListener('click', function() {
-    var data = state.commissionData;
+    var data = state.commissionData || [];
     if (!data.length) { toast('No data to export', 'error'); return; }
-    var csv = 'Date,Referrer,Referred Email,Status,Commission\n';
+    var csv = 'Referrer,Email,Code,Tier,TierRate,CommissionCount,GrossCommissions\n';
     for (var i = 0; i < data.length; i++) {
       var c = data[i];
-      csv += '"' + formatDate(c.created_at || c.date) + '","' + (c.referrer_name || c.partner_name || '') + '","' + (c.payer_email || c.referred_email || '') + '","' + (c.status || '') + '",' + (c.commission || c.amount || 0) + '\n';
+      csv += '"' + (c.referrer_name || '') + '","' + (c.referrer_email || '') + '","' + (c.referral_code || '') + '","' + (c.partner_tier || '') + '",' + (c.tier_rate || 0) + ',' + (c.commission_count || 0) + ',' + (c.gross_commissions || 0) + '\n';
     }
     var blob = new Blob([csv], { type: 'text/csv' });
     var url = URL.createObjectURL(blob);
