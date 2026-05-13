@@ -734,18 +734,32 @@ def deploy(paths: list, base_dir: Path, dry_run: bool = False,
             print(f"  🛡️  RE-INJECTED protected: {key}", file=sys.stderr)
             merged_manifest[key] = val
 
-    # Block any deployment that tries to CHANGE protected paths
+    # Block any deployment that tries to CHANGE protected paths.
+    # EXCEPTION: if a protected file is MISSING from current_manifest, this is a
+    # restoration (the path was wiped by an upstream dual-source deploy and we
+    # are restoring canonical bytes from aether's exports/cf-pages-deploy/).
+    # Restoration is allowed; overwriting an existing protected hash is blocked.
     blocked = []
-    for site_path in new_hashes:
+    restored = []
+    for site_path, new_hash in new_hashes.items():
         for protected in PROTECTED_PATHS:
-            if site_path.lstrip("/").startswith(protected):
+            if not site_path.lstrip("/").startswith(protected):
+                continue
+            if site_path not in current_manifest:
+                restored.append(site_path)
+            elif current_manifest[site_path] != new_hash:
                 blocked.append(site_path)
+            # else: unchanged hash, no action
     if blocked:
-        print(f"\n🚨 BLOCKED: Cannot deploy to PROTECTED paths:", file=sys.stderr)
+        print(f"\n🚨 BLOCKED: Cannot CHANGE existing PROTECTED paths:", file=sys.stderr)
         for b in blocked:
             print(f"   ❌ {b}", file=sys.stderr)
         print(f"These paths are FROZEN (CONSTITUTIONAL). Aborting.", file=sys.stderr)
         sys.exit(1)
+    if restored:
+        print(f"\n🛡️  RESTORING {len(restored)} missing PROTECTED paths (canonical from aether):", file=sys.stderr)
+        for r in restored:
+            print(f"   ↩  {r}", file=sys.stderr)
 
     # Summary
     added = sum(1 for p in new_hashes if p not in current_manifest)
