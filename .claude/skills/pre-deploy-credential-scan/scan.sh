@@ -57,6 +57,22 @@ scan_pattern "eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}" \
 scan_pattern "(Bearer|Basic)\s+[A-Za-z0-9._=/+-]{20,}" \
   "Hardcoded Authorization header literal" "CRITICAL"
 
+# 7. Prefix-less hex secrets (binding-secret class — openssl rand -hex 32 output)
+# 2026-05-13: added after INTERNAL_BINDING_SECRET was leaked via trio chat row
+# e8a5d353-336f-4b7b-b52d-12669e137727. The old scanner had no prefix-less coverage —
+# 64-hex-char binding secrets in deploy artifacts would have shipped silently.
+# Triggers on near-context (camelCase/PascalCase/UPPER_SNAKE identifier containing
+# "secret"/"key"/"token"/"binding" + = or :) to reduce false positives from commit
+# hashes / asset hashes / UUIDs / cache-bust query params.
+scan_pattern "[A-Za-z_]*([Ss]ecret|SECRET|[Kk]ey|KEY|[Tt]oken|TOKEN|[Bb]inding|BINDING)[A-Za-z_-]*\s*[=:]\s*['\"][a-fA-F0-9]{32,64}['\"]" \
+  "Prefix-less hex-32/64 secret literal (binding-secret class)" "CRITICAL"
+
+# 8. Prefix-less base64url secrets (32-byte+ random secrets)
+# Same incident class — base64-encoded random secrets without recognizable prefix.
+# Requires near-context (identifier name contains secret/key/token) to fire.
+scan_pattern "[A-Za-z_]*([Ss]ecret|SECRET|[Kk]ey|KEY|[Tt]oken|TOKEN)[A-Za-z_-]*\s*[=:]\s*['\"][A-Za-z0-9_-]{40,}['\"]" \
+  "Prefix-less base64url secret literal (32-byte random class)" "HIGH"
+
 echo ""
 echo "─────────────────────────────────────────"
 echo "Scan complete: $CRITICAL_HITS CRITICAL, $HIGH_HITS HIGH"
