@@ -73,7 +73,6 @@ html { margin-top: 0 !important; }
 	<meta property="og:url" content="https://purebrain.ai/elementor-1502/" class="yoast-seo-meta-tag" />
 	<meta property="og:site_name" content="Pure Brain" class="yoast-seo-meta-tag" />
 	<meta property="article:modified_time" content="2026-03-10T10:28:05+00:00" class="yoast-seo-meta-tag" />
-	<meta property="og:image" content="https://purebrain.ai/wp-content/uploads/2026/02/cropped-cropped-MA1.BI-1.2.4-002-211107-Icon-PT.png" class="yoast-seo-meta-tag" />
 	<meta name="twitter:card" content="summary_large_image" class="yoast-seo-meta-tag" />
 	<meta name="twitter:label1" content="Est. reading time" class="yoast-seo-meta-tag" />
 	<meta name="twitter:data1" content="78 minutes" class="yoast-seo-meta-tag" />
@@ -539,8 +538,8 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 	<meta property="og:site_name" content="Pure Brain" />
 	<meta property="article:modified_time" content="2026-02-16T17:03:41+00:00" />
 	<meta property="og:image" content="https://purebrain.ai/wp-content/uploads/2026/02/Pure-Brain-Vid-3.gif" />
-	<meta property="og:image:width" content="480" />
-	<meta property="og:image:height" content="270" />
+	<meta property="og:image:width" content="1200" />
+	<meta property="og:image:height" content="630" />
 	<meta property="og:image:type" content="image/gif" />
 	<meta name="twitter:card" content="summary_large_image" />
 	<meta name="twitter:title" content="Your Brain. Your AI. Actual Intelligence" />
@@ -1722,9 +1721,10 @@ nav {
                     <h3 class="pricing-card__tier">Unified</h3>
                     <p class="pricing-card__tagline">Full integration & priority access</p>
                     <div class="pricing-card__price">
-                        <span class="pricing-card__amount">$999</span>
+                        <span class="pricing-card__amount">$1,097</span>
                         <span class="pricing-card__period">/month</span>
-                        <span class="pricing-card__original-price">$1,089/mo at launch</span>
+                        <span class="pricing-card__original-price"></span>
+                        <div id="pb-bigpartner-banner" data-tier="unified"></div>
                     </div>
                     <ul class="pricing-card__features">
                                                 <li class="pricing-card__feature pricing-card__feature--blue">
@@ -1992,7 +1992,7 @@ nav {
 
             <p style="margin-top: 40px; color: var(--grey); font-size: 0.95rem;">
                 <strong style="color: var(--white);">vs. Custom AI Development:</strong> Custom dev costs $50-200k+ one-time plus ongoing maintenance.<br>
-                <span class="text-blue">PURE</span> <span class="text-blue">BR</span><span class="text-orange">AI</span><span class="text-blue">N</span>: $149-999/mo and we handle everything. The ROI is obvious.
+                <span class="text-blue">PURE</span> <span class="text-blue">BR</span><span class="text-orange">AI</span><span class="text-blue">N</span>: $297-1,097/mo and we handle everything. The ROI is obvious.
             </p>
         </div>
     </section>
@@ -4613,18 +4613,31 @@ const a=JSON.parse(document.getElementById("wp-emoji-settings").textContent),o=(
    * Leave as empty strings to use one-time payment flow instead.
    */
   var PLAN_IDS = {
-    Awakened:  'P-2SA65600MT088594TNGLTFKY',
-    Partnered: 'P-3VH43554A66001716NGLTFKY',
-    Unified:   'P-43A28944XN5237411NGLTFLA',
+    Awakened:  '',
+    Partnered: '',
+    Unified:   '',
   };
 
-  // Pricing — matches purebrain.ai tiers
+  // Pricing — matches purebrain.ai tiers (one-time payment, updated 2026-05-13)
   var PRICES = {
-    Awakened:  '149.00',
-    Bonded:    '299.00',
-    Partnered: '499.00',
-    Unified:   '999.00',
+    Awakened:  '297.00',
+    Partnered: '597.00',
+    Unified:   '1097.00',
   };
+
+  // Big Partner pricing bridge — when /js/big-partner-pricing.js fires its event,
+  // patch PRICES so the PayPal SDK charges the discounted amount, not standard price.
+  document.addEventListener('pb:big-partner-pricing', function (ev) {
+    try {
+      var p = (ev && ev.detail) || {};
+      if (!p || !p.is_discounted) return;
+      var t = (p.tier || '').toLowerCase();
+      var key = t.charAt(0).toUpperCase() + t.slice(1);
+      if (PRICES[key]) {
+        PRICES[key] = (Number(p.effective_price) || 0).toFixed(2);
+      }
+    } catch (_e) { /* fail-soft */ }
+  });
 
   // PayPal business account that receives payments
   var BUSINESS_EMAIL = 'support@puremarketing.ai';
@@ -5080,7 +5093,6 @@ const a=JSON.parse(document.getElementById("wp-emoji-settings").textContent),o=(
           createSubscription: function (data, actions) {
             return actions.subscription.create({
               plan_id: planId,
-              custom_id: 'PB-' + tier.toUpperCase() + '-' + (window.pbSessionUuid || ''),
               application_context: {
                 shipping_preference: 'NO_SHIPPING',
                 user_action: 'SUBSCRIBE_NOW'
@@ -5321,31 +5333,6 @@ const a=JSON.parse(document.getElementById("wp-emoji-settings").textContent),o=(
     window.paymentConfirmed = true;
     window.paymentTier      = tier;
     window.paymentOrderId   = orderId;
-
-    // B3 (referral-v1, 2026-05-07): pb_ref attribution POST.
-    // If visitor arrived with ?ref=PB-XXXX, fire the pending-row creation
-    // POST to portal-proxy /api/referral/complete (proxy → referrals-api
-    // /referrals/complete). Webhook later upgrades pending → paid.
-    // Fire-and-forget — never blocks redirect.
-    (function() {
-      try {
-        var refCode = typeof window.getPbRef === 'function' ? window.getPbRef() : null;
-        if (!refCode) return;
-        var customerEmail = (payerInfo && payerInfo.email_address) ? payerInfo.email_address : '';
-        fetch('https://portal.purebrain.ai/api/referral/complete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            pb_ref: refCode,
-            payment_id: orderId || '',
-            customer_email: customerEmail,
-            tier: tier || '',
-            source_page: 'unified'
-          }),
-          keepalive: true
-        }).catch(function() { /* fire-and-forget */ });
-      } catch (e) { /* never block redirect on attribution failure */ }
-    })();
 
     // Close the modal
     closeModal();
@@ -5652,7 +5639,6 @@ const payTestData = {
 
 // Generate a unique session UUID for this flow instance
 payTestData.sessionUuid = (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) { var r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16); }));
-window.pbSessionUuid = payTestData.sessionUuid; // MED-003 escape hatch: expose UUID-only (no PII) for cross-script-tag readers — see CTO review 2026-05-07
 try { sessionStorage.setItem('pb_sessionUuid', payTestData.sessionUuid); } catch(e) {}
 
 // ---------------------------------------------------------------------------
@@ -8252,6 +8238,9 @@ if (typeof module !== 'undefined' && module.exports) {
 </script>
 
 <script src="/js/payment-glue.js"></script>
+
+<!-- Big Partner pricing banner (Q1 2026-05-13) — PRICES bridge is inline in PayPal IIFE -->
+<script src="/js/big-partner-pricing.js" defer></script>
 
 <!-- consent gate: in /js/payment-shared.js -->
 
