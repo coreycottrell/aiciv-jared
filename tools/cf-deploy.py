@@ -753,7 +753,19 @@ def deploy(paths: list, base_dir: Path, dry_run: bool = False,
     # Drift on any path means the next external push regresses production.
     # Pre-deploy parity check on the files being deployed catches drift before
     # we make it worse. Set CF_DEPLOY_SKIP_PARITY=1 to bypass (emergency-only).
-    if new_files and os.environ.get("CF_DEPLOY_SKIP_PARITY") != "1":
+    #
+    # PROJECT-AWARE: only applies to projects wired to puretechnyc/purebrain-site
+    # (i.e., `purebrain-production`). Other CF Pages projects (`brainiac-purebrain`,
+    # `777-command-center`, etc.) have no dual-source race — the gate is a
+    # category error for them. Added 2026-05-13 after the gate spuriously
+    # blocked a brainiac.purebrain.ai hub deploy by diffing against the wrong
+    # repo. The proper canonical-flow protection for unwired projects is the
+    # cf-deploy.py ban itself + per-project source-of-truth discipline.
+    DUAL_SOURCE_PROJECTS = {"purebrain-production"}
+    _project = config["project_name"]  # from get_config()
+    if (new_files
+        and os.environ.get("CF_DEPLOY_SKIP_PARITY") != "1"
+        and _project in DUAL_SOURCE_PROJECTS):
         try:
             _parity_pre_deploy_check(new_files)
         except _ParityDriftError as e:
