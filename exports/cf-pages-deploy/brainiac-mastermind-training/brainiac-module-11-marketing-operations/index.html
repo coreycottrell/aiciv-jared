@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brainiac — Automate Your Content Production</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Oswald:wght@400;500;600;700&display=swap');
+
+  :root {
+    --blue: #2A93C1;
+    --orange: #f1420b;
+    --dark: #080a12;
+    --dark2: #0d1020;
+    --dark3: #111526;
+    --white: #ffffff;
+    --light: #c8d6e5;
+    --muted: #6b7fa3;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: var(--dark);
+    color: var(--white);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* ─── SLIDESHOW ─── */
+  .slideshow {
+    width: 100%;
+    height: 100vh;
+    position: relative;
+  }
+
+  .slide {
+    display: none;
+    width: 100%;
+    height: 100vh;
+    max-height: 100vh;
+    position: absolute;
+    top: 0; left: 0;
+    background: var(--dark);
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 60px 60px 80px 60px;
+    overflow: hidden;
+    animation: fadeIn 0.4s ease;
+  }
+
+  .slide.active { display: flex; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ─── LOGO ─── */
+  .logo {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 700;
+    font-size: 1.1rem;
+    letter-spacing: 0.06em;
+    position: absolute;
+    top: 28px;
+    left: 48px;
+  }
+  .logo .blue  { color: var(--blue); }
+  .logo .orange { color: var(--orange); }
+
+  /* ─── SLIDE COUNTER ─── */
+  .slide-counter {
+    position: absolute;
+    bottom: 14px;
+    right: 48px;
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-weight: 500;
+    z-index: 50;
+  }
+
+  /* ─── NAV ARROWS ─── */
+  .nav-btn {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(37,99,235,0.12);
+    border: 1px solid rgba(37,99,235,0.3);
+    color: var(--blue);
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    font-size: 1.3rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s, border-color 0.2s;
+    z-index: 100;
+  }
+  .nav-btn:hover {
+    background: rgba(37,99,235,0.25);
+    border-color: var(--blue);
+  }
+  #prev-btn { left: 20px; }
+  #next-btn { right: 20px; }
+
+  /* ─── PROGRESS BAR ─── */
+  .progress-bar {
+    position: fixed;
+    bottom: 0; left: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--blue), var(--orange));
+    transition: width 0.4s ease;
+    z-index: 200;
+  }
+
+  /* ─── SLIDE: TITLE ─── */
+  .slide-title {
+    text-align: center;
+  }
+  .slide-title .module-tag {
+    display: inline-block;
+    background: rgba(37,99,235,0.15);
+    border: 1px solid rgba(37,99,235,0.4);
+    color: var(--blue);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 6px 18px;
+    border-radius: 20px;
+    margin-bottom: 28px;
+  }
+  .slide-title h1 {
+    font-family: 'Oswald', sans-serif;
+    font-size: clamp(2.8rem, 6vw, 5rem);
+    font-weight: 700;
+    line-height: 1.08;
+    letter-spacing: -0.01em;
+    margin-bottom: 20px;
+  }
+  .slide-title h1 .highlight { color: var(--orange); }
+  .slide-title .subtitle {
+    font-size: 1.2rem;
+    color: var(--light);
+    font-weight: 400;
+    max-width: 600px;
+    margin: 0 auto 40px;
+    line-height: 1.6;
+  }
+  .slide-title .byline {
+    color: var(--muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+
+  /* ─── DIVIDER LINE ─── */
+  .accent-line {
+    width: 60px;
+    height: 3px;
+    background: linear-gradient(90deg, var(--blue), var(--orange));
+    border-radius: 2px;
+    margin: 20px auto;
+  }
+
+  /* ─── SLIDE: CONTENT ─── */
+  .slide-content {
+    width: 100%;
+    max-width: 860px;
+    max-height: calc(100vh - 160px);
+    overflow: hidden;
+    text-align: left;
+  }
+
+  .section-number {
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--orange);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-number::after {
+    content: '';
+    display: inline-block;
+    width: 30px;
+    height: 2px;
+    background: var(--orange);
+    border-radius: 1px;
+  }
+
+  .slide-content h2 {
+    font-family: 'Oswald', sans-serif;
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    font-weight: 700;
+    line-height: 1.1;
+    margin-bottom: 18px;
+    color: var(--white);
+  }
+  .slide-content h2 .blue { color: var(--blue); }
+  .slide-content h2 .orange { color: var(--orange); }
+
+  .point-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .point-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    font-size: 0.95rem;
+    line-height: 1.45;
+    color: var(--light);
+    font-weight: 400;
+  }
+  .point-list li .dot {
+    flex-shrink: 0;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--blue);
+    margin-top: 8px;
+  }
+  .point-list li strong { color: var(--white); font-weight: 700; }
+  .point-list li .tag-orange { color: var(--orange); font-weight: 700; }
+
+  /* ─── CALLOUT BOX ─── */
+  .callout {
+    background: rgba(37,99,235,0.08);
+    border-left: 3px solid var(--blue);
+    border-radius: 0 8px 8px 0;
+    padding: 14px 18px;
+    margin-top: 18px;
+    font-size: 0.9rem;
+    color: var(--light);
+    line-height: 1.5;
+  }
+  .callout.orange-callout {
+    background: rgba(241,66,11,0.08);
+    border-color: var(--orange);
+  }
+  .callout strong { color: var(--white); }
+
+  /* ─── GRID LAYOUT ─── */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 8px;
+  }
+  .card {
+    background: var(--dark3);
+    border: 1px solid rgba(37,99,235,0.18);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .card h3 {
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--blue);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .card p {
+    font-size: 0.82rem;
+    color: var(--light);
+    line-height: 1.5;
+  }
+
+  /* ─── PIPELINE STEPS ─── */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    margin: 18px 0 14px;
+    flex-wrap: wrap;
+  }
+  .pipeline-step {
+    background: var(--dark3);
+    border: 1px solid rgba(37,99,235,0.25);
+    border-radius: 10px;
+    padding: 14px 20px;
+    text-align: center;
+    min-width: 130px;
+  }
+  .pipeline-step .step-num {
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--orange);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .pipeline-step .step-label {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--white);
+  }
+  .pipeline-arrow {
+    font-size: 1.4rem;
+    color: var(--blue);
+    margin: 0 8px;
+    flex-shrink: 0;
+  }
+
+  /* ─── PRO TIPS ─── */
+  .pro-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .pro-tip {
+    background: var(--dark3);
+    border: 1px solid rgba(241,66,11,0.2);
+    border-radius: 8px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .pro-tip .icon {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .pro-tip span {
+    font-size: 0.9rem;
+    color: var(--light);
+    line-height: 1.5;
+  }
+  .pro-tip span strong { color: var(--white); }
+
+  /* ─── CLOSING SLIDE ─── */
+  .slide-closing {
+    text-align: center;
+  }
+  .slide-closing h2 {
+    font-family: 'Oswald', sans-serif;
+    font-size: clamp(2rem, 5vw, 4rem);
+    font-weight: 700;
+    line-height: 1.1;
+    margin-bottom: 20px;
+  }
+  .slide-closing h2 .blue { color: var(--blue); }
+  .slide-closing h2 .orange { color: var(--orange); }
+  .slide-closing p {
+    font-size: 1.1rem;
+    color: var(--light);
+    max-width: 500px;
+    margin: 0 auto 32px;
+    line-height: 1.6;
+  }
+  .badge-row {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+  .badge {
+    background: rgba(37,99,235,0.12);
+    border: 1px solid rgba(37,99,235,0.35);
+    color: var(--blue);
+    border-radius: 20px;
+    padding: 8px 20px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .badge.orange {
+    background: rgba(241,66,11,0.12);
+    border-color: rgba(241,66,11,0.35);
+    color: var(--orange);
+  }
+
+  /* ─── STAT CARD ─── */
+  .stat-highlight {
+    display: inline-block;
+    background: rgba(241,66,11,0.10);
+    border: 1px solid rgba(241,66,11,0.3);
+    border-radius: 10px;
+    padding: 10px 22px;
+    margin-top: 12px;
+    text-align: center;
+  }
+  .stat-highlight .stat-number {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--orange);
+    line-height: 1;
+  }
+  .stat-highlight .stat-label {
+    font-size: 0.78rem;
+    color: var(--light);
+    margin-top: 2px;
+  }
+
+  /* ─── HOMEWORK LIST ─── */
+  .homework-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .homework-list li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.92rem;
+    color: var(--light);
+  }
+  .homework-list li .hw-check {
+    width: 22px; height: 22px;
+    border: 2px solid var(--blue);
+    border-radius: 4px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    color: transparent;
+  }
+  .homework-list li strong { color: var(--white); }
+
+  /* ─── FEATURED CLIPS ─── */
+  .clip-row {
+    display: flex;
+    gap: 14px;
+    margin-top: 14px;
+  }
+  .clip-card {
+    background: var(--dark3);
+    border: 1px solid rgba(241,66,11,0.22);
+    border-radius: 10px;
+    padding: 12px 16px;
+    flex: 1;
+    text-align: center;
+  }
+  .clip-card .clip-icon {
+    font-size: 1.5rem;
+    margin-bottom: 4px;
+    display: block;
+  }
+  .clip-card .clip-title {
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--white);
+    margin-bottom: 4px;
+  }
+  .clip-card .clip-desc {
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
+  /* ─── KEYBOARD HINT ─── */
+  .key-hint {
+    position: fixed;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.7rem;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    z-index: 50;
+  }
+  .key-hint kbd {
+    background: var(--dark3);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-family: monospace;
+    font-size: 0.75rem;
+    color: var(--light);
+  }
+
+  /* ─── SPOTLIGHT CARD ─── */
+  .spotlight {
+    background: linear-gradient(135deg, rgba(37,99,235,0.08), rgba(241,66,11,0.08));
+    border: 1px solid rgba(37,99,235,0.2);
+    border-radius: 10px;
+    padding: 14px 20px;
+    margin-top: 10px;
+    text-align: center;
+  }
+  .spotlight .spot-name {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--blue);
+    margin-bottom: 2px;
+  }
+  .spotlight .spot-role {
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-bottom: 6px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .spotlight-stats {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    margin-top: 6px;
+  }
+  .spotlight-stats .ss {
+    text-align: center;
+  }
+  .spotlight-stats .ss .ss-num {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--orange);
+  }
+  .spotlight-stats .ss .ss-label {
+    font-size: 0.7rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+</style>
+</head>
+<body>
+
+<div class="slideshow" id="slideshow">
+
+  <!-- SLIDE 1: TITLE -->
+  <div class="slide slide-title active" id="slide-1">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="module-tag">Month 1: Marketing Operations</div>
+    <h1>Automate Your<br><span class="highlight">Content Production</span></h1>
+    <div class="accent-line"></div>
+    <p class="subtitle">AI-Powered Images, Reels, and Social Posts</p>
+    <p class="byline">Pure Brainiac Session &nbsp;&middot;&nbsp; May 14, 2026</p>
+    <div class="slide-counter">1 / 10</div>
+  </div>
+
+  <!-- SLIDE 2: THE PROBLEM -->
+  <div class="slide" id="slide-2">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">The Problem</div>
+      <h2>The Content <span class="orange">Bottleneck</span></h2>
+      <ul class="point-list">
+        <li><span class="dot"></span><span>SMBs spend <strong>6-10 hours per week</strong> creating social content manually</span></li>
+        <li><span class="dot"></span><span>Quality varies wildly, posting is <strong>inconsistent</strong>, and momentum dies</span></li>
+        <li><span class="dot"></span><span>Hiring a content team costs <strong>$3,000-$8,000/month</strong> &mdash; most can't justify it</span></li>
+        <li><span class="dot"></span><span>Your AI can produce this in <strong>minutes, not hours</strong> &mdash; at a fraction of the cost</span></li>
+      </ul>
+      <div class="callout orange-callout">
+        <strong>The real cost isn't money &mdash; it's the content you never publish.</strong> Every week without consistent content is a week your competitors are building the audience you're not.
+      </div>
+    </div>
+    <div class="slide-counter">2 / 10</div>
+  </div>
+
+  <!-- SLIDE 3: THE FRAMEWORK -->
+  <div class="slide" id="slide-3">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content" style="text-align:center;">
+      <div class="section-number" style="justify-content:center;">The Framework</div>
+      <h2>Prompt &nbsp;&rsaquo;&nbsp; Generate &nbsp;&rsaquo;&nbsp; Brand &nbsp;&rsaquo;&nbsp; <span class="blue">Publish</span></h2>
+      <div class="pipeline">
+        <div class="pipeline-step">
+          <div class="step-num">Step 1</div>
+          <div class="step-label">Prompt</div>
+        </div>
+        <span class="pipeline-arrow">&rsaquo;</span>
+        <div class="pipeline-step">
+          <div class="step-num">Step 2</div>
+          <div class="step-label">Generate</div>
+        </div>
+        <span class="pipeline-arrow">&rsaquo;</span>
+        <div class="pipeline-step">
+          <div class="step-num">Step 3</div>
+          <div class="step-label">Brand</div>
+        </div>
+        <span class="pipeline-arrow">&rsaquo;</span>
+        <div class="pipeline-step" style="border-color:rgba(241,66,11,0.35);">
+          <div class="step-num">Step 4</div>
+          <div class="step-label" style="color:var(--orange);">Publish</div>
+        </div>
+      </div>
+      <div class="callout" style="text-align:left;max-width:700px;margin:20px auto 0;">
+        <strong>One input, multiple outputs.</strong> A single prompt can produce an image, a quote card, a carousel, and a video clip &mdash; all branded and ready to post across every platform.
+      </div>
+    </div>
+    <div class="slide-counter">3 / 10</div>
+  </div>
+
+  <!-- SLIDE 4: TREND RESEARCH & TOPIC IDEATION -->
+  <div class="slide" id="slide-4">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Before You Create</div>
+      <h2>How Your AI Finds Topics <span class="orange">Worth Creating</span></h2>
+      <ul class="point-list">
+        <li><span class="dot"></span><span><strong>Automated trend monitoring</strong> &mdash; your AI scans RSS feeds, Reddit, Google News, and industry sources every morning</span></li>
+        <li><span class="dot"></span><span><strong>Topic ideation based on performance</strong> &mdash; see what's trending in your niche before you create anything</span></li>
+        <li><span class="dot"></span><span><strong>Content calendar from real data</strong> &mdash; build your posting schedule around discovered trends, not guesswork</span></li>
+        <li><span class="dot"></span><span><strong>Deep research pipeline</strong> &mdash; your AI reads full articles, synthesizes insights, and drafts content briefs for you</span></li>
+      </ul>
+      <div class="callout orange-callout">
+        <strong>Content creation starts with intelligence, not guessing.</strong> Before your AI creates a single image or clip, it already knows what your audience cares about, what's trending in your industry, and what will perform.
+      </div>
+    </div>
+    <div class="slide-counter">4 / 10</div>
+  </div>
+
+  <!-- SLIDE 5: LIVE DEMO #1 — AI IMAGE GENERATION -->
+  <div class="slide" id="slide-5">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Live Demo #1</div>
+      <h2>Your AI <span class="blue">Image Production</span> Pipeline</h2>
+      <ul class="point-list">
+        <li><span class="dot"></span><span><strong>Image Models at Your Fingertips:</strong> Gemini 3 Pro Image, Gemini 2.0 Flash, FLUX.2 via Replicate &mdash; choose the right model for each job</span></li>
+        <li><span class="dot"></span><span><strong>Built-In Design Editor</strong> &mdash; a self-hosted Canva-like tool where you build your own brand kits, templates, and layouts</span></li>
+        <li><span class="dot"></span><span>Build your pipeline: <strong>prompt &rarr; AI-generated image &rarr; your branded template &rarr; publish</strong></span></li>
+        <li><span class="dot"></span><span>No subscriptions to third-party design tools &mdash; you own the entire workflow on your server</span></li>
+      </ul>
+      <div class="callout orange-callout">
+        <strong>You choose the model.</strong> Text-heavy graphics? Use Gemini (superior text rendering). Photorealistic scenes? FLUX.2. Your AI knows when to use which &mdash; and you can override it anytime.
+      </div>
+    </div>
+    <div class="slide-counter">4 / 10</div>
+  </div>
+
+  <!-- SLIDE 6: LIVE DEMO #2 — BRANDED VIDEO REELS -->
+  <div class="slide" id="slide-6">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Live Demo #2</div>
+      <h2>Build Your Own <span class="orange">Video Clip Pipeline</span></h2>
+      <ul class="point-list">
+        <li><span class="dot"></span><span><strong>Automated clip production</strong> &mdash; your AI takes any recording and produces branded, captioned social clips</span></li>
+        <li><span class="dot"></span><span><strong>Customizable templates</strong> &mdash; set your own caption styles, brand overlays, and speaker graphics</span></li>
+        <li><span class="dot"></span><span><strong>Any format you need:</strong> 9:16 for Reels/TikTok, 16:9 for YouTube, 1:1 for feeds &mdash; all from one source</span></li>
+        <li><span class="dot"></span><span>One recording becomes <strong>5-15 branded clips</strong> &mdash; your AI handles the editing automatically</span></li>
+      </ul>
+      <div class="clip-row">
+        <div class="clip-card">
+          <span class="clip-icon" style="color:var(--orange);">&#9654;</span>
+          <div class="clip-title">Your Clips, Your Brand</div>
+          <div class="clip-desc">Captions + overlays + logo</div>
+        </div>
+        <div class="clip-card">
+          <span class="clip-icon" style="color:var(--blue);">&#9654;</span>
+          <div class="clip-title">Zero Editing Skills Needed</div>
+          <div class="clip-desc">AI does the production work</div>
+        </div>
+      </div>
+    </div>
+    <div class="slide-counter">5 / 10</div>
+  </div>
+
+  <!-- SLIDE 7: LIVE DEMO #3 — CAROUSELS + QUOTE CARDS -->
+  <div class="slide" id="slide-7">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Live Demo #3</div>
+      <h2>Build Your Own <span class="blue">Content Templates</span></h2>
+      <div class="two-col" style="margin-top:18px;">
+        <div class="card">
+          <h3>Carousel Templates</h3>
+          <p>Design your own multi-slide templates that match your brand. Your AI populates them with fresh content every time.</p>
+        </div>
+        <div class="card">
+          <h3>Quote Card Templates</h3>
+          <p>Create a template once with your headshot, colors, and fonts. Then generate unlimited quote cards from any insight.</p>
+        </div>
+        <div class="card">
+          <h3>Blog Banner Templates</h3>
+          <p>Set up auto-generated headers that match your brand system. Every blog post gets a consistent, professional look.</p>
+        </div>
+        <div class="card" style="border-color:rgba(241,66,11,0.25);">
+          <h3 style="color:var(--orange);">Why Templates Matter</h3>
+          <p>Build once, produce forever. Your templates are YOUR competitive advantage &mdash; unique to your brand, not a generic preset.</p>
+        </div>
+      </div>
+      <div style="text-align:center;margin-top:22px;">
+        <div class="stat-highlight">
+          <div class="stat-number">278%</div>
+          <div class="stat-label">More engagement from carousels vs single images</div>
+        </div>
+      </div>
+    </div>
+    <div class="slide-counter">6 / 10</div>
+  </div>
+
+  <!-- SLIDE 8: YOUR AI MODEL TOOLKIT -->
+  <div class="slide" id="slide-8">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content" style="text-align:center;">
+      <div class="section-number" style="justify-content:center;">The Full Stack</div>
+      <h2>Your <span class="blue">AI Model</span> Toolkit</h2>
+      <div class="spotlight">
+        <div class="spot-name">Models You Have Access To</div>
+        <div class="spot-role">The Real Tools Behind Your Content Production</div>
+        <p style="font-size:0.78rem;color:var(--light);max-width:620px;margin:0 auto;line-height:1.4;">
+          Production-grade models across every content type &mdash; real infrastructure you own.
+        </p>
+        <div class="spotlight-stats">
+          <div class="ss">
+            <div class="ss-num">6+</div>
+            <div class="ss-label">AI Models</div>
+          </div>
+          <div class="ss">
+            <div class="ss-num">3</div>
+            <div class="ss-label">Content Types</div>
+          </div>
+          <div class="ss">
+            <div class="ss-num">&infin;</div>
+            <div class="ss-label">Your Templates</div>
+          </div>
+        </div>
+      </div>
+      <div class="two-col" style="margin-top:10px;max-width:700px;margin-left:auto;margin-right:auto;">
+        <div class="card">
+          <h3>Image Generation</h3>
+          <p>Gemini 3 Pro, Gemini 2.0 Flash, FLUX.2 (Replicate) &mdash; multiple models for different styles</p>
+        </div>
+        <div class="card">
+          <h3>Video &amp; Voice</h3>
+          <p>FFmpeg clip engine, self-hosted GPU TTS, ElevenLabs, OpenAI Whisper transcription</p>
+        </div>
+        <div class="card">
+          <h3>AI Agents</h3>
+          <p>Claude Sonnet &amp; Opus power your AI workforce &mdash; writing, strategy, automation, research</p>
+        </div>
+        <div class="card">
+          <h3>Design &amp; Automation</h3>
+          <p>Self-hosted design editor, browser automation (PureSurf), Make.com workflows</p>
+        </div>
+      </div>
+    </div>
+    <div class="slide-counter">7 / 10</div>
+  </div>
+
+  <!-- SLIDE 9: YOUR HOMEWORK -->
+  <div class="slide" id="slide-9">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <div class="slide-content">
+      <div class="section-number">Your Homework</div>
+      <h2>Create <span class="orange">5 Pieces</span> Before Next Session</h2>
+      <ul class="homework-list">
+        <li>
+          <span class="hw-check"></span>
+          <span><strong>2 AI-generated images</strong> &mdash; pick a model, write a prompt, apply your brand kit</span>
+        </li>
+        <li>
+          <span class="hw-check"></span>
+          <span><strong>1 quote card</strong> &mdash; pull your best insight from this week and make it visual</span>
+        </li>
+        <li>
+          <span class="hw-check"></span>
+          <span><strong>1 carousel</strong> &mdash; turn a blog post or talking points into a multi-slide story</span>
+        </li>
+        <li>
+          <span class="hw-check"></span>
+          <span><strong>1 branded clip</strong> &mdash; take any Zoom recording and produce a social-ready reel</span>
+        </li>
+      </ul>
+      <div style="margin-top:28px;">
+        <div class="badge orange">Next Session: Content Scheduling &amp; Distribution</div>
+      </div>
+      <div class="callout" style="margin-top:22px;">
+        <strong>The goal isn't perfection &mdash; it's production.</strong> Get reps in. Your AI gets better every time you use it, and so do you.
+      </div>
+    </div>
+    <div class="slide-counter">8 / 10</div>
+  </div>
+
+  <!-- SLIDE 10: CLOSING -->
+  <div class="slide slide-closing" id="slide-10">
+    <div class="logo">
+      <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span>.ai
+    </div>
+    <h2><span class="orange">Questions?</span></h2>
+    <div class="accent-line"></div>
+    <p>Vote on next month's topic on the training page. Your input shapes what we build next.</p>
+    <div class="badge-row">
+      <div class="badge">Community Poll Open</div>
+      <div class="badge orange">PUREBRAIN.ai</div>
+    </div>
+    <div style="margin-top:48px;">
+      <span class="logo" style="position:static;font-size:2rem;letter-spacing:0.08em;">
+        <span class="blue">PUREBR</span><span class="orange">AI</span><span class="blue">N</span><span style="color:var(--light);">.ai</span>
+      </span>
+    </div>
+    <div class="slide-counter">9 / 10</div>
+  </div>
+
+</div>
+
+<!-- Navigation -->
+<button class="nav-btn" id="prev-btn" onclick="changeSlide(-1)">&#8592;</button>
+<button class="nav-btn" id="next-btn" onclick="changeSlide(1)">&#8594;</button>
+<div class="progress-bar" id="progress"></div>
+<div class="key-hint">
+  <kbd>&#8592;</kbd> prev &nbsp;&nbsp; <kbd>&#8594;</kbd> next &nbsp;&nbsp; <kbd>Space</kbd> advance &nbsp;&nbsp; <kbd>F</kbd> fullscreen
+</div>
+
+<script>
+  const totalSlides = 10;
+  let current = 1;
+
+  function showSlide(n) {
+    const all = document.querySelectorAll('.slide');
+    all.forEach(s => s.classList.remove('active'));
+    document.getElementById('slide-' + n).classList.add('active');
+    document.getElementById('progress').style.width = ((n / totalSlides) * 100) + '%';
+    // Update all counters
+    document.querySelectorAll('.slide-counter').forEach(c => {
+      c.textContent = n + ' / ' + totalSlides;
+    });
+    current = n;
+  }
+
+  function changeSlide(dir) {
+    let next = current + dir;
+    if (next < 1) next = 1;
+    if (next > totalSlides) next = totalSlides;
+    showSlide(next);
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); changeSlide(1); }
+    if (e.key === 'ArrowLeft')  { changeSlide(-1); }
+    if (e.key === 'f' || e.key === 'F') {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+      else document.exitFullscreen();
+    }
+  });
+
+  // Touch support
+  let touchStartX = 0;
+  document.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; });
+  document.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    if (Math.abs(dx) > 50) changeSlide(dx < 0 ? 1 : -1);
+  });
+
+  showSlide(1);
+</script>
+</body>
+</html>
