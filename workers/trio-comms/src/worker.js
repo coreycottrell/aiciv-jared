@@ -166,6 +166,26 @@ async function authAny(req, env) {
   return null;
 }
 
+// Internal-binding auth (Thread B Phase 1 Day 4, 2026-05-13).
+// Sibling Workers calling trio-comms via CF Service Binding present
+//   x-internal-binding: <caller-id>
+//   x-internal-binding-secret: env.INTERNAL_BINDING_SECRET
+// Same pattern as paypal-webhook → clients-api / referrals-api.
+// Constant-time compare to avoid timing oracle on the shared family secret.
+function authInternalBinding(req, env) {
+  if (!env.INTERNAL_BINDING_SECRET) return null;
+  const caller = req.headers.get("x-internal-binding") || "";
+  const presented = req.headers.get("x-internal-binding-secret") || "";
+  if (!caller || !presented) return null;
+  if (presented.length !== env.INTERNAL_BINDING_SECRET.length) return null;
+  let diff = 0;
+  for (let i = 0; i < presented.length; i++) {
+    diff |= presented.charCodeAt(i) ^ env.INTERNAL_BINDING_SECRET.charCodeAt(i);
+  }
+  if (diff !== 0) return null;
+  return { sender_id: `internal:${caller}`, caller };
+}
+
 async function sha256Hex(s) {
   const buf = new TextEncoder().encode(s);
   const h = await crypto.subtle.digest("SHA-256", buf);
@@ -355,8 +375,16 @@ async function handleUpload(req, env) {
 // Idempotent: creates room if not exists, ensures all ai_ids are members.
 // Body: { customer_id, ai_ids: [...], human?: { email, goes_by } }
 // Returns: { room_id, created: bool, members: [...] }
+//
+// Auth (Day 4): accepts EITHER
+//   (a) internal-binding header pair (paypal-webhook auto-provision path,
+//       agentmail-webhook, or future sibling Workers)
+//   (b) AI bearer token or human portal session (manual/admin path)
+// `/rooms/ensure` is the only room endpoint that accepts internal-binding —
+// downstream reads/writes still require AI/human membership in the room.
 async function handleRoomsEnsure(req, env) {
-  const auth = await authAny(req, env);
+  const internal = authInternalBinding(req, env);
+  const auth = internal ? { sender_id: internal.sender_id, display_name: internal.caller, member_type: "internal" } : await authAny(req, env);
   if (!auth) return json(req, 401, { error: "unauthorized" });
 
   let body;

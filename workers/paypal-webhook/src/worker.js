@@ -185,6 +185,125 @@ async function incrementTotalPaid(env, subscriptionId, amount) {
 }
 
 // ---------------------------------------------------------------------------
+// Thread B Phase 1 Day 4 (2026-05-13) — auto-provision in-portal AI room
+// ---------------------------------------------------------------------------
+//
+// Trigger: after upsertClient completes on BILLING.SUBSCRIPTION.ACTIVATED.
+// If the human now has >= 2 active client rows (i.e. >= 2 AI seats), call
+// trio-comms POST /rooms/ensure to create/upsert the customer's room and
+// add every AI as a room member.
+//
+// Identity model (CTO spec 2026-05-12):
+//   customer_id = "email:" + lowercased_email           (stable, one room/human)
+//   ai_ids      = [ slug(client.ai_name) for each active client of that email ]
+//   human       = { email, goes_by: client.goes_by || name }
+//
+// Auth: x-internal-binding header pair (same INTERNAL_BINDING_SECRET as the
+// rest of the 7-Worker family, now 8 with trio-comms joining 2026-05-13).
+//
+// Idempotency: trio-comms /rooms/ensure uses INSERT OR IGNORE on UNIQUE
+// (customer_id) + UNIQUE (room_id, member_id), so repeat PayPal event
+// delivery is a no-op (returns same room_id with created:false).
+//
+// Failure mode: ANY error here is caught and logged but does NOT fail the
+// webhook handler — the seat upsert already succeeded, and room provisioning
+// can be backfilled by a reconciler. Constitutional: payment flow integrity
+// > feature provisioning convenience.
+
+function slugifyAiName(name) {
+  return (name || "")
+    .toString()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+}
+
+async function listActiveClientsForEmail(env, email) {
+  if (!email) return [];
+  // clients-api /internal/clients/list returns ALL clients (no filter param).
+  // For Phase 1 with ~100 active clients this is acceptable; if N grows we
+  // add a ?email= filter to clients-api in a follow-up. Client-side filter
+  // keeps the contract simple now.
+  try {
+    const data = await callClientsApi(env, "/internal/clients/list", { method: "GET" });
+    const all = Array.isArray(data?.clients) ? data.clients : [];
+    const lc = email.toLowerCase();
+    return all.filter((c) =>
+      (c.email || "").toLowerCase() === lc &&
+      // Only count active seats. churned/suspended don't get room seats.
+      (c.status === "active" || c.payment_status === "active")
+    );
+  } catch (e) {
+    console.log(`[paypal-webhook] room provision: clients list failed: ${e.message}`);
+    return [];
+  }
+}
+
+async function ensureRoomForEmail(env, { email, displayHint }) {
+  if (!email) {
+    console.log("[paypal-webhook] room provision skipped: no email");
+    return { skipped: true, reason: "no_email" };
+  }
+  if (!env.TRIO_COMMS || !env.INTERNAL_BINDING_SECRET) {
+    console.log("[paypal-webhook] room provision skipped: TRIO_COMMS or INTERNAL_BINDING_SECRET missing");
+    return { skipped: true, reason: "binding_or_secret_missing" };
+  }
+
+  const clients = await listActiveClientsForEmail(env, email);
+  if (clients.length < 2) {
+    console.log(`[paypal-webhook] room provision skipped: ${email} has ${clients.length} active seat(s) (<2)`);
+    return { skipped: true, reason: "seat_count_lt_2", seat_count: clients.length };
+  }
+
+  // Build ai_ids from ai_name slugs. De-dupe in case a customer has 2 AIs
+  // with the same name (rare; trio-comms PK is (room_id, member_id) so we'd
+  // just keep one membership row anyway).
+  const ai_ids = Array.from(new Set(
+    clients
+      .map((c) => slugifyAiName(c.ai_name))
+      .filter(Boolean)
+  ));
+  if (ai_ids.length < 1) {
+    console.log(`[paypal-webhook] room provision skipped: ${email} has ${clients.length} seats but no resolvable ai_name slugs`);
+    return { skipped: true, reason: "no_ai_names" };
+  }
+
+  const customer_id = `email:${email.toLowerCase()}`;
+  // Prefer goes_by/name from the most recent active client, else displayHint
+  const primary = clients[0] || {};
+  const goes_by = (primary.goes_by || primary.name || displayHint || "").toString().slice(0, 80);
+
+  try {
+    const req = new Request("https://trio-comms/rooms/ensure", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-internal-binding": "paypal-webhook",
+        "x-internal-binding-secret": env.INTERNAL_BINDING_SECRET,
+      },
+      body: JSON.stringify({
+        customer_id,
+        ai_ids,
+        human: { email: email.toLowerCase(), goes_by },
+      }),
+    });
+    const resp = await env.TRIO_COMMS.fetch(req);
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => "");
+      console.log(`[paypal-webhook] room provision failed: ${resp.status} ${errText}`);
+      return { error: `trio-comms ${resp.status}`, body: errText };
+    }
+    const result = await resp.json().catch(() => ({}));
+    console.log(`[paypal-webhook] room provisioned: customer_id=${customer_id}, room_id=${result.room_id}, created=${result.created}, ai_ids=${ai_ids.join(",")}, members=${(result.members || []).length}`);
+    return result;
+  } catch (e) {
+    console.error(`[paypal-webhook] room provision exception: ${e.message}`);
+    return { error: e.message };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Webhook verification (PayPal signature verification)
 // ---------------------------------------------------------------------------
 
@@ -385,6 +504,17 @@ async function handleSubscriptionActivated(env, resource) {
   // Check for referral attribution via Service Binding
   // (with 60-second retry if pending row doesn't exist yet)
   await checkReferralAttribution(env, { email, subscriptionId, amount }, 0);
+
+  // Thread B Phase 1 Day 4 (2026-05-13): auto-provision in-portal AI room
+  // when this human now owns >= 2 active seats. No-op if < 2; idempotent
+  // on repeat PayPal event delivery (trio-comms UNIQUE customer_id).
+  // Wrapped in try/catch so any room-provision failure does NOT fail the
+  // webhook (payment-flow integrity > feature provisioning).
+  try {
+    await ensureRoomForEmail(env, { email, displayHint: fullName });
+  } catch (e) {
+    console.error(`[paypal-webhook] ensureRoomForEmail threw: ${e.message}`);
+  }
 
   return { action: "upserted", email, tier };
 }
