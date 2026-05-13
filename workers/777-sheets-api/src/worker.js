@@ -91,21 +91,42 @@ async function getAccessToken(env) {
 
 // ---------- CORS ----------
 
-function corsHeaders(env) {
+// Allowed origins for browser-side callers (the 777 dashboard).
+// Per security-engineer-tech 2026-05-13: origin+CORS is now the auth boundary
+// for browser callers — WORKER_API_KEY is NO LONGER sent from HTML (was
+// browser-readable; removed in same change). The key remains valid for any
+// non-browser caller that has it server-side.
+const ALLOWED_BROWSER_ORIGINS = new Set([
+  'https://777.purebrain.ai',
+  'https://purebrain.ai',
+  'https://www.purebrain.ai',
+  'https://staging.purebrain.ai',
+]);
+
+function resolveAllowedOrigin(request, env) {
+  const origin = request.headers.get('Origin') || '';
+  if (ALLOWED_BROWSER_ORIGINS.has(origin)) return origin;
+  if (origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))) return origin;
+  // Fall back to env-configured single origin for legacy callers / preflight.
+  return env.ALLOWED_ORIGIN || 'https://777.purebrain.ai';
+}
+
+function corsHeaders(env, request) {
   return {
-    'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN,
+    'Access-Control-Allow-Origin': request ? resolveAllowedOrigin(request, env) : (env.ALLOWED_ORIGIN || 'https://777.purebrain.ai'),
+    'Vary': 'Origin',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
     'Access-Control-Max-Age': '86400',
   };
 }
 
-function corsResponse(env, body, status = 200) {
+function corsResponse(env, body, status = 200, request = null) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       'Content-Type': 'application/json',
-      ...corsHeaders(env),
+      ...corsHeaders(env, request),
     },
   });
 }
@@ -196,16 +217,19 @@ async function sheetsMeta(env) {
 // ---------- Auth middleware ----------
 
 function authenticate(request, env) {
-  // Simple API key auth - the dashboard sends this
-  const apiKey = request.headers.get('X-API-Key');
-  if (apiKey && apiKey === env.WORKER_API_KEY) return true;
-
-  // Also accept from the allowed origin (CORS already restricts)
+  // Browser callers: origin-based auth (CORS already restricts).
+  // The 777 dashboard at purebrain.ai/777-command-center/ and 777.purebrain.ai
+  // both pass via origin check — no API key needed in browser-readable HTML.
   const origin = request.headers.get('Origin') || '';
-  if (origin === env.ALLOWED_ORIGIN) return true;
+  if (ALLOWED_BROWSER_ORIGINS.has(origin)) return true;
 
   // Allow localhost for dev
-  if (origin.includes('localhost') || origin.includes('127.0.0.1')) return true;
+  if (origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))) return true;
+
+  // Server-side callers (cron jobs, internal tooling): API key.
+  // Kept active for non-browser flows that hold the key server-side.
+  const apiKey = request.headers.get('X-API-Key');
+  if (apiKey && apiKey === env.WORKER_API_KEY) return true;
 
   return false;
 }
@@ -219,7 +243,7 @@ export default {
 
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: corsHeaders(env) });
+      return new Response(null, { status: 204, headers: corsHeaders(env, request) });
     }
 
     // Health check
@@ -228,12 +252,12 @@ export default {
         status: 'ok',
         timestamp: new Date().toISOString(),
         spreadsheet: env.SPREADSHEET_ID,
-      });
+      }, 200, request);
     }
 
     // Auth check for all /api routes
     if (path.startsWith('/api/') && !authenticate(request, env)) {
-      return corsResponse(env, { error: 'Unauthorized' }, 401);
+      return corsResponse(env, { error: 'Unauthorized' }, 401, request);
     }
 
     try {
@@ -241,44 +265,44 @@ export default {
       // GET /api/sheet?range=...  (alias — used by Conductor BOOPs, dashboard, reference docs)
       if ((path === '/api/sheets/read' || path === '/api/sheet') && request.method === 'GET') {
         const range = url.searchParams.get('range');
-        if (!range) return corsResponse(env, { error: 'Missing range parameter' }, 400);
+        if (!range) return corsResponse(env, { error: 'Missing range parameter' }, 400, request);
         const ssId = getSpreadsheetId(env, url.searchParams.get('spreadsheetId'));
         const data = await sheetsRead(env, range, ssId);
-        return corsResponse(env, data);
+        return corsResponse(env, data, 200, request);
       }
 
       // POST /api/sheets/update  {range, values, spreadsheetId?}
       if (path === '/api/sheets/update' && request.method === 'POST') {
         const body = await request.json();
         if (!body.range || !body.values) {
-          return corsResponse(env, { error: 'Missing range or values' }, 400);
+          return corsResponse(env, { error: 'Missing range or values' }, 400, request);
         }
         const ssId = getSpreadsheetId(env, body.spreadsheetId);
         const result = await sheetsUpdate(env, body.range, body.values, ssId);
-        return corsResponse(env, result);
+        return corsResponse(env, result, 200, request);
       }
 
       // POST /api/sheets/append  {range, values, spreadsheetId?}
       if (path === '/api/sheets/append' && request.method === 'POST') {
         const body = await request.json();
         if (!body.range || !body.values) {
-          return corsResponse(env, { error: 'Missing range or values' }, 400);
+          return corsResponse(env, { error: 'Missing range or values' }, 400, request);
         }
         const ssId = getSpreadsheetId(env, body.spreadsheetId);
         const result = await sheetsAppend(env, body.range, body.values, ssId);
-        return corsResponse(env, result);
+        return corsResponse(env, result, 200, request);
       }
 
       // GET /api/sheets/meta
       if (path === '/api/sheets/meta' && request.method === 'GET') {
         const data = await sheetsMeta(env);
-        return corsResponse(env, data);
+        return corsResponse(env, data, 200, request);
       }
 
-      return corsResponse(env, { error: 'Not found' }, 404);
+      return corsResponse(env, { error: 'Not found' }, 404, request);
     } catch (err) {
       console.error('Worker error:', err);
-      return corsResponse(env, { error: err.message }, 500);
+      return corsResponse(env, { error: err.message }, 500, request);
     }
   },
 };

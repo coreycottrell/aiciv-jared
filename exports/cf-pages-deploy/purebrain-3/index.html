@@ -5567,9 +5567,13 @@ class="video-background__video"
 <p>        // ============================================
         // CONVERSATION LOGGING - A-C-Gee Fork Awakening
         // Updated: 2026-02-17 - HTTPS proxy (mixed content fix)
+        // Updated: 2026-05-13 - ACGEE_API_KEY moved server-side (security-engineer-tech).
+        //   Was browser-readable in HTML; now held by onboarding-capture-proxy
+        //   worker as a wrangler secret. Browser calls our proxy; proxy adds
+        //   X-API-Key and forwards to A-C-Gee. Worker source:
+        //   aether/workers/onboarding-capture-proxy/.
         // ============================================
-        const LOGGING_ENDPOINT = 'https://sageandweaver-network.netlify.app/api/capture-proxy';
-        const ACGEE_API_KEY = 'os3ctWW0CAQSVPnM-WeNZr75SKTlrvliGTTvkdanYbc';
+        const LOGGING_ENDPOINT = 'https://onboarding-capture-proxy.in0v8.workers.dev/api/capture';
         const sessionId = 'purebrain_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);</p>
 <p>        async function logConversationToBackend(eventType, data = {}) {
             try {
@@ -5593,11 +5597,11 @@ class="video-background__video"
                     },
                     session_id: sessionId
                 };</p>
-<p>                fetch(LOGGING_ENDPOINT, {
+<p>                // No X-API-Key — proxy worker adds it server-side (origin-bound CORS auth).
+                fetch(LOGGING_ENDPOINT, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'X-API-Key': ACGEE_API_KEY
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify(payload)
                 }).catch(err => console.debug('Logging failed:', err));

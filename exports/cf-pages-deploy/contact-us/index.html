@@ -697,10 +697,10 @@ body {
 
 <script>
 (function() {
-  var BREVO_API_KEY = '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';
-  var TO_EMAIL = 'support@puremarketing.ai';
-  var SENDER_EMAIL = 'purebrain@puremarketing.ai';
-  var SENDER_NAME = 'PureBrain Contact Form';
+  // BREVO_API_KEY removed 2026-05-13 (security-engineer-tech) — was browser-readable in HTML.
+  // Form now POSTs to contact-form-api CF Worker, which holds the Brevo key as a
+  // wrangler secret server-side. Worker source: aether/workers/contact-form-api/.
+  var CONTACT_API = 'https://contact-form-api.in0v8.workers.dev/api/contact';
 
   var form = document.getElementById('contactForm');
   var statusEl = document.getElementById('formStatus');
@@ -727,30 +727,19 @@ body {
     statusEl.className = 'form-status';
     statusEl.textContent = '';
 
-    var htmlContent = '<h2>New Contact Form Submission</h2>' +
-      '<table style="border-collapse:collapse;width:100%;max-width:600px;">' +
-      '<tr><td style="padding:8px 12px;border:1px solid #ddd;font-weight:bold;">Name</td><td style="padding:8px 12px;border:1px solid #ddd;">' + escapeHtml(name) + '</td></tr>' +
-      '<tr><td style="padding:8px 12px;border:1px solid #ddd;font-weight:bold;">Email</td><td style="padding:8px 12px;border:1px solid #ddd;"><a href="mailto:' + escapeHtml(email) + '">' + escapeHtml(email) + '</a></td></tr>' +
-      '<tr><td style="padding:8px 12px;border:1px solid #ddd;font-weight:bold;">Phone</td><td style="padding:8px 12px;border:1px solid #ddd;">' + escapeHtml(phone) + '</td></tr>' +
-      '<tr><td style="padding:8px 12px;border:1px solid #ddd;font-weight:bold;">Company</td><td style="padding:8px 12px;border:1px solid #ddd;">' + escapeHtml(company || 'N/A') + '</td></tr>' +
-      '<tr><td style="padding:8px 12px;border:1px solid #ddd;font-weight:bold;">Service Interest</td><td style="padding:8px 12px;border:1px solid #ddd;">' + escapeHtml(service || 'Not specified') + '</td></tr>' +
-      '<tr><td style="padding:8px 12px;border:1px solid #ddd;font-weight:bold;">Message</td><td style="padding:8px 12px;border:1px solid #ddd;">' + escapeHtml(message || 'No message provided') + '</td></tr>' +
-      '</table>' +
-      '<p style="margin-top:16px;color:#666;font-size:13px;">Submitted from purebrain.ai/contact-us/ at ' + new Date().toLocaleString() + '</p>';
-
     var payload = {
-      sender: { name: SENDER_NAME, email: SENDER_EMAIL },
-      to: [{ email: TO_EMAIL, name: 'Jared Sanborn' }],
-      subject: 'New Contact Form Submission from ' + name,
-      htmlContent: htmlContent,
-      replyTo: { email: email, name: name }
+      name: name,
+      email: email,
+      phone: phone,
+      company: company,
+      service: service,
+      message: message
     };
 
-    fetch('https://api.brevo.com/v3/smtp/email', {
+    fetch(CONTACT_API, {
       method: 'POST',
       headers: {
         'accept': 'application/json',
-        'api-key': BREVO_API_KEY,
         'content-type': 'application/json'
       },
       body: JSON.stringify(payload)
@@ -758,7 +747,7 @@ body {
     .then(function(response) {
       if (!response.ok) {
         return response.json().then(function(err) {
-          throw new Error(err.message || 'Failed to send. Please try again.');
+          throw new Error(err.error || (err.details && err.details.join(', ')) || 'Failed to send. Please try again.');
         });
       }
       return response.json();

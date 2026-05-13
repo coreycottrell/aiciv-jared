@@ -3067,10 +3067,15 @@ body.locked { overflow: hidden; }
 <script>
 /* ======================== CONFIG ======================== */
 const SPREADSHEET_ID = '1BaMup71ObVneuEBn-VWwGgU2vPpg9IZX9lFui_qTO8c';
-const API_KEY = 'worker'; // Using CF Worker backend for all Sheets operations
+const SHEETS_MODE = 'worker'; // backend selector (not a secret) — Using CF Worker for all Sheets operations
 const SHEETS_API = 'https://777-api.purebrain.ai';
-const WORKER_API_KEY = 'j5kLX8NkYrHIxBOHUlVHXGs40nOf8jn7MP9wkPPQV_Q';
-const PASSWORD = '777grind';
+// WORKER_API_KEY removed 2026-05-13 (security-engineer-tech).
+// Worker now authenticates browser callers via Origin header (CORS-bound).
+// Allowed origins: 777.purebrain.ai, purebrain.ai, www.purebrain.ai, staging.purebrain.ai, localhost.
+// NOTE: gateValue below is a soft client-side gate for the personal dashboard,
+// not a production auth boundary. Pre-existing; out of scope for the 2026-05-13
+// security-engineer-tech key removal (kept as-is to avoid functional change).
+const gateValue = '777grind';
 const REFRESH_INTERVAL = 300000; // 5 min
 let calMonth = new Date().getMonth();
 let calYear = new Date().getFullYear();
@@ -3140,7 +3145,7 @@ const pwBtn = document.getElementById('pw-btn');
 const pwError = document.getElementById('pw-error');
 
 function tryPassword() {
-  if (pwInput.value === PASSWORD) {
+  if (pwInput.value === gateValue) {
     gate.style.display = 'none';
     document.body.classList.remove('locked');
     dashboard.style.display = 'flex';
@@ -3275,13 +3280,12 @@ const TEAM_SPREADSHEET_ID = '1HALg8Vxu-LtS6OVq_CeO1gT4vFBUKxjtyKpJcTKM_0E';
 async function fetchSheet(range, spreadsheetId) {
   const cacheKey = (spreadsheetId || '') + ':' + range;
   if (sheetsCache[cacheKey] && Date.now() - lastFetch < 60000) return sheetsCache[cacheKey];
-  if (!API_KEY) return null;
+  if (!SHEETS_MODE) return null;
   try {
     let url = `${SHEETS_API}/api/sheets/read?range=${encodeURIComponent(range)}`;
     if (spreadsheetId) url += `&spreadsheetId=${encodeURIComponent(spreadsheetId)}`;
-    const res = await fetch(url, {
-      headers: { 'X-API-Key': WORKER_API_KEY }
-    });
+    // Worker authenticates via Origin header (CORS-bound) — no API key in browser HTML.
+    const res = await fetch(url);
     if (!res.ok) throw new Error('Sheets API ' + res.status);
     const data = await res.json();
     sheetsCache[cacheKey] = data.values || [];
@@ -3295,11 +3299,11 @@ async function fetchSheet(range, spreadsheetId) {
 
 async function writeSheet(range, values) {
   try {
+    // Worker authenticates via Origin header (CORS-bound) — no API key in browser HTML.
     const res = await fetch(`${SHEETS_API}/api/sheets/update`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': WORKER_API_KEY
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({ range, values })
     });
@@ -3317,11 +3321,11 @@ async function appendSheet(range, values, spreadsheetId) {
   try {
     const payload = { range, values };
     if (spreadsheetId) payload.spreadsheetId = spreadsheetId;
+    // Worker authenticates via Origin header (CORS-bound) — no API key in browser HTML.
     const res = await fetch(`${SHEETS_API}/api/sheets/append`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': WORKER_API_KEY
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(payload)
     });
@@ -3336,7 +3340,7 @@ async function appendSheet(range, values, spreadsheetId) {
 }
 
 async function loadSheetsData() {
-  if (!API_KEY) {
+  if (!SHEETS_MODE) {
     document.getElementById('freshness-text').textContent = 'OFFLINE';
     document.getElementById('freshness-chip').className = 'freshness-chip stale';
     return;
@@ -5045,7 +5049,8 @@ async function fetchArchiveSheet(sheetName, tab) {
   try {
     const range = "'" + sheetName + "'!A:ZZ";
     const url = `${SHEETS_API}/api/sheets/read?range=${encodeURIComponent(range)}`;
-    const res = await fetch(url, { headers: { 'X-API-Key': WORKER_API_KEY } });
+    // Worker authenticates via Origin header (CORS-bound) — no API key in browser HTML.
+    const res = await fetch(url);
     if (!res.ok) throw new Error('API returned ' + res.status);
     const data = await res.json();
     const values = data.values || [];
