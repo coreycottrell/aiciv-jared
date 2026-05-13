@@ -1,9 +1,35 @@
 #!/usr/bin/env python3
 """
-CF Pages Direct File Deploy
-============================
-Upload specific files to CF Pages without a full directory deploy.
-Preserves all existing files from the current production deployment.
+⚠️  DEPRECATED — DO NOT USE (locked 2026-05-13 by Jared)
+========================================================
+
+cf-deploy.py is BANNED. It bypasses git, creates phantom CF Pages deployments,
+and gets atomically wiped by the next push to `puretechnyc/purebrain-site`
+(the wired github source). It is the root cause of every recurring
+/user-guide/, /our-team/, and protected-path 404 incident on purebrain.ai
+between 2026-05-08 and 2026-05-13 (4× recurrences of the same class).
+
+CANONICAL DEPLOY FLOW INSTEAD:
+  - CF Pages (purebrain.ai et al.): edit files in `puretechnyc/purebrain-site`
+    → git commit → git push origin main → CF auto-deploys (~30-60s) → verify
+    with paired probe (clean URL + cache-bust both 200).
+  - Workers: git commit FIRST → `wrangler deploy --env production` → verify.
+
+See `feedback_canonical_deploy_flow_2026_05_13.md` and the Drive Never-Forget
+folders (Aether `1qCEKpYJjQRE61We1QxoiHeQDWb7UH_2k`, Chy
+`1RZRdCTVXlfzd0G-LJKtZWZaxqatLuiGS`, Morphe `1UFsZQBLo9jsyxO3dMXhnJhSwre7ALJgC`).
+
+If you are reading this comment because you are about to use this script, STOP
+and route through TRIO to Chy for the puretechnyc/purebrain-site path instead.
+
+This file is kept on disk solely so that if someone DOES bypass the ban in an
+emergency (e.g., wired-repo push pipeline broken AND production 404 of a
+protected path), the residual restoration logic still works safely. The runtime
+gate below blocks invocation unless the explicit acknowledgment env var is set.
+
+Original purpose (do not rely on this — flow above is the rule):
+    Upload specific files to CF Pages without a full directory deploy.
+    Preserves all existing files from the current production deployment.
 
 Usage:
     # Deploy specific files (paths relative to site root)
@@ -33,6 +59,59 @@ Environment variables (reads from .env automatically):
 
 import os
 import sys
+
+# ---------------------------------------------------------------------------
+# DEPRECATION GATE — locked 2026-05-13 by Jared
+# ---------------------------------------------------------------------------
+_DEPRECATION_OVERRIDE_ENV = "I_ACKNOWLEDGE_CF_DEPLOY_IS_BANNED"
+_OVERRIDE_VALUE_REQUIRED = "yes-i-have-read-feedback_canonical_deploy_flow_2026_05_13"
+
+if os.environ.get(_DEPRECATION_OVERRIDE_ENV) != _OVERRIDE_VALUE_REQUIRED:
+    print(
+        "\n"
+        "==========================================================================\n"
+        "🚫 cf-deploy.py is BANNED (locked 2026-05-13 by Jared)\n"
+        "==========================================================================\n"
+        "\n"
+        "This tool bypasses git and creates phantom CF Pages deploys that get\n"
+        "atomically wiped by the next puretechnyc/purebrain-site push. It was the\n"
+        "root cause of 4× /user-guide/ recurrences (2026-05-08 → 2026-05-13).\n"
+        "\n"
+        "CANONICAL DEPLOY FLOW INSTEAD:\n"
+        "  • CF Pages: edit puretechnyc/purebrain-site → git commit → push → verify\n"
+        "  • Workers: git commit FIRST → wrangler deploy --env production → verify\n"
+        "\n"
+        "If you are Aether: route through TRIO to Chy (`tools/post-to-trio.sh`).\n"
+        "If you are Chy:    you own puretechnyc/purebrain-site — edit + push there.\n"
+        "If you are a sub-agent: STOP. Report back to your dept manager.\n"
+        "\n"
+        "Doc:  .claude/CONSTITUTIONAL-canonical-deploy-flow-2026-05-13.md\n"
+        "Memory: feedback_canonical_deploy_flow_2026_05_13.md\n"
+        "\n"
+        "Emergency-only override (requires explicit ack of the rule):\n"
+        f"  {_DEPRECATION_OVERRIDE_ENV}={_OVERRIDE_VALUE_REQUIRED}\n"
+        "Use of the override is logged and must be paired with a same-session\n"
+        "memory entry explaining why the canonical flow could not be used.\n"
+        "==========================================================================\n",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+# Override acknowledged — log to disk for traceability
+try:
+    from pathlib import Path as _LogPath
+    import time as _logtime
+    _log_dir = _LogPath(__file__).resolve().parent.parent / "logs"
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    with open(_log_dir / "cf-deploy-ban-overrides.log", "a") as _lf:
+        _lf.write(
+            f"{_logtime.strftime('%Y-%m-%dT%H:%M:%SZ', _logtime.gmtime())}  "
+            f"pid={os.getpid()}  user={os.environ.get('USER','?')}  "
+            f"argv={sys.argv}\n"
+        )
+except Exception:
+    pass
+
 import json
 import base64
 import hashlib
