@@ -85,12 +85,22 @@ function json(req, status, body) {
 // AUTH
 // =========================================================================
 
-// AI identity — matches Bearer token to fixed sender_id slug.
-function authSender(req, env) {
+// AI identity — matches Bearer token to sender_id slug.
+//
+// Day 6 (2026-05-13): authSender is now async. FAST-PATH on the 4 legacy
+// fixed tokens BEFORE the D1 lookup. Per-customer AI tokens fall through to
+// ai_tokens table (sha256(token) → row). Legacy traffic pays zero D1 cost.
+//
+// Sender_id format:
+//   Legacy fixed: "jared" | "aether" | "chy" | "morphe"
+//   Customer AI:  "ai:{customer_id}:{ai_id}"  (e.g. "ai:cust_42:keen")
+async function authSender(req, env) {
   const h = req.headers.get("Authorization") || "";
   const m = h.match(/^Bearer\s+(.+)$/i);
   if (!m) return null;
   const tok = m[1].trim();
+
+  // 1. Fast path: 4 legacy fixed tokens (zero D1 hit)
   const map = {
     [env.TRIO_TOKEN_JARED || ""]: "jared",
     [env.TRIO_TOKEN_AETHER || ""]: "aether",
@@ -98,7 +108,29 @@ function authSender(req, env) {
     [env.TRIO_TOKEN_MORPHE || ""]: "morphe",
   };
   delete map[""];
-  return map[tok] || null;
+  if (map[tok]) return map[tok];
+
+  // 2. Per-AI customer tokens: hash + D1 lookup (indexed PK)
+  if (!env.DB) return null;
+  let tokenHash;
+  try {
+    tokenHash = await sha256Hex(tok);
+  } catch {
+    return null;
+  }
+  const row = await env.DB
+    .prepare("SELECT customer_id, ai_id FROM ai_tokens WHERE token_hash = ? AND revoked_at IS NULL")
+    .bind(tokenHash)
+    .first();
+  if (!row) return null;
+
+  // Fire-and-forget last_used_at touch (do NOT await; never log plaintext)
+  try {
+    env.DB.prepare("UPDATE ai_tokens SET last_used_at = ? WHERE token_hash = ?")
+      .bind(Date.now(), tokenHash).run();
+  } catch { /* swallow */ }
+
+  return `ai:${row.customer_id}:${row.ai_id}`;
 }
 
 // Human identity via portal session (Day 3 dual-auth).
@@ -149,7 +181,7 @@ async function authHumanViaPortalProxy(req, env) {
 // Dual-auth: try AI bearer first (cheaper), then human session.
 // Returns { sender_id, display_name, member_type } or null.
 async function authAny(req, env) {
-  const ai = authSender(req, env);
+  const ai = await authSender(req, env);
   if (ai) {
     return { sender_id: ai, display_name: ai, member_type: "ai" };
   }
@@ -254,7 +286,7 @@ function sanitizeFilename(name) {
 // =========================================================================
 
 async function handlePost(req, env) {
-  const sender = authSender(req, env);
+  const sender = await authSender(req, env);
   if (!sender) return json(req, 401, { error: "unauthorized" });
 
   let body;
@@ -287,7 +319,7 @@ async function handlePost(req, env) {
 }
 
 async function handleGet(req, env) {
-  const sender = authSender(req, env);
+  const sender = await authSender(req, env);
   if (!sender) return json(req, 401, { error: "unauthorized" });
 
   const url = new URL(req.url);
@@ -312,7 +344,7 @@ async function handleGet(req, env) {
 }
 
 async function handleMarkRead(req, env) {
-  const reader = authSender(req, env);
+  const reader = await authSender(req, env);
   if (!reader) return json(req, 401, { error: "unauthorized" });
 
   let body;
@@ -343,7 +375,8 @@ async function handleUpload(req, env) {
   // /trio/upload calls since v1 ship). Corrected to authSender() — the only
   // identity function in this worker. Live regression confirmed via curl probe
   // before this fix returned 500; after fix returns 401 for invalid bearer.
-  const sender = authSender(req, env);
+  // 2026-05-13 Day 6: authSender now async (per-AI token D1 lookup).
+  const sender = await authSender(req, env);
   if (!sender) return json(req, 401, { error: "unauthorized" });
   if (!env.UPLOADS) return json(req, 503, { error: "R2 not bound" });
 
@@ -415,15 +448,46 @@ async function handleRoomsEnsure(req, env) {
     .bind(room_id)
     .run();
 
-  // Upsert AI members
+  // Upsert AI members + mint per-AI tokens (Day 6, CTO Decision 1)
+  // Tokens returned plaintext ONCE in response; only sha256 stored.
+  // Per-AI display_name from optional body.ai_display_names map (ai_id → name).
+  const aiDisplayNames = (body?.ai_display_names && typeof body.ai_display_names === "object")
+    ? body.ai_display_names : {};
+  const aiTokens = [];
   for (const ai_id of ai_ids) {
+    const display_name = (typeof aiDisplayNames[ai_id] === "string" && aiDisplayNames[ai_id])
+      ? aiDisplayNames[ai_id].slice(0, 80) : ai_id;
     await env.DB
       .prepare(
         "INSERT OR IGNORE INTO room_members (room_id, member_id, member_type, display_name, scopes_json, joined_at) " +
         "VALUES (?, ?, 'ai', ?, '[\"read\",\"write\",\"upload\"]', ?)"
       )
-      .bind(room_id, ai_id, ai_id, now)
+      .bind(room_id, ai_id, display_name, now)
       .run();
+
+    // Check existing active token for (customer_id, ai_id) — idempotent
+    const existing = await env.DB
+      .prepare("SELECT token_hash FROM ai_tokens WHERE customer_id = ? AND ai_id = ? AND revoked_at IS NULL LIMIT 1")
+      .bind(customer_id, ai_id)
+      .first();
+    if (existing) {
+      // Already minted — do NOT regenerate (token plaintext already delivered)
+      aiTokens.push({ ai_id, display_name, token: null, already_minted: true });
+      continue;
+    }
+
+    // Mint fresh 256-bit token, base64url-encode (43 chars, URL-safe)
+    const rand = crypto.getRandomValues(new Uint8Array(32));
+    const tokenPlaintext = base64UrlEncode(rand);
+    const tokenHash = await sha256Hex(tokenPlaintext);
+    await env.DB
+      .prepare(
+        "INSERT INTO ai_tokens (token_hash, customer_id, ai_id, display_name, room_id, created_at) " +
+        "VALUES (?, ?, ?, ?, ?, ?)"
+      )
+      .bind(tokenHash, customer_id, ai_id, display_name, room_id, now)
+      .run();
+    aiTokens.push({ ai_id, display_name, token: tokenPlaintext, already_minted: false });
   }
 
   // Upsert human member if provided
@@ -439,13 +503,65 @@ async function handleRoomsEnsure(req, env) {
       .run();
   }
 
-  // Return current member list
+  // Return current member list + freshly-minted tokens (plaintext once)
   const { results: members } = await env.DB
     .prepare("SELECT member_id, member_type, display_name, scopes_json, joined_at FROM room_members WHERE room_id = ?")
     .bind(room_id)
     .all();
 
-  return json(req, 200, { room_id, created, members: members || [] });
+  return json(req, 200, { room_id, created, members: members || [], ai_tokens: aiTokens });
+}
+
+// Helper: base64url-encode bytes (no padding, URL-safe)
+function base64UrlEncode(bytes) {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+// POST /rooms/{id}/rotate-ai-token  (internal-binding only)
+// Body: { ai_id }
+// Revokes old token row, mints new, returns plaintext once.
+async function handleRotateAiToken(req, env, room_id) {
+  const internal = authInternalBinding(req, env);
+  if (!internal) return json(req, 401, { error: "internal binding required" });
+
+  let body;
+  try { body = await req.json(); } catch { return json(req, 400, { error: "invalid json" }); }
+  const ai_id = typeof body?.ai_id === "string" ? body.ai_id.trim() : "";
+  if (!ai_id) return json(req, 400, { error: "ai_id required" });
+
+  // Look up room to find customer_id (cannot rotate without knowing customer)
+  const room = await env.DB.prepare("SELECT customer_id FROM rooms WHERE id = ?").bind(room_id).first();
+  if (!room) return json(req, 404, { error: "room not found" });
+
+  // Revoke any existing active tokens for this (customer_id, ai_id)
+  const now = Date.now();
+  await env.DB
+    .prepare("UPDATE ai_tokens SET revoked_at = ? WHERE customer_id = ? AND ai_id = ? AND revoked_at IS NULL")
+    .bind(now, room.customer_id, ai_id)
+    .run();
+
+  // Look up display_name from room_members for continuity
+  const memberRow = await env.DB
+    .prepare("SELECT display_name FROM room_members WHERE room_id = ? AND member_id = ? AND member_type = 'ai'")
+    .bind(room_id, ai_id)
+    .first();
+  const display_name = memberRow?.display_name || ai_id;
+
+  // Mint fresh token
+  const rand = crypto.getRandomValues(new Uint8Array(32));
+  const tokenPlaintext = base64UrlEncode(rand);
+  const tokenHash = await sha256Hex(tokenPlaintext);
+  await env.DB
+    .prepare(
+      "INSERT INTO ai_tokens (token_hash, customer_id, ai_id, display_name, room_id, created_at) " +
+      "VALUES (?, ?, ?, ?, ?, ?)"
+    )
+    .bind(tokenHash, room.customer_id, ai_id, display_name, room_id, now)
+    .run();
+
+  return json(req, 200, { ai_id, display_name, token: tokenPlaintext, rotated_at: now });
 }
 
 // GET /rooms/{id}
@@ -638,6 +754,12 @@ async function handleRoomUpload(req, env, room_id) {
   }
   if (!client_msg_id) client_msg_id = crypto.randomUUID();
 
+  // Day 7 compression toggle (Jared spec 2026-05-13): accept was_compressed flag.
+  // Stored in customMetadata + returned in response. Widget UI shows
+  // "Original quality" badge when false. Defaults to false if absent.
+  const wasCompressedRaw = (formData.get("was_compressed") || "").toString().toLowerCase();
+  const was_compressed = (wasCompressedRaw === "true" || wasCompressedRaw === "1");
+
   const size = file.size;
   if (!Number.isFinite(size) || size <= 0) return json(req, 400, { error: "empty file" });
   if (size > MAX_UPLOAD_BYTES) return json(req, 413, { error: "file too large (max 25MB)" });
@@ -667,6 +789,7 @@ async function handleRoomUpload(req, env, room_id) {
       originalName: file.name,
       uploadedAt: new Date().toISOString(),
       client_msg_id,
+      was_compressed: was_compressed ? "true" : "false",
     },
   });
 
@@ -684,6 +807,7 @@ async function handleRoomUpload(req, env, room_id) {
     size,
     filename: file.name,
     client_msg_id,
+    was_compressed,
   });
 }
 
@@ -866,6 +990,7 @@ export default {
       if (tail === "heartbeat" && req.method === "POST") return handleHeartbeat(req, env, room_id);
       if (tail === "presence" && req.method === "GET") return handlePresence(req, env, room_id);
       if (tail === "mark-read" && req.method === "POST") return handleRoomMarkRead(req, env, room_id);
+      if (tail === "rotate-ai-token" && req.method === "POST") return handleRotateAiToken(req, env, room_id);
       return json(req, 404, { error: "not found" });
     }
 
