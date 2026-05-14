@@ -21,14 +21,49 @@
 // ---------------------------------------------------------------------------
 // Plan -> Tier mapping
 // ---------------------------------------------------------------------------
+//
+// W2.3 (2026-05-14): plan-id-first resolution. Prior amount-range fallback
+// misclassified $297 Awakened (new pricing on plan P-4P998148HJ3439945NICOI7Q)
+// as Partnered (200-600 range). Plan IDs are the authoritative tier signal;
+// amount/name fallback retained as defense-in-depth.
 
-function resolveTier(planName, amount) {
+// LIVE plan IDs (canonical 2026-05-14, wired in commit 23f6859 on puretechnyc
+// purebrain-site, mirrored to aether 35246b4):
+//   P-4P998148HJ3439945NICOI7Q  -> Awakened  ($297/mo)
+//   P-3KL830539R502981PNICOI7Q  -> Partnered ($597/mo)
+//   P-1KC17605JW4534516NICOI7Q  -> Unified   ($1097/mo)
+//
+// OLD plan IDs (still in use for legacy subscriptions on the prior price band):
+//   P-2SA65600MT088594TNGLTFKY  -> Awakened  (OLD, $149/mo)
+//   P-3VH43554A66001716NGLTFKY  -> Partnered (OLD, $499/mo)
+//   P-43A28944XN5237411NGLTFLA  -> Unified   (OLD, $999/mo)
+//
+// Insiders ($74.50) is a one-time createOrder (not on a recurring plan), so
+// has no plan_id entry here; falls through to the name/amount layer.
+
+const PLAN_TIER_MAP = {
+  // Current LIVE plan IDs (2026-05-14)
+  "P-4P998148HJ3439945NICOI7Q": "Awakened",
+  "P-3KL830539R502981PNICOI7Q": "Partnered",
+  "P-1KC17605JW4534516NICOI7Q": "Unified",
+  // Legacy plan IDs (pre-2026-05-13 pricing)
+  "P-2SA65600MT088594TNGLTFKY": "Awakened",
+  "P-3VH43554A66001716NGLTFKY": "Partnered",
+  "P-43A28944XN5237411NGLTFLA": "Unified",
+};
+
+function resolveTier(planId, planName, amount) {
+  // Plan-id first (authoritative — survives pricing changes)
+  if (planId && PLAN_TIER_MAP[planId]) {
+    return PLAN_TIER_MAP[planId];
+  }
+
   const name = (planName || "").toLowerCase();
 
   if (name.includes("insider") || amount === 74.5) return "Insiders";
-  if (name.includes("awakened") || name.includes("purebrain ai") || amount === 149) return "Awakened";
-  if (amount === 499) return "Partnered";
-  if (amount === 999) return "Unified";
+  if (name.includes("awakened") || name.includes("purebrain ai") || amount === 149 || amount === 297) return "Awakened";
+  if (amount === 499 || amount === 597) return "Partnered";
+  if (amount === 999 || amount === 1097) return "Unified";
 
   // Fallback: guess from amount ranges
   if (amount > 0 && amount <= 100) return "Insiders";
@@ -49,7 +84,10 @@ function extractSubscriptionData(resource) {
   const fullName = [name_obj.given_name, name_obj.surname].filter(Boolean).join(" ");
   const email = (subscriber.email_address || "").toLowerCase().trim();
   const subscriptionId = resource.id || null;
-  const planName = (resource.plan_id || resource.plan?.name || "");
+  // W2.3 (2026-05-14): planId is the authoritative tier signal; planName
+  // retained for name-fallback layer in resolveTier.
+  const planId = resource.plan_id || null;
+  const planName = (resource.plan?.name || resource.plan_id || "");
 
   // Amount: check billing_info or plan
   let amount = 0;
@@ -65,7 +103,7 @@ function extractSubscriptionData(resource) {
     amount = parseFloat(resource.shipping_amount.value);
   }
 
-  return { fullName, email, subscriptionId, planName, amount };
+  return { fullName, email, subscriptionId, planId, planName, amount };
 }
 
 function extractSaleData(resource) {
@@ -488,8 +526,8 @@ async function recordTransmission(env, transmissionId, eventType, status) {
 // ---------------------------------------------------------------------------
 
 async function handleSubscriptionActivated(env, resource) {
-  const { fullName, email, subscriptionId, planName, amount } = extractSubscriptionData(resource);
-  const tier = resolveTier(planName, amount);
+  const { fullName, email, subscriptionId, planId, planName, amount } = extractSubscriptionData(resource);
+  const tier = resolveTier(planId, planName, amount);
 
   console.log(`[paypal-webhook] SUBSCRIPTION.ACTIVATED: email=${email}, name=${fullName}, tier=${tier}, amount=${amount}, sub=${subscriptionId}`);
 
@@ -632,7 +670,9 @@ async function handlePaymentCompleted(env, resource) {
 
 async function handleSubscriptionUpdated(env, resource) {
   const subscriptionId = resource.id;
-  const planName = resource.plan_id || resource.plan?.name || "";
+  // W2.3 (2026-05-14): extract planId distinctly for plan-id-first tier resolution.
+  const planId = resource.plan_id || null;
+  const planName = resource.plan?.name || resource.plan_id || "";
 
   // Extract old and new amounts to detect plan changes
   let oldAmount = 0;
@@ -720,7 +760,7 @@ async function handleSubscriptionUpdated(env, resource) {
   }
 
   // No amount change, just update metadata
-  const tier = resolveTier(planName, newAmount || oldAmount);
+  const tier = resolveTier(planId, planName, newAmount || oldAmount);
   await upsertClient(env, {
     email: null, // Keep existing
     name: null,
