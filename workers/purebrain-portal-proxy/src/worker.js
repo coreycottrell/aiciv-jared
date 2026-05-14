@@ -197,6 +197,415 @@ async function validateLeaderSession(request, env) {
   }
 }
 
+// =====================================================================
+// Day 2 Track D — Shadow-auth instrumentation
+// =====================================================================
+//
+// Wraps validateLeaderSession() so we can dual-call BOTH the legacy
+// social-api path AND the new per-dashboard validate-session paths
+// (clients-api for /admin/clients/*, referrals-api for /admin/referral/*).
+//
+// LEGACY ALWAYS WINS. The shadow call is fire-and-forget — its result
+// never feeds the auth decision. Zero behavior change Day 2.
+//
+// Authority chain:
+//   - ST# brief: /home/jared/exports/portal-files/st-day2-build-brief-2026-05-14.md §Track D
+//   - CTO review: /home/jared/exports/portal-files/cto-review-auth-decoupling-2026-05-14.md
+//   - Compressed shadow window (1-2h) per CTO amendment #1 (not 24h)
+//
+// PII discipline (per feedback_secrets_must_not_be_recoverable_from_chat.md +
+// monitor-alive-≠-monitor-seeing): logs emit only boolean field-presence
+// indicators (have_user_id, have_email). NO password_hash, NO session
+// tokens, NO full email values.
+//
+// Readout: tail-based via scripts/shadow-auth-readout.sh (the canonical
+// mechanism per ST# brief D.4) PLUS a live in-isolate snapshot at
+// GET /admin/shadow-auth-readout (admin-gated; same auth as the wrapped
+// validator).
+// =====================================================================
+
+const SHADOW_LOG_EVT = "shadow_auth";
+
+// In-isolate ring buffer of recent shadow-auth samples. Workers isolates are
+// not persistent and not shared across edge locations — this is best-effort
+// for live debugging via /admin/shadow-auth-readout. Authoritative readout
+// is wrangler tail (see scripts/shadow-auth-readout.sh).
+const SHADOW_RING_MAX = 512;
+const SHADOW_RING = []; // newest at end; older entries shifted off the front
+
+function _shadowRingPush(entry) {
+  try {
+    SHADOW_RING.push(entry);
+    if (SHADOW_RING.length > SHADOW_RING_MAX) {
+      SHADOW_RING.splice(0, SHADOW_RING.length - SHADOW_RING_MAX);
+    }
+  } catch {
+    // never throw from the shadow log path
+  }
+}
+
+function _present(v) {
+  // Sensitive-value redaction: convert any value to a presence indicator only.
+  // Same pattern as workers/_shared/auth-cross-write.js (Track C).
+  return v !== undefined && v !== null && v !== "" && v !== false;
+}
+
+/**
+ * Detect which "new" dashboard validate-session path should be shadowed
+ * for this request. Returns one of: "clients" | "referrals" | "unknown".
+ *
+ * The detection is based on URL pathname because admin frontends issue
+ * requests with a stable path family per dashboard:
+ *   - /api/admin/clients/*  + /api/admin/invite* → clients dashboard
+ *   - /api/admin/referral/* + /api/admin/affiliat* + /api/admin/partners*
+ *     + /api/admin/payout* + /api/admin/applications* + /api/admin/payments/manual*
+ *     + /api/admin/commission-report + /api/admin/stats → referrals dashboard
+ *
+ * Other paths (e.g. /api/admin/validate-token, which is intentionally
+ * unauthenticated) → "unknown" → shadow side becomes a no-op.
+ */
+function shadowDashboardTarget(pathname) {
+  if (!pathname) return "unknown";
+  if (
+    pathname.startsWith("/api/admin/clients") ||
+    pathname.startsWith("/api/admin/invite") ||
+    pathname.startsWith("/api/admin/invites")
+  ) {
+    return "clients";
+  }
+  if (
+    pathname.startsWith("/api/admin/affiliat") ||
+    pathname.startsWith("/api/admin/payout") ||
+    pathname.startsWith("/api/admin/referral/") ||
+    pathname === "/api/admin/stats" ||
+    pathname === "/api/admin/partners" ||
+    pathname.startsWith("/api/admin/partners/") ||
+    pathname === "/api/admin/commission-report" ||
+    pathname.startsWith("/api/admin/payments/manual") ||
+    pathname.startsWith("/api/admin/applications")
+  ) {
+    return "referrals";
+  }
+  return "unknown";
+}
+
+/**
+ * Extract the same token validateLeaderSession() uses. Kept as a pure
+ * helper so the shadow path can replay the same token without re-parsing
+ * headers in three places.
+ */
+function _extractSessionToken(request) {
+  const auth = request.headers.get("authorization") || "";
+  if (auth.startsWith("Bearer ")) return auth.slice(7);
+  const cookies = request.headers.get("cookie") || "";
+  const m = cookies.match(/social_session=([^;]+)/);
+  if (m) return m[1];
+  return "";
+}
+
+/**
+ * Call the new per-dashboard /internal/validate-session and return its
+ * parsed JSON. NEVER throws. NEVER affects the wrapping caller's path.
+ *
+ * Targets:
+ *   - "clients"   → env.CLIENTS_API   (binding already present in wrangler.toml)
+ *   - "referrals" → env.REFERRALS_API (binding added by Day 2 Track D wrangler.toml diff)
+ *
+ * Returns shape:
+ *   { ok: true, status: 200, json: { ok, session?: {user_id, email, role?, ...} } }
+ *   { ok: false, status: <int>, error: <str> }
+ */
+async function _shadowValidateNewPath(target, token, env) {
+  let binding = null;
+  let bindingName = null;
+  if (target === "clients") {
+    binding = env.CLIENTS_API || null;
+    bindingName = "clients-api";
+  } else if (target === "referrals") {
+    binding = env.REFERRALS_API || null;
+    bindingName = "referrals-api";
+  } else {
+    return { ok: false, status: 0, error: "target_unknown" };
+  }
+  if (!binding) return { ok: false, status: 0, error: "binding_missing" };
+  if (!env.INTERNAL_BINDING_SECRET) {
+    return { ok: false, status: 0, error: "secret_missing" };
+  }
+  if (!token) return { ok: false, status: 401, error: "no_token" };
+
+  try {
+    const req = new Request(`https://${bindingName}/internal/validate-session`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-internal-binding": bindingName,
+        "x-internal-binding-secret": env.INTERNAL_BINDING_SECRET,
+      },
+      body: JSON.stringify({ token }),
+    });
+    const resp = await binding.fetch(req);
+    let json = null;
+    try {
+      json = await resp.json();
+    } catch {
+      json = null;
+    }
+    return { ok: resp.ok, status: resp.status, json };
+  } catch (e) {
+    return { ok: false, status: 0, error: "fetch_failed", detail: (e && e.message) || "unknown" };
+  }
+}
+
+/**
+ * Compare a legacy validateLeaderSession() result with a shadow
+ * _shadowValidateNewPath() result. Returns a comparison record with
+ * presence-only fields (PII-safe).
+ *
+ * Inputs:
+ *   legacy — return value of validateLeaderSession(): {ok, status?, session?}
+ *   shadow — return value of _shadowValidateNewPath(): {ok, status, json?, error?}
+ *
+ * The shadow JSON shape depends on which worker answered:
+ *   - clients-api: { ok: true, session: { user_id, email, role?, client_id? } }
+ *   - referrals-api: { ok: true, session: { user_id, email, referrals_role? } }
+ * We normalize both to {user_id, email, role}.
+ */
+function _compareAuthResults(legacy, shadow) {
+  const legacyUserId = legacy && legacy.session && legacy.session.user_id;
+  const legacyEmail = legacy && legacy.session && legacy.session.email;
+  const legacyRole = legacy && legacy.session && legacy.session.role;
+
+  const sj = shadow && shadow.json && (shadow.json.session || shadow.json) || null;
+  const shadowUserId = sj && sj.user_id;
+  const shadowEmail = sj && sj.email;
+  // role may live under different column names; normalize for comparison
+  const shadowRole = sj && (sj.role || sj.referrals_role || sj.clients_role || sj.social_role);
+
+  const user_id_match = legacyUserId === shadowUserId;
+  const email_match = legacyEmail === shadowEmail;
+  // role match is informational only — different dashboards may legitimately
+  // have different roles for the same user (clients_role vs referrals_role).
+  const role_match = legacyRole === shadowRole;
+
+  // Divergence definition for Day-3 greenlight gate: user_id MUST match when
+  // BOTH sides successfully validated. If only one side succeeded, that's a
+  // divergence in itself.
+  const both_ok = !!(legacy && legacy.ok) && !!(shadow && shadow.ok);
+  const neither_ok = !(legacy && legacy.ok) && !(shadow && shadow.ok);
+  const divergent = both_ok ? !user_id_match : !neither_ok;
+
+  return {
+    legacy_ok: !!(legacy && legacy.ok),
+    shadow_ok: !!(shadow && shadow.ok),
+    legacy_status: (legacy && legacy.status) || (legacy && legacy.ok ? 200 : 0),
+    shadow_status: (shadow && shadow.status) || 0,
+    shadow_error: (shadow && shadow.error) || null,
+    user_id_match,
+    email_match,
+    role_match,
+    field_present: {
+      legacy_user_id: _present(legacyUserId),
+      legacy_email: _present(legacyEmail),
+      legacy_role: _present(legacyRole),
+      shadow_user_id: _present(shadowUserId),
+      shadow_email: _present(shadowEmail),
+      shadow_role: _present(shadowRole),
+    },
+    divergent,
+  };
+}
+
+/**
+ * Drop-in wrapper for validateLeaderSession() that ALSO runs the new
+ * per-dashboard validator in parallel, compares, and logs. Returns the
+ * LEGACY result verbatim — auth decision is unchanged.
+ *
+ * Caller pattern:
+ *   const gate = await validateLeaderSessionShadow(request, env);
+ *   if (!gate.ok) { ...same as before... }
+ *
+ * If shadow side fails for any reason (binding missing, fetch error,
+ * exception), the shadow leg is logged with the error and the legacy
+ * result is still returned cleanly.
+ */
+async function validateLeaderSessionShadow(request, env) {
+  const url = new URL(request.url);
+  const target = shadowDashboardTarget(url.pathname);
+  const token = _extractSessionToken(request);
+
+  // Run BOTH in parallel. We always await legacy because that's the
+  // auth decision; we await shadow only so we can log the comparison
+  // before returning (preserves linear timing semantics for callers).
+  const legacyPromise = validateLeaderSession(request, env);
+  const shadowPromise = _shadowValidateNewPath(target, token, env);
+
+  // settle both; never let shadow's settlement affect legacy's return value
+  let legacy, shadow;
+  try {
+    [legacy, shadow] = await Promise.all([
+      legacyPromise.catch((e) => ({ ok: false, status: 503, error: "legacy_threw", detail: (e && e.message) || "unknown" })),
+      shadowPromise.catch((e) => ({ ok: false, status: 0, error: "shadow_threw", detail: (e && e.message) || "unknown" })),
+    ]);
+  } catch (e) {
+    // Defensive — Promise.all itself should not throw given the .catch above,
+    // but if it does, fall back to a fresh legacy call so we never leave the
+    // caller without a verdict.
+    try {
+      legacy = await validateLeaderSession(request, env);
+    } catch {
+      legacy = { ok: false, status: 503 };
+    }
+    shadow = { ok: false, status: 0, error: "promise_all_threw" };
+  }
+
+  const cmp = _compareAuthResults(legacy, shadow);
+  const entry = {
+    evt: SHADOW_LOG_EVT,
+    ts: Date.now(),
+    target,
+    path: url.pathname,
+    method: request.method,
+    have_token: _present(token),
+    ...cmp,
+  };
+  try {
+    // structured JSON line — wrangler tail will capture it
+    console.log(JSON.stringify(entry));
+  } catch {
+    // never throw from the log path
+  }
+  _shadowRingPush(entry);
+
+  // ALWAYS honor legacy — zero behavior change Day 2
+  return legacy;
+}
+
+/**
+ * GET /admin/shadow-auth-readout
+ *
+ * Admin-gated live snapshot of the in-isolate shadow-auth ring buffer.
+ * Returns aggregated stats + a sample of recent comparisons (PII-safe,
+ * presence flags only — no tokens, no emails, no raw IDs).
+ *
+ * Verdict semantics (matches scripts/shadow-auth-readout.sh):
+ *   - GREENLIGHT: ≥100 samples AND 0 divergences AND all field_present_rates = 1.0
+ *   - YELLOW:    ≥100 samples AND divergence rate ≤ 1%
+ *   - BLOCK:     anything else (insufficient samples OR divergence > 1%)
+ *
+ * NOTE: this endpoint reflects ONE isolate. For a fleet-wide readout,
+ * use the wrangler-tail script. This is a live convenience for the
+ * operator to spot-check from an admin browser.
+ *
+ * Auth: same gate as the wrapped paths — requires owner/admin/leader/system
+ * session via validateLeaderSession (legacy, fail-closed).
+ */
+async function shadowAuthReadout(request, env) {
+  const gate = await validateLeaderSession(request, env);
+  if (!gate.ok) {
+    const errBody = gate.status === 403
+      ? '{"error":"forbidden"}'
+      : (gate.status === 503 ? '{"error":"auth_unavailable"}' : '{"error":"unauthorized"}');
+    return new Response(errBody, {
+      status: gate.status,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  const url = new URL(request.url);
+  // Optional ?hours= filter; default = all entries in the isolate ring buffer.
+  const hoursParam = parseFloat(url.searchParams.get("hours") || "0");
+  const cutoff = hoursParam > 0 ? Date.now() - hoursParam * 3600 * 1000 : 0;
+  const entries = SHADOW_RING.filter((e) => e.ts >= cutoff);
+  const total = entries.length;
+
+  let divergent = 0;
+  let both_ok = 0;
+  let neither_ok = 0;
+  let legacy_only_ok = 0;
+  let shadow_only_ok = 0;
+  const by_target = { clients: 0, referrals: 0, unknown: 0 };
+  const field_present_sums = {
+    legacy_user_id: 0, legacy_email: 0, legacy_role: 0,
+    shadow_user_id: 0, shadow_email: 0, shadow_role: 0,
+  };
+
+  for (const e of entries) {
+    if (e.divergent) divergent++;
+    if (e.legacy_ok && e.shadow_ok) both_ok++;
+    else if (!e.legacy_ok && !e.shadow_ok) neither_ok++;
+    else if (e.legacy_ok && !e.shadow_ok) legacy_only_ok++;
+    else if (!e.legacy_ok && e.shadow_ok) shadow_only_ok++;
+
+    if (by_target[e.target] !== undefined) by_target[e.target]++;
+
+    if (e.field_present) {
+      for (const k of Object.keys(field_present_sums)) {
+        if (e.field_present[k]) field_present_sums[k]++;
+      }
+    }
+  }
+
+  const field_present_rate = {};
+  for (const k of Object.keys(field_present_sums)) {
+    field_present_rate[k] = total > 0 ? field_present_sums[k] / total : null;
+  }
+
+  const divergence_rate = total > 0 ? divergent / total : null;
+
+  let verdict;
+  if (total < 100) {
+    verdict = "BLOCK"; // insufficient samples — never greenlight on low N
+  } else if (divergent === 0 && field_present_rate.legacy_user_id === 1.0 && field_present_rate.shadow_user_id === 1.0) {
+    verdict = "GREENLIGHT";
+  } else if (divergence_rate <= 0.01) {
+    verdict = "YELLOW";
+  } else {
+    verdict = "BLOCK";
+  }
+
+  // PII-safe sample: last 10 entries with ONLY presence + status + matches
+  const sampleSize = Math.min(10, entries.length);
+  const sample = entries.slice(-sampleSize).map((e) => ({
+    ts: e.ts,
+    target: e.target,
+    path: e.path,
+    method: e.method,
+    legacy_ok: e.legacy_ok,
+    shadow_ok: e.shadow_ok,
+    legacy_status: e.legacy_status,
+    shadow_status: e.shadow_status,
+    shadow_error: e.shadow_error,
+    user_id_match: e.user_id_match,
+    email_match: e.email_match,
+    role_match: e.role_match,
+    divergent: e.divergent,
+    field_present: e.field_present,
+  }));
+
+  return new Response(JSON.stringify({
+    ok: true,
+    source: "in-isolate-ring-buffer",
+    note: "Single-isolate snapshot. For fleet-wide readout use scripts/shadow-auth-readout.sh",
+    window_hours: hoursParam || null,
+    ring_max: SHADOW_RING_MAX,
+    total,
+    divergent,
+    divergence_rate,
+    both_ok,
+    neither_ok,
+    legacy_only_ok,
+    shadow_only_ok,
+    by_target,
+    field_present_rate,
+    verdict,
+    sample,
+    generated_at: Date.now(),
+  }, null, 2), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -330,6 +739,26 @@ export default {
         //
         //   The X-Admin-Token injection for /api/admin/clients/* below is
         //   UNCHANGED (different path family, different worker).
+        // Day 2 Track D: fire-and-forget shadow probe for referrals dashboard.
+        // The actual auth check is done downstream by referrals-api itself
+        // (requireAdminViaSession via Service Binding to social-api). We probe
+        // BOTH legacy (social-api) AND new (referrals-api/internal/validate-session
+        // — landing on Day 3 from Track B's held branch) so the comparison
+        // dataset includes referrals-target traffic.
+        //
+        // ctx.waitUntil keeps the probe alive past response without blocking.
+        // If ctx is unavailable (e.g. internal call shapes), we still await
+        // briefly via .catch-to-ignore to avoid losing the sample.
+        try {
+          const shadowFn = validateLeaderSessionShadow(request, env);
+          if (ctx && typeof ctx.waitUntil === 'function') {
+            ctx.waitUntil(shadowFn.catch(() => {}));
+          } else {
+            // best-effort: don't block the proxy hop
+            shadowFn.catch(() => {});
+          }
+        } catch { /* never throw from shadow path */ }
+
         const workerPath = url.pathname.replace('/api/admin', '/admin');
         const workerUrl = `https://referrals-api.in0v8.workers.dev${workerPath}${url.search}`;
         const proxyHeaders = new Headers(request.headers);
@@ -355,6 +784,12 @@ export default {
       //   list (including role:leader invite tokens). PUBLIC EXCEPTION:
       //   /api/admin/validate-token is intentionally unauthenticated (powers
       //   invite-landing before sign-in — admin-api worker.js:404).
+      // Day 2 Track D: shadow-auth live readout (admin-gated).
+      // Returns aggregated stats from the in-isolate ring buffer.
+      // For fleet-wide readout use scripts/shadow-auth-readout.sh (wrangler tail).
+      if (url.pathname === '/admin/shadow-auth-readout') {
+        return shadowAuthReadout(request, env);
+      }
       if (
         url.pathname.startsWith('/api/admin/clients') ||
         url.pathname.startsWith('/api/admin/invite') ||
@@ -362,7 +797,10 @@ export default {
         url.pathname === '/api/admin/validate-token'
       ) {
         if (url.pathname !== '/api/admin/validate-token') {
-          const gate = await validateLeaderSession(request, env);
+          // Day 2 Track D: shadow-wrap the validator. Legacy still wins.
+          // The shadow leg calls clients-api/internal/validate-session
+          // and logs the comparison. Zero behavior change.
+          const gate = await validateLeaderSessionShadow(request, env);
           if (!gate.ok) {
             const errBody = gate.status === 403
               ? '{"error":"forbidden"}'
