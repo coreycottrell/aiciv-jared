@@ -1,0 +1,29 @@
+# /etc/cloudflared/config.yml (TEMPLATE)
+#
+# CTO amendment #2: recovery-agent is exposed via Cloudflare Tunnel, NOT direct
+# HTTPS. cloudflared runs as its own systemd unit (`cloudflared.service`) on
+# each Hetzner host. Trade-off accepted by Jared: one extra daemon per host
+# vs IP-allowlist maintenance.
+#
+# DEPLOY STEPS (Aether will execute):
+#   1. `cloudflared tunnel login` (one-time, on a workstation with browser)
+#   2. `cloudflared tunnel create recovery-agent-<host>`
+#   3. cp this file to /etc/cloudflared/config.yml — replace placeholders
+#   4. Publish DNS:
+#      `cloudflared tunnel route dns recovery-agent-<host> recovery-<host>.purebrain.ai`
+#   5. `systemctl enable --now cloudflared`
+#
+# The CF Worker (customer-portal-health) reaches the daemon at
+#   https://recovery-<host>.purebrain.ai/restart
+# Worker secret RECOVERY_AGENT_TUNNEL_URL points there.
+
+tunnel: <CLOUDFLARE_TUNNEL_ID>           # filled in by deploy step
+credentials-file: /etc/cloudflared/<CLOUDFLARE_TUNNEL_ID>.json
+
+ingress:
+  - hostname: recovery-<HOST_SHORTNAME>.purebrain.ai
+    service: http://127.0.0.1:9877
+    originRequest:
+      connectTimeout: 5s
+      noTLSVerify: true                  # localhost loopback, no TLS needed
+  - service: http_status:404             # catch-all

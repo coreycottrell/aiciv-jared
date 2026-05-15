@@ -1,0 +1,41 @@
+[Unit]
+Description=Customer-portal recovery agent (HMAC-gated docker restart daemon)
+Documentation=https://github.com/coreycottrell/aiciv-jared/blob/main/recovery-agent/README.md
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=recovery-agent
+Group=recovery-agent
+
+# Secrets supplied via EnvironmentFile written by deploy step (chmod 0600, owner recovery-agent).
+EnvironmentFile=/etc/recovery-agent/recovery-agent.env
+ExecStart=/usr/bin/python3 /opt/recovery-agent/recovery_agent.py
+Restart=on-failure
+RestartSec=5s
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/log/recovery-agent /var/lib/recovery-agent
+
+# Bind only to localhost; cloudflared handles ingress.
+IPAddressAllow=localhost
+IPAddressDeny=any
+
+[Install]
+WantedBy=multi-user.target

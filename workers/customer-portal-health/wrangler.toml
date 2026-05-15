@@ -1,0 +1,24 @@
+name = "customer-portal-health"
+main = "src/worker.js"
+compatibility_date = "2026-05-15"
+
+# D1: dedicated portal-recovery database (separate from purebrain-social and disk-telemetry).
+# Aether will substitute the real ID after `wrangler d1 create portal-recovery`.
+# DO NOT deploy with the placeholder.
+[[d1_databases]]
+binding = "DB"
+database_name = "portal-recovery"
+database_id = "<PORTAL_RECOVERY_DB_ID>"
+
+# Cron: every 5 minutes — sweep customers, hit recovery-agent /health via Tunnel,
+# log every sample to D1. Restart decisions are NOT made in cron; the admin
+# button path stays explicit. Cron is observation-only (Phase 1).
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+# No public vars. The following secrets are set via `wrangler secret put`:
+#   RECOVERY_AGENT_HMAC_KEY       — shared with recovery-agent on every Hetzner host
+#   RECOVERY_AGENT_TUNNEL_URL     — JSON map of customer_slug -> tunnel URL
+#                                   e.g. '{"whitehurst":"https://recovery-pb3.purebrain.ai"}'
+#   ADMIN_TOKEN                   — Bearer for /admin/* endpoints

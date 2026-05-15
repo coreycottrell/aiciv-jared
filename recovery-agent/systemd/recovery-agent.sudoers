@@ -1,0 +1,37 @@
+# /etc/sudoers.d/recovery-agent
+#
+# CTO amendment #1: NO docker-group membership. recovery-agent gets exactly the
+# capabilities it needs via narrow sudoers entries, scoped to a generated
+# allowlist of container names. Blast radius = these containers only.
+#
+# DEPLOY STEP: the deploy script regenerates this file from
+# /etc/recovery-agent/allowlist.txt and runs `visudo -c` BEFORE installing.
+# Editing this file by hand is supported but the allowlist below MUST match
+# /etc/recovery-agent/allowlist.txt one-to-one (otherwise sudo denies and the
+# daemon returns 500/403).
+#
+# Format note: each Cmnd_Alias entry pins a SPECIFIC container name. We do
+# NOT use wildcards (e.g. `docker restart *`) — that would defeat the
+# allowlist by accepting any container the daemon was tricked into naming.
+#
+# To regenerate by hand:
+#   cat /etc/recovery-agent/allowlist.txt | grep -v '^#' | while read c; do
+#     echo "Cmnd_Alias DOCKER_RESTART_${c^^} = /usr/bin/docker restart $c, /usr/bin/docker exec $c *"
+#   done
+#
+# Below is the EXAMPLE for purebrain-3 (Phase 1 + Whitehurst canary).
+# Comment / uncomment as containers are added. Re-run `visudo -c` after edits.
+
+# --- Phase 2 canary: Whitehurst ---
+Cmnd_Alias DOCKER_RESTART_WHITEHURST = /usr/bin/docker restart whitehurst, /usr/bin/docker exec whitehurst *
+
+# --- Other allowlisted containers on purebrain-3 (uncomment per rollout) ---
+# Cmnd_Alias DOCKER_RESTART_GARY = /usr/bin/docker restart gary, /usr/bin/docker exec gary *
+# Cmnd_Alias DOCKER_RESTART_CHY  = /usr/bin/docker restart chy,  /usr/bin/docker exec chy  *
+
+# Grant the daemon NOPASSWD for the union of the above aliases. Edit this line
+# to match the Cmnd_Alias entries you uncommented.
+recovery-agent ALL=(root) NOPASSWD: DOCKER_RESTART_WHITEHURST
+
+Defaults!DOCKER_RESTART_WHITEHURST !requiretty
+Defaults!DOCKER_RESTART_WHITEHURST !syslog
