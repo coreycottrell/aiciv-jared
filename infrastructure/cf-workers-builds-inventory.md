@@ -1,6 +1,6 @@
 # CF Workers Builds Inventory
 
-**Last Updated**: 2026-05-15
+**Last Updated**: 2026-05-15 16:20 UTC (Stream A fleet wire — 13/40 connected)
 **Source of Truth**: This file (git HEAD)
 **Drift Detection**: `tools/cf-workers-builds-drift-check.sh` runs hourly
 **Account ID**: `d526a3e9498dd167509003004df03290`
@@ -26,9 +26,23 @@
 ## Current State (Baseline)
 
 **Total Workers**: 40
-**Connected**: 0 (paypal-webhook DASHBOARD-CLICKED 2026-05-15 12:50 UTC but BUILD CONFIG NOT LIVE per CF API — see row 1 status)
+**Connected**: 13 (paypal-webhook + 12 wired via Builds API by devops-engineer 2026-05-15 16:17 UTC)
 **Target**: 40/40 connected
+**Blocked**: 27 (likely sourced in `coreycottrell/aiciv-jared` monorepo — CF GitHub App NOT installed on coreycottrell org; needs Jared dashboard action to install App on that org OR finish source migration to puretechnyc/*)
 **Stale candidates for cleanup**: 6 (flagged below)
+
+### Stream A Fleet Wire Discovery (2026-05-15)
+
+The CF Workers Builds API works end-to-end **without** any dashboard click, given:
+1. CF GitHub App installed on the target org (confirmed: puretechnyc, NOT confirmed: coreycottrell)
+2. User-scoped CF token with `Workers Builds Configuration:Edit` (in `.env` as `CF_API_TOKEN_BUILDS`)
+3. `build_token_uuid` from `GET /accounts/{a}/builds/tokens` (current: `5f445549-fbc4-416b-9fcf-0a16b23178d5`)
+
+**Per-Worker API calls** (2 calls, ~1 sec):
+- `PUT /accounts/{a}/builds/repos/connections` body `{provider_type, provider_account_id, provider_account_name, repo_id, repo_name}` → returns `repo_connection_uuid`
+- `POST /accounts/{a}/builds/triggers` body with `external_script_id` (= script_tag), `repo_connection_uuid`, `branch_includes`, `deploy_command`, `build_token_uuid`, etc.
+
+**Brief was wrong about paypal-webhook 12040**: the GET probe used script NAME instead of script TAG. paypal-webhook was wired correctly by Jared's dashboard click at 15:38:26Z.
 
 ---
 
@@ -36,46 +50,46 @@
 
 | # | Worker Service | GitHub Repo | Branch | Connection Status | Connected By | Date | Notes |
 |---|---|---|---|---|---|---|---|
-| 1 | paypal-webhook | puretechnyc/paypal-webhook | main | WIRE-BLOCKED | Jared | 2026-05-15 | Dashboard clicked 12:50Z. Trigger commit `9709907` pushed 15:17:19Z (W2.3 fix + GHA removal). **CF auto-deploy did NOT fire** after 9+ min. `GET /accounts/{a}/builds/workers/paypal-webhook` returns 12040 "No build configuration" — connection NOT live. Awaiting Jared dashboard verify per receipt `paypal-webhook-stage1-pushed-stage2-blocked-2026-05-15.md`. |
-| 2 | clients-api | (find) | main | NOT-CONNECTED | - | - | Active. Used by onboarding pipeline. HIGH PRIORITY. |
-| 3 | referrals-api | (find) | main | NOT-CONNECTED | - | - | Active. HIGH PRIORITY. |
-| 4 | referrals-api-production | (find) | main | NOT-CONNECTED | - | - | Active. HIGH PRIORITY. |
-| 5 | social-api | (find) | main | NOT-CONNECTED | - | - | Active. Chy + Morphe own. |
-| 6 | social-api-staging | (find) | main | NOT-CONNECTED | - | - | Staging. |
-| 7 | trio-comms | (find) | main | NOT-CONNECTED | - | - | Critical comms infra. |
-| 8 | admin-api | (find) | main | NOT-CONNECTED | - | - | Active. |
-| 9 | welcome-email-api | (find) | main | NOT-CONNECTED | - | - | Onboarding pipeline. HIGH PRIORITY. |
-| 10 | onboarding-capture-proxy | (find) | main | NOT-CONNECTED | - | - | Onboarding pipeline. HIGH PRIORITY. |
-| 11 | purebrain-portal-proxy | (find) | main | NOT-CONNECTED | - | - | Portal infra. |
-| 12 | brainiac-api | (find) | main | NOT-CONNECTED | - | - | Active. |
-| 13 | pure-brain-api | (find) | main | NOT-CONNECTED | - | - | Active. |
-| 14 | purebrain-api | (find) | main | NOT-CONNECTED | - | - | Active. |
-| 15 | meetings-api | (find) | main | NOT-CONNECTED | - | - | Active. |
-| 16 | contact-form-api | (find) | main | NOT-CONNECTED | - | - | Active. |
-| 17 | agentmail-webhook | (find) | main | NOT-CONNECTED | - | - | Email inbound. |
-| 18 | blog-publisher | (find) | main | NOT-CONNECTED | - | - | Content pipeline. |
-| 19 | 777-sheets-api | (find) | main | NOT-CONNECTED | - | - | 777 command center. |
-| 20 | gdrive-oauth-router-production | (find) | main | NOT-CONNECTED | - | - | OAuth router. |
-| 21 | investor-avatar-proxy | (find) | main | NOT-CONNECTED | - | - | Investor avatar. |
-| 22 | r2-upload-proxy | (find) | main | NOT-CONNECTED | - | - | R2 uploads. |
-| 23 | tts-proxy | (find) | main | NOT-CONNECTED | - | - | TTS routing. |
-| 24 | voice-api-staging | (find) | main | NOT-CONNECTED | - | - | Voice staging. |
-| 25 | puresurf-api-proxy | (find) | main | NOT-CONNECTED | - | - | PureSurf proxy. |
-| 26 | ce-sme-api | (find) | main | NOT-CONNECTED | - | - | Active. |
-| 27 | hancock-law-api | (find) | main | NOT-CONNECTED | - | - | Active. |
-| 28 | hancock-law-api-staging | (find) | main | NOT-CONNECTED | - | - | Staging. |
-| 29 | hancock-ingestion | (find) | main | NOT-CONNECTED | - | - | Active. |
-| 30 | hancock-mcp-staging | (find) | main | NOT-CONNECTED | - | - | Staging. |
-| 31 | ara-index | (find) | main | NOT-CONNECTED | - | - | Active. |
-| 32 | pureapex | (find) | main | NOT-CONNECTED | - | - | Active. |
-| 33 | face-api-staging | (find) | main | NOT-CONNECTED | - | - | Staging. |
-| 34 | login-sdk-converter | (find) | main | NOT-CONNECTED | - | - | STALE (last modified 2023-12-29). Cleanup candidate. |
-| 35 | pi-interest-brand | (find) | main | NOT-CONNECTED | - | - | STALE (last modified 2023-10-23). Cleanup candidate. |
-| 36 | pi-interest-influencers | (find) | main | NOT-CONNECTED | - | - | STALE (last modified 2023-10-23). Cleanup candidate. |
-| 37 | purenyc-fw-to-ai | (find) | main | NOT-CONNECTED | - | - | STALE (last modified 2024-01-22). Cleanup candidate. |
-| 38 | r2-storage-roku-test01 | (find) | main | NOT-CONNECTED | - | - | STALE (last modified 2024-01-16). Cleanup candidate - has "test" in name. |
-| 39 | redirec-puretechnology-ai-to-nyc | (find) | main | NOT-CONNECTED | - | - | STALE (last modified 2024-01-19). Possibly a permanent redirect Worker - verify before deleting. |
-| 40 | worker-lucky-math-5e34 | (find) | main | NOT-CONNECTED | - | - | STALE (last modified 2023-09-01). "lucky-math" name suggests CF default test. Cleanup candidate. |
+| 1 | paypal-webhook | puretechnyc/paypal-webhook | main | CONNECTED | Jared (dashboard) | 2026-05-15 | Dashboard wire at 15:38:26Z created conn `f18493ce` + 2 triggers (Deploy default branch `9090b508`, non-prod branches `bc50fb72`). API GET probe needs script_tag NOT script name. |
+| 2 | clients-api | puretechnyc/clients-api | main | CONNECTED | devops-engineer (API) | 2026-05-15 | conn `5a5373a0`, trig `3a18f217`. Tier 1 #1. |
+| 3 | referrals-api | puretechnyc/referrals-api | main | CONNECTED | devops-engineer (API) | 2026-05-15 | conn `0ebf02c1`, trig `561af962`. Tier 3 #16. |
+| 4 | referrals-api-production | (find) | main | BLOCKED-NO-REPO | - | - | No standalone puretechnyc/* repo. Likely lives in coreycottrell/aiciv-jared (App NOT installed). Tier 1 HIGH PRIORITY. |
+| 5 | social-api | puretechnyc/social-api | main | CONNECTED | devops-engineer (API) | 2026-05-15 | conn `4290d458`, trig `423bd97d`. Tier 2. Chy + Morphe own. |
+| 6 | social-api-staging | (find) | main | BLOCKED-NO-REPO | - | - | No standalone puretechnyc/* repo. Likely monorepo. |
+| 7 | trio-comms | puretechnyc/trio-comms | main | CONNECTED | devops-engineer (API) | 2026-05-15 | conn `f3c01ebe`, trig `34dc3243`. Tier 2 critical comms infra. |
+| 8 | admin-api | puretechnyc/admin-api | main | CONNECTED | devops-engineer (API) | 2026-05-15 | conn `d78238e5`, trig `7c18a545`. Tier 2. |
+| 9 | welcome-email-api | puretechnyc/welcome-email-api | main | CONNECTED | devops-engineer (API) | 2026-05-15 | conn `68e05528`, trig `2a0bb8b1`. Tier 1 HIGH PRIORITY (onboarding pipeline). |
+| 10 | onboarding-capture-proxy | (find) | main | BLOCKED-NO-REPO | - | - | No standalone puretechnyc/* repo. Aether tree `workers/onboarding-capture-proxy/` exists; canonical source likely coreycottrell/aiciv-jared monorepo (BLOCKED — App not installed). HIGH PRIORITY. |
+| 11 | purebrain-portal-proxy | puretechnyc/purebrain-portal-proxy | main | CONNECTED | devops-engineer (API) | 2026-05-15 | conn `c37fae69`, trig `2f853c56`. Tier 2 portal infra. |
+| 12 | brainiac-api | (find — puretechnyc/brainiac-purebrain?) | main | BLOCKED-NEEDS-MAPPING | - | - | Candidate: `puretechnyc/brainiac-purebrain` (multi-Worker repo, needs root_directory). 3 names (brainiac-api/pure-brain-api/purebrain-api) may all collapse into one repo. |
+| 13 | pure-brain-api | (find — puretechnyc/brainiac-purebrain?) | main | BLOCKED-NEEDS-MAPPING | - | - | See brainiac-api note. |
+| 14 | purebrain-api | (find — puretechnyc/brainiac-purebrain?) | main | BLOCKED-NEEDS-MAPPING | - | - | See brainiac-api note. |
+| 15 | meetings-api | puretechnyc/meetings-api | main | CONNECTED | devops-engineer (API) | 2026-05-15 | conn `9a37c97a`, trig `82ed0f79`. Tier 3 #11. |
+| 16 | contact-form-api | (find) | main | BLOCKED-NO-REPO | - | - | No standalone puretechnyc/* repo. Aether tree has `workers/contact-form-api/`; likely coreycottrell monorepo (BLOCKED). |
+| 17 | agentmail-webhook | puretechnyc/agentmail-webhook | main | CONNECTED | devops-engineer (API) | 2026-05-15 | conn `31f37112`, trig `421bd6a2`. Tier 3 email inbound. |
+| 18 | blog-publisher | puretechnyc/blog-publisher | main | CONNECTED | devops-engineer (API) | 2026-05-15 | conn `873a3293`, trig `a56a4dc1`. Tier 3 content pipeline. |
+| 19 | 777-sheets-api | puretechnyc/777-sheets-api | main | CONNECTED | devops-engineer (API) | 2026-05-15 | conn `27e86352`, trig `46668b28`. Tier 3 #14. |
+| 20 | gdrive-oauth-router-production | (find) | main | BLOCKED-NO-REPO | - | - | No standalone puretechnyc/* repo. Likely coreycottrell monorepo or different name. |
+| 21 | investor-avatar-proxy | (find — puretechnyc/investor-portal?) | main | BLOCKED-NEEDS-MAPPING | - | - | Candidate: `puretechnyc/investor-portal` (multi-Worker repo, needs root_directory). |
+| 22 | r2-upload-proxy | (find) | main | BLOCKED-NO-REPO | - | - | No standalone puretechnyc/* repo. |
+| 23 | tts-proxy | (find — puretechnyc/voice-platform?) | main | BLOCKED-NEEDS-MAPPING | - | - | Candidate: `puretechnyc/voice-platform` (multi-Worker repo, needs root_directory). |
+| 24 | voice-api-staging | (find — puretechnyc/voice-platform?) | main | BLOCKED-NEEDS-MAPPING | - | - | Same candidate as tts-proxy. |
+| 25 | puresurf-api-proxy | (find — puretechnyc/puresurf?) | main | BLOCKED-NEEDS-MAPPING | - | - | Candidate: `puretechnyc/puresurf`. |
+| 26 | ce-sme-api | (find — puretechnyc/ce-sme?) | main | BLOCKED-NEEDS-MAPPING | - | - | Candidate: `puretechnyc/ce-sme` (id 1235908062, multi-component repo). Also lives in aiciv-jared monorepo. |
+| 27 | hancock-law-api | (find — puretechnyc/hancock-law?) | main | BLOCKED-NEEDS-MAPPING | - | - | Candidate: `puretechnyc/hancock-law` (id 1231947578, multi-Worker repo with 4 hancock-* workers). |
+| 28 | hancock-law-api-staging | (find — puretechnyc/hancock-law?) | main | BLOCKED-NEEDS-MAPPING | - | - | Same candidate as hancock-law-api. |
+| 29 | hancock-ingestion | (find — puretechnyc/hancock-law?) | main | BLOCKED-NEEDS-MAPPING | - | - | Same candidate as hancock-law-api. |
+| 30 | hancock-mcp-staging | (find — puretechnyc/hancock-law?) | main | BLOCKED-NEEDS-MAPPING | - | - | Same candidate as hancock-law-api. |
+| 31 | ara-index | puretechnyc/ara-index | main | CONNECTED | devops-engineer (API) | 2026-05-15 | conn `a5fae905`, trig `e5783e9d`. Tier 3 #21. |
+| 32 | pureapex | (find — puretechnyc/PureApex-portal?) | main | BLOCKED-NEEDS-MAPPING | - | - | Candidate: `puretechnyc/PureApex-portal`. |
+| 33 | face-api-staging | (find — puretechnyc/face-platform?) | main | BLOCKED-NEEDS-MAPPING | - | - | Candidate: `puretechnyc/face-platform`. |
+| 34 | login-sdk-converter | (find) | main | BLOCKED-STALE | - | - | STALE (last modified 2023-12-29). Cleanup candidate — recommend DELETE not connect. |
+| 35 | pi-interest-brand | (find) | main | BLOCKED-STALE | - | - | STALE (last modified 2023-10-23). Cleanup candidate — recommend DELETE. |
+| 36 | pi-interest-influencers | (find) | main | BLOCKED-STALE | - | - | STALE (last modified 2023-10-23). Cleanup candidate — recommend DELETE. |
+| 37 | purenyc-fw-to-ai | (find) | main | BLOCKED-STALE | - | - | STALE (last modified 2024-01-22). Cleanup candidate — recommend DELETE. |
+| 38 | r2-storage-roku-test01 | (find) | main | BLOCKED-STALE | - | - | STALE (last modified 2024-01-16). Cleanup candidate — recommend DELETE. |
+| 39 | redirec-puretechnology-ai-to-nyc | (find) | main | BLOCKED-STALE | - | - | STALE (last modified 2024-01-19). Verify if still serving redirects via probe before deciding. |
+| 40 | worker-lucky-math-5e34 | (find) | main | BLOCKED-STALE | - | - | STALE (last modified 2023-09-01). "lucky-math" suggests CF default test. Recommend DELETE. |
 
 ---
 
@@ -87,6 +101,9 @@
 | `PENDING-CLICK` | Jared has been asked to do the dashboard click. Awaiting confirmation. |
 | `WIRE-BLOCKED` | Dashboard click happened but CF API reports no build config (`GET /accounts/{a}/builds/workers/{name}` returns 12040). Connection is NOT actually live despite UI showing otherwise. Needs Jared dashboard re-verify. |
 | `NOT-CONNECTED` | No builds connection. Deploys must be manual (forbidden by constitutional rule). |
+| `BLOCKED-NO-REPO` | No standalone puretechnyc/* repo found. Source is likely in `coreycottrell/aiciv-jared` monorepo where CF GitHub App is NOT installed. Needs source migration to puretechnyc OR App install on coreycottrell. |
+| `BLOCKED-NEEDS-MAPPING` | A candidate puretechnyc/* repo exists but it's multi-Worker. Need code-archaeologist to identify exact `root_directory` for this Worker's source. |
+| `BLOCKED-STALE` | Worker hasn't been touched in 6+ months. Recommend DELETE not wire — audit before action. |
 | `STALE` | Worker hasn't been touched in 6+ months. Mark for cleanup audit before wiring builds. |
 | `DRIFT` | Connection exists but differs from this inventory file (wrong repo, wrong branch, or removed). |
 
