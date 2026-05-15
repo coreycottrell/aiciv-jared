@@ -1,0 +1,57 @@
+[Unit]
+Description=Disk Safety Telemetry Daemon (production replacement for disk-guard-sweeper.sh)
+Documentation=file:///home/jared/projects/AI-CIV/aether/specs/disk-safety-telemetry-2026-05-15.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Run as the same user that owns the host's working tree (not root).
+# Override via systemd drop-in if a different account is appropriate per CIV host.
+User=jared
+Group=jared
+
+# Environment file holds CIV_NAME, DISK_TELEMETRY_INGEST_URL, DISK_TELEMETRY_INGEST_TOKEN,
+# DISK_TELEMETRY_ENABLED, etc. Permissions on this file MUST be 0600 (contains HMAC token).
+EnvironmentFile=-/etc/disk-telemetry/daemon.env
+
+ExecStart=/usr/bin/python3 /home/jared/projects/AI-CIV/aether/tools/disk-telemetry-daemon.py
+Restart=always
+RestartSec=15s
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+
+# ----------------------------- Security hardening (CTO amendment #2) -----------
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=false            # daemon MUST read host /tmp; private tmp would defeat the purpose
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# Writable paths the daemon legitimately needs:
+#   /var/lib/disk-telemetry  → local SQLite state
+#   /tmp                     → R1 recovery deletes here (read+delete)
+#   /home/jared/projects     → read-only walk for working-tree big-file count
+ReadWritePaths=/var/lib/disk-telemetry /tmp
+ReadOnlyPaths=/home/jared/projects
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=disk-telemetry-daemon
+
+[Install]
+WantedBy=multi-user.target
