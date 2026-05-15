@@ -1181,8 +1181,64 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--blue);cursor:poin
     });
   };
 
+  /* === Magic-Link Auto-Login === */
+  /* magic-token-helper v1 — keep identical across admin pages */
+  function exchangeMagicToken(token, onSuccess, onFailure) {
+    fetch(API + '/api/admin/exchange-magic-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: token })
+    })
+    .then(function(r) {
+      if (r.status === 503) throw new Error('disabled');
+      if (!r.ok) throw new Error('network_' + r.status);
+      return r.json();
+    })
+    .then(function(data) {
+      if (data.ok && data.session && data.session.bearer) {
+        onSuccess(data.session);
+      } else {
+        onFailure(data.error || 'unknown');
+      }
+    })
+    .catch(function(e) { onFailure(e.message); });
+  }
+
+  function tryMagicLink() {
+    var params = new URLSearchParams(window.location.search);
+    var mlToken = params.get('admin_token');
+    if (!mlToken) return false;  // No token — fall through to normal flow
+
+    // Strip token from URL immediately so it is not in browser history
+    try {
+      history.replaceState({}, '', window.location.pathname);
+    } catch(_e) {}
+
+    exchangeMagicToken(mlToken,
+      function onSuccess(session) {
+        setToken(session.bearer);
+        showApp();  // existing function — loads dashboard
+      },
+      function onFailure(reason) {
+        // Show login form with a contextual error
+        showLogin();
+        var msgs = {
+          expired:  'This invite link has expired. Please contact your administrator.',
+          consumed: 'This invite link has already been used. Log in with your email and password, or request a new invite.',
+          invalid:  'This invite link is not valid. Please contact your administrator.',
+          disabled: 'Magic-link login is temporarily disabled. Please use email and password.',
+        };
+        $loginErr.textContent = msgs[reason] || 'Invite link failed. Please log in manually.';
+      }
+    );
+    return true;  // Magic-link attempt in progress
+  }
+
   /* === Init === */
-  if(getToken()){
+  // Try magic-link first, then fall back to normal token check
+  if (tryMagicLink()) {
+    // Magic-link exchange in progress — UI will update async
+  } else if (getToken()) {
     showApp();
   } else {
     showLogin();

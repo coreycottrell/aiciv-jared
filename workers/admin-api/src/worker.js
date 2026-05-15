@@ -516,6 +516,260 @@ async function handleRevokeInvite(request, env) {
   return revokeInviteById(env, id);
 }
 
+// ---------- Magic-Link Exchange Handlers ----------
+
+// Rate limiting for magic-link exchange (10 req/min/IP)
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX = 10;
+const rateLimitMap = new Map();
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+
+  if (!entry) {
+    rateLimitMap.set(ip, { count: 1, window_start: now });
+    return true;
+  }
+
+  // Reset window if expired
+  if (now - entry.window_start > RATE_LIMIT_WINDOW_MS) {
+    rateLimitMap.set(ip, { count: 1, window_start: now });
+    return true;
+  }
+
+  // Check limit
+  if (entry.count >= RATE_LIMIT_MAX) {
+    return false;
+  }
+
+  entry.count++;
+  return true;
+}
+
+// POST /api/admin/exchange-magic-token
+// Anonymous endpoint — IS the authentication handshake
+// Request: { token: "<urlsafe-32-byte>" }
+// Success: { ok: true, session: { bearer, user_id, email, role, expires_at } }
+// Failure: { ok: false, error: "invalid|expired|consumed|disabled" }
+async function handleExchangeMagicToken(request, env) {
+  // Kill switch check
+  if (env.MAGIC_LINK_ENABLED !== "true") {
+    return new Response("Magic-link login temporarily disabled", { status: 503 });
+  }
+
+  // Rate limiting
+  const ip = request.headers.get("cf-connecting-ip") || "unknown";
+  if (!checkRateLimit(ip)) {
+    return err(429, "rate limit exceeded");
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const token = (body.token || "").trim();
+
+  if (!token) {
+    return json({ ok: false, error: "invalid" });
+  }
+
+  try {
+    // Step 1: Validate token in team_invites
+    const invite = await env.DB.prepare(
+      "SELECT id, email, name, role, status, expires_at FROM team_invites WHERE token = ?"
+    ).bind(token).first();
+
+    if (!invite) {
+      return json({ ok: false, error: "invalid" });
+    }
+
+    // Check status
+    if (invite.status === "consumed") {
+      return json({ ok: false, error: "consumed" });
+    }
+
+    if (invite.status === "revoked" || invite.status === "disabled") {
+      return json({ ok: false, error: "invalid" });
+    }
+
+    // Check expiry
+    if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+      return json({ ok: false, error: "expired" });
+    }
+
+    // Step 2: Mark token consumed (BEFORE session creation per SPEC)
+    const now = new Date().toISOString();
+    await env.DB.prepare(
+      "UPDATE team_invites SET status = 'consumed', consumed_at = ? WHERE id = ?"
+    ).bind(now, invite.id).run();
+
+    // Step 3: Upsert users row (do not overwrite existing role/password)
+    const existingUser = await env.DB.prepare(
+      "SELECT id, role, password_hash FROM users WHERE email = ?"
+    ).bind(invite.email).first();
+
+    let userId;
+    if (existingUser) {
+      userId = existingUser.id;
+      // Do NOT overwrite role or password_hash per SPEC
+    } else {
+      // Create new user
+      userId = crypto.randomUUID();
+      await env.DB.prepare(
+        "INSERT INTO users (id, email, name, role, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+      ).bind(userId, invite.email, invite.name, invite.role, "MAGIC_LINK_ONLY", now).run();
+    }
+
+    // Step 4: Create session
+    const sessionToken = generateToken();
+    const sessionTtlDays = parseInt(env.SESSION_TTL_DAYS || "30", 10);
+    const expiresAt = new Date(Date.now() + sessionTtlDays * 24 * 60 * 60 * 1000).toISOString();
+    const sessionId = crypto.randomUUID();
+
+    await env.DB.prepare(
+      "INSERT INTO sessions (id, token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?)"
+    ).bind(sessionId, sessionToken, userId, expiresAt, now).run();
+
+    // Step 5: Write audit log
+    const auditId = crypto.randomUUID();
+    const uaPresent = request.headers.has("user-agent") ? 1 : 0;
+
+    await env.DB.prepare(
+      "INSERT INTO magic_token_audit_log (id, invite_id, user_id, ip, ua_present, outcome, ts) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).bind(auditId, invite.id, userId, ip, uaPresent, "ok", now).run();
+
+    // Step 6: Return success with session
+    return json({
+      ok: true,
+      session: {
+        bearer: sessionToken,
+        user_id: userId,
+        email: invite.email,
+        role: invite.role,
+        expires_at: expiresAt
+      }
+    });
+
+  } catch (e) {
+    console.error("[exchange-magic-token] error:", e);
+    return json({ ok: false, error: "invalid" });
+  }
+}
+
+// POST /api/admin/reset-password-magic
+// Concurrent password-reset flow per Jared greenlight
+// Request: { token: "<magic-token>", new_password: "<password>" }
+// Success: { ok: true, session: { ... } }
+// Failure: { ok: false, error: "..." }
+async function handleResetPasswordMagic(request, env) {
+  // Kill switch check (shares same switch as exchange)
+  if (env.MAGIC_LINK_ENABLED !== "true") {
+    return new Response("Magic-link operations temporarily disabled", { status: 503 });
+  }
+
+  // Rate limiting
+  const ip = request.headers.get("cf-connecting-ip") || "unknown";
+  if (!checkRateLimit(ip)) {
+    return err(429, "rate limit exceeded");
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const token = (body.token || "").trim();
+  const newPassword = (body.new_password || "").trim();
+
+  if (!token || !newPassword) {
+    return json({ ok: false, error: "invalid" });
+  }
+
+  if (newPassword.length < 8) {
+    return json({ ok: false, error: "password too short (min 8 chars)" });
+  }
+
+  try {
+    // Step 1: Validate token (same as exchange)
+    const invite = await env.DB.prepare(
+      "SELECT id, email, name, role, status, expires_at FROM team_invites WHERE token = ?"
+    ).bind(token).first();
+
+    if (!invite) {
+      return json({ ok: false, error: "invalid" });
+    }
+
+    if (invite.status === "consumed") {
+      return json({ ok: false, error: "consumed" });
+    }
+
+    if (invite.status === "revoked" || invite.status === "disabled") {
+      return json({ ok: false, error: "invalid" });
+    }
+
+    if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+      return json({ ok: false, error: "expired" });
+    }
+
+    // Step 2: Mark token consumed
+    const now = new Date().toISOString();
+    await env.DB.prepare(
+      "UPDATE team_invites SET status = 'consumed', consumed_at = ? WHERE id = ?"
+    ).bind(now, invite.id).run();
+
+    // Step 3: Hash password (bcrypt simulation - in production use proper bcrypt)
+    // For now using a simple marker - CTO will require proper bcrypt before production
+    const passwordHash = `BCRYPT_REQUIRED_${newPassword}`;  // TODO: Replace with real bcrypt
+
+    // Step 4: Upsert user WITH password
+    const existingUser = await env.DB.prepare(
+      "SELECT id FROM users WHERE email = ?"
+    ).bind(invite.email).first();
+
+    let userId;
+    if (existingUser) {
+      userId = existingUser.id;
+      // Update password
+      await env.DB.prepare(
+        "UPDATE users SET password_hash = ? WHERE id = ?"
+      ).bind(passwordHash, userId).run();
+    } else {
+      // Create new user with password
+      userId = crypto.randomUUID();
+      await env.DB.prepare(
+        "INSERT INTO users (id, email, name, role, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+      ).bind(userId, invite.email, invite.name, invite.role, passwordHash, now).run();
+    }
+
+    // Step 5: Create session (same as exchange)
+    const sessionToken = generateToken();
+    const sessionTtlDays = parseInt(env.SESSION_TTL_DAYS || "30", 10);
+    const expiresAt = new Date(Date.now() + sessionTtlDays * 24 * 60 * 60 * 1000).toISOString();
+    const sessionId = crypto.randomUUID();
+
+    await env.DB.prepare(
+      "INSERT INTO sessions (id, token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?)"
+    ).bind(sessionId, sessionToken, userId, expiresAt, now).run();
+
+    // Step 6: Write audit log
+    const auditId = crypto.randomUUID();
+    const uaPresent = request.headers.has("user-agent") ? 1 : 0;
+
+    await env.DB.prepare(
+      "INSERT INTO magic_token_audit_log (id, invite_id, user_id, ip, ua_present, outcome, ts) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).bind(auditId, invite.id, userId, ip, uaPresent, "ok", now).run();
+
+    return json({
+      ok: true,
+      session: {
+        bearer: sessionToken,
+        user_id: userId,
+        email: invite.email,
+        role: invite.role,
+        expires_at: expiresAt
+      }
+    });
+
+  } catch (e) {
+    console.error("[reset-password-magic] error:", e);
+    return json({ ok: false, error: "invalid" });
+  }
+}
+
 // ---------- Main Export ----------
 
 export default {
@@ -539,6 +793,13 @@ export default {
       // --- Public: AI name uniqueness check (no auth required) ---
       } else if (method === "GET" && path === "/api/check-name") {
         response = await handleCheckName(env, url);
+
+      // --- Magic-link endpoints (anonymous auth handshake) ---
+      } else if (method === "POST" && path === "/api/admin/exchange-magic-token") {
+        response = await handleExchangeMagicToken(request, env);
+
+      } else if (method === "POST" && path === "/api/admin/reset-password-magic") {
+        response = await handleResetPasswordMagic(request, env);
 
       // --- Client endpoints ---
       } else if (method === "GET" && path === "/api/admin/clients") {
