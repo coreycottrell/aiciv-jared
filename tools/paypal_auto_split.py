@@ -4,6 +4,37 @@ PayPal Auto-Split Payout System
 ================================
 Manages revenue splits between Pure Technology and AICIV (Corey).
 
+╔════════════════════════════════════════════════════════════════════════════╗
+║ CONSTITUTIONAL — 5% REFERRAL RATE LOCK (2026-05-15)                        ║
+║                                                                            ║
+║ The REFERRAL_RATE = 0.05 constant below is the constitutional commission   ║
+║ rate for ALL standard-tier referrals (silver/gold/platinum). silver/gold/  ║
+║ platinum are PRESTIGE-ONLY designations (milestone badges); they do NOT    ║
+║ change the rate.                                                           ║
+║                                                                            ║
+║ Elite-tier partners (founder-tier, internal allowlist) receive 15%         ║
+║ behind-the-scenes — but the 15% rate is NEVER surfaced in UI. Display      ║
+║ always shows 5%. This script intentionally hard-codes 5% because the       ║
+║ paypal_auto_split path is the CUSTOMER-VISIBLE side of the payout pipeline ║
+║ (sheet rows + email confirmations); elite-tier accounting happens via the  ║
+║ separate elite-tier-statements ledger, NOT this script.                    ║
+║                                                                            ║
+║ Sister rule: workers/referrals-api/src/worker.js TIER_RATES (silver=0.05). ║
+║                                                                            ║
+║ References:                                                                ║
+║   - feedback_one_earnings_number_one_truth_referrals_sop.md (LOCKED       ║
+║     2026-05-13)                                                            ║
+║   - Jared's correction 2026-05-15: "commission rate is 5% of website      ║
+║     pricing" with examples ($74.50 → $3.73, $149 → $7.45, $499 → $24.95,  ║
+║     $999 → $49.95).                                                        ║
+║   - CTO SPEC-3 Tracks A + D paired ship 2026-05-15 (this commit is Track D)║
+║                                                                            ║
+║ DO NOT change REFERRAL_RATE without:                                       ║
+║   1. Updated CTO spec                                                      ║
+║   2. Coordinated change in workers/referrals-api/src/worker.js TIER_RATES  ║
+║   3. Jared explicit greenlight in TRIO or portal                           ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
 SPLIT FORMULA:
   Gross Payment
   - $35 AICIV Ops Fee
@@ -29,6 +60,7 @@ USAGE:
 
 Author: dept-accounting-finance
 Date: 2026-04-04
+Last constitutional review: 2026-05-15 (Track D paired ship with CTO SPEC-3 Track A)
 """
 
 import argparse
