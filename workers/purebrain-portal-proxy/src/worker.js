@@ -476,7 +476,33 @@ async function validateLeaderSessionShadow(request, env) {
   }
   _shadowRingPush(entry);
 
-  // ALWAYS honor legacy — zero behavior change Day 2
+  // Day 3 cutover gate. When env.SHADOW_AUTH_ENABLED is "true" AND the target
+  // is a per-dashboard path (clients / referrals) AND the shadow side validated
+  // successfully, honor the SHADOW result as authoritative. Kill switch: flip
+  // SHADOW_AUTH_ENABLED to anything other than "true" → instant rollback to
+  // legacy social-api auth, no code deploy required. Per Chy spec 2026-05-15.
+  //
+  // Normalization: shadow.json shape varies by responder
+  //   - clients-api:   { ok, session: { user_id, email, role?, client_id? } }
+  //   - referrals-api: { ok, session: { user_id, email, referrals_role? } }
+  // The legacy caller contract is { ok, session: { user_id, email, role, ... } },
+  // so we coerce the role field and only return ok:true when the session has
+  // a user_id AND a recognized leader-class role.
+  const shadowAuthEnabled = env.SHADOW_AUTH_ENABLED === "true" || env.SHADOW_AUTH_ENABLED === true;
+  if (shadowAuthEnabled && (target === "clients" || target === "referrals") && shadow && shadow.ok) {
+    const sj = (shadow.json && (shadow.json.session || shadow.json)) || null;
+    if (sj && sj.user_id) {
+      const role = sj.role || sj.referrals_role || sj.clients_role || sj.social_role;
+      if (["owner", "admin", "leader", "system"].includes(role)) {
+        return { ok: true, session: { ...sj, role }, source: "shadow", target };
+      }
+      return { ok: false, status: 403, source: "shadow", target };
+    }
+    // Shadow OK but no session payload → fall through to legacy (kill-switch safe)
+  }
+
+  // Default: legacy social-api result authoritative. Also the path when
+  // SHADOW_AUTH_ENABLED is unset/false (rollback) or target is unrecognized.
   return legacy;
 }
 

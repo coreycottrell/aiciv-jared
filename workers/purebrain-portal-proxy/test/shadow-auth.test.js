@@ -361,5 +361,122 @@ await t("T10: _present is the only redaction primitive used in logs", async () =
   assert.equal(_present(42), true);
 });
 
+// =====================================================================
+// Day 3 cutover gate — SHADOW_AUTH_ENABLED env flag
+// =====================================================================
+
+await t("T11: SHADOW_AUTH_ENABLED=true + clients target + shadow ok → shadow wins", async () => {
+  const env = {
+    SHADOW_AUTH_ENABLED: "true",
+    INTERNAL_BINDING_SECRET: "test-secret",
+    // Legacy returns a DIFFERENT user — proves shadow result is authoritative
+    SOCIAL_API: makeServiceBinding("social-api", () => ({
+      status: 200, body: { valid: true, role: "leader", user_id: 1, email: "legacy@x" },
+    })),
+    CLIENTS_API: makeServiceBinding("clients-api", () => ({
+      status: 200, body: { ok: true, session: { user_id: 99, email: "shadow@x", role: "leader" } },
+    })),
+  };
+  const req = makeRequest({
+    pathname: "/api/admin/clients/42",
+    headers: { authorization: "Bearer tok-d3-1" },
+  });
+  const cap = captureConsoleLog();
+  const result = await validateLeaderSessionShadow(req, env);
+  cap.restore();
+  assert.equal(result.ok, true, "shadow ok bubbles up");
+  assert.equal(result.session.user_id, 99, "user_id from SHADOW not legacy");
+  assert.equal(result.session.email, "shadow@x", "email from SHADOW not legacy");
+  assert.equal(result.source, "shadow", "tagged source=shadow");
+  assert.equal(result.target, "clients", "tagged target=clients");
+});
+
+await t("T12: SHADOW_AUTH_ENABLED=true + shadow role NOT in leader-set → 403 from shadow", async () => {
+  const env = {
+    SHADOW_AUTH_ENABLED: "true",
+    INTERNAL_BINDING_SECRET: "test-secret",
+    SOCIAL_API: makeServiceBinding("social-api", () => ({
+      status: 200, body: { valid: true, role: "leader", user_id: 1, email: "legacy@x" },
+    })),
+    REFERRALS_API: makeServiceBinding("referrals-api", () => ({
+      status: 200, body: { ok: true, session: { user_id: 7, email: "x@y", referrals_role: "viewer" } },
+    })),
+  };
+  const req = makeRequest({
+    pathname: "/api/admin/referral/list",
+    headers: { authorization: "Bearer tok-d3-2" },
+  });
+  const cap = captureConsoleLog();
+  const result = await validateLeaderSessionShadow(req, env);
+  cap.restore();
+  assert.equal(result.ok, false, "viewer role rejected even when shadow ok");
+  assert.equal(result.status, 403);
+  assert.equal(result.source, "shadow");
+});
+
+await t("T13: SHADOW_AUTH_ENABLED unset (default) → legacy wins (Day 2 behavior preserved)", async () => {
+  const env = {
+    // SHADOW_AUTH_ENABLED intentionally absent
+    INTERNAL_BINDING_SECRET: "test-secret",
+    SOCIAL_API: makeServiceBinding("social-api", () => ({
+      status: 200, body: { valid: true, role: "leader", user_id: 1, email: "legacy@x" },
+    })),
+    CLIENTS_API: makeServiceBinding("clients-api", () => ({
+      status: 200, body: { ok: true, session: { user_id: 99, email: "shadow@x", role: "leader" } },
+    })),
+  };
+  const req = makeRequest({
+    pathname: "/api/admin/clients",
+    headers: { authorization: "Bearer tok-d3-3" },
+  });
+  const cap = captureConsoleLog();
+  const result = await validateLeaderSessionShadow(req, env);
+  cap.restore();
+  assert.equal(result.ok, true);
+  assert.equal(result.session.user_id, 1, "user_id from LEGACY (flag off)");
+  assert.equal(result.source, undefined, "no source tag when legacy wins");
+});
+
+await t("T14: SHADOW_AUTH_ENABLED=true + unknown target → legacy still wins (gate is scoped)", async () => {
+  const env = {
+    SHADOW_AUTH_ENABLED: "true",
+    INTERNAL_BINDING_SECRET: "test-secret",
+    SOCIAL_API: makeServiceBinding("social-api", () => ({
+      status: 200, body: { valid: true, role: "leader", user_id: 1, email: "legacy@x" },
+    })),
+  };
+  const req = makeRequest({
+    pathname: "/api/admin/validate-token", // explicitly "unknown" target
+    headers: { authorization: "Bearer tok-d3-4" },
+  });
+  const cap = captureConsoleLog();
+  const result = await validateLeaderSessionShadow(req, env);
+  cap.restore();
+  assert.equal(result.ok, true);
+  assert.equal(result.session.user_id, 1, "legacy wins for unknown targets");
+});
+
+await t("T15: SHADOW_AUTH_ENABLED=true + shadow FAILS → legacy wins (kill-switch safe)", async () => {
+  const env = {
+    SHADOW_AUTH_ENABLED: "true",
+    INTERNAL_BINDING_SECRET: "test-secret",
+    SOCIAL_API: makeServiceBinding("social-api", () => ({
+      status: 200, body: { valid: true, role: "leader", user_id: 1, email: "legacy@x" },
+    })),
+    CLIENTS_API: makeServiceBinding("clients-api", () => ({
+      status: 401, body: { ok: false, error: "expired" },
+    })),
+  };
+  const req = makeRequest({
+    pathname: "/api/admin/clients",
+    headers: { authorization: "Bearer tok-d3-5" },
+  });
+  const cap = captureConsoleLog();
+  const result = await validateLeaderSessionShadow(req, env);
+  cap.restore();
+  assert.equal(result.ok, true, "legacy still wins when shadow fails");
+  assert.equal(result.session.user_id, 1);
+});
+
 console.log(`\n=== ${passed} passed, ${failed} failed ===`);
 process.exit(failed === 0 ? 0 : 1);
