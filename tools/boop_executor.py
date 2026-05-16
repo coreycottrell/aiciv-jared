@@ -13,9 +13,11 @@ Stop:
     kill $(cat .boop_executor.pid)
 """
 
+import fcntl
 import json
 import logging
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -32,6 +34,10 @@ TASKS_FILE = BASE_DIR / ".claude" / "scheduled-tasks-state.json"
 PID_FILE = BASE_DIR / ".boop_executor.pid"
 LOG_FILE = BASE_DIR / "logs" / "boop_executor.log"
 TELEGRAM_CONFIG = BASE_DIR / "config" / "telegram_config.json"
+BOOP_CONFIG_FILE = BASE_DIR / "tools" / "boop_config.json"
+PORTAL_DELIVER_SCRIPT = BASE_DIR / "tools" / "portal_deliver.sh"
+CONSTITUTIONAL_ALARM_STATE_FILE = BASE_DIR / ".boop_constitutional_alarm_state.json"
+CONSTITUTIONAL_ALARM_BODY_DIR = BASE_DIR / "inbox"
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -43,6 +49,22 @@ ACTIVE_HOURS_END = 23                # 11 PM ET - latest daily/weekly/monthly fi
 NIGHTLY_HOURS_START = 0              # Midnight ET - earliest nightly fire
 NIGHTLY_HOURS_END = 6                # 6 AM ET - latest nightly fire
 MAX_CONCURRENT_BOOP_AGENTS = 3       # max simultaneously running claude boop processes
+
+# ─── ADR-001 Constitutional Fairness Lane defaults ────────────────────────────
+# Fallbacks only. Live values come from tools/boop_config.json "boop_rules"
+# block, loaded each cycle by load_boop_rules(). See
+# docs/architecture/boop-executor-constitutional-fairness-lane-2026-05-16.md
+# and inbox/cto-review-boop-fairness-lane-verdict-2026-05-16.md
+DEFAULT_BOOP_RULES = {
+    "constitutional_tasks": ["engineering-flow-check", "delegation-enforcer"],
+    "constitutional_reserved_slots": 1,
+    "constitutional_starvation_multiplier": 2.0,
+    "constitutional_watchdog_max_age_seconds": 2700,   # 45 minutes
+    "constitutional_dedup_window_ratio": 0.5,
+    "portal_alarm_rate_limit_seconds": 1800,           # 30 minutes
+}
+WATCHDOG_TERM_GRACE_SECONDS = 30
+PRIORITY_CONSTITUTIONAL_RANK = -1  # constitutional tasks sort BEFORE rank 0 in priority_order
 
 # Frequency label → seconds
 FREQUENCY_MAP = {
@@ -169,20 +191,430 @@ def load_tasks(logger: logging.Logger) -> dict:
 
 
 def save_tasks(tasks: dict, logger: logging.Logger) -> bool:
-    """Write updated tasks back to the JSON file. Returns True on success."""
+    """Write updated tasks back to the JSON file. Returns True on success.
+
+    ADR-001 Amendment 5: fcntl.flock(LOCK_EX) wraps the read-modify-write
+    against TASKS_FILE so two writers (e.g. boop_executor + a future bridge
+    or recovery script) can never produce a torn JSON file.
+    """
+    lock_path = str(TASKS_FILE) + ".lock"
+    lock_fd = None
     try:
+        # Acquire exclusive lock on a sidecar file (TASKS_FILE itself is read+rewritten).
+        lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+
         # Read full structure to preserve metadata fields
         raw = TASKS_FILE.read_text(encoding="utf-8")
         data = json.loads(raw)
         data["tasks"] = tasks
-        TASKS_FILE.write_text(
-            json.dumps(data, indent=2, ensure_ascii=False),
-            encoding="utf-8"
-        )
+        # Atomic write via tmp + rename so partial writes can't corrupt the file
+        tmp_path = str(TASKS_FILE) + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as tmp_fh:
+            json.dump(data, tmp_fh, indent=2, ensure_ascii=False)
+            tmp_fh.flush()
+            os.fsync(tmp_fh.fileno())
+        os.replace(tmp_path, str(TASKS_FILE))
         return True
     except Exception as e:
         logger.error("Failed to save tasks: %s", e)
         return False
+    finally:
+        if lock_fd is not None:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                os.close(lock_fd)
+            except Exception:
+                pass
+
+
+# ─── ADR-001 Constitutional Fairness Lane helpers ────────────────────────────
+
+_PORTAL_ALARM_STATE_CACHE: dict = {}
+
+
+def load_boop_rules(logger: logging.Logger) -> dict:
+    """Load boop_rules from boop_config.json with safe fallback to DEFAULTS.
+
+    Tolerant of missing config, missing block, missing keys: any missing key
+    uses the DEFAULT_BOOP_RULES value. Also coerces constitutional_tasks to a
+    Python set for membership tests.
+    """
+    rules = dict(DEFAULT_BOOP_RULES)
+    try:
+        cfg = json.loads(BOOP_CONFIG_FILE.read_text(encoding="utf-8"))
+        block = cfg.get("boop_rules", {})
+        if isinstance(block, dict):
+            for k in DEFAULT_BOOP_RULES.keys():
+                if k in block and block[k] is not None:
+                    rules[k] = block[k]
+    except FileNotFoundError:
+        logger.warning("boop_config.json not found at %s - using DEFAULT_BOOP_RULES", BOOP_CONFIG_FILE)
+    except json.JSONDecodeError as e:
+        logger.error("boop_config.json parse error: %s - using DEFAULT_BOOP_RULES", e)
+    except Exception as e:
+        logger.warning("Failed to read boop_config.json: %s - using DEFAULTS", e)
+
+    # Defensive coercion
+    ct = rules.get("constitutional_tasks") or []
+    if not isinstance(ct, list):
+        ct = []
+    rules["constitutional_tasks_set"] = set(ct)
+    try:
+        rules["constitutional_reserved_slots"] = max(0, int(rules.get("constitutional_reserved_slots", 1)))
+    except (TypeError, ValueError):
+        rules["constitutional_reserved_slots"] = 1
+    try:
+        rules["constitutional_starvation_multiplier"] = float(rules.get("constitutional_starvation_multiplier", 2.0))
+    except (TypeError, ValueError):
+        rules["constitutional_starvation_multiplier"] = 2.0
+    try:
+        rules["constitutional_watchdog_max_age_seconds"] = int(rules.get("constitutional_watchdog_max_age_seconds", 2700))
+    except (TypeError, ValueError):
+        rules["constitutional_watchdog_max_age_seconds"] = 2700
+    try:
+        ratio = float(rules.get("constitutional_dedup_window_ratio", 0.5))
+        rules["constitutional_dedup_window_ratio"] = max(0.0, min(1.0, ratio))
+    except (TypeError, ValueError):
+        rules["constitutional_dedup_window_ratio"] = 0.5
+    try:
+        rules["portal_alarm_rate_limit_seconds"] = max(0, int(rules.get("portal_alarm_rate_limit_seconds", 1800)))
+    except (TypeError, ValueError):
+        rules["portal_alarm_rate_limit_seconds"] = 1800
+    return rules
+
+
+def load_priority_order(logger: logging.Logger) -> list:
+    """Load priority_order array from scheduled-tasks-state.json boop_rules block.
+
+    GROUND-TRUTH NOTE (2026-05-16): priority_order lives in
+    scheduled-tasks-state.json, NOT boop_config.json. The CTO verdict mis-cited
+    its location; the architect's ADR was correct. ST# resolved by reading
+    from the actual location.
+    """
+    try:
+        data = json.loads(TASKS_FILE.read_text(encoding="utf-8"))
+        po = data.get("boop_rules", {}).get("priority_order", [])
+        if isinstance(po, list):
+            return po
+    except Exception as e:
+        logger.warning("Could not load priority_order: %s", e)
+    return []
+
+
+def _task_id_from_pid(pid: int) -> str:
+    """Extract BOOP task_id from a claude --print process cmdline by scanning
+    for the 'BOOP [task_id]:' marker that build_boop_prompt embeds.
+    Returns empty string on failure."""
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            raw = f.read().replace(b"\x00", b" ").decode(errors="replace")
+        m = re.search(r"BOOP \[([a-zA-Z0-9_\-]+)\]", raw)
+        if m:
+            return m.group(1)
+    except Exception:
+        return ""
+    return ""
+
+
+def _pid_age_seconds(pid: int) -> float:
+    """Return process age in seconds via /proc/<pid>/stat field 22 (starttime).
+    Returns -1.0 if unavailable."""
+    try:
+        with open(f"/proc/{pid}/stat", "r") as f:
+            stat_fields = f.read().split()
+        # field 22 (1-indexed) = starttime in clock ticks since boot
+        starttime_ticks = int(stat_fields[21])
+        clk_tck = os.sysconf(os.sysconf_names.get("SC_CLK_TCK", "_SC_CLK_TCK"))
+        with open("/proc/uptime", "r") as f:
+            uptime_seconds = float(f.read().split()[0])
+        proc_start_since_boot = starttime_ticks / clk_tck
+        age = uptime_seconds - proc_start_since_boot
+        return max(0.0, age)
+    except Exception:
+        return -1.0
+
+
+def list_running_boop_pids(logger: logging.Logger) -> list:
+    """Return list of (pid, task_id) tuples for currently running claude BOOP agents."""
+    pids = []
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "claude.*BOOP"],
+            capture_output=True, text=True, timeout=5
+        )
+        if not result.stdout.strip():
+            return []
+        for line in result.stdout.strip().split("\n"):
+            try:
+                pid = int(line.strip())
+            except ValueError:
+                continue
+            task_id = _task_id_from_pid(pid)
+            pids.append((pid, task_id))
+    except Exception as e:
+        logger.warning("list_running_boop_pids failed: %s", e)
+    return pids
+
+
+def count_running_constitutional_agents(constitutional_set: set, logger: logging.Logger) -> int:
+    """Count currently-running claude BOOP agents whose task_id is in the constitutional set."""
+    n = 0
+    for pid, task_id in list_running_boop_pids(logger):
+        if task_id and task_id in constitutional_set:
+            n += 1
+    return n
+
+
+def watchdog_kill_hung_constitutional(rules: dict, logger: logging.Logger) -> int:
+    """Kill constitutional BOOP agents older than constitutional_watchdog_max_age_seconds.
+
+    Amendment 2: SIGTERM first, then SIGKILL after WATCHDOG_TERM_GRACE_SECONDS.
+    Salvage the agent's /tmp/boop_<task_id>.log into inbox/ for forensic review.
+    Always emit a portal alarm (this is a real incident, not normal operation).
+
+    Returns the number of agents killed this cycle.
+    """
+    max_age = rules.get("constitutional_watchdog_max_age_seconds", 2700)
+    constitutional_set = rules.get("constitutional_tasks_set", set())
+    killed = 0
+    for pid, task_id in list_running_boop_pids(logger):
+        if not task_id or task_id not in constitutional_set:
+            continue
+        age = _pid_age_seconds(pid)
+        if age < 0:
+            continue  # could not read /proc
+        if age <= max_age:
+            continue
+        age_min = age / 60.0
+        logger.warning(
+            "CONSTITUTIONAL WATCHDOG: killing hung agent [%s] PID=%d age=%.1fm (max=%ds)",
+            task_id, pid, age_min, max_age,
+        )
+        # Salvage log BEFORE killing the process
+        log_path = f"/tmp/boop_{task_id}.log"
+        salvage_path = (
+            CONSTITUTIONAL_ALARM_BODY_DIR
+            / f"hung-agent-{task_id}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.md"
+        )
+        try:
+            CONSTITUTIONAL_ALARM_BODY_DIR.mkdir(parents=True, exist_ok=True)
+            body = f"# Hung constitutional agent killed by watchdog\n\n"
+            body += f"**Task ID**: {task_id}\n"
+            body += f"**PID**: {pid}\n"
+            body += f"**Age**: {age_min:.1f} minutes\n"
+            body += f"**Killed at**: {datetime.now(timezone.utc).isoformat()}\n\n"
+            body += "## Salvaged stdout/stderr log\n\n```\n"
+            try:
+                body += Path(log_path).read_text(errors="replace")[:200000]
+            except Exception as e:  # noqa: BLE001
+                body += f"(could not read {log_path}: {e})"
+            body += "\n```\n"
+            salvage_path.write_text(body, encoding="utf-8")
+        except Exception as e:
+            logger.warning("watchdog salvage failed for [%s]: %s", task_id, e)
+
+        # SIGTERM, wait WATCHDOG_TERM_GRACE_SECONDS, then SIGKILL if still alive
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            continue
+        except Exception as e:
+            logger.warning("watchdog SIGTERM failed for PID=%d: %s", pid, e)
+            continue
+        # Wait for grace period in small slices so shutdown signals still get through
+        end = time.time() + WATCHDOG_TERM_GRACE_SECONDS
+        alive = True
+        while time.time() < end and not _shutdown_requested:
+            time.sleep(1.0)
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                alive = False
+                break
+            except Exception:
+                pass
+        if alive:
+            try:
+                os.kill(pid, signal.SIGKILL)
+                logger.warning("CONSTITUTIONAL WATCHDOG: SIGKILL sent to PID=%d task=%s", pid, task_id)
+            except ProcessLookupError:
+                pass
+            except Exception as e:
+                logger.warning("watchdog SIGKILL failed for PID=%d: %s", pid, e)
+        killed += 1
+        # Portal alarm for the kill
+        portal_alarm_rate_limited(
+            rules,
+            alarm_key=f"watchdog-{task_id}",
+            caption=f"[CONSTITUTIONAL WATCHDOG] {task_id} hung agent killed age={age_min:.0f}m",
+            body_path=str(salvage_path) if salvage_path.exists() else None,
+            logger=logger,
+        )
+    return killed
+
+
+def _load_portal_alarm_state(logger: logging.Logger) -> dict:
+    global _PORTAL_ALARM_STATE_CACHE
+    if _PORTAL_ALARM_STATE_CACHE:
+        return _PORTAL_ALARM_STATE_CACHE
+    if not CONSTITUTIONAL_ALARM_STATE_FILE.exists():
+        _PORTAL_ALARM_STATE_CACHE = {}
+        return _PORTAL_ALARM_STATE_CACHE
+    try:
+        _PORTAL_ALARM_STATE_CACHE = json.loads(CONSTITUTIONAL_ALARM_STATE_FILE.read_text(encoding="utf-8"))
+    except Exception as e:
+        logger.warning("portal alarm state read failed: %s", e)
+        _PORTAL_ALARM_STATE_CACHE = {}
+    return _PORTAL_ALARM_STATE_CACHE
+
+
+def _save_portal_alarm_state(state: dict, logger: logging.Logger) -> None:
+    try:
+        CONSTITUTIONAL_ALARM_STATE_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    except Exception as e:
+        logger.warning("portal alarm state write failed: %s", e)
+
+
+def portal_alarm_rate_limited(rules: dict, alarm_key: str, caption: str,
+                              body_path, logger: logging.Logger) -> bool:
+    """Emit a portal alarm via portal_deliver.sh, rate-limited per alarm_key.
+
+    Amendment 4: PORTAL ONLY (no Telegram). 30-minute rate-limit per key by default.
+    Returns True if alarm emitted this call, False if suppressed by rate limit.
+    """
+    rate_limit = rules.get("portal_alarm_rate_limit_seconds", 1800)
+    now_ts = time.time()
+    state = _load_portal_alarm_state(logger)
+    last_ts = state.get(alarm_key, 0)
+    if last_ts and (now_ts - last_ts) < rate_limit:
+        logger.info(
+            "portal alarm SUPPRESSED [%s]: last=%ds ago (rate_limit=%ds)",
+            alarm_key, int(now_ts - last_ts), rate_limit,
+        )
+        return False
+    if not PORTAL_DELIVER_SCRIPT.exists():
+        logger.warning("portal_deliver.sh not found at %s - alarm not sent: %s", PORTAL_DELIVER_SCRIPT, caption)
+        return False
+    # If no body file path provided, write a small body so portal renders something useful
+    body_arg = body_path
+    if not body_arg:
+        try:
+            CONSTITUTIONAL_ALARM_BODY_DIR.mkdir(parents=True, exist_ok=True)
+            body_arg = str(
+                CONSTITUTIONAL_ALARM_BODY_DIR
+                / f"constitutional-alarm-{alarm_key}-{int(now_ts)}.md"
+            )
+            Path(body_arg).write_text(f"# Constitutional alarm\n\n{caption}\n", encoding="utf-8")
+        except Exception as e:
+            logger.warning("portal alarm body write failed: %s", e)
+            return False
+    try:
+        cmd = [str(PORTAL_DELIVER_SCRIPT), body_arg, caption, f"constitutional-{alarm_key}"]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+        if proc.returncode != 0:
+            logger.warning("portal_deliver.sh failed rc=%d stderr=%s", proc.returncode, proc.stderr[:500])
+            return False
+    except Exception as e:
+        logger.warning("portal_deliver.sh invocation failed: %s", e)
+        return False
+    state[alarm_key] = now_ts
+    _save_portal_alarm_state(state, logger)
+    logger.warning("PORTAL ALARM EMITTED [%s]: %s", alarm_key, caption)
+    return True
+
+
+def constitutional_starvation_check(tasks: dict, rules: dict, logger: logging.Logger) -> int:
+    """At end of each cycle, alarm if any constitutional task has elapsed > N * interval.
+
+    Returns number of alarms emitted this cycle (after rate-limiting).
+    """
+    multiplier = rules.get("constitutional_starvation_multiplier", 2.0)
+    constitutional_set = rules.get("constitutional_tasks_set", set())
+    now = datetime.now(timezone.utc)
+    emitted = 0
+    for task_id in constitutional_set:
+        task = tasks.get(task_id)
+        if not task or task.get("status") != "active":
+            continue
+        interval = parse_frequency_seconds(task.get("frequency", ""))
+        if interval == 0:
+            continue
+        last_run_str = task.get("last_run")
+        if not last_run_str:
+            continue
+        try:
+            last_run = datetime.fromisoformat(last_run_str.replace("Z", "+00:00"))
+            elapsed = (now - last_run).total_seconds()
+        except Exception:
+            continue
+        if elapsed <= multiplier * interval:
+            continue
+        overdue_min = (elapsed - interval) / 60.0
+        # Build body file with diagnostic context
+        try:
+            CONSTITUTIONAL_ALARM_BODY_DIR.mkdir(parents=True, exist_ok=True)
+            body_path = (
+                CONSTITUTIONAL_ALARM_BODY_DIR
+                / f"constitutional-starvation-{task_id}-{now.strftime('%Y%m%dT%H%M%SZ')}.md"
+            )
+            running_pids = list_running_boop_pids(logger)
+            running_count = len(running_pids)
+            running_constitutional = sum(1 for _, tid in running_pids if tid in constitutional_set)
+            body = (
+                f"# CONSTITUTIONAL STARVATION ALERT — {task_id}\n\n"
+                f"**Detected at**: {now.isoformat()}\n"
+                f"**Last run**: {last_run_str}\n"
+                f"**Interval**: {interval}s ({interval/60.0:.1f}m)\n"
+                f"**Elapsed**: {elapsed:.0f}s ({elapsed/60.0:.1f}m)\n"
+                f"**Overdue by**: {overdue_min:.1f}m\n"
+                f"**Multiplier threshold**: {multiplier}x interval = {multiplier*interval/60.0:.1f}m\n\n"
+                f"## Runtime context\n\n"
+                f"- Running BOOP agents: {running_count}\n"
+                f"- Running constitutional agents: {running_constitutional}\n"
+                f"- Constitutional reserved slots configured: {rules.get('constitutional_reserved_slots')}\n"
+                f"- MAX_CONCURRENT_BOOP_AGENTS: {MAX_CONCURRENT_BOOP_AGENTS}\n"
+                f"- MAX_BOOPS_PER_WINDOW: {MAX_BOOPS_PER_WINDOW} per {CONCURRENCY_WINDOW_SECONDS}s\n\n"
+                f"## What this means\n\n"
+                f"The reserved-slot bypass should have prevented this. Investigate:\n"
+                f"1. Did watchdog fail to clear a hung agent?\n"
+                f"2. Is the constitutional set configured correctly in boop_config.json?\n"
+                f"3. Is the executor process alive and the main loop running?\n"
+            )
+            body_path.write_text(body, encoding="utf-8")
+        except Exception as e:
+            logger.warning("starvation body write failed for [%s]: %s", task_id, e)
+            body_path = None
+        caption = f"[CONSTITUTIONAL STARVATION] {task_id} overdue {overdue_min:.0f}m"
+        if portal_alarm_rate_limited(
+            rules,
+            alarm_key=f"starvation-{task_id}",
+            caption=caption,
+            body_path=str(body_path) if body_path else None,
+            logger=logger,
+        ):
+            emitted += 1
+        logger.warning(
+            "CONSTITUTIONAL STARVATION ALERT [%s]: %.1fm overdue (interval=%.1fm)",
+            task_id, overdue_min, interval / 60.0,
+        )
+    return emitted
+
+
+def priority_rank(task_id: str, priority_order: list, constitutional_set: set) -> int:
+    """Lower rank = earlier in due-task processing.
+
+    Constitutional tasks get PRIORITY_CONSTITUTIONAL_RANK (-1), so they always
+    sort before any rank-0+ task regardless of priority_order position.
+    Non-constitutional tasks rank by their position in priority_order; missing
+    tasks rank after all listed tasks.
+    """
+    if task_id in constitutional_set:
+        return PRIORITY_CONSTITUTIONAL_RANK
+    try:
+        return priority_order.index(task_id)
+    except ValueError:
+        return len(priority_order) + 1
 
 
 # ─── Scheduling logic ─────────────────────────────────────────────────────────
@@ -356,20 +788,82 @@ def build_boop_prompt(task_id: str, task: dict, bot_token: str) -> str:
     return prompt
 
 
-def fire_boop(task_id: str, task: dict, logger: logging.Logger) -> bool:
-    """Launch an independent background Claude Code agent for this boop. Returns True on success."""
+def fire_boop(task_id: str, task: dict, logger: logging.Logger,
+              rules: dict = None) -> bool:
+    """Launch an independent background Claude Code agent for this boop. Returns True on success.
+
+    ADR-001 amendments applied here:
+    - A1: constitutional set drives reserved-slot bypass logic
+    - A3: scheduler-level dedup — refuse to fire if elapsed_since_last < interval * ratio
+    """
     description = task.get("description", task_id)
     agent = task.get("agent", "unknown-agent")
     category = task.get("category", "")
 
-    # Check concurrent boop agent limit
+    if rules is None:
+        rules = load_boop_rules(logger)
+    constitutional_set = rules.get("constitutional_tasks_set", set())
+    is_constitutional = task_id in constitutional_set
+
+    # ── Amendment 3: scheduler-level deduplication ────────────────────────────
+    # Refuse to fire if this task ran very recently. Skill-level idempotency is
+    # NOT a contract; defense in depth happens here at the scheduler.
+    interval = parse_frequency_seconds(task.get("frequency", ""))
+    dedup_ratio = rules.get("constitutional_dedup_window_ratio", 0.5)
+    last_run_str = task.get("last_run")
+    if interval > 0 and last_run_str:
+        try:
+            last_run = datetime.fromisoformat(last_run_str.replace("Z", "+00:00"))
+            elapsed_since_last = (datetime.now(timezone.utc) - last_run).total_seconds()
+            if elapsed_since_last < (interval * dedup_ratio):
+                logger.info(
+                    "BRIDGE COEXISTENCE SUPPRESSED [%s] last_run=%s elapsed=%ds threshold=%ds (interval=%ds, ratio=%.2f)",
+                    task_id, last_run_str, int(elapsed_since_last),
+                    int(interval * dedup_ratio), interval, dedup_ratio,
+                )
+                return False
+        except Exception:
+            pass  # parse failure ⇒ fire (preserves prior behavior)
+
+    # ── Amendment 1: reserved-slot bypass for constitutional tasks ────────────
     running = count_running_boop_agents(logger)
-    if running >= MAX_CONCURRENT_BOOP_AGENTS:
-        logger.info(
-            "Skipping [%s]: %d boop agents already running (max %d)",
-            task_id, running, MAX_CONCURRENT_BOOP_AGENTS
+    if is_constitutional:
+        reserved_slots = rules.get("constitutional_reserved_slots", 1)
+        running_constitutional = count_running_constitutional_agents(constitutional_set, logger)
+        # Bypass cap ONLY up to reserved_slots, AND only if no instance of THIS task is running
+        # (don't double-fire the same constitutional task even within its reserved slot)
+        already_running_same_task = any(
+            tid == task_id for _, tid in list_running_boop_pids(logger)
         )
-        return False
+        if already_running_same_task:
+            logger.info(
+                "Skipping constitutional [%s]: an instance of this task is already running",
+                task_id,
+            )
+            return False
+        if running_constitutional < reserved_slots:
+            logger.info(
+                "CONSTITUTIONAL BYPASS [%s]: running=%d (cap=%d) running_constitutional=%d (reserved=%d)",
+                task_id, running, MAX_CONCURRENT_BOOP_AGENTS,
+                running_constitutional, reserved_slots,
+            )
+            # fall through to launch — bypasses both the window throttle and the process cap
+        else:
+            # Reserved slot already in use by another constitutional task — fall back to normal throttle
+            if running >= MAX_CONCURRENT_BOOP_AGENTS:
+                logger.info(
+                    "Skipping constitutional [%s]: reserved slot in use AND %d/%d normal slots full",
+                    task_id, running, MAX_CONCURRENT_BOOP_AGENTS,
+                )
+                return False
+    else:
+        # Non-constitutional: existing behavior — respect MAX_CONCURRENT_BOOP_AGENTS
+        if running >= MAX_CONCURRENT_BOOP_AGENTS:
+            logger.info(
+                "Skipping [%s]: %d boop agents already running (max %d)",
+                task_id, running, MAX_CONCURRENT_BOOP_AGENTS,
+            )
+            return False
 
     # Load telegram token for embedding in agent prompt
     bot_token = get_telegram_token(logger)
@@ -442,6 +936,19 @@ def run(logger: logging.Logger) -> None:
         now = datetime.now(timezone.utc)
         now_local = datetime.now()  # For active-hour checks (local time)
 
+        # ADR-001: refresh boop_rules + priority_order each cycle so live config edits take effect
+        rules = load_boop_rules(logger)
+        priority_order = load_priority_order(logger)
+        constitutional_set = rules.get("constitutional_tasks_set", set())
+
+        # ADR-001 Amendment 2: hung-agent watchdog runs each cycle BEFORE firing new boops
+        try:
+            killed = watchdog_kill_hung_constitutional(rules, logger)
+            if killed:
+                logger.warning("Watchdog cycle killed %d hung constitutional agent(s)", killed)
+        except Exception as e:
+            logger.error("Watchdog raised: %s", e, exc_info=True)
+
         tasks = load_tasks(logger)
         if not tasks:
             logger.warning("No tasks loaded - sleeping until next check")
@@ -457,8 +964,11 @@ def run(logger: logging.Logger) -> None:
             except Exception as e:
                 logger.error("Error checking task [%s]: %s", task_id, e)
 
+        # ADR-001: sort due list — constitutional tasks first, then by priority_order
+        due.sort(key=lambda pair: priority_rank(pair[0], priority_order, constitutional_set))
+
         if due:
-            logger.info("%d task(s) due: %s", len(due), [t[0] for t in due])
+            logger.info("%d task(s) due (sorted): %s", len(due), [t[0] for t in due])
         else:
             logger.debug("No tasks due at %s", now_local.strftime("%H:%M:%S"))
 
@@ -467,27 +977,37 @@ def run(logger: logging.Logger) -> None:
             if _shutdown_requested:
                 break
 
+            is_constitutional = task_id in constitutional_set
+
             # Concurrency throttle: max MAX_BOOPS_PER_WINDOW in last CONCURRENCY_WINDOW_SECONDS
+            # ADR-001 A1: constitutional tasks bypass this window throttle (the reserved slot guarantee)
             now_ts = time.time()
             recent_fires = [t for t in recent_fires if now_ts - t < CONCURRENCY_WINDOW_SECONDS]
 
-            if len(recent_fires) >= MAX_BOOPS_PER_WINDOW:
+            if not is_constitutional and len(recent_fires) >= MAX_BOOPS_PER_WINDOW:
                 wait_for = CONCURRENCY_WINDOW_SECONDS - (now_ts - recent_fires[0])
                 logger.info(
                     "Concurrency limit hit (%d/%d in last %ds). "
-                    "Deferring remaining due tasks for %.0fs",
+                    "Deferring remaining non-constitutional due tasks for %.0fs",
                     len(recent_fires), MAX_BOOPS_PER_WINDOW,
                     CONCURRENCY_WINDOW_SECONDS, max(wait_for, 0)
                 )
-                break  # Deferred tasks will be picked up on the next check cycle
+                # Continue scanning — constitutional tasks later in `due` should still get evaluated.
+                # But sort already pushed them to the front, so if we hit window here it means we've
+                # already evaluated all constitutional tasks. Safe to break out of non-constitutional loop.
+                # However, to be safe against future re-ordering, we `continue` rather than break,
+                # and inside fire_boop the throttle is re-checked for non-constitutional via running cap.
+                continue  # skip this non-constitutional task; check next
 
-            # Fire the boop
-            success = fire_boop(task_id, task, logger)
+            # Fire the boop (pass rules so fire_boop reuses same constitutional set + dedup ratio)
+            success = fire_boop(task_id, task, logger, rules=rules)
 
             if success:
                 # Update last_run in the live tasks dict
                 tasks[task_id]["last_run"] = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-                recent_fires.append(time.time())
+                # Constitutional fires do NOT consume the window-throttle budget
+                if not is_constitutional:
+                    recent_fires.append(time.time())
                 fired_count += 1
 
                 # Persist after each successful fire (fail-safe: partial updates saved)
@@ -496,6 +1016,12 @@ def run(logger: logging.Logger) -> None:
                 # Brief stagger between successive fires within the same cycle
                 if fired_count < len(due):
                     _sleep_interruptible(5)
+
+        # ADR-001: starvation alarm — emit AFTER fire loop so we have fresh tasks state
+        try:
+            constitutional_starvation_check(tasks, rules, logger)
+        except Exception as e:
+            logger.error("Starvation check raised: %s", e, exc_info=True)
 
         _sleep_interruptible(CHECK_INTERVAL_SECONDS)
 

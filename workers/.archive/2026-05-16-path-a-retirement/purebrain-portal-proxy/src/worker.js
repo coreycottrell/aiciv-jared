@@ -359,9 +359,17 @@ export default {
         url.pathname.startsWith('/api/admin/clients') ||
         url.pathname.startsWith('/api/admin/invite') ||
         url.pathname.startsWith('/api/admin/invites') ||
-        url.pathname === '/api/admin/validate-token'
+        url.pathname === '/api/admin/validate-token' ||
+        url.pathname === '/api/admin/exchange-magic-token' ||
+        url.pathname === '/api/admin/reset-password-magic'
       ) {
-        if (url.pathname !== '/api/admin/validate-token') {
+        // Magic-link endpoints are anonymous (they ARE the auth handshake)
+        const anonPaths = [
+          '/api/admin/validate-token',
+          '/api/admin/exchange-magic-token',
+          '/api/admin/reset-password-magic'
+        ];
+        if (!anonPaths.includes(url.pathname)) {
           const gate = await validateLeaderSession(request, env);
           if (!gate.ok) {
             const errBody = gate.status === 403
@@ -376,6 +384,27 @@ export default {
             });
           }
         }
+
+        // Magic-link endpoints use Service Binding to admin-api (CTO review fix)
+        if (url.pathname === '/api/admin/exchange-magic-token' ||
+            url.pathname === '/api/admin/reset-password-magic') {
+          if (!env.ADMIN_API) {
+            return new Response('{"error":"admin-api service binding not configured"}', {
+              status: 503,
+              headers: { 'content-type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+            });
+          }
+          const resp = await env.ADMIN_API.fetch(new Request(url.href, {
+            method: request.method,
+            headers: request.headers,
+            body: (request.method !== 'GET' && request.method !== 'HEAD' && request.method !== 'OPTIONS') ? request.body : null,
+          }));
+          const respHeaders = new Headers(resp.headers);
+          respHeaders.set('Access-Control-Allow-Origin', '*');
+          return new Response(resp.body, { status: resp.status, headers: respHeaders });
+        }
+
+        // Other admin-api endpoints use HTTP fetch (legacy pattern, awaiting Tier 3 deletion)
         const workerUrl = `https://admin-api.in0v8.workers.dev${url.pathname}${url.search}`;
         const proxyHeaders = new Headers(request.headers);
         if (env.ADMIN_TOKEN) {
