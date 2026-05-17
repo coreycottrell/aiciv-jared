@@ -616,11 +616,17 @@ def register_routes(app: Flask) -> None:
         #   captured correctly even though no isSandbox flag is sent in verify-payment.
         _order_id_early = data.get('orderId', '')
         # Tier-to-price fallback table (matches pay-test-sandbox-3 PRICES config)
+        # 2026-05-17: Awakened repriced $149 → $297 (Jared greenlit). Legacy $149
+        # mapping retained in _TIER_PRICES_LEGACY for webhook replay of pre-cutover
+        # subscriptions. Primary live lookup uses $297.
         _TIER_PRICES = {
-            'awakened':  '149.00',
+            'awakened':  '297.00',
             'bonded':    '299.00',
             'partnered': '499.00',
             'unified':   '999.00',
+        }
+        _TIER_PRICES_LEGACY = {
+            'awakened':  '149.00',
         }
         if _order_id_early.startswith('I-') and (not payer_email or not payer_name):
             import base64 as _base64

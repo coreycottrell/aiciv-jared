@@ -22,7 +22,7 @@ MODES:
 
 USAGE:
   python3 tools/paypal_auto_split.py --setup-sheet
-  python3 tools/paypal_auto_split.py --add-payment --customer "Faris Asmar" --tier "Awakened" --amount 149
+  python3 tools/paypal_auto_split.py --add-payment --customer "Faris Asmar" --tier "Awakened" --amount 297
   python3 tools/paypal_auto_split.py --approve --row 5
   python3 tools/paypal_auto_split.py --status
   python3 tools/paypal_auto_split.py --summary
@@ -742,7 +742,10 @@ def run_webhook():
         customer = resource.get('custom', 'Unknown Customer')
 
         # Determine tier from amount
-        tier_map = {149: 'Awakened', 499: 'Partnered', 999: 'Unified',
+        # 2026-05-17: Awakened repriced $149 → $297 (Jared greenlit). $149 retained
+        # for legacy capture replay of pre-cutover subscriptions. Split percentages
+        # (5%/60%/40%) UNCHANGED — only tier lookup widens.
+        tier_map = {149: 'Awakened', 297: 'Awakened', 499: 'Partnered', 999: 'Unified',
                     197: 'Awakened', 579: 'Partnered', 1089: 'Unified'}
         tier = tier_map.get(int(gross), 'Enterprise')
 
