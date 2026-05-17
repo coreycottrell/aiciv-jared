@@ -115,7 +115,7 @@ async def main():
         page_text = await page.evaluate("() => document.body.innerText")
 
         tier_checks = {
-            "Awakened_$149": "$149" in page_text and "Awakened" in page_text,
+            "Awakened_$297": "$297" in page_text and "Awakened" in page_text,
             "Partnered_$499": "$499" in page_text and "Partnered" in page_text,
             "Unified_$999": "$999" in page_text and "Unified" in page_text,
         }

@@ -271,7 +271,7 @@ async def run_purchase_flow():
                     f"text=BRING {AI_NAME.upper()} FULLY ONLINE",
                     "text=FULLY ONLINE",
                     "text=$79",
-                    "text=$149",
+                    "text=$297",
                     "text=$499",
                     "text=/month",
                     "text=Get Started",

@@ -180,7 +180,7 @@ async def run_audit():
                 for (const el of allEls) {
                     if (el.children.length === 0 || el.children.length < 5) {
                         const txt = el.textContent.trim();
-                        if ((txt.includes('$79') || txt.includes('$149') || txt.includes('$499') || txt.includes('$999')) && txt.length < 500) {
+                        if ((txt.includes('$79') || txt.includes('$297') || txt.includes('$499') || txt.includes('$999')) && txt.length < 500) {
                             const cls = (typeof el.className === 'string') ? el.className : (el.className.baseVal || '');
                             if (!priceEls.some(p => p.text === txt)) {
                                 priceEls.push({ text: txt.substring(0, 100), classes: cls.substring(0, 60) });
