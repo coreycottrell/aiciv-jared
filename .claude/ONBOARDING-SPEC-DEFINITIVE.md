@@ -1,7 +1,7 @@
 # ONBOARDING SPECIFICATION -- DEFINITIVE
 
 **Status**: CONSTITUTIONAL -- Single Source of Truth
-**Last Updated**: 2026-04-01
+**Last Updated**: 2026-05-17 (Awakened repricing lock)
 **Overwrites**: All previous onboarding docs, specs, and fragments
 **Author**: dept-systems-technology
 **Rule**: This document is non-negotiable. Any agent modifying the onboarding pipeline MUST read this first.
@@ -39,13 +39,13 @@ These pages accept real money. Modifications require explicit Jared approval.
 
 | Path | Tier | Pricing Shown | PayPal Mode | Seed |
 |------|------|---------------|-------------|------|
-| `/` (homepage) | All 3 tiers | $149 / $499 / $999 | LIVE subscription | Yes |
-| `/live/` | All 3 tiers | $149 / $499 / $999 | LIVE subscription | Yes |
-| `/awakened/` | Awakened | $149 | LIVE subscription | Yes |
+| `/` (homepage) | All 3 tiers | $297 / $499 / $999 | LIVE subscription | Yes |
+| `/live/` | All 3 tiers | $297 / $499 / $999 | LIVE subscription | Yes |
+| `/awakened/` | Awakened | $297 | LIVE subscription | Yes |
 | `/partnered/` | Partnered | $499 | LIVE subscription | Yes |
 | `/unified/` | Unified | $999 | LIVE subscription | Yes |
-| `/insiders/` | Awakened | $149 | LIVE subscription | Yes |
-| `/insiders/awakened/` | Awakened | $74.50 (insider price) | LIVE subscription | Yes |
+| `/insiders/` | Awakened | $74.50 | LIVE subscription | Yes |
+| `/insiders/awakened/` | Awakened | $74.50 (insider price; half of legacy $149, retained as locked promo) | LIVE subscription | Yes |
 
 ### Sandbox / Test Pages
 
@@ -170,11 +170,15 @@ document.querySelectorAll('#proCta, #partnerCta, #unifiedCta')
 
 ## 4. Payment Tiers and Pricing
 
+> **REPRICING LOG**: 2026-05-17 — Awakened tier raised from $149 to $297/mo per Jared lock.
+> First live capture at new price: Kyndal Ulbrich, orderId I-80CMY8AU03JM, 2026-05-16 03:37 UTC.
+> Legacy $149 retired. /insiders/ remains $74.50 (constitutional, untouched).
+
 ### Current Pricing (as displayed on live pages)
 
 | Tier | Current Price | Launch Price | Plan ID |
 |------|--------------|--------------|---------|
-| Awakened | $149/month | $197/mo at launch | `P-2SA65600MT088594TNGLTFKY` |
+| Awakened | $297/month | $297/mo (locked 2026-05-17 — supersedes $149 and $197 launch) | `P-2SA65600MT088594TNGLTFKY` |
 | Partnered | $499/month | $579/mo at launch | `P-3VH43554A66001716NGLTFKY` |
 | Unified | $999/month | $1,089/mo at launch | `P-43A28944XN5237411NGLTFLA` |
 
@@ -182,13 +186,13 @@ document.querySelectorAll('#proCta, #partnerCta, #unifiedCta')
 
 | Page | Tier | Price | Notes |
 |------|------|-------|-------|
-| `/insiders/awakened/` | Awakened | $74.50/month | Insider discount (half of $149) |
+| `/insiders/awakened/` | Awakened | $74.50/month | Insider discount (legacy promo; retained at $74.50) |
 
 ### JS PRICES Object
 
 ```javascript
 var PRICES = {
-    Awakened:  '149.00',
+    Awakened:  '297.00',
     Bonded:    '299.00',   // Legacy tier -- not currently sold
     Partnered: '499.00',
     Unified:   '999.00',
