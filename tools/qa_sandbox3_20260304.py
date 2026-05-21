@@ -115,9 +115,9 @@ async def main():
         page_text = await page.evaluate("() => document.body.innerText")
 
         tier_checks = {
-            "Awakened_$149": "$149" in page_text and "Awakened" in page_text,
-            "Partnered_$499": "$499" in page_text and "Partnered" in page_text,
-            "Unified_$999": "$999" in page_text and "Unified" in page_text,
+            "Awakened_$297": "$297" in page_text and "Awakened" in page_text,
+            "Partnered_$597": "$597" in page_text and "Partnered" in page_text,
+            "Unified_$1,097": "$1,097" in page_text and "Unified" in page_text,
         }
         print(f"Tier checks: {tier_checks}")
         results["tiers"] = tier_checks
@@ -153,13 +153,13 @@ async def main():
         results["related_links"] = all_links
 
         # Screenshot after scrolling down to find the specific buttons area
-        # First find the $499 button area
+        # First find the $597 button area
         await page.evaluate("""
             () => {
                 // Find the Partnered tier card
                 const allText = Array.from(document.querySelectorAll('*'));
                 for (const el of allText) {
-                    if (el.children.length === 0 && el.textContent && el.textContent.includes('$499')) {
+                    if (el.children.length === 0 && el.textContent && el.textContent.includes('$597')) {
                         el.scrollIntoView({ behavior: 'instant', block: 'center' });
                         break;
                     }
@@ -172,12 +172,12 @@ async def main():
         screenshots.append(str(ss_path))
         print(f"Screenshot: {ss_path}")
 
-        # Scroll to $999 Unified tier
+        # Scroll to $1,097 Unified tier
         await page.evaluate("""
             () => {
                 const allText = Array.from(document.querySelectorAll('*'));
                 for (const el of allText) {
-                    if (el.children.length === 0 && el.textContent && el.textContent.includes('$999')) {
+                    if (el.children.length === 0 && el.textContent && el.textContent.includes('$1,097')) {
                         el.scrollIntoView({ behavior: 'instant', block: 'center' });
                         break;
                     }
@@ -196,8 +196,8 @@ async def main():
         screenshots.append(str(ss_path))
         print(f"Screenshot: {ss_path}")
 
-        # ---- Step 7: Check PayPal $499 modal ----
-        print("Looking for $499 PayPal button...")
+        # ---- Step 7: Check PayPal $597 modal ----
+        print("Looking for $597 PayPal button...")
         # Scroll back to pricing to find the button
         await page.evaluate("""
             () => {
@@ -207,10 +207,10 @@ async def main():
         """)
         await asyncio.sleep(1)
 
-        # Find the $499 CTA button
-        paypal_499_found = await page.evaluate("""
+        # Find the $597 CTA button
+        paypal_597_found = await page.evaluate("""
             () => {
-                // Look for PayPal buttons in the $499 card
+                // Look for PayPal buttons in the $597 card
                 const buttons = Array.from(document.querySelectorAll('button, a, [id*="paypal"], [class*="paypal"]'));
                 const pricingCards = Array.from(document.querySelectorAll('.pricing-card, [class*="pricing"], [class*="tier"]'));
 
@@ -223,8 +223,8 @@ async def main():
                 };
             }
         """)
-        print(f"PayPal button info: {json.dumps(paypal_499_found, indent=2)}")
-        results["paypal_buttons"] = paypal_499_found
+        print(f"PayPal button info: {json.dumps(paypal_597_found, indent=2)}")
+        results["paypal_buttons"] = paypal_597_found
 
         # ---- Step 8: Check chatbox ----
         chatbox_check = await page.evaluate("""
@@ -260,25 +260,25 @@ async def main():
         print(f"Pricing HTML saved (first 5000 chars)")
         print(f"Pricing HTML preview: {pricing_html[:500]}")
 
-        # ---- Step 10: Try clicking $499 CTA button ----
-        print("Looking for $499 tier CTA button to test modal...")
+        # ---- Step 10: Try clicking $597 CTA button ----
+        print("Looking for $597 tier CTA button to test modal...")
 
-        # Try to find and click the $499 button
+        # Try to find and click the $597 button
         button_click_result = await page.evaluate("""
             () => {
-                // Find the pricing card containing $499
+                // Find the pricing card containing $597
                 const cards = document.querySelectorAll('.pricing-card, [class*="pricing-card"], [class*="tier-card"]');
                 let partneredCard = null;
 
                 for (const card of cards) {
-                    if (card.textContent.includes('499') || card.textContent.includes('Partnered')) {
+                    if (card.textContent.includes('597') || card.textContent.includes('Partnered')) {
                         partneredCard = card;
                         break;
                     }
                 }
 
                 if (!partneredCard) {
-                    // Try finding any element with $499 text
+                    // Try finding any element with $597 text
                     return { error: 'No partnered card found', cardCount: cards.length };
                 }
 

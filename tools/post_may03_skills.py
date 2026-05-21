@@ -391,7 +391,7 @@ Use `{{VARIABLE}}` double-curly placeholders (Brevo's native syntax) combined wi
 | `{{FIRST_NAME}}` | Contact attribute | "Sarah" |
 | `{{AI_NAME}}` | Custom attribute | "Nova" |
 | `{{PORTAL_URL}}` | Custom attribute | "https://app.purebrain.ai/portal/abc123" |
-| `{{TIER}}` | Custom attribute | "Awakened ($149/mo)" |
+| `{{TIER}}` | Custom attribute | "Awakened ($297/mo)" |
 | `{{SUBJECT_LINE}}` | Template param | "Your AI is Ready" |
 
 ## Rules for Cross-Client Compatibility
