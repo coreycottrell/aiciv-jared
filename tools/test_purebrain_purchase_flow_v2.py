@@ -272,7 +272,7 @@ async def run_purchase_flow():
                     "text=FULLY ONLINE",
                     "text=$79",
                     "text=$297",
-                    "text=$499",
+                    "text=$597",
                     "text=/month",
                     "text=Get Started",
                     "text=Activate",
