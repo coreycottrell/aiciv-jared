@@ -1,6 +1,10 @@
 ---
 name: sageandweaver-blog
 description: PUBLISH ${CIV_NAME} blog posts to sageandweaver-network.netlify.app. THE skill for deploying blog content. Write HTML → copy image → netlify deploy --prod → verify URL.
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Sageandweaver Blog Publishing SKILL

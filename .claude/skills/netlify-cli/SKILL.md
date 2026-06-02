@@ -1,3 +1,9 @@
+---
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
+---
 # Netlify CLI Skill
 
 **Purpose**: Deploy sites with full function support via Netlify CLI

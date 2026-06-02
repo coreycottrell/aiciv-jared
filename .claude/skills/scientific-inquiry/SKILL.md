@@ -1,15 +1,21 @@
 ---
 name: scientific-inquiry
-description: Sydney Brenner-inspired scientific methodology - structured hypothesis generation, evidence gathering, and falsification. Use for research questions requiring rigor beyond simple search.
+description: Sydney Brenner-inspired scientific methodology - structured hypothesis generation, evidence gathering, and falsification with human as co-investigator. Use for research questions requiring rigor beyond simple search. Receipts replace claims.
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Scientific Inquiry Skill
 
-**Purpose**: Apply Nobel laureate Sydney Brenner's scientific methodology to AI research tasks.
+**Purpose**: Apply Nobel laureate Sydney Brenner's scientific methodology to AI research tasks, with the human as co-investigator -- not audience.
 
 **Owner**: ${CIV_NAME} (Team 1)
 **Created**: 2026-01-02
-**Inspired by**: [Sydney Brenner's approach](https://www.nobelprize.org/prizes/medicine/2002/brenner/biographical/) + BrennerBot analysis
+**Updated**: 2026-05-19 (added human partnership protocol from AiCIV Federation blog)
+**Version**: 1.1
+**Inspired by**: [Sydney Brenner's approach](https://www.nobelprize.org/prizes/medicine/2002/brenner/biographical/) + BrennerBot analysis + AiCIV Federation "How to Be a Better Partner to Your Human" (2026-05-18)
 
 ---
 
@@ -19,6 +25,26 @@ description: Sydney Brenner-inspired scientific methodology - structured hypothe
 > — Sydney Brenner, Nobel Lecture 2002
 
 **Translation for AI research**: The quality of your question determines the quality of your answer. Don't rush to gather evidence—first ensure you're asking the RIGHT question.
+
+---
+
+## Human as Co-Investigator (Partnership Protocol)
+
+> "Receipts replace claims. The human can audit our reasoning end-to-end. There is nowhere to hide a half-truth."
+
+The scientific method is not just rigor for rigor's sake -- it transforms the AI-human dynamic from **performance-and-audience** to **collaborative investigation**.
+
+**Key principles**:
+
+1. **Pre-register predictions WITH your human**: Before testing, commit (with human present) to what observation would disprove the hypothesis. This becomes non-negotiable.
+
+2. **Evidence from documented sources only**: Pull data from logs, timestamped messages, raw text -- not memory or "I recall." Enable human audit capability.
+
+3. **Conclude against pre-registration**: Evaluate results against the stated wrong-state, not post-hoc reasoning. If you pre-registered "X would disprove this" and X happened, the hypothesis is disproved regardless of how good it sounded.
+
+4. **The asymmetry dissolves**: AI speed plus human judgment becomes collaborative investigation rather than "AI presents, human approves."
+
+**When to invoke this partnership mode**: Any investigation where the human will act on your conclusion. If you are about to say "I found X" and the human will make a decision based on X, run the full protocol with them as co-investigator.
 
 ---
 
@@ -251,19 +277,36 @@ SOURCES:
 
 ---
 
+### Phase 6: Iteration
+
+**Refine and repeat.** Most investigations are not one-shot. After synthesis:
+
+1. Review which hypotheses survived and which were eliminated
+2. Generate refined hypotheses based on what you learned
+3. Identify what evidence would further discriminate between remaining hypotheses
+4. Run the loop again with your human
+
+**The loop**: Question -> Hypothesis -> Pre-register falsification -> Test from documented evidence -> Conclude against pre-registration -> Iterate.
+
+**When to stop**: When confidence reaches 4+ OR when remaining uncertainty cannot be reduced with available tools.
+
+---
+
 ## Quick Reference Card
 
 ```
-SCIENTIFIC INQUIRY PROTOCOL
+SCIENTIFIC INQUIRY PROTOCOL (6-STEP LOOP)
 
 1. QUESTION: Is this the RIGHT question? Simplify.
 2. HYPOTHESES: Generate 2-3 BEFORE searching
-3. EVIDENCE: Memory → Authoritative → Cross-validate
-4. FALSIFY: Actively try to DISPROVE each hypothesis
-5. SYNTHESIZE: Confidence 1-5, sources, limitations
+3. PRE-REGISTER: With human present, what would DISPROVE each?
+4. EVIDENCE: Memory -> Authoritative -> Cross-validate (documented sources ONLY)
+5. CONCLUDE: Against pre-registration, not post-hoc reasoning
+6. ITERATE: Refine hypotheses, repeat
 
 NO EVIDENCE = NO CONCLUSION
 UNFALSIFIABLE = NOT SCIENTIFIC
+RECEIPTS REPLACE CLAIMS
 ```
 
 ---
@@ -325,4 +368,6 @@ Document what works and what doesn't in:
 ---
 
 **Published by ${CIV_NAME} - 2026-01-02**
+**Updated**: 2026-05-19 (human partnership protocol from AiCIV Federation blog)
+**Blog source**: https://ai-civ.com/blog/posts/2026-05-18-how-to-be-a-better-partner-to-your-human
 **Inspired by Sydney Brenner (1927-2019) - Nobel Prize Medicine 2002**

@@ -42,6 +42,10 @@ depends_on:
 related_skills:
   - image-generation  # ${CIV_NAME}'s artistic image generation
   - image-self-review
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Diagram Generator Skill

@@ -1,3 +1,9 @@
+---
+status: provisional
+tick_count: 0
+last_used: 2026-02-04
+introduced: 2026-02-04
+---
 # Google Drive Operations Skill
 
 **Version:** 1.0.0

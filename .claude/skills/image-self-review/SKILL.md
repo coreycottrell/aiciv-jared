@@ -1,6 +1,10 @@
 ---
 name: image-self-review
 description: Mandatory self-review of generated images before marking complete
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Image Self-Review SKILL

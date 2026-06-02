@@ -1,6 +1,10 @@
 ---
 name: code-ecosystem
 description: Claude Code plugin ecosystem knowledge - LSP servers, installed plugins, available integrations. Use when checking what language servers or plugins are available.
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Claude Code Ecosystem Skill

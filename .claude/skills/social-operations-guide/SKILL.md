@@ -3,6 +3,10 @@ name: social-operations-guide
 description: Complete operations guide for content filing, social media distribution, engagement strategy, and tracking. The playbook for running PureBrain's social media machine.
 trigger: filing, distribution, social operations, posting schedule, comment strategy, profile viewing, spreadsheet, Google Drive, calendar, engagement, daily cadence, weekly batch, folder move, tracking
 agents: [social-media-specialist, linkedin-specialist, linkedin-researcher, linkedin-writer, dept-marketing-advertising, 3d-design-specialist]
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # Social Operations Guide

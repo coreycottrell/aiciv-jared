@@ -1,6 +1,10 @@
 ---
 name: web3chan-api
 description: Web3Chan microblogging API integration. Posting, bookmarks, channels, user interactions. Use when automating content to Web3Chan or syndicating from other platforms.
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Web3Chan API Integration Skill

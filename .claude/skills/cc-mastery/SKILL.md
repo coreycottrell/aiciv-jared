@@ -15,6 +15,10 @@ required_tools:
   - All
 related_skills:
   - claude-code-conversation
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Claude Code Mastery: Complete Platform Guide

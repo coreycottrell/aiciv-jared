@@ -1,6 +1,10 @@
 ---
 name: team-delegation
 description: A/B/C delegation routing framework for Pure Technology. Determines whether a task goes to Aether (A), Jared (B), or a specific team member (C). Use when any task arrives and you need to route it correctly.
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # Team Delegation Skill: A/B/C Routing Framework

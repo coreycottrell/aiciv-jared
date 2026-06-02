@@ -1,6 +1,10 @@
 ---
 name: desktop-vision
 description: See and control the desktop via vision + automation. Use for GUI testing, autonomous app interaction, screenshot analysis, and any task requiring visual understanding of the screen.
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Desktop Vision & Automation Skill

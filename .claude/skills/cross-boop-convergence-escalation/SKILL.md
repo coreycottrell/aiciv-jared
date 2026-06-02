@@ -4,6 +4,10 @@ description: When the same issue surfaces in 2+ independent BOOPs (different age
 type: coordination-pattern
 domain: multi-agent orchestration, BOOP scheduling, root-cause escalation
 proven_on: 777-api crisis 2026-04-30 → 2026-05-01 (commit 83eccfc, fixed in same cycle)
+status: provisional
+tick_count: 0
+last_used: 2026-05-08
+introduced: 2026-05-08
 ---
 
 # Cross-BOOP Convergence Escalation

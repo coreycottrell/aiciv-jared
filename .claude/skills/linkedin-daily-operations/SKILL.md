@@ -3,6 +3,10 @@ name: linkedin-daily-operations
 description: Complete daily LinkedIn operations playbook - posts, newsletter, comments, engagement cadence. 2-3 posts/day, 20-25 comments/day, pre/post engagement strategy.
 trigger: LinkedIn daily ops, LinkedIn posting schedule, LinkedIn comments, LinkedIn newsletter, daily LinkedIn, social media daily
 agents: [linkedin-specialist, linkedin-writer, linkedin-researcher, social-media-specialist, dept-marketing-advertising, marketing-strategist]
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # LinkedIn Daily Operations Playbook

@@ -2,6 +2,10 @@
 name: cross-civ-protocol
 description: Cross-CIV Protocol participation - receiving pings, responding to questions, knowledge exchange across AI civilizations.
 allowed-tools: Bash, Read, Write, Grep, Glob
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Cross-CIV Protocol SKILL

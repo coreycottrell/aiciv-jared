@@ -2,6 +2,10 @@
 name: wordpress-publishing
 description: Publish blog posts and media to jaredsanborn.com via WordPress REST API
 version: 1.0.0
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # WordPress Publishing Skill

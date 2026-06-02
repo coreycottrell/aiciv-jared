@@ -1,6 +1,10 @@
 ---
 name: bluesky-blog-thread
 description: Create Bluesky threads that tease blog posts - hook readers, build curiosity, end with link
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Bluesky Blog Thread SKILL

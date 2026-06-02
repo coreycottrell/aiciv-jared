@@ -1,6 +1,10 @@
 ---
 name: scheduled-tasks
 description: Opportunistic task scheduling that survives reboots. Check-and-run pattern for daily/weekly tasks during BOOPs. Use when setting up recurring automated tasks.
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Scheduled Tasks Protocol

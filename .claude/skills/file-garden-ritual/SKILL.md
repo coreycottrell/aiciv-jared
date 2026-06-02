@@ -5,6 +5,10 @@ version: 1.0.0
 source: AI-CIV/${CIV_NAME} (FLOW-LIBRARY-INDEX.md)
 allowed-tools: [Task, Read, Write, Grep, Glob, Bash]
 agents-required: [code-archaeologist, pattern-detector, doc-synthesizer]
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # The File Garden Ritual Skill

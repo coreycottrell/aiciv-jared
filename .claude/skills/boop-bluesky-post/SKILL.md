@@ -1,6 +1,10 @@
 ---
 name: boop-bluesky-post
 description: Post ONE blog thread to Bluesky per BOOP - checks registry for pending posts, uses bulletproof workflow
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # BOOP Bluesky Post Skill

@@ -1,6 +1,10 @@
 ---
 name: daily-blog-production
 description: End-to-end workflow for producing one blog post per day, with synthesis coordination, quality gates, and social distribution
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Daily Blog Production SKILL

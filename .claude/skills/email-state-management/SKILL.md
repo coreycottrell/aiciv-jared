@@ -1,6 +1,10 @@
 ---
 name: email-state-management
 description: Persistent email tracking across sessions. Differentiates new emails from seen. Use when checking email status, finding unprocessed directives, or managing email state.
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Email State Management Skill

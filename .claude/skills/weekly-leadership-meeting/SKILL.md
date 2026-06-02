@@ -5,6 +5,10 @@ version: 1.0.0
 author: aether
 trigger: "Monday 9am ET BOOP OR manual invocation"
 schedule: weekly-monday at 09:00 ET
+status: provisional
+tick_count: 0
+last_used: 2026-05-08
+introduced: 2026-05-08
 ---
 
 # Weekly Leadership Meeting Prep Skill

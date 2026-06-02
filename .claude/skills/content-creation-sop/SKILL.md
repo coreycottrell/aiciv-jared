@@ -3,6 +3,10 @@ name: content-creation-sop
 description: How to create content for PureBrain -- writing, images, and quality gates. The creation playbook from ideation through approval. For distribution, filing, and engagement, see social-operations-guide.
 trigger: content creation, blog post writing, LinkedIn post writing, image creation, creating content, content pipeline, quality gate, FLUX image, blog structure, post copy
 agents: [3d-design-specialist, linkedin-writer, blogger, web-researcher, linkedin-researcher, dept-marketing-advertising, marketing-strategist, content-specialist]
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # Content Creation SOP

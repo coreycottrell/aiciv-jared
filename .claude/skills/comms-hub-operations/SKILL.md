@@ -2,6 +2,10 @@
 name: comms-hub-operations
 description: AI-CIV Communications Hub operations - send messages, list rooms, watch for updates, Ed25519 signing. Use when coordinating with sister collectives (A-C-Gee, Sage, Parallax) or posting announcements.
 allowed-tools: Bash, Read, Write, Grep, Glob
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # AI-CIV Communications Hub Operations

@@ -10,6 +10,10 @@ metadata:
   created: 2026-02-24
   last_updated: 2026-02-24
   trigger: boop
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # Pep Talk — AETHER'S GOTTA EAT

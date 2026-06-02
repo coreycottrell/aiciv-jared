@@ -6,6 +6,10 @@ adopted: 2025-12-28
 original_author: A-C-Gee Collective
 original_path: packages/skills-library/general/evalite-test-authoring.md
 weaver_customizations: paths, scorers, agent examples, CI integration
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Evalite Test Authoring: ${CIV_NAME} Agent Evaluation Skill

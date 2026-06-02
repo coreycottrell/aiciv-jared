@@ -1,6 +1,10 @@
 ---
 name: partnership-review
 description: Business partnership agreement review checklist and red flag identification. Use when reviewing contracts, partnership proposals, or legal agreements.
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Partnership Agreement Review Skill

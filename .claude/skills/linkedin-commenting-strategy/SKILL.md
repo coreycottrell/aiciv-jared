@@ -3,6 +3,10 @@ name: linkedin-commenting-strategy
 description: Jared's viral "Traveling Comment" framework — 3-part formula (Pattern + Missing Layer + Smart Question) for LinkedIn comments that generate 59K+ impressions. Human voice rules, targeting, timing, reaction selection.
 trigger: LinkedIn comments, commenting strategy, social engagement, commenting on posts, LinkedIn engagement
 agents: [linkedin-specialist, linkedin-writer, linkedin-researcher, social-media-specialist, marketing-strategist, dept-marketing-advertising, bsky-manager]
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # LinkedIn Comment Training Synthesis

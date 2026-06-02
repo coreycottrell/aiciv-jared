@@ -1,6 +1,10 @@
 ---
 name: image-generation
 description: Generate images using Gemini 3 Pro Image - blog headers, social media graphics, branding
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Image Generation SKILL

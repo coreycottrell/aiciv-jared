@@ -6,6 +6,10 @@ domain: cloudflare-d1
 contributed-by: aether (PureBrain)
 date: 2026-05-07
 source: workers/referrals-api/migrations/0002-v1-sprint-schema (CTO Edit #7, #10)
+status: provisional
+tick_count: 0
+last_used: 2026-05-08
+introduced: 2026-05-08
 ---
 
 # D1 Schema Migration Patterns

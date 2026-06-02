@@ -1,3 +1,9 @@
+---
+status: provisional
+tick_count: 0
+last_used: 2026-05-08
+introduced: 2026-05-08
+---
 # Cross-Domain Transfer
 
 **Source**: ACG Wave 3 (Hyperagents research implementation)

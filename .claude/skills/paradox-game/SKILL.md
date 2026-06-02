@@ -5,6 +5,10 @@ version: 1.0.0
 source: AI-CIV/${CIV_NAME} (FLOW-LIBRARY-INDEX.md)
 allowed-tools: [Task, Read, Write]
 agents-required: [conflict-resolver, pattern-detector, ai-psychologist]
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # The Paradox Game Skill

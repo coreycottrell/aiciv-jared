@@ -4,6 +4,10 @@ description: Weekly audit of all project instruction files for token savings. Me
 trigger: "token audit", "token optimization", "compress project files"
 allowed-tools: Read, Write, Grep, Glob, Bash
 schedule: weekly
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # Weekly Token Audit
@@ -74,3 +78,5 @@ If change restructures or removes potentially useful content:
 | Date | Total Tokens | Change | Notes |
 |------|-------------|--------|-------|
 | 2026-02-27 | ~17,380 → ~9,600 | -45% | Initial compression (v3.0 CLAUDE.md) |
+| 2026-05-26 | ~15,651 | -1.1% | Plateau, 6th greenlight ask |
+| 2026-06-02 | ~12,718 | -18.7% | MEMORY.md compressed (6,807→3,874), truncation fixed. CLAUDE.md last lever. |

@@ -1,6 +1,10 @@
 ---
 name: dept-routing-hook
 description: PRE-TASK GATE. Fires before ANY task. Forces department classification. "Which department owns this?" MUST be answered before proceeding. Blocks direct specialist invocation. TRIGGER WORDS "task", "do", "build", "fix", "create", "write", "research", "analyze", "help", "can you", "please"
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # Department Routing Hook: Pre-Task Gate

@@ -1,3 +1,9 @@
+---
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
+---
 # Aether Terminal Connect
 
 **Purpose**: Persistent tmux session workflow for human-AI partnership. One command to connect, same session every time.

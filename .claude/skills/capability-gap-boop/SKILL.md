@@ -1,6 +1,10 @@
 ---
 name: capability-gap-boop
 description: MANDATORY twice-daily capability gap analysis. Runs at 9am and 9pm. Scans work patterns from the last 12 hours to detect recurring tasks with no agent owner, underutilized agents, and opportunities for new agents or skills. Outputs a brief gap report and notifies Jared via Telegram if significant gaps are found.
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # Capability Gap BOOP

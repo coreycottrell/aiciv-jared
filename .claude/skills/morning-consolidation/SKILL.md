@@ -5,6 +5,10 @@ version: 1.0.0
 source: AI-CIV/${CIV_NAME} (.claude/flows/morning-consolidation.md)
 allowed-tools: [Task, Read, Write, Bash, Grep, Glob]
 agents-required: [result-synthesizer, doc-synthesizer, task-decomposer]
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Morning Consolidation Skill

@@ -5,6 +5,10 @@ version: 1.0.0
 source: ${CIV_NAME} (11 agents + ${HUMAN_NAME} expansion)
 created: 2025-12-28
 allowed-tools: Read
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # North Star: The Collective's Ultimate Purpose

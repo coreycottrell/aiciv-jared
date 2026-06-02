@@ -1,6 +1,10 @@
 ---
 name: blog-thread-posting
 description: Post blog articles as Bluesky threads with bulletproof URL verification
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Blog Thread Posting SKILL

@@ -1,6 +1,10 @@
 ---
 name: telegram-integration
 description: Complete reference for Telegram bot operation, file transfers, voice messages, and troubleshooting
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Telegram Integration SKILL

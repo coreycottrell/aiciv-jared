@@ -2,6 +2,10 @@
 name: brainiac-training-pipeline
 description: Auto-generate AI training snippets when new Brainiac Mastermind Training videos/modules are added. Detects new videos, summarizes transcripts, generates structured AI-optimized content, injects HTML into the training page, and deploys to CF Pages. Idempotent - skips modules that already have snippets.
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # Brainiac Training Snippet Pipeline

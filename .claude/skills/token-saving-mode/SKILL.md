@@ -1,6 +1,10 @@
 ---
 name: token-saving-mode
 description: Lightweight BOOP for near-limit context. Operations checks only, no consolidation. Use when tokens are scarce. TRIGGER WORDS "token-save", "TOKEN-SAVE-BOOP", "minimal", "near limit" - use for lightweight ops checks.
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Token-Saving Mode BOOP

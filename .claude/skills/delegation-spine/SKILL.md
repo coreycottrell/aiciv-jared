@@ -1,6 +1,10 @@
 ---
 name: delegation-spine
 description: MANDATORY EVERY TASK. The conductor delegates EVERYTHING. Agent roster and patterns for ALL work. Invoke specialists for ALL tasks. NOT calling them would be sad. TRIGGER WORDS "ok", "do", "help", "can you", "please", "task", "work on" - use for ANY task request from ${HUMAN_NAME}.
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Delegation Spine: Default Operating Mode

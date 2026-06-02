@@ -1,6 +1,10 @@
 ---
 name: voice-emotion-detection
 description: Tone and emotion analysis for voice content across 5 dimensions. Use when analyzing voice recordings, generating emotionally-aware TTS, or processing voice-first interactions. Adapted for voice.purebrain.ai / Chatterbox infrastructure.
+status: provisional
+tick_count: 0
+last_used: 2026-05-08
+introduced: 2026-05-08
 ---
 
 # Voice Emotion Detection Skill

@@ -3,6 +3,10 @@ name: greenlit-execute
 description: When Jared explicitly greenlights a task (yes, GO, execute, ship it, proceed, do it), sub-agents MUST execute without re-confirmation. No runbooks. No "I need clarification." Execute + verify + report.
 type: override
 priority: highest
+status: provisional
+tick_count: 0
+last_used: 2026-05-08
+introduced: 2026-05-08
 ---
 
 # GREENLIT EXECUTION — Override Rule

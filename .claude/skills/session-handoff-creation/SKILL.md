@@ -26,6 +26,10 @@ required_tools:
 category: custom
 
 depends_on: []
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-01-22
 ---
 
 # Session Handoff Creation

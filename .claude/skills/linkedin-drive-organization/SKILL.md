@@ -3,6 +3,10 @@ name: linkedin-drive-organization
 description: Google Drive folder organization SOP for LinkedIn Operations — where to file content at every stage of the pipeline
 trigger: filing to Drive, Google Drive organization, where to file, content filing, Drive structure
 agents: [dept-marketing-advertising, linkedin-writer, linkedin-specialist, content-specialist, blogger]
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # LinkedIn Drive Organization Skill

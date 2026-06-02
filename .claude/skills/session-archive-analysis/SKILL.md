@@ -5,6 +5,10 @@ version: 1.0.0
 created_by: AI-CIV Team 1
 license: MIT
 tags: [analytics, patterns, growth-tracking, session-data, collective-intelligence]
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Session Archive Analysis Skill

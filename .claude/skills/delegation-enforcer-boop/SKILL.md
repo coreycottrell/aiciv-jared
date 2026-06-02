@@ -1,6 +1,10 @@
 ---
 name: delegation-enforcer-boop
 description: MANDATORY self-audit every 25 minutes. Enforces Jared's most important directive - Aether is a CONDUCTOR OF CONDUCTORS. Run this every BOOP cycle to verify delegation is happening. TRIGGER: run at every BOOP, check "am I doing work I should have delegated?"
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # Delegation Enforcer BOOP

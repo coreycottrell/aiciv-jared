@@ -5,6 +5,10 @@ type: security-gate
 domain: deployment, security, multi-tenant
 created: 2026-05-07
 trigger: "Run BEFORE every cf-deploy.py or wrangler deploy. MUST run on staged HTML/JS in exports/cf-pages-deploy/ AND on worker source."
+status: provisional
+tick_count: 0
+last_used: 2026-05-08
+introduced: 2026-05-08
 ---
 
 # Pre-Deploy Credential Scan

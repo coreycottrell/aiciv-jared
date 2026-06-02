@@ -1,6 +1,10 @@
 ---
 name: engineering-flow-boop
 description: MANDATORY 30-minute check that enforces BUILD -> SECURITY -> QA -> SHIP pipeline for ALL code and deployment work. Conductor must verify no in-flight work bypasses the pipeline.
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # Engineering Flow BOOP

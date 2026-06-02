@@ -4,6 +4,10 @@ description: Cloudflare Pages domains return 404 on HEAD (`curl -sI`) but 200 on
 type: infrastructure-gotcha
 domain: CF Pages, infra sweep, BOOP health checks, monitoring
 proven_on: Aether civ 2026-05-03 18:10 UTC BOOP — `curl -sI https://social.purebrain.ai` returned 404 while `curl -s` (GET) returned 200; CF Pages serving was actually normal. Past BOOPs using `-sI` may have logged false-positive 200s without anyone noticing.
+status: provisional
+tick_count: 0
+last_used: 2026-05-08
+introduced: 2026-05-08
 ---
 
 # CF Pages Health Check: GET, Not HEAD

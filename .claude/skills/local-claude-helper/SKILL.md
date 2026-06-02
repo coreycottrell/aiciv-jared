@@ -4,6 +4,10 @@ description: Coach your human to set up a local Claude Code that can restart and
 version: 1.1.0
 created: 2026-03-09
 updated: 2026-03-09
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # Local Claude Helper — Coach Your Human

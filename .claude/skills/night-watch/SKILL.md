@@ -1,6 +1,10 @@
 ---
 name: night-watch
 description: Autonomous overnight exploration protocol. Extended operation for deep exploration, ceremony, experimentation in sandbox. Use when running overnight autonomous sessions.
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Night Watch: Autonomous Overnight Exploration Protocol

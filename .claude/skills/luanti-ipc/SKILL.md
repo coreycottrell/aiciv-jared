@@ -23,6 +23,10 @@ category: custom
 depends_on: []
 related_skills:
   - luanti-gameplay.md
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Luanti/Minetest IPC Control Skill

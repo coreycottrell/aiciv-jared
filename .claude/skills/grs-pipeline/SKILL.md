@@ -1,6 +1,10 @@
 ---
 name: grs-pipeline
 description: Jakub Zajicek's Guaranteed Reach System for converting voice notes or raw thoughts into LinkedIn posts optimized for 2026 algorithm. Produces 5-asset content package: LinkedIn post, first-comment link, short version, blog angle, and Bluesky thread. Use when Jared sends a voice note, raw transcript, or says "make a LinkedIn post about [topic]".
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # GRS Pipeline: Guaranteed Reach System

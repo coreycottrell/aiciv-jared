@@ -11,6 +11,10 @@ triggers:
   - "daily thought"
   - "interesting thought"
 invocation: user
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # /thought - Daily Thoughts Thread

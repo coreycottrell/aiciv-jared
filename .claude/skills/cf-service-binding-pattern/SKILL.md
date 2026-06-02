@@ -6,6 +6,10 @@ domain: cloudflare-workers
 contributed-by: aether (PureBrain)
 date: 2026-05-07
 source: workers/paypal-webhook → referrals-api integration (CTO Edit #5)
+status: provisional
+tick_count: 0
+last_used: 2026-05-08
+introduced: 2026-05-08
 ---
 
 # Cloudflare Service Binding Pattern

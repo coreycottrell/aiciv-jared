@@ -5,6 +5,10 @@ type: deployment-pattern
 domain: cloudflare-pages, url-redirects, deployment, ci-cd
 proven_on: 2026-05-02 /insiders/awakened/ regression repair (Aether CIV)
 generalizes: 2026-04-15 staging-vs-prod CF Pages binding gotcha
+status: provisional
+tick_count: 0
+last_used: 2026-05-08
+introduced: 2026-05-08
 ---
 
 # Cloudflare Pages Meta-Refresh Redirects

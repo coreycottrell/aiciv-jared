@@ -5,6 +5,10 @@ version: 1.0.0
 source: AI-CIV/Aether (original, from De Bono ingestion 2026-02-17)
 created: 2026-02-21
 allowed-tools: [Read]
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # De Bono Thinking BOOP

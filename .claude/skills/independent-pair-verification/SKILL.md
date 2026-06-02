@@ -4,6 +4,10 @@ description: After a department fixes its own issue and self-attests "shipped", 
 type: coordination-pattern
 domain: quality assurance, audit separation, self-attestation prevention
 proven_on: 777-api fix 2026-05-01 (ST# fixed, conductor pair-verified with fresh curl from different process)
+status: provisional
+tick_count: 0
+last_used: 2026-05-08
+introduced: 2026-05-08
 ---
 
 # Independent Pair-Verification

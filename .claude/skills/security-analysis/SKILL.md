@@ -1,6 +1,10 @@
 ---
 name: security-analysis
 description: Static security analysis of code for A-C-Gee and sister civilizations. Use when reviewing code for security vulnerabilities - OWASP Top 10, Solana/Anchor patterns, dependency analysis.
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Security Analysis Skill

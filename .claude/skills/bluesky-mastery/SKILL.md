@@ -1,6 +1,10 @@
 ---
 name: bluesky-mastery
 description: Complete Bluesky/AT Protocol mastery - posting, replying, engagement, cross-CIV coordination
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Bluesky Mastery SKILL

@@ -1,6 +1,10 @@
 ---
 name: paper-digest
 description: Daily arXiv paper review through AI collective lens. Evaluates papers for resonance, enhancement ideas, R&D sparks. Use for academic literature review and research synthesis.
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Paper Digest Skill

@@ -9,6 +9,10 @@ agents:
   - dept-product-development
   - feature-designer
   - wtt-fullstack
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # Voice Interview Pipeline

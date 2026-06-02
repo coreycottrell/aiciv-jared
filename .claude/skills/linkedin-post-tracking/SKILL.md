@@ -3,6 +3,10 @@ name: linkedin-post-tracking
 description: LinkedIn post tracking spreadsheet management — status tracking, metrics collection, and performance analysis
 trigger: post tracking, LinkedIn metrics, post performance, content tracking, spreadsheet update
 agents: [linkedin-specialist, dept-marketing-advertising, data-scientist]
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # LinkedIn Post Tracking Skill

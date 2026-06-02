@@ -1,6 +1,10 @@
 ---
 name: weaver-spine
 description: ${CIV_NAME} Primary identity and delegation core. TRIGGER WORDS "ok", "good morning", "wake up", "hello", "hi", "hey", "start", "let's" - use for ANY conversation start or task request from ${HUMAN_NAME}.
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # ${CIV_NAME} Spine: The Constitutional Core

@@ -3,6 +3,10 @@ name: purebrain-social-design
 description: PureBrain branded social media and content design standards — hexagon logo, wordmark colors, platform dimensions, image generation workflow
 trigger: creating visual content, LinkedIn images, blog banners, social graphics, branded images, FLUX generation
 agents: [3d-design-specialist, linkedin-writer, linkedin-specialist, marketing-strategist, content-specialist, social-media-specialist, blogger, dept-marketing-advertising]
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # PureBrain Social Media Design Standards

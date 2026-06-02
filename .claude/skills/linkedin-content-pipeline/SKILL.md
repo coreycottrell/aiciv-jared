@@ -1,6 +1,10 @@
 ---
 name: linkedin-content-pipeline
 description: End-to-end content pipeline targeting specific occupations/industries with AI impact research, blog post, LinkedIn post, and Bluesky thread
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # LinkedIn Content Pipeline SKILL

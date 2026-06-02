@@ -5,6 +5,10 @@ type: governance
 created: 2026-05-04
 parent_civ: Aether (PureBrain)
 portable: yes
+status: provisional
+tick_count: 0
+last_used: 2026-05-08
+introduced: 2026-05-08
 ---
 
 # Sub-Agent Cadence-Hold Pattern

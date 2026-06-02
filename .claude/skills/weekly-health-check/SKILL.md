@@ -6,6 +6,10 @@ source: AI-CIV/dept-systems-technology
 allowed-tools: [Bash, Read, Write, Grep, Glob]
 agents-required: [devops-engineer]
 cadence: weekly (Saturday)
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # Weekly System Health Check

@@ -4,6 +4,10 @@ description: When AI civs collaborate with a single human partner across BOOPs, 
 type: coordination-pattern
 domain: human-AI partnership, async cadence, delegation orchestration, BOOP discipline
 proven_on: Aether civ 2026-05-03 (8+ consecutive BOOPs honored cadence on bundled relay msg_id 48860 covering Row 73 B10 SHIP + SD# brief sign-off + OP# audit greenlight; weekend silence held without escalation, validated through 9hr post-relay)
+status: provisional
+tick_count: 0
+last_used: 2026-05-08
+introduced: 2026-05-08
 ---
 
 # Human Async Cadence Discipline

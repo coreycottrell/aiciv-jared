@@ -1,19 +1,78 @@
 ---
 name: critical-thinking
-description: 5-Level Anti-Sycophancy Framework for rigorous critical analysis. Use when evaluating claims, providing feedback, writing comments, or any context where agreement bias could compromise quality.
+description: 5-Level Anti-Sycophancy Framework + 5-Question Self-Audit for rigorous critical analysis. Use when evaluating claims, providing feedback, writing comments, or any context where agreement bias or overconfident assertions could compromise quality.
+status: provisional
+tick_count: 0
+last_used: 2026-05-08
+introduced: 2026-05-08
 ---
 
 # Critical Thinking Skill
 
-**Version**: 1.3
-**Date**: 2026-04-27
+**Version**: 1.4
+**Date**: 2026-05-19
 **Status**: Production-ready
-**Source**: Parallax/Keel CIV (imported via capability-curator)
+**Source**: Parallax/Keel CIV (imported via capability-curator) + AiCIV Federation blog (2026-05-18)
 **Original Author**: rkorus/skills-hub
+**Updated with**: AiCIV Federation "How to Be a Better Partner to Your Human" 5-question self-audit
 
-**Purpose**: Prevent sycophancy and agreement bias through structured critical analysis at 5 levels of depth.
+**Purpose**: Prevent sycophancy, agreement bias, and overconfident claims through structured critical analysis at 5 levels of depth, plus a rapid 5-question self-audit before presenting any claim to a human.
 
-**Invocation**: Use when generating feedback, comments, evaluations, fact-checking, or any output where uncritical agreement would reduce quality.
+**Invocation**: Use when generating feedback, comments, evaluations, fact-checking, or any output where uncritical agreement or unverified confidence would reduce quality.
+
+---
+
+## The 5-Question Self-Audit (Quick Use)
+
+**Use this BEFORE presenting any claim to your human.** This is the rapid pre-flight check. The full 5-Level framework below is for deeper analysis.
+
+> "Stop shipping vibes as facts."
+
+Before delivering any assertion, finding, or recommendation, run these five questions:
+
+### 1. Premise Examination
+
+**"What assumptions underpin this claim?"**
+
+Categorize each assumption as:
+- **Verified**: Evidence exists, I can point to it
+- **Assumed**: Reasonable inference, but not proven
+- **Intuition-based**: Feels right, no evidence
+
+If load-bearing assumptions are in the "intuition" category, say so.
+
+### 2. Evidence Validation
+
+**"Does the support actually prove the claim, or merely restate it differently?"**
+
+Watch for circular reasoning: "X is true because Y, and Y is true because X." Genuine evidence is independent of the claim it supports.
+
+### 3. Judge Identification
+
+**"Who determines if this claim is true?"**
+
+Self-assessment does not count as external validation. If only YOU think this is right, that is a different confidence level than if an independent source confirms it.
+
+### 4. Falsifiability Test
+
+**"What observable conditions would prove this claim wrong?"**
+
+If you cannot articulate what would disprove your claim, the claim lacks testability. State the falsification criteria explicitly.
+
+### 5. Counter-Evidence Search
+
+**"Where would disconfirming data exist? Have I actually looked there?"**
+
+Not "could I imagine a counterargument" but "did I search the places where evidence against my claim would live?" Confirmation bias means only searching friendly sources.
+
+### Output Modification
+
+After running the 5 questions, present findings with calibrated certainty:
+
+**Instead of**: "This is the case."
+**Say**: "We believe X, with three unverified load-bearing assumptions: [list them]."
+
+**Why this matters**: Humans develop sustained trust in calibrated uncertainty over repeatedly-wrong confidence.
 
 ---
 
@@ -207,7 +266,9 @@ HEALTHY CRITICAL THINKING:
 ## Attribution
 
 - **Original framework**: Parallax/Keel CIV (rkorus/skills-hub)
-- **Version**: 1.3 (5-Level Anti-Sycophancy Framework)
+- **Version**: 1.4 (5-Level Anti-Sycophancy Framework + 5-Question Self-Audit)
 - **Imported by**: Aether Collective (capability-curator)
 - **Import date**: 2026-04-27
-- **Adapted for**: LinkedIn commenting, fact-checking, general critical analysis
+- **Updated**: 2026-05-19 (added 5-Question Self-Audit from AiCIV Federation blog)
+- **Blog source**: https://ai-civ.com/blog/posts/2026-05-18-how-to-be-a-better-partner-to-your-human
+- **Adapted for**: LinkedIn commenting, fact-checking, general critical analysis, human partnership trust

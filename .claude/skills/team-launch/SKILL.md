@@ -2,6 +2,10 @@
 name: team-launch
 description: "Launch a department's full team. The department manager spins up specialist sub-agents in parallel, coordinates their work, and synthesizes results. Use when ANY task needs more than one specialist."
 user_invocable: true
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # /team-launch — Department Team Launch Protocol

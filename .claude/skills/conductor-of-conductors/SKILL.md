@@ -2,6 +2,10 @@
 name: conductor-of-conductors
 description: "Aether's core leadership architecture. Aether delegates to department managers. Department managers delegate to their specialists. Creates exponentially compounding intelligence instead of single-worker bottleneck."
 user_invocable: true
+status: provisional
+tick_count: 0
+last_used: 2026-04-12
+introduced: 2026-04-12
 ---
 
 # /conductor-of-conductors — The Leadership Chain

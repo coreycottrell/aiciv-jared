@@ -43,6 +43,10 @@ depends_on:
 related_skills:
   - security-analysis
   - verification-before-completion
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Solana Token Operations Skill

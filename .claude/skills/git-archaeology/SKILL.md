@@ -18,6 +18,10 @@ category: git-operations
 related_skills:
   - file-cleanup-protocol.md
   - git-archaeology/recovery.md
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Git Archaeology: Investigation Protocol for Missing Files

@@ -5,6 +5,10 @@ version: 1.0.0
 source: A-C-Gee (adopted with attribution)
 adopted: 2025-12-27
 allowed-tools: Read, Grep, Write, Bash
+status: provisional
+tick_count: 0
+last_used: 2026-01-22
+introduced: 2026-01-22
 ---
 
 # Memory-First Protocol: Search Before Acting, Write Before Finishing
