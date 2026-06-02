@@ -10,17 +10,37 @@ failure modes: OOM, zombie-BOOP pileups, and PID/resource exhaustion.
 
 This is a LIBRARY + SELFTEST. It does NOT touch the running boop_executor, the
 scheduled-tasks state, any .pid file, or any service. It only READS live signals
-(/proc, os.getloadavg, process list) and returns a recommended integer.
+(/proc, /sys/fs/cgroup, os.getloadavg, resource limits) and returns a
+recommended integer.
+
+DESIGN CHANGE (2026-06-02, ramfix) — PRIMARY signal is RAM, not PIDs
+--------------------------------------------------------------------
+The original governor inherited a hardcoded "PID >= 190 crit / 150-190 warn"
+band from the Hetzner *container* fleet, where a cgroup pids.max enforced a
+real ~190 PID ceiling. THIS box is a 2-core / 3.7GB KVM VM with NO cgroup PID
+cap (kernel.pid_max=4194304, ulimit -u≈15127). System-wide /proc PID counts of
+~180 are completely normal here and do NOT indicate pressure. Throttling on
+that phantom constraint floored concurrency to 2 regardless of real headroom.
+
+New stance:
+  - PRIMARY limiter  = available RAM (each claude agent ≈ PER_AGENT_MB).
+  - SECONDARY limiter = CPU load (don't exceed ~cpu_count CPU-heavy agents).
+  - PID limiter is CGROUP/ULIMIT-AWARE: only gates when a *real* cap exists
+    (cgroup pids.max as an integer) or the per-user RLIMIT_NPROC headroom is
+    genuinely tight. On a host with no cap, PIDs never force the floor.
+
+Design stance: still CONSERVATIVE on REAL signals. When a genuine pressure
+signal fires (RAM below the OS reserve + one agent, real cgroup/ulimit
+exhaustion, or very high load), return the floor. But do NOT floor on phantom
+constraints. It is cheap to under-spawn; it is also wasteful to floor a box
+that has 1.5 GB of free RAM.
 
 Signals consulted
 -----------------
-- CPU load:  os.getloadavg() compared against os.cpu_count() (load per-core).
-- RAM:       /proc/meminfo MemAvailable (psutil used only if present; soft dep).
-- PID press: count of /proc PIDs + count of running claude/python boop procs,
-             measured against Hetzner-observed limits (~150 warn / ~190 crit).
-
-Design stance: CONSERVATIVE. When in doubt, return the floor. It is always
-cheaper to under-spawn and re-check between batches than to OOM the box.
+- RAM:   /proc/meminfo MemAvailable (psutil used only if present; soft dep).
+- CPU:   os.getloadavg() compared against os.cpu_count() (load per-core).
+- PIDs:  cgroup pids.max/pids.current if a real integer cap is present;
+         otherwise per-user RLIMIT_NPROC headroom vs counted user processes.
 
 Usage
 -----
@@ -39,28 +59,31 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-import subprocess
+import resource
 from dataclasses import dataclass, asdict
 from typing import Optional
 
 # ---------------------------------------------------------------------------
-# Tunable thresholds (sourced from collective memory + observed Hetzner limits)
+# Tunable module constants
 # ---------------------------------------------------------------------------
 
-# RAM: below this much available, we refuse to scale up (return floor).
-MIN_RAM_AVAIL_MB = 1536          # ~1.5 GB
+# RAM (PRIMARY). Reserve this much for the OS + base services before budgeting
+# any agents, then allow ~PER_AGENT_MB of available RAM per concurrent agent.
+OS_RESERVE_MB = 600              # headroom we never hand out to agents
+PER_AGENT_MB = 400               # observed footprint of one claude agent
 
-# Headroom band for RAM: we budget roughly this much RAM per additional agent
-# when computing how many *more* we can afford. Conservative estimate for a
-# claude/python worker footprint.
-RAM_PER_AGENT_MB = 600
+# CPU (SECONDARY). load-per-core above this is a soft-busy signal that tapers
+# the CPU budget toward the floor; at/above HARD it forces the floor.
+LOAD_SOFT_PER_CORE = 0.9         # begin tapering CPU budget
+LOAD_HARD_PER_CORE = 1.75        # genuine overload -> floor
 
-# CPU: load-per-core above this means the box is busy; clamp to floor.
-MAX_LOAD_PER_CORE = 0.8
-
-# PID pressure: total /proc PID count thresholds (Hetzner-observed).
-PID_WARN = 150                   # start throttling
-PID_CRIT = 190                   # hard floor
+# PID handling. Only meaningful when a REAL cap exists.
+#   - cgroup: reserve this many PIDs below pids.max before budgeting.
+#   - ulimit: reserve this many below RLIMIT_NPROC before budgeting.
+# Each remaining PID is divided by PIDS_PER_AGENT to estimate an agent budget.
+CGROUP_PID_RESERVE = 40
+ULIMIT_PID_RESERVE = 200         # generous; ulimit caps are usually huge
+PIDS_PER_AGENT = 12              # rough PIDs spawned per agent/team
 
 # Logger — library should be quiet unless the host app configures logging.
 log = logging.getLogger("concurrency_governor")
@@ -85,7 +108,6 @@ def _load_1min() -> float:
 
 def _mem_avail_mb() -> Optional[float]:
     """Available RAM in MB. Prefer psutil if present, else parse /proc/meminfo."""
-    # Soft dependency on psutil — guard the import, never hard-require it.
     try:
         import psutil  # type: ignore
         return psutil.virtual_memory().available / (1024 * 1024)
@@ -95,7 +117,6 @@ def _mem_avail_mb() -> Optional[float]:
         with open("/proc/meminfo", "r") as fh:
             for line in fh:
                 if line.startswith("MemAvailable:"):
-                    # Format: "MemAvailable:    2051496 kB"
                     kb = float(line.split()[1])
                     return kb / 1024.0
     except (OSError, ValueError, IndexError):
@@ -103,47 +124,91 @@ def _mem_avail_mb() -> Optional[float]:
     return None
 
 
-def _pid_count() -> Optional[int]:
-    """Total number of PIDs currently on the system."""
+def _read_int_file(path: str) -> Optional[int]:
+    """Read a single integer from a sysfs/cgroup file. Returns None on any miss
+    or on the literal 'max' (meaning: no cap)."""
+    try:
+        with open(path, "r") as fh:
+            raw = fh.read().strip()
+    except OSError:
+        return None
+    if raw == "" or raw == "max":
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _cgroup_pid_cap() -> Optional[tuple]:
+    """
+    Detect a REAL cgroup PID cap.
+
+    Returns (pids_max, pids_current) if an integer cap is present (cgroup v2 or
+    v1), else None. A value of "max" (no cap) returns None — we treat that as
+    'no cgroup limiter here', not as a constraint.
+    """
+    # cgroup v2 (unified)
+    pmax = _read_int_file("/sys/fs/cgroup/pids.max")
+    if pmax is not None:
+        pcur = _read_int_file("/sys/fs/cgroup/pids.current")
+        return (pmax, pcur if pcur is not None else 0)
+    # cgroup v1
+    pmax = _read_int_file("/sys/fs/cgroup/pids/pids.max")
+    if pmax is not None:
+        pcur = _read_int_file("/sys/fs/cgroup/pids/pids.current")
+        return (pmax, pcur if pcur is not None else 0)
+    return None
+
+
+def _ulimit_nproc() -> Optional[int]:
+    """Soft RLIMIT_NPROC for the current user. None if unlimited/unknown."""
+    try:
+        soft, _hard = resource.getrlimit(resource.RLIMIT_NPROC)
+    except (ValueError, OSError, AttributeError):
+        return None
+    if soft is None or soft < 0 or soft == resource.RLIM_INFINITY:
+        return None
+    return int(soft)
+
+
+def _user_proc_count() -> Optional[int]:
+    """
+    Count processes owned by the CURRENT user (not system-wide).
+
+    This is the honest denominator for ulimit headroom: RLIMIT_NPROC is a
+    per-user cap, so a system-wide /proc count would be misleading.
+    """
+    try:
+        my_uid = os.getuid()
+    except AttributeError:
+        return None
+    count = 0
+    try:
+        for entry in os.listdir("/proc"):
+            if not entry.isdigit():
+                continue
+            try:
+                st = os.stat(f"/proc/{entry}")
+            except OSError:
+                continue
+            if st.st_uid == my_uid:
+                count += 1
+        return count
+    except OSError:
+        return None
+
+
+def _system_pid_count() -> Optional[int]:
+    """Total /proc PID count — observability only, NOT a gating signal here."""
     try:
         return sum(1 for n in os.listdir("/proc") if n.isdigit())
     except OSError:
         return None
 
 
-def _boop_proc_count() -> int:
-    """Count running claude / python boop-worker processes (best effort)."""
-    count = 0
-    # Try psutil first if available.
-    try:
-        import psutil  # type: ignore
-        for p in psutil.process_iter(["name", "cmdline"]):
-            try:
-                name = (p.info.get("name") or "").lower()
-                cmd = " ".join(p.info.get("cmdline") or []).lower()
-                if "claude" in name or "claude" in cmd or "boop_executor" in cmd:
-                    count += 1
-            except Exception:
-                continue
-        return count
-    except Exception:
-        pass
-    # Fall back to pgrep.
-    for pat in ("claude", "boop_executor"):
-        try:
-            out = subprocess.run(
-                ["pgrep", "-fc", pat],
-                capture_output=True, text=True, timeout=5,
-            )
-            if out.returncode == 0:
-                count += int(out.stdout.strip() or "0")
-        except (subprocess.SubprocessError, ValueError, FileNotFoundError):
-            continue
-    return count
-
-
 # ---------------------------------------------------------------------------
-# Headroom report (observability)
+# Signals + headroom report (observability)
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -152,29 +217,156 @@ class Signals:
     load_1min: float
     load_per_core: float
     mem_avail_mb: Optional[float]
-    pid_count: Optional[int]
-    boop_proc_count: int
+    cgroup_pid_cap: Optional[int]      # pids.max if a real cap, else None
+    cgroup_pid_current: Optional[int]
+    ulimit_nproc: Optional[int]
+    user_proc_count: Optional[int]
+    system_pid_count: Optional[int]    # observability only
 
 
 def _collect_signals() -> Signals:
     cpu = _cpu_count()
     load = _load_1min()
     mem = _mem_avail_mb()
-    pids = _pid_count()
-    boops = _boop_proc_count()
+    cg = _cgroup_pid_cap()
+    cg_max = cg[0] if cg else None
+    cg_cur = cg[1] if cg else None
     return Signals(
         cpu_count=cpu,
         load_1min=round(load, 3),
         load_per_core=round(load / cpu, 3) if cpu else load,
         mem_avail_mb=round(mem, 1) if mem is not None else None,
-        pid_count=pids,
-        boop_proc_count=boops,
+        cgroup_pid_cap=cg_max,
+        cgroup_pid_current=cg_cur,
+        ulimit_nproc=_ulimit_nproc(),
+        user_proc_count=_user_proc_count(),
+        system_pid_count=_system_pid_count(),
     )
 
 
 def headroom_report() -> dict:
-    """Return the raw signals as a dict for logging/observability."""
-    return asdict(_collect_signals())
+    """
+    Return live signals AND the chosen per-resource budgets, for honest
+    observability. Includes mem_avail_mb, the ram/load/pid budgets, whether a
+    real cgroup pid cap was detected, and user_proc_count (not just the
+    system-wide pid_count).
+    """
+    s = _collect_signals()
+    floor, ceiling = 2, 10
+    ram_b = _ram_budget(s.mem_avail_mb, floor=floor, ceiling=ceiling)
+    load_b = _load_budget(s.load_1min, s.cpu_count, floor=floor, ceiling=ceiling)
+    pid_b, pid_cap_detected = _pid_budget(
+        cgroup_pid_cap=s.cgroup_pid_cap,
+        cgroup_pid_current=s.cgroup_pid_current,
+        ulimit_nproc=s.ulimit_nproc,
+        user_proc_count=s.user_proc_count,
+        floor=floor, ceiling=ceiling,
+    )
+    d = asdict(s)
+    d.update({
+        "ram_budget": ram_b,
+        "load_budget": load_b,
+        "pid_budget": pid_b,
+        "cgroup_pid_cap_detected": pid_cap_detected,
+        "recommended_concurrency": _compute_concurrency(
+            cpu_count=s.cpu_count,
+            load_1min=s.load_1min,
+            mem_avail_mb=s.mem_avail_mb,
+            cgroup_pid_cap=s.cgroup_pid_cap,
+            cgroup_pid_current=s.cgroup_pid_current,
+            ulimit_nproc=s.ulimit_nproc,
+            user_proc_count=s.user_proc_count,
+            floor=floor, ceiling=ceiling,
+        ),
+        "budget_constants": {
+            "OS_RESERVE_MB": OS_RESERVE_MB,
+            "PER_AGENT_MB": PER_AGENT_MB,
+            "LOAD_SOFT_PER_CORE": LOAD_SOFT_PER_CORE,
+            "LOAD_HARD_PER_CORE": LOAD_HARD_PER_CORE,
+        },
+    })
+    return d
+
+
+# ---------------------------------------------------------------------------
+# Per-resource budget helpers (pure — explicit values in, int out)
+# ---------------------------------------------------------------------------
+
+def _ram_budget(mem_avail_mb: Optional[float], *, floor: int, ceiling: int) -> int:
+    """
+    PRIMARY budget. ram_agents = max(0, (mem_avail - OS_RESERVE) // PER_AGENT).
+    Unknown RAM -> conservative floor. Clamped to ceiling.
+    """
+    if mem_avail_mb is None:
+        return floor
+    usable = mem_avail_mb - OS_RESERVE_MB
+    if usable < PER_AGENT_MB:
+        return 0  # not even one agent's worth of headroom -> real pressure
+    return min(ceiling, int(usable // PER_AGENT_MB))
+
+
+def _load_budget(load_1min: float, cpu_count: int, *, floor: int, ceiling: int) -> int:
+    """
+    SECONDARY budget. Cap at ~cpu_count CPU-heavy agents. Taper from full
+    cpu_count (at load_per_core <= SOFT) down toward floor as load climbs to
+    HARD. At/above HARD -> floor.
+    """
+    cpu_count = max(1, cpu_count)
+    lpc = load_1min / cpu_count
+    if lpc >= LOAD_HARD_PER_CORE:
+        return floor
+    if lpc <= LOAD_SOFT_PER_CORE:
+        return min(ceiling, cpu_count)
+    # Linear taper between SOFT and HARD.
+    span = LOAD_HARD_PER_CORE - LOAD_SOFT_PER_CORE
+    frac = (LOAD_HARD_PER_CORE - lpc) / span  # 1.0 at soft -> 0.0 at hard
+    budget = floor + int(round((cpu_count - floor) * max(0.0, frac)))
+    return max(floor, min(ceiling, budget))
+
+
+def _pid_budget(
+    *,
+    cgroup_pid_cap: Optional[int],
+    cgroup_pid_current: Optional[int],
+    ulimit_nproc: Optional[int],
+    user_proc_count: Optional[int],
+    floor: int,
+    ceiling: int,
+) -> tuple:
+    """
+    CGROUP/ULIMIT-AWARE PID budget.
+
+    Returns (budget, real_cap_detected).
+
+    - If a REAL cgroup pids.max integer exists, gate on
+      (pids.max - pids.current - reserve) // PIDS_PER_AGENT.  real_cap=True.
+    - Else fall back to per-user RLIMIT_NPROC headroom:
+      (ulimit - user_proc_count - reserve) // PIDS_PER_AGENT.  real_cap=False.
+    - If neither yields a meaningful integer, PIDs are NOT a limiter:
+      return ceiling so min() ignores them.  real_cap=False.
+
+    Crucially: a host with no cgroup cap and a huge ulimit will NOT be floored
+    just because the system-wide /proc count is high.
+    """
+    # Real cgroup cap takes precedence.
+    if cgroup_pid_cap is not None:
+        cur = cgroup_pid_current if cgroup_pid_current is not None else 0
+        remaining = cgroup_pid_cap - cur - CGROUP_PID_RESERVE
+        budget = max(0, remaining // PIDS_PER_AGENT)
+        return (min(ceiling, budget), True)
+
+    # Fall back to per-user ulimit headroom.
+    if ulimit_nproc is not None and user_proc_count is not None:
+        remaining = ulimit_nproc - user_proc_count - ULIMIT_PID_RESERVE
+        if remaining <= 0:
+            # Genuine per-user exhaustion (rare).
+            return (0, False)
+        budget = remaining // PIDS_PER_AGENT
+        # On typical hosts ulimit is huge -> budget >> ceiling -> not a limiter.
+        return (min(ceiling, budget), False)
+
+    # No real signal -> PIDs do not limit.
+    return (ceiling, False)
 
 
 # ---------------------------------------------------------------------------
@@ -186,70 +378,56 @@ def _compute_concurrency(
     cpu_count: int,
     load_1min: float,
     mem_avail_mb: Optional[float],
-    pid_count: Optional[int],
+    cgroup_pid_cap: Optional[int] = None,
+    cgroup_pid_current: Optional[int] = None,
+    ulimit_nproc: Optional[int] = None,
+    user_proc_count: Optional[int] = None,
     floor: int,
     ceiling: int,
 ) -> int:
     """
     Pure mapping from explicit signal values -> concurrency in [floor, ceiling].
 
-    This function takes NO live readings — callers (or tests) inject values.
-    That makes the clamping behavior deterministically verifiable.
+    Takes NO live readings — callers (or tests) inject values. Deterministically
+    verifiable.
 
-    Conservative rules (any single one can force the floor):
-      - RAM available < MIN_RAM_AVAIL_MB           -> floor
-      - load per-core > MAX_LOAD_PER_CORE          -> floor
-      - PID count >= PID_CRIT                       -> floor
+    recommended = min(ram_budget, load_budget, pid_budget, ceiling),
+                  clamped to [floor, ceiling].
 
-    Otherwise, the recommendation is the MINIMUM of three budgets:
-      - CPU budget:  cpu_count (one agent per core as the saturation baseline)
-      - RAM budget:  floor( (mem_avail - reserve) / RAM_PER_AGENT_MB )
-      - PID budget:  reduced if pid_count in the warn band
-
-    Result is always clamped into [floor, ceiling].
+    Hard-floor ONLY on a REAL pressure signal:
+      - mem_avail < OS_RESERVE_MB + PER_AGENT_MB (can't afford even one agent)
+      - genuine cgroup/ulimit PID exhaustion (pid_budget == 0)
+      - load_per_core >= LOAD_HARD_PER_CORE
+    Phantom signals (high system /proc count with no real cap) do NOT floor.
     """
     if floor < 1:
         floor = 1
     if ceiling < floor:
         ceiling = floor
-
     cpu_count = max(1, cpu_count)
 
-    # --- Hard floor conditions -------------------------------------------
-    if mem_avail_mb is not None and mem_avail_mb < MIN_RAM_AVAIL_MB:
+    ram_b = _ram_budget(mem_avail_mb, floor=floor, ceiling=ceiling)
+    load_b = _load_budget(load_1min, cpu_count, floor=floor, ceiling=ceiling)
+    pid_b, _real_cap = _pid_budget(
+        cgroup_pid_cap=cgroup_pid_cap,
+        cgroup_pid_current=cgroup_pid_current,
+        ulimit_nproc=ulimit_nproc,
+        user_proc_count=user_proc_count,
+        floor=floor, ceiling=ceiling,
+    )
+
+    # --- Real hard-floor conditions --------------------------------------
+    # Can't afford even one agent's RAM beyond the OS reserve.
+    if ram_b == 0:
         return floor
-    load_per_core = load_1min / cpu_count
-    if load_per_core > MAX_LOAD_PER_CORE:
+    # Genuine PID exhaustion (real cap fully consumed).
+    if pid_b == 0:
         return floor
-    if pid_count is not None and pid_count >= PID_CRIT:
+    # Genuine CPU overload.
+    if (load_1min / cpu_count) >= LOAD_HARD_PER_CORE:
         return floor
 
-    # --- Per-resource budgets --------------------------------------------
-    # CPU budget: how much load headroom remains, expressed in cores.
-    # At load_per_core==MAX we have ~0 spare; at 0 we have full cpu_count.
-    spare_core_fraction = max(0.0, MAX_LOAD_PER_CORE - load_per_core) / MAX_LOAD_PER_CORE
-    cpu_budget = max(1, int(round(cpu_count * spare_core_fraction)))
-
-    # RAM budget: reserve MIN_RAM_AVAIL_MB as a safety cushion, then divide
-    # the remainder by per-agent footprint.
-    if mem_avail_mb is None:
-        ram_budget = floor  # unknown RAM -> be conservative
-    else:
-        usable = mem_avail_mb - MIN_RAM_AVAIL_MB
-        ram_budget = max(0, int(usable // RAM_PER_AGENT_MB))
-
-    # PID budget: in the warn band, shrink toward floor proportionally.
-    if pid_count is None:
-        pid_budget = ceiling
-    elif pid_count < PID_WARN:
-        pid_budget = ceiling
-    else:
-        # Linear taper from ceiling (at PID_WARN) down to floor (at PID_CRIT).
-        span = max(1, PID_CRIT - PID_WARN)
-        frac = (PID_CRIT - pid_count) / span  # 1.0 at warn, 0.0 at crit
-        pid_budget = floor + int(round((ceiling - floor) * max(0.0, frac)))
-
-    recommended = min(cpu_budget, ram_budget, pid_budget, ceiling)
+    recommended = min(ram_b, load_b, pid_b, ceiling)
     recommended = max(floor, recommended)
     return int(recommended)
 
@@ -262,15 +440,18 @@ def recommended_concurrency(floor: int = 2, ceiling: int = 10) -> int:
     """
     How many parallel agents are safe RIGHT NOW, clamped to [floor, ceiling].
 
-    Reads live headroom (CPU load, available RAM, PID/process pressure) and maps
-    it to a conservative integer. Returns `floor` whenever the box is tight.
+    PRIMARY = RAM headroom; SECONDARY = CPU load; PID gating is cgroup/ulimit
+    aware (no phantom throttling on hosts without a real PID cap).
     """
     s = _collect_signals()
     return _compute_concurrency(
         cpu_count=s.cpu_count,
         load_1min=s.load_1min,
         mem_avail_mb=s.mem_avail_mb,
-        pid_count=s.pid_count,
+        cgroup_pid_cap=s.cgroup_pid_cap,
+        cgroup_pid_current=s.cgroup_pid_current,
+        ulimit_nproc=s.ulimit_nproc,
+        user_proc_count=s.user_proc_count,
         floor=floor,
         ceiling=ceiling,
     )
@@ -289,7 +470,7 @@ def can_spawn_another(current_running: int, floor: int = 2, ceiling: int = 10) -
 def gate(desired_n: int, floor: int = 2, ceiling: int = 10) -> int:
     """
     Return min(desired_n, recommended_concurrency()). If the recommendation
-    reduced the desired count, log WHY (the raw headroom signals).
+    reduced the desired count, log WHY (the raw headroom signals + budgets).
     """
     if desired_n < 0:
         desired_n = 0
@@ -299,9 +480,11 @@ def gate(desired_n: int, floor: int = 2, ceiling: int = 10) -> int:
         s = _collect_signals()
         log.warning(
             "concurrency throttled: desired=%d -> allowed=%d (rec=%d) | "
-            "load_per_core=%.3f mem_avail_mb=%s pid_count=%s boop_procs=%d cpu=%d",
+            "load_per_core=%.3f mem_avail_mb=%s cgroup_pid_cap=%s "
+            "user_procs=%s ulimit=%s cpu=%d",
             desired_n, allowed, rec,
-            s.load_per_core, s.mem_avail_mb, s.pid_count, s.boop_proc_count, s.cpu_count,
+            s.load_per_core, s.mem_avail_mb, s.cgroup_pid_cap,
+            s.user_proc_count, s.ulimit_nproc, s.cpu_count,
         )
     return allowed
 
@@ -312,14 +495,14 @@ def gate(desired_n: int, floor: int = 2, ceiling: int = 10) -> int:
 
 def _selftest(floor: int = 2, ceiling: int = 10) -> int:
     print("=" * 68)
-    print("CONCURRENCY GOVERNOR — SELFTEST")
+    print("CONCURRENCY GOVERNOR — SELFTEST (RAM-primary, cgroup/ulimit-aware)")
     print("=" * 68)
 
     # 1) Live headroom report ------------------------------------------------
     report = headroom_report()
-    print("\n[1] headroom_report() — live signals:")
+    print("\n[1] headroom_report() — live signals + budgets:")
     for k, v in report.items():
-        print(f"      {k:18} = {v}")
+        print(f"      {k:24} = {v}")
 
     # 2) Live recommendation -------------------------------------------------
     rec = recommended_concurrency(floor, ceiling)
@@ -336,42 +519,87 @@ def _selftest(floor: int = 2, ceiling: int = 10) -> int:
     assert g_lo <= 1, "gate must not exceed desired"
     print("      OK: gate clamps to min(desired, recommended)")
 
-    # 4) Injected LOW-headroom inputs must clamp to floor -------------------
-    print("\n[4] simulated low-RAM / high-load / high-PID inputs -> floor:")
-    low_cases = {
-        "low_ram": dict(cpu_count=8, load_1min=0.1, mem_avail_mb=512.0, pid_count=40),
-        "high_load": dict(cpu_count=2, load_1min=4.0, mem_avail_mb=8000.0, pid_count=40),
-        "pid_crit": dict(cpu_count=8, load_1min=0.1, mem_avail_mb=8000.0, pid_count=PID_CRIT),
-        "unknown_ram": dict(cpu_count=8, load_1min=0.1, mem_avail_mb=None, pid_count=40),
-    }
-    for name, sig in low_cases.items():
-        n = _compute_concurrency(floor=floor, ceiling=ceiling, **sig)
-        print(f"      {name:12} -> {n}")
-        assert n == floor, f"{name}: expected floor={floor}, got {n}"
-    print(f"      OK: all low-headroom cases clamp to floor={floor}")
-
-    # 5) Injected HIGH-headroom inputs must approach ceiling ----------------
-    print("\n[5] simulated high-headroom input -> approaches ceiling:")
-    high = dict(
-        cpu_count=16, load_1min=0.0,
-        mem_avail_mb=float(MIN_RAM_AVAIL_MB + RAM_PER_AGENT_MB * (ceiling + 4)),
-        pid_count=30,
+    # 4) low-RAM (512MB) -> floor -------------------------------------------
+    print("\n[4] low-RAM(512MB) -> floor:")
+    n = _compute_concurrency(
+        cpu_count=8, load_1min=0.1, mem_avail_mb=512.0,
+        cgroup_pid_cap=None, ulimit_nproc=15000, user_proc_count=40,
+        floor=floor, ceiling=ceiling,
     )
-    n_hi = _compute_concurrency(floor=floor, ceiling=ceiling, **high)
-    print(f"      high_headroom -> {n_hi} (ceiling={ceiling})")
-    assert n_hi == ceiling, f"expected ceiling={ceiling}, got {n_hi}"
-    print(f"      OK: abundant headroom reaches ceiling={ceiling}")
+    print(f"      low_ram(512MB) -> {n}")
+    assert n == floor, f"expected floor={floor}, got {n}"
+    print(f"      OK: insufficient RAM clamps to floor={floor}")
 
-    # 6) PID warn-band taper sanity -----------------------------------------
-    print("\n[6] PID warn-band taper (high headroom otherwise):")
-    base = dict(cpu_count=16, load_1min=0.0,
-                mem_avail_mb=float(MIN_RAM_AVAIL_MB + RAM_PER_AGENT_MB * 40))
-    at_warn = _compute_concurrency(floor=floor, ceiling=ceiling, pid_count=PID_WARN, **base)
-    mid = _compute_concurrency(floor=floor, ceiling=ceiling,
-                               pid_count=(PID_WARN + PID_CRIT) // 2, **base)
-    print(f"      pid={PID_WARN} (warn) -> {at_warn}; pid={(PID_WARN+PID_CRIT)//2} (mid) -> {mid}")
-    assert floor <= mid <= at_warn <= ceiling, "warn-band should taper down monotonically"
-    print("      OK: warn-band tapers ceiling -> floor as PIDs climb")
+    # 5) ample-RAM + low-load + no-cap -> approaches ceiling -----------------
+    print("\n[5] ample-RAM(8000MB) + low-load + NO cgroup cap -> approaches ceiling:")
+    ample = float(OS_RESERVE_MB + PER_AGENT_MB * (ceiling + 6))  # > ceiling worth
+    n_hi = _compute_concurrency(
+        cpu_count=16, load_1min=0.0, mem_avail_mb=ample,
+        cgroup_pid_cap=None, ulimit_nproc=15000, user_proc_count=40,
+        floor=floor, ceiling=ceiling,
+    )
+    print(f"      ample_ram({ample:.0f}MB) -> {n_hi} (ceiling={ceiling})")
+    assert n_hi == ceiling, f"expected ceiling={ceiling}, got {n_hi}"
+    print(f"      OK: abundant RAM + cores reaches ceiling={ceiling}")
+
+    # 6) cgroup cap present AND tight -> throttles --------------------------
+    print("\n[6] cgroup pids.max present and TIGHT -> throttles below ceiling:")
+    # cap=190, current=180 -> remaining=190-180-40 = -30 -> budget 0 -> floor.
+    n_tight = _compute_concurrency(
+        cpu_count=16, load_1min=0.0, mem_avail_mb=8000.0,
+        cgroup_pid_cap=190, cgroup_pid_current=180,
+        ulimit_nproc=15000, user_proc_count=180,
+        floor=floor, ceiling=ceiling,
+    )
+    print(f"      cgroup cap=190 cur=180 -> {n_tight}")
+    assert n_tight == floor, f"expected floor={floor}, got {n_tight}"
+    # cap=300, current=120 -> remaining=300-120-40=140 -> 140//12=11 -> ceiling.
+    n_room = _compute_concurrency(
+        cpu_count=16, load_1min=0.0, mem_avail_mb=8000.0,
+        cgroup_pid_cap=300, cgroup_pid_current=120,
+        ulimit_nproc=15000, user_proc_count=120,
+        floor=floor, ceiling=ceiling,
+    )
+    print(f"      cgroup cap=300 cur=120 -> {n_room}")
+    assert n_room == ceiling, f"expected ceiling={ceiling}, got {n_room}"
+    print("      OK: real cgroup cap gates; loose cap does not")
+
+    # 7) no cgroup cap -> PID is NOT a limiter even with high system PIDs ----
+    print("\n[7] NO cgroup cap + huge ulimit -> PIDs are NOT a limiter:")
+    # This mirrors THIS box: no cap, ulimit≈15127, ~180 system PIDs / ~43 user.
+    # With ample RAM + low load it must reach ceiling, NOT floor.
+    n_nopid = _compute_concurrency(
+        cpu_count=16, load_1min=0.0, mem_avail_mb=ample,
+        cgroup_pid_cap=None, cgroup_pid_current=None,
+        ulimit_nproc=15127, user_proc_count=43,
+        floor=floor, ceiling=ceiling,
+    )
+    print(f"      no_cap, ulimit=15127, user_procs=43 -> {n_nopid}")
+    assert n_nopid == ceiling, (
+        f"PIDs must not floor without a real cap; expected ceiling={ceiling}, "
+        f"got {n_nopid}"
+    )
+    # Even with NO cgroup AND no ulimit info, PIDs must not floor.
+    n_nopid2 = _compute_concurrency(
+        cpu_count=16, load_1min=0.0, mem_avail_mb=ample,
+        cgroup_pid_cap=None, cgroup_pid_current=None,
+        ulimit_nproc=None, user_proc_count=None,
+        floor=floor, ceiling=ceiling,
+    )
+    print(f"      no_cap, no ulimit info -> {n_nopid2}")
+    assert n_nopid2 == ceiling, f"expected ceiling={ceiling}, got {n_nopid2}"
+    print("      OK: phantom PID pressure does NOT throttle")
+
+    # 8) genuine CPU overload -> floor --------------------------------------
+    print("\n[8] genuine CPU overload (load_per_core >= HARD) -> floor:")
+    n_load = _compute_concurrency(
+        cpu_count=2, load_1min=4.0, mem_avail_mb=ample,
+        cgroup_pid_cap=None, ulimit_nproc=15000, user_proc_count=40,
+        floor=floor, ceiling=ceiling,
+    )
+    print(f"      load=4.0 on 2 cores (lpc=2.0) -> {n_load}")
+    assert n_load == floor, f"expected floor={floor}, got {n_load}"
+    print(f"      OK: real overload clamps to floor={floor}")
 
     print("\n" + "=" * 68)
     print("ALL ASSERTIONS PASSED")
@@ -394,7 +622,6 @@ def _main() -> int:
     if args.selftest:
         return _selftest(args.floor, args.ceiling)
 
-    # Default: print the live recommendation.
     print(recommended_concurrency(args.floor, args.ceiling))
     return 0
 
