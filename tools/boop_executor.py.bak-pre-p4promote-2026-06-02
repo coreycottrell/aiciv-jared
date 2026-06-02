@@ -40,8 +40,6 @@ CONSTITUTIONAL_ALARM_STATE_FILE = BASE_DIR / ".boop_constitutional_alarm_state.j
 CONSTITUTIONAL_ALARM_BODY_DIR = BASE_DIR / "inbox"
 # Phase-2 COO Firewall (aiciv-native-org). Flag-gated, default OFF.
 COO_FIREWALL_PROMPT_FILE = BASE_DIR / ".claude" / "templates" / "coo-firewall-prompt.md"
-# Phase-4 fork-and-collapse promotion. Flag-gated, default OFF, 0-6 UTC only.
-FORK_AND_COLLAPSE_PROMPT_FILE = BASE_DIR / ".claude" / "templates" / "fork-and-collapse-prompt.md"
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -858,33 +856,6 @@ def _load_coo_firewall_addendum(task_id: str, logger: logging.Logger = None) -> 
     )
 
 
-def _load_fork_and_collapse_addendum(task_id: str, logger: logging.Logger = None) -> str:
-    """Phase-4 fork-and-collapse promotion. Return the addendum to append to a
-    launched agent's prompt instructing it to decompose into 2-4 independent
-    sub-analyses, gate parallelism via concurrency_governor, run them through
-    dynamic_workflow_runner.fork()->collapse(), and ONLY do so inside the 0-6
-    UTC nightly window — otherwise run normally. Returns "" if the template is
-    missing/unreadable (caller then fires a normal single-agent BOOP).
-
-    Additive + flag-gated: callers only invoke this when task.get("fork_and_collapse")
-    is truthy, so when the flag is absent/false the prompt is byte-identical to
-    pre-Phase-4 behavior.
-    """
-    try:
-        template = FORK_AND_COLLAPSE_PROMPT_FILE.read_text(encoding="utf-8")
-    except Exception as e:
-        if logger:
-            logger.warning("fork_and_collapse template unreadable (%s) - firing normally for [%s]", e, task_id)
-        return ""
-    return (
-        "\n\n=== FORK-AND-COLLAPSE ACTIVE (fork_and_collapse: true) ===\n"
-        f"Substitute <task_id> with: {task_id}\n"
-        "Follow this discipline exactly. It is default-safe: outside the 0-6 UTC "
-        "window, or on ANY error, run this task as a single agent normally.\n\n"
-        + template
-    )
-
-
 def build_boop_prompt(task_id: str, task: dict, bot_token: str,
                       logger: logging.Logger = None) -> str:
     """Build the full prompt for the background Claude Code agent."""
@@ -914,12 +885,6 @@ def build_boop_prompt(task_id: str, task: dict, bot_token: str,
     # is skipped entirely and `prompt` is byte-identical to pre-Phase-2 behavior.
     if task.get("coo_firewall"):
         prompt += _load_coo_firewall_addendum(task_id, logger)
-
-    # Phase-4 fork-and-collapse: flag-gated, default OFF. When absent/false this
-    # block is skipped entirely and `prompt` is byte-identical to pre-Phase-4
-    # behavior. The addendum itself is 0-6 UTC gated + governor gated + error-safe.
-    if task.get("fork_and_collapse"):
-        prompt += _load_fork_and_collapse_addendum(task_id, logger)
 
     return prompt
 
