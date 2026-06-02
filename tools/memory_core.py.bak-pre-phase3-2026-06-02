@@ -177,21 +177,12 @@ class MemoryStore:
         agent_dir.mkdir(parents=True, exist_ok=True)
         return agent_dir
 
-    def write_entry(self, agent_id: str, entry: MemoryEntry,
-                    warn_on_writer_lock: bool = False, lock_owner: Optional[str] = None) -> str:
+    def write_entry(self, agent_id: str, entry: MemoryEntry) -> str:
         """Write memory entry to disk.
 
         Args:
             agent_id: Agent who owns this memory
             entry: MemoryEntry to write
-            warn_on_writer_lock: OPT-IN. When True, if a Tier-1 advisory
-                `.writer-lock` is held on the target agent subtree by a
-                DIFFERENT owner, a warning is logged. This NEVER blocks or
-                raises — the write proceeds exactly as before. Default False
-                keeps original behavior byte-for-byte unchanged.
-            lock_owner: This writer's owner id, used only to decide whether a
-                present lock is "someone else's". Ignored unless
-                warn_on_writer_lock is True.
 
         Returns:
             Absolute path to written file
@@ -208,26 +199,6 @@ class MemoryStore:
         agent_dir = self._get_agent_dir(agent_id)
         filename = self._generate_filename(entry)
         filepath = agent_dir / filename
-
-        # OPT-IN advisory writer-lock awareness (Tier-1, non-blocking).
-        # Only runs when explicitly enabled; never alters control flow.
-        if warn_on_writer_lock:
-            try:
-                from tools.memory_writer_lock import is_locked as _wl_is_locked
-            except ImportError:
-                try:
-                    from memory_writer_lock import is_locked as _wl_is_locked
-                except ImportError:
-                    _wl_is_locked = None
-            if _wl_is_locked is not None:
-                holder = _wl_is_locked(str(agent_dir))
-                if holder is not None and holder.get("owner") != lock_owner:
-                    import logging
-                    logging.getLogger("memory_core").warning(
-                        "advisory writer-lock on %s held by '%s' (this writer: '%s') "
-                        "— proceeding anyway (non-blocking)",
-                        agent_dir, holder.get("owner"), lock_owner,
-                    )
 
         # Check if file already exists
         if filepath.exists():
