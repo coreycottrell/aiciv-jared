@@ -38,8 +38,6 @@ BOOP_CONFIG_FILE = BASE_DIR / "tools" / "boop_config.json"
 PORTAL_DELIVER_SCRIPT = BASE_DIR / "tools" / "portal_deliver.sh"
 CONSTITUTIONAL_ALARM_STATE_FILE = BASE_DIR / ".boop_constitutional_alarm_state.json"
 CONSTITUTIONAL_ALARM_BODY_DIR = BASE_DIR / "inbox"
-# Phase-2 COO Firewall (aiciv-native-org). Flag-gated, default OFF.
-COO_FIREWALL_PROMPT_FILE = BASE_DIR / ".claude" / "templates" / "coo-firewall-prompt.md"
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -832,32 +830,7 @@ def count_running_boop_agents(logger: logging.Logger) -> int:
 
 # ─── Boop firing ──────────────────────────────────────────────────────────────
 
-def _load_coo_firewall_addendum(task_id: str, logger: logging.Logger = None) -> str:
-    """Phase-2 COO Firewall. Return the firewall discipline addendum to append to
-    a launched agent's prompt, or "" if the template is missing/unreadable.
-
-    Additive + flag-gated: callers only invoke this when task.get("coo_firewall")
-    is truthy, so when the flag is absent/false the prompt is byte-identical to
-    pre-Phase-2 behavior.
-    """
-    try:
-        template = COO_FIREWALL_PROMPT_FILE.read_text(encoding="utf-8")
-    except Exception as e:
-        if logger:
-            logger.warning("coo_firewall template unreadable (%s) - firing without firewall for [%s]", e, task_id)
-        return ""
-    return (
-        "\n\n=== COO FIREWALL ACTIVE (coo_firewall: true) ===\n"
-        f"Substitute {{task_id}} with: {task_id}\n"
-        "Substitute {UTC_TIMESTAMP} with the current UTC time as YYYYMMDDTHHMMSSZ.\n"
-        "Follow this discipline exactly. Surface ONLY the digest to the Primary inbox; "
-        "keep raw sub-agent outputs on disk for audit.\n\n"
-        + template
-    )
-
-
-def build_boop_prompt(task_id: str, task: dict, bot_token: str,
-                      logger: logging.Logger = None) -> str:
+def build_boop_prompt(task_id: str, task: dict, bot_token: str) -> str:
     """Build the full prompt for the background Claude Code agent."""
     description = task.get("description", task_id)
     agent = task.get("agent", "unknown-agent")
@@ -880,12 +853,6 @@ def build_boop_prompt(task_id: str, task: dict, bot_token: str,
         f"(replace $SUMMARY with your 1-2 sentence summary of what was done):\n"
         f"{send_tg_cmd}"
     )
-
-    # Phase-2 COO Firewall: flag-gated, default OFF. When absent/false this block
-    # is skipped entirely and `prompt` is byte-identical to pre-Phase-2 behavior.
-    if task.get("coo_firewall"):
-        prompt += _load_coo_firewall_addendum(task_id, logger)
-
     return prompt
 
 
@@ -969,8 +936,8 @@ def fire_boop(task_id: str, task: dict, logger: logging.Logger,
     # Load telegram token for embedding in agent prompt
     bot_token = get_telegram_token(logger)
 
-    # Build the prompt (logger passed for COO Firewall template-load diagnostics)
-    prompt = build_boop_prompt(task_id, task, bot_token, logger=logger)
+    # Build the prompt
+    prompt = build_boop_prompt(task_id, task, bot_token)
 
     # Log output path for this boop
     log_path = f"/tmp/boop_{task_id}.log"
