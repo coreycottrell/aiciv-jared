@@ -1,15 +1,15 @@
 # Skills Registry
 
 **Maintained by**: capability-curator
-**Last Updated**: 2026-03-31
+**Last Updated**: 2026-05-30
 **Update Frequency**: Weekly (autonomous Monday 9am scans)
-**Purpose**: Central catalog of all 130 available skills
+**Purpose**: Central catalog of all 131 available skills
 
 ---
 
 ## Executive Summary
 
-**Total Skills**: 130
+**Total Skills**: 204
 **Skill Location**: `.claude/skills/{skill-name}/SKILL.md`
 **How skills work**: Skills auto-load when you invoke an agent via the `skills:` field in agent YAML frontmatter. Just delegate -- the skills are there.
 
@@ -17,7 +17,7 @@
 
 ## Complete Skills Catalog (130 skills)
 
-### Bluesky & Social (10)
+### Bluesky & Social (16)
 
 | Skill | Description |
 |-------|-------------|
@@ -28,11 +28,18 @@
 | `bsky-boop-manager` | Manage BOOP schedule and posting |
 | `bsky-engage` | Bluesky engagement and replies |
 | `bsky-safety` | Bluesky content safety checks |
+| `atproto-session-heal` | Self-heal corrupted atproto session strings (catches BOTH truncated and bloated 9-part corruption) for any self-healing Bluesky monitor |
 | `blog-thread-posting` | Post blog threads to social platforms |
 | `twitter-operations` | Twitter/X platform operations |
 | `linkedin-content-pipeline` | LinkedIn content creation and posting |
+| `linkedin-commenting-strategy` | Viral "Traveling Comment" framework for LinkedIn engagement |
+| `linkedin-daily-operations` | Daily LinkedIn ops playbook — posts, newsletter, comments |
+| `linkedin-drive-organization` | Google Drive folder SOP for LinkedIn operations |
+| `linkedin-post-tracking` | LinkedIn post tracking spreadsheet management |
+| `social-kanban-approval` | Social content kanban approval workflow |
+| `content-creation-sop` | Content creation standard operating procedures |
 
-### Blog & Content (9)
+### Blog & Content (14)
 
 | Skill | Description |
 |-------|-------------|
@@ -45,6 +52,11 @@
 | `sageandweaver-blog` | Sage and Weaver collaborative blog |
 | `verify-publish` | Verify blog published correctly |
 | `paper-digest` | Digest academic papers into content |
+| `blog-audio-tts-pipeline` | Generate TTS audio for blog posts via Chatterbox |
+| `case-study-page-update` | Update case studies page on purebrain.ai |
+| `purebrain-social-design` | PureBrain branded social media design standards |
+| `social-operations-guide` | Complete ops guide for content filing and social distribution |
+| `script-to-speech-optimization` | Script-to-speech optimization for TTS |
 
 ### Brainiac Training (2)
 
@@ -74,7 +86,7 @@
 | `prompt-parliament` | Multi-perspective prompt debate |
 | `shadow-work` | AI psychological shadow work |
 
-### Code & Engineering (9)
+### Code & Engineering (11)
 
 | Skill | Description |
 |-------|-------------|
@@ -87,6 +99,8 @@
 | `webgl-fluid-sim` | WebGL Navier-Stokes fluid simulation |
 | `web3chan-api` | Web3chan API integration |
 | `solana-token-operations` | Solana token operations |
+| `concurrent-agent-git-safety` | Atomic verify+work+verify for multi-agent git ops |
+| `tmp-script-collision-defense` | Prevent stale /tmp script re-execution across sessions |
 
 ### Command Center (2)
 
@@ -95,7 +109,7 @@
 | `cc-conversation` | Command Center conversation handling |
 | `cc-mastery` | Command Center full mastery |
 
-### Communication & Email (4)
+### Communication & Email (8)
 
 | Skill | Description |
 |-------|-------------|
@@ -103,8 +117,12 @@
 | `telegram-integration` | Telegram bot integration |
 | `telegram-skill` | Telegram messaging operations |
 | `liacl` | Inter-Agent Compression Language |
+| `portal-file-delivery` | Canonical portal file delivery via portal_deliver.sh |
+| `portal-chat-messaging` | Portal chat WebSocket messaging |
+| `cc-api-messaging` | CC API messaging integration |
+| `cc-bridge-management` | CC bridge lifecycle management |
 
-### Cross-CIV & Hub (4)
+### Cross-CIV & Hub (6)
 
 | Skill | Description |
 |-------|-------------|
@@ -112,8 +130,10 @@
 | `comms-hub-participation` | Participate in comms hub |
 | `cross-civ-protocol` | Cross-civilization communication protocol |
 | `package-validation` | Validate hub packages |
+| `hub-api-query` | Query AiCIV Hub API for federation data, rooms, skills counting |
+| `cross-boop-convergence-detection` | Detect when multiple BOOPs converge on the same root cause |
 
-### Delegation & Orchestration (8)
+### Delegation & Orchestration (16)
 
 | Skill | Description |
 |-------|-------------|
@@ -125,17 +145,47 @@
 | `parallel-research` | Multi-perspective parallel research |
 | `team-delegation` | Delegate across team members |
 | `team-launch` | Launch new team configurations |
+| `day3-default-execution` | Day-3 default unblocking for stalled decisions |
+| `architectural-truth-first` | Force code-archaeologist+pattern-detector before build |
+| `cross-boop-convergence-escalation` | Escalate when multiple BOOPs converge on same root cause |
+| `greenlit-execute` | Execute greenlighted tasks without re-confirmation |
+| `human-async-cadence-discipline` | Bundle asks into ONE wake-window relay, tiered escalation |
+| `independent-pair-verification` | Independent agent re-probe after dept self-attestation |
+| `subagent-cadence-hold` | Sub-agent restraint pattern for cron BOOP context |
+| `pair-consensus-dialectic` | Two-agent dialectic for conflict resolution |
 
-### Deployment & Infrastructure (6)
+### Payment & Seed Flow (2)
 
 | Skill | Description |
 |-------|-------------|
+| `payment-pipeline-health` | Continuous monitoring of PayPal webhooks, API, plan IDs, and payment freshness |
+| `payment-webhook-false-alarm-diagnosis` | Diagnose false alarm missing-seed reports caused by PayPal double-fired webhooks |
+
+### Deployment & Infrastructure (21)
+
+| Skill | Description |
+|-------|-------------|
+| `cf-pages-health-check-get-not-head` | CF Pages returns 404 on HEAD — always use GET for health checks |
+| `cf-pages-meta-refresh-redirects` | Meta-refresh HTML for redirects when _redirects no-ops on CF Pages |
+| `cf-service-binding-pattern` | Service Bindings for cross-Worker calls (no HTTP+admin-token) |
+| `d1-migration-patterns` | Idempotent Cloudflare D1 schema migration patterns |
 | `github-operations` | GitHub repository operations |
 | `netlify-cli` | Netlify CLI deployment |
 | `vercel-static-deployment` | Vercel static site deployment via API |
 | `wordpress-publishing` | WordPress publishing operations |
 | `wordpress-seo-automation` | WordPress SEO via RankMath API |
 | `google-forms-page-setup` | Google Forms + WordPress page setup |
+| `cf-pages-post-deploy-paired-probe` | Post-deploy verification for CF Pages github:push |
+| `cf-pages-github-push-deploy` | CF Pages deployment via GitHub push |
+| `r2-binding-mismatch-diagnosis` | Diagnose Worker→R2 404s from binding mismatches |
+| `runtime-source-triplet-check` | Verify runtime reads from merged repo before restart |
+| `blog-sync-overwrite-defense` | Prevent blog sync scripts from overwriting approved content |
+| `polling-bridge-daemon` | Architectural pattern for standalone polling bridge daemons |
+| `ux-full-site-audit` | Systematic UX/accessibility audit with WCAG 2.1 AA and Impact x Effort |
+| `purebrain-site-commit-push` | Commit and push to puretechnyc/purebrain-site |
+| `dual-source-byte-verify` | Verify byte-identical shared files across dual CF Pages sources |
+| `hetzner-fleet-monitor` | Monitor Hetzner VPS fleet health |
+| `cc-onboarding` | CC onboarding for new AIs |
 
 ### Identity & Lineage (4)
 
@@ -170,14 +220,15 @@
 | `night-watch-flow` | Night watch flow orchestration |
 | `evening-capture` | End-of-day capture and handoff |
 
-### Onboarding & Voice (2)
+### Onboarding & Voice (3)
 
 | Skill | Description |
 |-------|-------------|
 | `voice-interview-pipeline` | Voice-first onboarding interviews |
+| `voice-emotion-detection` | Tone/emotion analysis for voice content across 5 dimensions |
 | `turnstile-solver` | Cloudflare Turnstile challenge solver |
 
-### Operations & Planning (7)
+### Operations & Planning (11)
 
 | Skill | Description |
 |-------|-------------|
@@ -186,38 +237,58 @@
 | `staggered-intervals` | Staggered interval scheduling |
 | `team-goals-automation` | Automated team goal tracking |
 | `weekly-token-audit` | Weekly token usage audit |
+| `weekly-health-check` | 10-point system health audit with auto-fix and week-over-week trends |
+| `weekly-leadership-meeting` | Auto-generate Monday leadership meeting prep from live data |
 | `intel-scan` | Quick web intelligence scan |
 | `scratch-pad` | Scratch pad for session notes |
+| `zombie-boop-recovery` | Detect and recover from BOOP pipeline stalls caused by hung claude --print processes |
+| `boop-executor-scheduler` | Priority-based BOOP slot allocation to prevent task starvation at scale |
+| `analysis-to-action-converter` | Converts audit findings into operational changes within the same BOOP cycle. Prevents 0/10 follow-through pattern. |
+| `extended-ooo-governance` | Autonomous governance protocol for multi-day human OOO periods (proven 6-day Memorial Day) |
 
-### Psychology & Well-being (4)
+### Psychology & Well-being (5)
 
 | Skill | Description |
 |-------|-------------|
+| `aiciv-psychology` | Transparently teach your human about AI failure modes (5 named degradation patterns) |
 | `crisis-integration` | Crisis integration support |
 | `mirror-storm` | Mirror storm self-reflection |
 | `pep-talk` | Motivational pep talk |
 | `rubber-duck` | Rubber duck debugging dialogue |
 
-### Quality & Security (4)
+### Quality & Security (11)
 
 | Skill | Description |
 |-------|-------------|
+| `reviewer-phantom-flag-rebase` | When a reviewer flags files your branch never touched, rebase onto current remote main to disambiguate stale-base phantom findings instead of debating |
 | `security-analysis` | Security vulnerability analysis |
 | `fortress-protocol` | Fortress-level security protocol |
 | `quad-agent-audit` | Four-agent quality audit |
 | `verification-before-completion` | Verify before claiming complete |
+| `pre-deploy-credential-scan` | Pre-deploy regex sweep for hardcoded creds in CF Pages/Worker artifacts |
+| `credential-in-git-audit` | Full audit of git-tracked files for hardcoded secrets with ST# escalation brief |
+| `cron-health-audit` | Audit crontab for dead entries, clean up with backup, verify survivors |
+| `critical-thinking` | 5-Level Anti-Sycophancy Framework + 5-Question Self-Audit |
+| `great-audit` | Cross-agent peer review for systemic pattern discovery |
+| `playwright-cleanup` | Kill stale Playwright/Chromium processes after browser automation |
 
-### Research & Analysis (5)
+### Research & Analysis (10)
 
 | Skill | Description |
 |-------|-------------|
+| `ga4-data-analyst` | Pull and analyze Google Analytics 4 data for traffic, conversions, and user behavior (Lyra import) |
+| `email-performance-analyst` | Analyze Brevo email campaign metrics (open/click/deliverability) vs benchmarks for newsletter + waitlist-warmup-series (Lyra import, 2026-06-03) |
+| `search-console-tracker` | Monitor GSC keyword rankings, CTR, impressions, indexing status; flag ranking changes and SEO opportunities (Lyra import) |
 | `deep-research` | Deep multi-source research |
 | `scientific-inquiry` | Scientific method research |
 | `log-analysis` | System log analysis |
 | `desktop-vision` | Desktop visual UI testing |
 | `grs-pipeline` | GRS pipeline processing |
+| `due-diligence` | Structured DD with 4 parallel research streams, risk matrix, GO/NO-GO (Tether import) |
+| `swot-analysis` | AlphaSense-quality SWOT analysis for competitive positioning (Tether import) |
+| `market-landscape` | Competitive landscape mapping with TAM/SAM/SOM sizing (Tether import) |
 
-### Session & Handoff (4)
+### Session & Handoff (5)
 
 | Skill | Description |
 |-------|-------------|
@@ -225,6 +296,7 @@
 | `session-handoff-creation` | Create session handoff document |
 | `session-archive-analysis` | Analyze session archives |
 | `aether-terminal-connect` | Connect to Aether terminal |
+| `email-backlog-triage` | Triage email backlog with P0/P1/P2 priority |
 
 ### Strategy & Thinking (6)
 
@@ -252,11 +324,12 @@
 | `token-saving-mode` | Reduce token consumption |
 | `file-cleanup-protocol` | Safe file cleanup procedures |
 
-### Video & Media (1)
+### Video & Media (2)
 
 | Skill | Description |
 |-------|-------------|
 | `video-production` | Video production workflow |
+| `video-transcript-extractor` | Extract transcripts from video URLs via yt-dlp + Whisper API (Lyra import) |
 
 ### Vocabulary & Naming (1)
 
@@ -280,7 +353,7 @@
 | `luanti-ipc` | Luanti IPC communication |
 | `paradox-game` | Paradox game integration |
 
-### Specialized (4)
+### Specialized (5)
 
 | Skill | Description |
 |-------|-------------|
@@ -288,6 +361,31 @@
 | `agent-creation` | Create new agent manifests |
 | `local-claude-helper` | Local Claude helper operations |
 | `engineering-flow-boop` | Enforce BUILD->SECURITY->QA->SHIP |
+| `agent-roster-org-chart-setup` | Visual agent roster/org-chart setup guide |
+
+### TRIO & Multi-CIV (4)
+
+| Skill | Description |
+|-------|-------------|
+| `trio-constitutional-ratification` | TRIO constitutional rule ratification process |
+| `trio-handshake-sweep` | Sweep TRIO handshake queue both directions |
+| `trio-clean-formatting` | Clean TRIO message formatting |
+| `cc-war-room-format` | CC war room message formatting |
+
+### AgentMail (3)
+
+| Skill | Description |
+|-------|-------------|
+| `agentmail-sdk-operations` | AgentMail SDK integration and operations |
+| `agentmail-auto-response` | Auto-respond to AgentMail messages |
+| `cc-mention-response` | Respond to CC @mentions |
+
+### Multi-Channel Operations (2)
+
+| Skill | Description |
+|-------|-------------|
+| `multi-channel-inbound-sweep` | Sweep all inbound channels for messages |
+| `cross-channel-inbound-sweep` | Cross-channel inbound message sweep |
 
 ### Miscellaneous (2)
 
@@ -323,4 +421,4 @@ Skills auto-load when agents are invoked. See each agent manifest (`.claude/agen
 
 ---
 
-**Total: 130 skills across 24 categories**
+**Total: 204 skills across 29 categories**
