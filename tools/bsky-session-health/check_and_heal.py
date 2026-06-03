@@ -117,11 +117,14 @@ def check_session():
         msg = str(e)
         # Recognized "needs heal" signals:
         #   - ExpiredToken / InvalidToken / "Token has been revoked"  → server rejected
-        #   - "not enough values to unpack" / parse errors            → file is malformed/corrupt
+        #   - "values to unpack" / parse errors                       → file is malformed/corrupt:
+        #       * "not enough values to unpack" → truncated/short session string
+        #       * "too many values to unpack"   → bloated 9-part session (session_managed
+        #         marker + duplicated handle/did/pds); catch-all "values to unpack" covers both
         #   - "Authentication Required"                               → upstream session gone
         heal_signals = (
             "ExpiredToken", "InvalidToken", "Token has been revoked",
-            "Authentication Required", "not enough values to unpack",
+            "Authentication Required", "values to unpack",
             "AuthMissing", "AuthFactorTokenRequired",
         )
         if any(sig in msg for sig in heal_signals):
