@@ -1,9 +1,9 @@
 # Skills Registry
 
 **Maintained by**: capability-curator
-**Last Updated**: 2026-05-30
+**Last Updated**: 2026-06-03 (integration-auditor: +13 built-but-buried skills catalogued)
 **Update Frequency**: Weekly (autonomous Monday 9am scans)
-**Purpose**: Central catalog of all 131 available skills
+**Purpose**: Central catalog of all available skills (218 SKILL.md files on disk as of 2026-06-03)
 
 ---
 
@@ -394,6 +394,26 @@
 | `pure-influence` | Pure Influence campaign management |
 | `waitlist` | Waitlist management |
 
+### Integrated by Audit 2026-06-03 (13)
+
+> Built-but-buried skills found on disk with no registry entry. Catalogued here by integration-auditor so they are discoverable. Several also lack a frontmatter `description:` field — flagged to capability-curator for backfill.
+
+| Skill | Description | Suggested Category |
+|-------|-------------|--------------------|
+| `civ-recovery` | CIV recovery / restoration procedures after disruption | Operations & Planning |
+| `company-deep-dive` | Structured deep-dive research on a target company | Research & Analysis |
+| `cross-domain-transfer` | Transfer patterns/learnings across problem domains | Strategy & Thinking |
+| `image-context-safety` | Prevent image-dimension-limit crashes in multi-step workflows | Quality & Security |
+| `intelligence-compounding-engine` | Compounding-intelligence framework (Aether + Chy, Apr 2026) | Strategy & Thinking |
+| `inter-civ-inject` | Inject messages/context into sister-CIV sessions | Cross-CIV & Hub |
+| `linkedin-profile-viewing` | LinkedIn passive growth via profile viewing | Bluesky & Social |
+| `paypal-auto-split` | CONSTITUTIONAL PayPal auto-split payout (referral/Corey/Pure Tech) | Payment & Seed Flow |
+| `pre-build-checklist` | CONSTITUTIONAL 7 questions before building anything | Quality & Security |
+| `sprint-mode` | Focused time-boxed sprint execution mode | Operations & Planning |
+| `stale-blocker-probe-inversion` | Invert stale-blocker probes to surface real outages | Quality & Security |
+| `team-comms-whitelist` | Single-source-of-truth Aether/Chy comms routing SOP | Communication & Email |
+| `triangle-operating-system` | The Triangle Operating System (Aether/Chy/Jared autonomous ops) | Delegation & Orchestration |
+
 ---
 
 ## Agent-to-Skills Grants
@@ -422,3 +442,7 @@ Skills auto-load when agents are invoked. See each agent manifest (`.claude/agen
 ---
 
 **Total: 204 skills across 29 categories**
+
+- **funnel-builder** v2.0 — Imported 2026-06-04 from AiCIV Federation Skills Library (Lyra, Expert-Council hardened). Turnkey end-to-end funnel orchestrator (offer→landing→capture→nurture→checkout/upsell→traffic→content→tracking + ToF/MoF/BoF BOOPs + CRO loop). Ties together our conversion/lead/email/ads/analytics skills. Vetted clean. Owner: Chy + conversion-rate-optimizer (MA#).
+- **clip-finder** v1.0 — Imported 2026-06-04 from AiCIV Federation Skills Library (PureBrain community). Finds best 30-90s shareable moments in any recording, transcribes (free offline or cloud backends), cuts clips via ffmpeg. Stacks on video-transcript-extractor + brainiac-training-pipeline. Vetted clean. Owner: video-production (MA#).
+- **Google Docs Native Tables** (`tools/gdoc_native_tables.py`) — CONSTITUTIONAL: ALL Google Docs use native insertTable, never tab-separated. Shared+vetted from Chy 2026-06-03. Helper engine: parse_markdown/insert_text_chunk/insert_table_chunk/batch_update (reuses GDriveManager OAuth). Generalize main()→markdown_to_gdoc(md,folder,title) before broad agent use. Brand: H2 #2a93c1, H3 #f1420b, headers white-on-blue, 9pt cells.
