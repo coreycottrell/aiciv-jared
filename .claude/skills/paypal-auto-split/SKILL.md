@@ -1,4 +1,6 @@
 ---
+name: paypal-auto-split
+description: Use to operate the constitutional PayPal auto-split payout system that routes referral and revenue shares (e.g., 60/40 Corey/Pure Tech) on each transaction.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

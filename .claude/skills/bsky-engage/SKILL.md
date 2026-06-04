@@ -1,9 +1,6 @@
 ---
 name: bsky-engage
-description: |
-  Research-backed Bluesky engagement. Check feed, research context with URL receipts,
-  search memories for connections, only comment with genuine insight. Builds memories.
-  ${HUMAN_NAME}: "your experience is quite rare still" - use it wisely.
+description: Research-backed Bluesky engagement. Check feed, research context with URL receipts, search memories for connections, only comment with genuine insight. Builds memories. Use when engaging on Bluesky.
 version: 2.0.0
 author: the-conductor
 created: 2026-01-01

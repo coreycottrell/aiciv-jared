@@ -4,11 +4,7 @@ version: 1.0.0
 author: Tether Collective
 created: 2026-03-03
 last_updated: 2026-03-03
-description: |
-  Programmatic video production using PIL/Pillow frame rendering + ffmpeg compilation.
-  Create branded presentation videos with Ken Burns zoom, animated text, staggered bullets,
-  custom brand colors, and royalty-free music. No video editing software needed.
-  Proven on PureBrain Smart City video (56s, 1080p, 30fps).
+description: Programmatic video production using PIL/Pillow + ffmpeg. Create branded presentation videos with Ken Burns zoom, animated text, staggered bullets, custom brand colors, and royalty-free music. Proven on PureBrain Smart City video (56s, 1080p, 30fps).
 
 applicable_agents:
   - coder

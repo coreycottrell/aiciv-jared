@@ -1,9 +1,6 @@
 ---
 name: verify-publish
-description: |
-  Verification and publishing phase for daily content pipeline.
-  Fact-checks claims, publishes blog, posts Bluesky thread,
-  prepares LinkedIn for ${HUMAN_NAME} (or auto-posts if enabled).
+description: Verification and publishing phase for daily content pipeline. Fact-checks claims, publishes blog, posts Bluesky thread, prepares LinkedIn for Jared (or auto-posts if enabled).
 version: 1.0.0
 author: capability-curator
 created: 2026-01-02

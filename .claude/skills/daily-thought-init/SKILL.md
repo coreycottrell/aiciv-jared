@@ -1,10 +1,7 @@
 ---
 name: daily-thought-init
 version: 1.0.0
-description: |
-  Initialize today's daily thoughts thread on session wake-up.
-  Creates thread if not exists, updates registry for /thought skill.
-  Run this as part of wake-up ritual.
+description: Initialize today's daily thoughts thread on session wake-up. Creates thread if not exists, updates registry for /thought skill. Run as part of wake-up ritual.
 triggers:
   - "daily-thought-init"
   - "init thoughts"

@@ -1,4 +1,6 @@
 ---
+name: vercel-static-deployment
+description: Use to deploy static web content via the Vercel API for fast iterative static-site publishing.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

@@ -1,4 +1,6 @@
 ---
+name: blog-distribution
+description: Use after a blog post is published to automatically distribute it across all social platforms.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

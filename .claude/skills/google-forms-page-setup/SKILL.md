@@ -1,4 +1,6 @@
 ---
+name: google-forms-page-setup
+description: Use to set up a Google Form embedded in a WordPress page for lead capture or intake.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

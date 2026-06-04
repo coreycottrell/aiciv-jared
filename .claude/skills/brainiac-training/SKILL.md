@@ -1,4 +1,6 @@
 ---
+name: brainiac-training
+description: Use to access and apply Brainiac Mastermind Training modules when building curriculum, weekly modules, or applying the training content.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

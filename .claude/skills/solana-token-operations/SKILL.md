@@ -7,11 +7,7 @@ last_updated: 2025-12-27
 line_count: 498
 compliance_status: compliant
 
-description: |
-  Complete reference for Solana SPL token operations including balances, transfers,
-  wallet management, and transaction ledger tracking. Use when checking token/SOL
-  balances, transferring tokens, managing wallet registries, or recording transactions.
-  Production-ready patterns verified on mainnet with ACGEE token.
+description: Complete reference for Solana SPL token operations including balances, transfers, wallet management, and transaction ledger tracking. Use when checking SOL/token balances, transferring tokens, managing wallet registries, or recording transactions. Verified on mainnet with ACGEE token.
 
 applicable_agents:
   - sol-dev

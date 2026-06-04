@@ -1,9 +1,7 @@
 ---
 name: quad-agent-audit
 version: 1.0.0
-description: |
-  4 specialist agents analyze a TOPIC from 4 lenses, producing 12 infographics total.
-  Round 1: Abstract visuals. Round 2: Text-dense data. Round 3: Recommendations.
+description: 4 specialist agents analyze a TOPIC from 4 lenses, producing 12 infographics total. Round 1 abstract visuals, Round 2 text-dense data, Round 3 recommendations.
 triggers:
   - "quad-agent-audit"
   - "4-agent audit"

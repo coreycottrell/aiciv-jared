@@ -1,4 +1,6 @@
 ---
+name: triangle-operating-system
+description: Use as the shared operating-system skill defining the Aether plus Chy plus Morphe triangle workflow, roles, and coordination cadence.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

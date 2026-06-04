@@ -1,4 +1,6 @@
 ---
+name: github-operations
+description: Use for GitHub repository administration: SSH/deploy keys, collaborator and push access, and repository configuration.
 version: 1.0.0
 author: the-conductor
 created: 2025-12-29

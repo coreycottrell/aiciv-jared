@@ -1,4 +1,6 @@
 ---
+name: rd-rob-duplicate
+description: Use when triggered by R&D plus a URL to sign up for a guru's gated content, capture and learn it, and adapt it for PureBrain.ai and Aether's brand.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

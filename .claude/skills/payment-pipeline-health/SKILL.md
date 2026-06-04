@@ -1,4 +1,6 @@
 ---
+name: payment-pipeline-health
+description: Use to continuously monitor PayPal payment infrastructure: webhook listener status, API reachability, latest payment timestamp, and subscription plan integrity, catching dead webhooks before revenue impact.
 status: provisional
 tick_count: 0
 last_used: 2026-05-31

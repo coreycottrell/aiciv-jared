@@ -1,4 +1,6 @@
 ---
+name: onedrive-personal-auth
+description: Use to authenticate to a personal Microsoft OneDrive account (Outlook/Hotmail/Live) via the device-code flow.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

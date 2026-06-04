@@ -1,4 +1,6 @@
 ---
+name: intelligence-compounding-engine
+description: Use to operate the autonomous skill lifecycle system that captures, scores, and compounds learnings into reusable skills across Pure Technology.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

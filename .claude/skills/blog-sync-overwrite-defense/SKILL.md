@@ -1,4 +1,6 @@
 ---
+name: blog-sync-overwrite-defense
+description: Use before running automated blog sync scripts to prevent overwriting approved content with wrong entries; enforces dry-run, backup, and diff so auto-generated indexes only include verified Jared-approved posts.
 status: provisional
 tick_count: 0
 last_used: 2026-05-19

@@ -1,4 +1,6 @@
 ---
+name: blog-banner-creation
+description: Use when producing the standardized 1920x1080 blog/newsletter banner with the locked 5-element layout (hexagon, PUREBRAIN.ai, title, tagline, The Neural Feed).
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

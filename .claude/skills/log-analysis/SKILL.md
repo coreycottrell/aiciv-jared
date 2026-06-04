@@ -1,5 +1,6 @@
 ---
 name: log-analysis
+description: Use to analyze Claude Code JSONL logs for session metrics, agent performance, token usage, delegation patterns, and system health; load for BOOP reports, debugging agent behavior, and error investigation.
 version: 1.0.0
 author: coder
 created: 2025-12-16

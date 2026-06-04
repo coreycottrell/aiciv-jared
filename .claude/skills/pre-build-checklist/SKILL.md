@@ -1,4 +1,5 @@
 ---
+name: pre-build-checklist
 skill: pre-build-checklist
 description: CONSTITUTIONAL — 7 questions to ask before building ANYTHING. Determines if solution should be software, AI automation, or both. Prevents over-engineering.
 trigger: before building, before coding, new feature, new tool, architecture decision, should we build, how to build

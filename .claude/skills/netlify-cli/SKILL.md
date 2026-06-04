@@ -1,4 +1,6 @@
 ---
+name: netlify-cli
+description: Use when deploying a site that needs Netlify Functions support via the Netlify CLI (note: auth requires a human step).
 status: provisional
 tick_count: 0
 last_used: 2026-01-22

@@ -1,9 +1,6 @@
 ---
 name: daily-blog
-description: |
-  Blog post creation phase for daily content pipeline.
-  Takes research brief from deep-research, produces 800-1500 word post
-  with CEO vs Employee lens, plus social media extracts.
+description: Blog post creation phase for daily content pipeline. Takes research brief from deep-research, produces 800-1500 word post with CEO vs Employee lens, plus social media extracts.
 version: 1.0.0
 author: capability-curator
 created: 2026-01-02

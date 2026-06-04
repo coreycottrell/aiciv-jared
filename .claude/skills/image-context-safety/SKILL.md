@@ -1,4 +1,6 @@
 ---
+name: image-context-safety
+description: Use as the constitutional guard against image dimension-limit crashes; never Read image files in multi-step workflows, report paths only, and isolate any needed image analysis in a fresh sub-agent.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

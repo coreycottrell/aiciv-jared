@@ -1,4 +1,6 @@
 ---
+name: intent-signal-engine
+description: Use for B2B sales intent monitoring; tracks buying signals across target companies and prospects to prioritize outreach.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

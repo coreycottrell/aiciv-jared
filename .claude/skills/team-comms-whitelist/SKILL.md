@@ -1,4 +1,6 @@
 ---
+name: team-comms-whitelist
+description: Use to communicate with the Pure Technology team per the whitelist spreadsheet, routing each message to the correct AI based on topic and department.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

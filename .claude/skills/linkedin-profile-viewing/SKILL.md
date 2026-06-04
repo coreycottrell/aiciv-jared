@@ -1,4 +1,6 @@
 ---
+name: linkedin-profile-viewing
+description: Use to run the passive LinkedIn profile-viewing growth engine that drives organic reach by viewing target profiles on a cooldown schedule.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

@@ -1,4 +1,6 @@
 ---
+name: civ-recovery
+description: Use as the emergency-room protocol when an AI civilization is frozen or crashed and needs a basic Claude Code instance to diagnose, recover, and restart it over SSH.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

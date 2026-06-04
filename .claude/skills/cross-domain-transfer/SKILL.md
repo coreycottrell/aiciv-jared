@@ -1,4 +1,6 @@
 ---
+name: cross-domain-transfer
+description: Use when applying a solution or pattern learned in one domain to an unrelated domain; structured analogy-mapping for result-synthesizer and pattern-detector.
 status: provisional
 tick_count: 0
 last_used: 2026-05-08

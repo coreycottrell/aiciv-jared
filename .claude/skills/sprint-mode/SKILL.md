@@ -1,4 +1,6 @@
 ---
+name: sprint-mode
+description: Use on intensive build days as a lean BOOP variant that skips fleet health, registry, and scheduled-task checks, loading grounding docs only to save time.
 status: provisional
 tick_count: 0
 last_used: 2026-05-22

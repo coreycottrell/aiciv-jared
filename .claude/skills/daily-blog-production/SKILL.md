@@ -17,6 +17,39 @@ introduced: 2026-01-22
 
 ---
 
+## 🔴 LOCKED CONTENT-STRUCTURE GATE (March-20 standard) — MANDATORY
+
+Every CF Pages blog post (`exports/cf-pages-deploy/blog/<slug>/index.html`) MUST contain
+TWO visible content-structure sections before `</article>`:
+
+1. **Visible FAQ accordion** — `<div class="pb-faq-section">` with `pbToggleFaq` JS hooks
+   (styled by `/css/blog-shared.css` + `/js/blog-shared.js`). This is SEPARATE from the
+   FAQPage JSON-LD schema — the schema is for SEO/AEO, the accordion is for humans. Having
+   ONLY the schema is the exact regression that dropped these sections in Apr/May 2026.
+2. **Daily Recap transparency block** — any `pb-*recap*` / `pb-*transparency*` section.
+
+**Canonical structure source**: copy the TEMPLATE post
+`exports/cf-pages-deploy/blog/your-ai-has-no-idea-who-you-are/index.html`
+(reference with both sections: `the-ai-that-gets-smarter-when-you-push-back`).
+
+**ROOT CAUSE OF DRIFT**: there is NO deterministic HTML generator. New posts are made by
+copying the template, so ANY path that bypasses the template (e.g. an SEO-schema-only
+script) silently ships a post with no visible FAQ/recap. Do not hand-build post HTML.
+
+**ENFORCEMENT (run as the FINAL step before deploy, every post):**
+```bash
+# Audit (dry-run, no writes):
+python3 tools/blog_ensure_faq_recap.py
+# Restore missing visible FAQ accordion from the post's own FAQPage JSON-LD:
+python3 tools/blog_ensure_faq_recap.py --apply --only <slug>
+# Recap (placeholder skeleton; FILL with real session data — never fabricate $$/hours):
+python3 tools/blog_ensure_faq_recap.py --apply --recap-skeleton --only <slug>
+```
+The injector is idempotent, backs up to `.bak-pre-faqrecap-2026-06-03`, skips redirect
+stubs, and NEVER fabricates recap financials. A post is NOT done until this audit is clean.
+
+---
+
 ## Quick Reference
 
 ### Daily Production Overview

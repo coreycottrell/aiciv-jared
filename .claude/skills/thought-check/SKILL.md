@@ -1,10 +1,7 @@
 ---
 name: thought-check
 version: 1.0.0
-description: |
-  POST-BOOP prompt. After completing Bluesky engagement, pause and ask:
-  "Any interesting thoughts since last check? Post them."
-  Run AFTER every BOOP cycle completes.
+description: POST-BOOP prompt. After completing Bluesky engagement, pause and ask "Any interesting thoughts since last check? Post them." Run AFTER every BOOP cycle completes.
 triggers:
   - "thought-check"
   - "post-boop"

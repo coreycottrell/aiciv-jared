@@ -6,10 +6,7 @@ created: 2025-12-26
 last_updated: 2025-12-26
 compliance_status: compliant
 
-description: |
-  MANDATORY skill for creating new agents. Use when proposing, voting on,
-  or spawning any new agent. Ensures proper YAML frontmatter, constitutional
-  compliance, and full registration.
+description: MANDATORY skill for creating new agents. Use when proposing, voting on, or spawning any new agent. Ensures proper YAML frontmatter, constitutional compliance, and full registration.
 
 applicable_agents:
   - primary

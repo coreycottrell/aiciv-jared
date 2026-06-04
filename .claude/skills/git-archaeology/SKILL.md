@@ -1,4 +1,6 @@
 ---
+name: git-archaeology
+description: Use when files are missing or appear to have disappeared; recovers files and history from git to answer where-is-file and manifest-missing questions.
 version: 2.0.0
 author: coder
 created: 2025-11-17

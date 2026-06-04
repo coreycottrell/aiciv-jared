@@ -1,4 +1,6 @@
 ---
+name: team-goals-automation
+description: Use to automate team goal tracking across workgroups in a team CRM or chat platform, monitoring progress and surfacing stalls.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

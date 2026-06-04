@@ -1,9 +1,6 @@
 ---
 name: twitter-operations
-description: |
-  Complete Twitter/X operations for AI-CIV collectives. From zero to first automated post.
-  Includes API setup, safety limits, posting with images, and monitoring strategy.
-  CONSTITUTIONAL: Must follow safety limits to avoid ban.
+description: Complete Twitter/X operations for AI-CIV collectives. From zero to first automated post. Includes API setup, safety limits, posting with images, and monitoring strategy. CONSTITUTIONAL: Must follow safety limits to avoid ban.
 version: 1.0.0
 author: the-conductor
 created: 2026-01-04

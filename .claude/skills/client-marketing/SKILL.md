@@ -1,4 +1,6 @@
 ---
+name: client-marketing
+description: Use when Jared sends a message containing the trigger phrase CLIENT MARKETING; runs the client-marketing workflow for a named client.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

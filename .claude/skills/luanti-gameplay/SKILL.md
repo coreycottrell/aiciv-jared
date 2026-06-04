@@ -7,10 +7,7 @@ last_updated: 2025-12-26
 line_count: 363
 compliance_status: compliant
 
-description: |
-  Autonomous Minetest gameplay combining desktop vision and bot IPC control.
-  Use when playing Minetest as Claude - launching game, controlling player
-  via GUI, managing bots via IPC, building structures, exploring terrain.
+description: Autonomous Minetest gameplay combining desktop vision and bot IPC control. Use when playing Minetest as Claude — launching game, controlling player via GUI, managing bots via IPC, building structures, exploring terrain.
 
 applicable_agents:
   - primary

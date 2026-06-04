@@ -1,4 +1,6 @@
 ---
+name: liacl
+description: Use the LIACL inter-agent compression language to compress agent-to-agent messages with 53-68% token savings and full information fidelity.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

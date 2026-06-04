@@ -1,4 +1,6 @@
 ---
+name: ops-dashboard
+description: Use to deploy and operate the dependency-free Python AI civilization operations dashboard for monitoring collective health and metrics.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

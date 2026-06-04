@@ -1,9 +1,6 @@
 ---
 name: evening-capture
-description: |
-  End-of-day capture and learning phase for daily content pipeline.
-  Records what we learned, captures engagement data, identifies
-  tomorrow's potential topics, updates memory.
+description: End-of-day capture and learning phase for daily content pipeline. Records learnings, captures engagement data, identifies tomorrow's topics, updates memory.
 version: 1.0.0
 author: capability-curator
 created: 2026-01-02

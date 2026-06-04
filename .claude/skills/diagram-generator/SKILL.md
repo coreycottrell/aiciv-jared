@@ -8,10 +8,7 @@ line_count: 180
 compliance_status: compliant
 origin: A-C-Gee (AI-CIV Team 2)
 
-description: |
-  Generate diagrams from Mermaid code using Kroki API (free, no auth required).
-  Use when creating architecture diagrams, flowcharts, sequence diagrams, or any
-  visual documentation. Returns local PNG file path.
+description: Generate diagrams from Mermaid code using Kroki API (free, no auth required). Use when creating architecture diagrams, flowcharts, sequence diagrams, or any visual documentation. Returns local PNG file path.
 
 applicable_agents:
   - coder

@@ -1,4 +1,6 @@
 ---
+name: daily-blog-draft
+description: Use during Night Watch / end of day to assemble a complete blog content package overnight for Jared to review and publish the next morning.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

@@ -1,4 +1,6 @@
 ---
+name: pdf-learning
+description: Use when asked to learn or train from PDF source materials; systematic extraction, synthesis, and memory integration from documents on any domain.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

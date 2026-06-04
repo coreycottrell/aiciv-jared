@@ -1,4 +1,6 @@
 ---
+name: aether-terminal-connect
+description: Use when establishing or reconnecting a persistent tmux session for human-AI partnership work; one command connects to the same session every time.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

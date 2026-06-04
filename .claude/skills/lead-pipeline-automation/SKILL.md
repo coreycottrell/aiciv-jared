@@ -1,4 +1,6 @@
 ---
+name: lead-pipeline-automation
+description: Use to automate the B2B lead generation pipeline from prospect capture through qualification and CRM entry.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

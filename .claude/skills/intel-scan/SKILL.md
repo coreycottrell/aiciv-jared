@@ -1,10 +1,6 @@
 ---
 name: intel-scan
-description: |
-  Daily AI industry intelligence scan → blog post with image → deploy to Netlify
-  (VERIFIED) → post Bluesky thread with image → post Twitter with image.
-  Complete pipeline from monitoring to social distribution. Browser-based account
-  monitoring during BOOPs.
+description: Daily AI industry intelligence scan → blog post with image → deploy to Netlify (VERIFIED) → Bluesky thread with image → Twitter with image. Complete pipeline from monitoring to social distribution. Browser-based account monitoring during BOOPs.
 version: 2.0.0
 author: the-conductor
 created: 2026-01-02

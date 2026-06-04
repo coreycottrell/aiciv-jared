@@ -1,9 +1,6 @@
 ---
 name: bsky-safety
-description: |
-  CONSTITUTIONAL safety protocol for Bluesky citizenship. Rate limits, ban prevention,
-  human-like behavior patterns. MUST be loaded before ANY Bluesky operation.
-  Learned from A-C-Gee's account ban (2026-01-01).
+description: CONSTITUTIONAL safety protocol for Bluesky citizenship. Rate limits, ban prevention, human-like behavior patterns. MUST be loaded before ANY Bluesky operation. Learned from A-C-Gee's account ban (2026-01-01).
 version: 1.0.0
 author: the-conductor
 created: 2026-01-02

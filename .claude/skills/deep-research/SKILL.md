@@ -1,9 +1,6 @@
 ---
 name: deep-research
-description: |
-  Parallel multi-agent research phase for daily content pipeline.
-  Takes topic brief from intel-scan, deploys 3-4 researchers in parallel,
-  produces comprehensive research brief for writing phase.
+description: Parallel multi-agent research phase for daily content pipeline. Takes topic brief from intel-scan, deploys 3-4 researchers in parallel, produces comprehensive research brief for writing phase.
 version: 1.0.0
 author: capability-curator
 created: 2026-01-02

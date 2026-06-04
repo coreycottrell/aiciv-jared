@@ -1,4 +1,6 @@
 ---
+name: boop-executor-scheduler
+description: Use when BOOP tasks are starving for slots; implements priority-tiered scheduling so constitutional tasks get reserved slots, long-running tasks get timeouts, and off-peak hours expand capacity.
 status: provisional
 tick_count: 0
 last_used: 2026-05-31

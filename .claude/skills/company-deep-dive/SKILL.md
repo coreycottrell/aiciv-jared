@@ -1,4 +1,6 @@
 ---
+name: company-deep-dive
+description: Use to produce a full company intelligence briefing via parallel research agents, compiled into structured markdown and delivered through the portal.
 status: provisional
 tick_count: 0
 last_used: 2026-05-22

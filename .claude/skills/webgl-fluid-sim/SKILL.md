@@ -1,4 +1,6 @@
 ---
+name: webgl-fluid-sim
+description: Use to embed the WebGL Navier-Stokes fluid simulation as a premium interactive background for investor pages and brand moments.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

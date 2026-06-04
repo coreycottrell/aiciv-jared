@@ -1,4 +1,6 @@
 ---
+name: gdrive-operations
+description: Use for Google Drive operations: uploading, organizing, sharing, and retrieving files and folders for the team.
 status: provisional
 tick_count: 0
 last_used: 2026-02-04

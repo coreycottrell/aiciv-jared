@@ -1,4 +1,6 @@
 ---
+name: stale-blocker-probe-inversion
+description: Use when a health check reports the same failure across 5+ cycles; invert the hypothesis and assume the probe methodology is broken rather than the target system.
 status: provisional
 tick_count: 0
 last_used: 2026-05-22

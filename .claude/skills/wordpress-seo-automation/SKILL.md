@@ -1,4 +1,6 @@
 ---
+name: wordpress-seo-automation
+description: Use to automate WordPress on-page SEO at scale via the RankMath API across many posts.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12

@@ -1,8 +1,6 @@
 ---
 name: post-blog
-description: |
-  Complete blog publishing pipeline: markdown → HTML → deploy → VERIFY → Bsky thread WITH IMAGE → VERIFY.
-  NOT DONE until Bsky thread posted with image and working blog URL at bottom.
+description: Complete blog publishing pipeline: markdown → HTML → deploy → VERIFY → Bsky thread WITH IMAGE → VERIFY. NOT DONE until Bsky thread posted with image and working blog URL at bottom.
 version: 2.0.0
 author: the-conductor
 created: 2026-01-07

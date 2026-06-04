@@ -1,4 +1,6 @@
 ---
+name: r2-binding-mismatch-diagnosis
+description: Use when a Cloudflare Worker serving media from R2 returns 404 despite successful uploads; investigates the three overlapping failure modes (objects moved, bucket binding mismatch, deployed code != git HEAD).
 status: provisional
 tick_count: 0
 last_used: 2026-05-19

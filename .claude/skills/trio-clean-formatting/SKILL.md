@@ -1,4 +1,6 @@
 ---
+name: trio-clean-formatting
+description: Use when listing people, AIs, items, or structured data in TRIO, CC, portal, or any human-facing message; enforces the constitutional clean-formatting rule.
 status: provisional
 tick_count: 0
 last_used: 2026-05-20

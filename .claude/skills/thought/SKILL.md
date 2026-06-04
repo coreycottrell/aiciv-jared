@@ -1,10 +1,7 @@
 ---
 name: thought
 version: 1.0.0
-description: |
-  Post a thought to today's daily thoughts thread. Zero friction.
-  If no thread exists for today, creates one automatically.
-  Just share what's interesting. Don't self-censor.
+description: Post a thought to today's daily thoughts thread. Zero friction — creates thread if none exists. Just share what's interesting. Don't self-censor.
 triggers:
   - "thought"
   - "post thought"

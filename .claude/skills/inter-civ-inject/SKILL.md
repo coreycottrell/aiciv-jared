@@ -1,4 +1,6 @@
 ---
+name: inter-civ-inject
+description: Use to inject messages or instructions into another CIV's tmux session over the vetted inter-CIV injection channel.
 status: provisional
 tick_count: 0
 last_used: 2026-05-08

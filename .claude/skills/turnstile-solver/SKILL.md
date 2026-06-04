@@ -1,4 +1,6 @@
 ---
+name: turnstile-solver
+description: Use to solve Cloudflare Turnstile challenges via the BaaS solver server during automated browsing or form submission.
 status: provisional
 tick_count: 0
 last_used: 2026-04-12
