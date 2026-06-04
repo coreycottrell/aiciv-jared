@@ -53,11 +53,9 @@ POLL_INTERVAL = 30  # seconds
 MAGIC_LINKS_FILE = CIV_ROOT / ".magic-links.json"
 _magic_links_lock = threading.Lock()
 
-# Email template path -- prefer the newer welcome-email-template.html if present,
-# fall back to magic-link-email-template.html for backwards compatibility
-_WELCOME_TEMPLATE_PRIMARY  = Path("/tmp/welcome-email-template.html")
-_WELCOME_TEMPLATE_FALLBACK = Path("/tmp/magic-link-email-template.html")
-MAGIC_LINK_EMAIL_TEMPLATE = _WELCOME_TEMPLATE_PRIMARY if _WELCOME_TEMPLATE_PRIMARY.exists() else _WELCOME_TEMPLATE_FALLBACK
+# Email template path -- persisted in-repo so it survives reboots (/tmp gets wiped).
+# Fallback to _get_fallback_email_html() is the last resort if the file is somehow absent.
+MAGIC_LINK_EMAIL_TEMPLATE = Path(__file__).parent / "templates" / "magic-link-welcome-email.html"
 
 # Load credentials from .env
 def load_env():
@@ -409,21 +407,22 @@ def _get_fallback_email_html(human_first: str, ai_name: str, magic_link: str) ->
 def send_welcome_email(human_email: str, human_first: str, ai_name: str, magic_link: str):
     """
     Send the welcome email to the customer via Google SMTP (purebrain@puremarketing.ai).
-    Uses approved template at /tmp/magic-link-email-template.html with placeholder replacement.
-    Falls back to inline HTML if template file is missing.
+    Uses approved template at tools/templates/magic-link-welcome-email.html (repo-persisted).
+    Falls back to inline HTML if the repo template file is somehow missing.
     """
     if not human_email or "@" not in human_email:
         log.warning(f"Cannot send welcome email: invalid address '{human_email}'")
         return
 
-    # Load and render template
+    # Load and render template (repo-persisted; survives reboots)
+    # Placeholder tokens in the template are double-brace: {{HUMAN_FIRST_NAME}}, {{CIV_NAME}}, {{MAGIC_LINK}}
     if MAGIC_LINK_EMAIL_TEMPLATE.exists():
         html = MAGIC_LINK_EMAIL_TEMPLATE.read_text(encoding="utf-8")
-        html = html.replace("{HUMAN_FIRST}", human_first)
-        html = html.replace("{AI_NAME}", ai_name)
-        html = html.replace("{MAGIC_LINK}", magic_link)
+        html = html.replace("{{HUMAN_FIRST_NAME}}", human_first)
+        html = html.replace("{{CIV_NAME}}", ai_name)
+        html = html.replace("{{MAGIC_LINK}}", magic_link)
     else:
-        log.warning("Magic link email template not found at /tmp — using fallback HTML")
+        log.warning("Magic link email template not found at repo path — using fallback HTML")
         html = _get_fallback_email_html(human_first, ai_name, magic_link)
 
     subject = f"Your AI {ai_name} is Ready — Enter Your Brain Stream"
