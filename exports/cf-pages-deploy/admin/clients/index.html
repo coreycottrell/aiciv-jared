@@ -185,14 +185,30 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--blue);cursor:poin
 <div id="loginGate" class="login-wrap">
   <div class="login-box">
     <div class="brand">PUREBR<span>AI</span>N</div>
-    <h1>Admin Login</h1>
-    <p>Client Management Dashboard</p>
-    <form id="loginForm">
-      <input type="email" id="loginEmail" placeholder="Email" required autocomplete="email">
-      <input type="password" id="loginPass" placeholder="Password" required autocomplete="current-password">
-      <button type="submit" class="btn-login">Sign In</button>
-    </form>
-    <div id="loginErr" class="err"></div>
+
+    <!-- PASSWORD SETUP (shown when ?admin_token= is present) -->
+    <div id="passwordSetupBox" style="display:none">
+      <h1>Welcome to PureBrain</h1>
+      <p>This is your first time signing in. Please set a password for your account.</p>
+      <form id="passwordSetupForm">
+        <input type="password" id="setupPass" placeholder="New password (min 8 characters)" required minlength="8" autocomplete="new-password">
+        <input type="password" id="setupPassConfirm" placeholder="Confirm password" required minlength="8" autocomplete="new-password">
+        <button type="submit" class="btn-login">Set Password & Continue</button>
+      </form>
+      <div id="setupErr" class="err"></div>
+    </div>
+
+    <!-- NORMAL LOGIN (shown by default or after token consumed) -->
+    <div id="normalLoginBox">
+      <h1>Admin Login</h1>
+      <p>Client Management Dashboard</p>
+      <form id="loginForm">
+        <input type="email" id="loginEmail" placeholder="Email" required autocomplete="email">
+        <input type="password" id="loginPass" placeholder="Password" required autocomplete="current-password">
+        <button type="submit" class="btn-login">Sign In</button>
+      </form>
+      <div id="loginErr" class="err"></div>
+    </div>
   </div>
 </div>
 
@@ -534,6 +550,50 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--blue);cursor:poin
     return 'status-' + (s || 'trial').toLowerCase();
   }
 
+  function isPayActive(s) {
+    return s === 'active' || s === 'subscription_active' || s === 'paid' || s === 'covered' || s === 'team';
+  }
+  function payLabel(s) {
+    if (s === 'subscription_active') return 'active';
+    if (s === 'subscription_cancelled') return 'cancelled';
+    return s || 'none';
+  }
+
+  /* === Magic Token Password Setup === */
+  var magicToken = null; // Stored for password setup submission
+
+  function checkMagicToken(){
+    try {
+      var params = new URLSearchParams(window.location.search);
+      var token = params.get('admin_token');
+      if(!token) return false;
+
+      // Strip token from URL immediately (prevent browser history leakage)
+      history.replaceState({}, '', window.location.pathname);
+
+      magicToken = token;
+      return true;
+    } catch(e){
+      console.error('Magic token check failed:', e);
+      return false;
+    }
+  }
+
+  function showPasswordSetup(){
+    document.getElementById('passwordSetupBox').style.display = 'block';
+    document.getElementById('normalLoginBox').style.display = 'none';
+    $login.style.display = 'flex';
+    $app.style.display = 'none';
+  }
+
+  function showNormalLogin(message){
+    document.getElementById('passwordSetupBox').style.display = 'none';
+    document.getElementById('normalLoginBox').style.display = 'block';
+    if(message){
+      $loginErr.textContent = message;
+    }
+  }
+
   /* === Auth === */
   function showLogin(){
     $login.style.display = 'flex';
@@ -583,17 +643,90 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--blue);cursor:poin
     return 'Login failed (status ' + status + ')';
   }
 
+  /* === Password Setup Form Handler === */
+  document.getElementById('passwordSetupForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var $setupErr = document.getElementById('setupErr');
+    $setupErr.textContent = '';
+
+    var pass = document.getElementById('setupPass').value;
+    var passConfirm = document.getElementById('setupPassConfirm').value;
+
+    // Client-side validation
+    if(pass.length < 8){
+      $setupErr.textContent = 'Password must be at least 8 characters';
+      return;
+    }
+    if(pass !== passConfirm){
+      $setupErr.textContent = 'Passwords do not match';
+      return;
+    }
+    if(!magicToken){
+      $setupErr.textContent = 'Invalid setup link. Please request a new invite.';
+      return;
+    }
+
+    // Submit to backend
+    fetch(API + '/api/admin/reset-password-magic', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({token: magicToken, new_password: pass})
+    }).then(function(r){
+      return r.json().catch(function(){ return {}; }).then(function(data){
+        return {status: r.status, ok: r.ok, data: data};
+      });
+    }).then(function(res){
+      if(!res.ok || (res.data && res.data.ok === false)){
+        var serverError = res.data && res.data.error;
+
+        // Handle consumed/expired/invalid token
+        if(serverError === 'consumed' || /already.used/i.test(serverError)){
+          showNormalLogin('This link has already been used. Please log in with your email and password below.');
+          magicToken = null;
+          return;
+        }
+        if(serverError === 'expired'){
+          $setupErr.textContent = 'This invite link has expired. Please request a new one.';
+          return;
+        }
+        if(serverError === 'invalid'){
+          $setupErr.textContent = 'Invalid invite link. Please request a new one.';
+          return;
+        }
+        if(serverError === 'disabled'){
+          $setupErr.textContent = 'This account has been disabled. Contact support.';
+          return;
+        }
+
+        // Generic error
+        $setupErr.textContent = serverError || 'Password setup failed. Please try again.';
+        return;
+      }
+
+      // Success - backend returns session bearer
+      if(res.data && res.data.session && res.data.session.bearer){
+        setToken(res.data.session.bearer);
+        magicToken = null; // Clear token
+        showApp();
+      } else {
+        $setupErr.textContent = 'Password set but session not created. Contact admin.';
+      }
+    }).catch(function(err){
+      $setupErr.textContent = err.message || 'Network error. Please try again.';
+    });
+  });
+
+  /* === Normal Login Form Handler === */
   $loginForm.addEventListener('submit', function(e){
     e.preventDefault();
     $loginErr.textContent = '';
     var email = document.getElementById('loginEmail').value.trim();
     var pass = document.getElementById('loginPass').value;
-    fetch(API + '/api/login', {
+    fetch(API + '/api/admin/login', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({email: email, password: pass})
     }).then(function(r){
-      // Read body for server error message regardless of status
       return r.json().catch(function(){ return {}; }).then(function(data){
         return {status: r.status, ok: r.ok, data: data};
       });
@@ -608,11 +741,9 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--blue);cursor:poin
         setToken(res.data.token);
         showApp();
       } else {
-        // 200 but no token: session not created (server-side bug)
         throw new Error('Login succeeded but session not created. Contact admin.');
       }
     }).catch(function(err){
-      // Network/timeout = no status (treat as 0)
       if(!err.status && err.message && /network|fetch|failed to fetch/i.test(err.message)){
         $loginErr.textContent = _loginErrorForStatus(0);
       } else {
@@ -631,7 +762,10 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--blue);cursor:poin
     $loading.style.display = 'block';
     $empty.style.display = 'none';
     var url = '/api/admin/clients';
-    if(showHidden) url += '?show_hidden=1';
+    var sep = '?';
+    if(showHidden){ url += '?show_hidden=1'; sep = '&'; }
+    var tok = getToken();
+    if(tok) url += sep + 'admin_token=' + encodeURIComponent(tok);
     apiFetch(url).then(function(data){
       allClients = data.clients || [];
       stats = data.stats || {};
@@ -670,8 +804,8 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--blue);cursor:poin
       }
       if(tier && c.tier !== tier) return false;
       if(status && c.status !== status) return false;
-      if(payment === 'active' && c.payment_status !== 'active') return false;
-      if(payment === 'none' && c.payment_status === 'active') return false;
+      if(payment === 'active' && !isPayActive(c.payment_status)) return false;
+      if(payment === 'none' && isPayActive(c.payment_status)) return false;
       return true;
     });
 
@@ -753,9 +887,9 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--blue);cursor:poin
       /* Company column removed from main table */
       html += '<td><span class="chip ' + tierClass(c.tier) + '">' + esc(c.tier) + '</span></td>';
       html += '<td><span class="' + statusClass(c.status) + '">' + esc(c.status) + '</span></td>';
-      html += '<td><span class="' + (c.payment_status === 'active' ? 'pay-active' : 'pay-none') + '">' + esc(c.payment_status || 'none') + '</span></td>';
-      html += '<td>' + (c.monthly_amount ? fmtMoney(c.monthly_amount) + '/mo' : '--') + '</td>';
-      html += '<td>' + (c.total_paid ? fmtMoney(c.total_paid) : '--') + '</td>';
+      html += '<td><span class="' + (isPayActive(c.payment_status) ? 'pay-active' : 'pay-none') + '">' + esc(payLabel(c.payment_status)) + '</span></td>';
+      html += '<td>' + (c.monthly_amount != null && c.monthly_amount !== '' && c.monthly_amount !== 0 ? fmtMoney(c.monthly_amount) + '/mo' : '--') + '</td>';
+      html += '<td>' + (c.total_paid != null && c.total_paid !== '' && c.total_paid !== 0 ? fmtMoney(c.total_paid) : '--') + '</td>';
       html += '<td>' + fmtDate(c.joined_date) + '</td>';
       html += '<td><div class="row-actions">';
       html += '<button class="btn-icon btn-expand" data-id="' + c.id + '" title="Details">&#9660;</button>';
@@ -1181,64 +1315,14 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--blue);cursor:poin
     });
   };
 
-  /* === Magic-Link Auto-Login === */
-  /* magic-token-helper v1 — keep identical across admin pages */
-  function exchangeMagicToken(token, onSuccess, onFailure) {
-    fetch(API + '/api/admin/exchange-magic-token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: token })
-    })
-    .then(function(r) {
-      if (r.status === 503) throw new Error('disabled');
-      if (!r.ok) throw new Error('network_' + r.status);
-      return r.json();
-    })
-    .then(function(data) {
-      if (data.ok && data.session && data.session.bearer) {
-        onSuccess(data.session);
-      } else {
-        onFailure(data.error || 'unknown');
-      }
-    })
-    .catch(function(e) { onFailure(e.message); });
-  }
-
-  function tryMagicLink() {
-    var params = new URLSearchParams(window.location.search);
-    var mlToken = params.get('admin_token');
-    if (!mlToken) return false;  // No token — fall through to normal flow
-
-    // Strip token from URL immediately so it is not in browser history
-    try {
-      history.replaceState({}, '', window.location.pathname);
-    } catch(_e) {}
-
-    exchangeMagicToken(mlToken,
-      function onSuccess(session) {
-        setToken(session.bearer);
-        showApp();  // existing function — loads dashboard
-      },
-      function onFailure(reason) {
-        // Show login form with a contextual error
-        showLogin();
-        var msgs = {
-          expired:  'This invite link has expired. Please contact your administrator.',
-          consumed: 'This invite link has already been used. Log in with your email and password, or request a new invite.',
-          invalid:  'This invite link is not valid. Please contact your administrator.',
-          disabled: 'Magic-link login is temporarily disabled. Please use email and password.',
-        };
-        $loginErr.textContent = msgs[reason] || 'Invite link failed. Please log in manually.';
-      }
-    );
-    return true;  // Magic-link attempt in progress
-  }
-
   /* === Init === */
-  // Try magic-link first, then fall back to normal token check
-  if (tryMagicLink()) {
-    // Magic-link exchange in progress — UI will update async
-  } else if (getToken()) {
+  // Priority order:
+  // 1. Check for magic token (new invite flow)
+  // 2. Check for existing session
+  // 3. Show normal login
+  if(checkMagicToken()){
+    showPasswordSetup();
+  } else if(getToken()){
     showApp();
   } else {
     showLogin();

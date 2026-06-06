@@ -54,9 +54,9 @@
    * Leave as empty strings to use one-time payment flow instead.
    */
   var PLAN_IDS = {
-    Awakened:  'P-2SA65600MT088594TNGLTFKY',
-    Partnered: 'P-3VH43554A66001716NGLTFKY',
-    Unified:   'P-43A28944XN5237411NGLTFLA',
+    Awakened:  'P-4P998148HJ3439945NICOI7Q',
+    Partnered: 'P-3KL830539R502981PNICOI7Q',
+    Unified:   'P-1KC17605JW4534516NICOI7Q',
   };
 
   // Pricing — matches purebrain.ai tiers
@@ -454,7 +454,7 @@
       orderId:    orderId,
       tier:       tier,
       payerInfo:  payerInfo,
-      sessionUuid: window.pbSessionUuid || (sessionStorage.getItem('pb_sessionUuid') || ''),
+      sessionUuid: (typeof payTestData !== 'undefined' && payTestData.sessionUuid) ? payTestData.sessionUuid : (sessionStorage.getItem('pb_sessionUuid') || ''),
     });
 
     var controller = new AbortController();
@@ -549,7 +549,7 @@
             return actions.order.create({
               purchase_units: [{
                 description:  'Pure Brain — ' + tier + ' Plan',
-                custom_id:    'PB-' + tier.toUpperCase() + '-' + (window.pbSessionUuid || ''),
+                custom_id:    'PB-' + tier.toUpperCase() + '-' + ((typeof payTestData !== 'undefined' && payTestData.sessionUuid) ? payTestData.sessionUuid : ''),
                 amount: {
                   currency_code: CURRENCY,
                   value:         price,
