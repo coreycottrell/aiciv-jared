@@ -1,0 +1,330 @@
+#!/usr/bin/env python3
+import sys as _sys
+_sys.stderr.write("RETIRED 2026-06-07 — banned direct-CF-API deploy path (portable cf-deploy clone). Use github:push to puretechnyc/purebrain-site. (P0 mirror-disarm)\n")
+_sys.exit(1)
+# === RETIRED 2026-06-07 (P0 mirror-disarm, Jared GO). Guard above fires before
+# any import/deploy. Reversible: delete the three _sys lines. Portable clone of
+# cf-deploy.py — direct-CF-API full deployer, a BANNED path. ===
+"""
+CF Pages Direct File Deploy (Portable Version)
+================================================
+Self-contained version for deployment on any machine (Aether, Chy, etc.)
+Upload specific files to CF Pages without overwriting other files.
+
+Setup: Set these environment variables (or put in .env next to this script):
+    CF_API_KEY=your_global_api_key
+    CF_AUTH_EMAIL=your_email
+
+Usage:
+    # Deploy specific files from a local directory
+    ./cf-deploy-portable.py --base-dir ./site-files/ blog/new-post/index.html
+
+    # Deploy from current directory
+    ./cf-deploy-portable.py index.html about/index.html
+
+    # List current files
+    ./cf-deploy-portable.py --list
+
+    # Dry run
+    ./cf-deploy-portable.py --dry-run index.html
+
+Requires: pip install blake3
+"""
+
+import os
+import sys
+import json
+import base64
+import hashlib
+import mimetypes
+import time
+import argparse
+from pathlib import Path
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+ENV_FILE = SCRIPT_DIR / ".env"
+
+# CF Pages project: purebrain-staging under In0v8 account
+DEFAULT_ACCOUNT_ID = "d526a3e9498dd167509003004df03290"
+DEFAULT_PROJECT_NAME = "purebrain-staging"
+
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024
+MAX_BUCKET_FILES = 100
+MAX_RETRIES = 3
+
+# ---------------------------------------------------------------------------
+# .env loader
+# ---------------------------------------------------------------------------
+
+def load_env(env_path: Path) -> dict:
+    env = {}
+    if not env_path.exists():
+        return env
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            env[key.strip()] = value.strip().strip('"').strip("'")
+    return env
+
+
+def get_config():
+    env = load_env(ENV_FILE)
+    # Also try home dir .env
+    home_env = load_env(Path.home() / ".env")
+    # Also try project .env patterns
+    for candidate in [SCRIPT_DIR.parent / ".env", SCRIPT_DIR / ".env"]:
+        if candidate.exists():
+            env.update(load_env(candidate))
+
+    api_key = os.environ.get("CF_API_KEY") or env.get("CF_API_KEY") or home_env.get("CF_API_KEY")
+    auth_email = os.environ.get("CF_AUTH_EMAIL") or env.get("CF_AUTH_EMAIL") or home_env.get("CF_AUTH_EMAIL")
+    account_id = os.environ.get("CF_PAGES_ACCOUNT") or env.get("CF_PAGES_ACCOUNT") or DEFAULT_ACCOUNT_ID
+    project_name = os.environ.get("CF_PAGES_PROJECT") or env.get("CF_PAGES_PROJECT") or DEFAULT_PROJECT_NAME
+
+    if not api_key or not auth_email:
+        print("ERROR: CF_API_KEY and CF_AUTH_EMAIL required.", file=sys.stderr)
+        print("Set in environment, .env file, or parent .env file.", file=sys.stderr)
+        sys.exit(1)
+
+    return {"api_key": api_key, "auth_email": auth_email, "account_id": account_id, "project_name": project_name}
+
+# ---------------------------------------------------------------------------
+# Blake3 hashing (matches wrangler exactly)
+# ---------------------------------------------------------------------------
+
+try:
+    import blake3 as _blake3
+    def compute_hash(content: bytes, filepath: str) -> str:
+        b64 = base64.b64encode(content).decode("ascii")
+        ext = Path(filepath).suffix.lstrip(".")
+        return _blake3.blake3((b64 + ext).encode()).hexdigest()[:32]
+except ImportError:
+    print("ERROR: blake3 required. Install with: pip install blake3", file=sys.stderr)
+    sys.exit(1)
+
+# ---------------------------------------------------------------------------
+# CF API helpers
+# ---------------------------------------------------------------------------
+
+def cf_api(method, path, config, body=None, headers=None, is_jwt=False):
+    url = f"https://api.cloudflare.com/client/v4{path}" if path.startswith("/") else path
+    hdrs = {}
+    if is_jwt:
+        hdrs["Authorization"] = f"Bearer {headers['jwt']}"
+    else:
+        hdrs["X-Auth-Email"] = config["auth_email"]
+        hdrs["X-Auth-Key"] = config["api_key"]
+    if body is not None and not isinstance(body, bytes):
+        hdrs["Content-Type"] = "application/json"
+        body = json.dumps(body).encode()
+    if headers:
+        for k, v in headers.items():
+            if k != "jwt": hdrs[k] = v
+    req = Request(url, data=body, headers=hdrs, method=method)
+    for attempt in range(MAX_RETRIES):
+        try:
+            with urlopen(req, timeout=120) as resp:
+                data = json.loads(resp.read())
+                if not data.get("success", True):
+                    raise Exception(f"API error: {data.get('errors', [])}")
+                return data.get("result", data)
+        except HTTPError as e:
+            error_body = e.read().decode() if e.fp else str(e)
+            if attempt < MAX_RETRIES - 1 and e.code in (429, 500, 502, 503, 504):
+                time.sleep(2 ** attempt)
+                continue
+            raise Exception(f"HTTP {e.code}: {error_body}")
+    raise Exception("Max retries exceeded")
+
+
+def cf_api_multipart(path, config, fields):
+    import uuid
+    boundary = uuid.uuid4().hex
+    url = f"https://api.cloudflare.com/client/v4{path}"
+    body_parts = []
+    for name, value in fields.items():
+        body_parts.append(f"--{boundary}\r\n".encode())
+        body_parts.append(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode())
+        body_parts.append(str(value).encode() if not isinstance(value, bytes) else value)
+        body_parts.append(b"\r\n")
+    body_parts.append(f"--{boundary}--\r\n".encode())
+    body = b"".join(body_parts)
+    hdrs = {
+        "X-Auth-Email": config["auth_email"],
+        "X-Auth-Key": config["api_key"],
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+    }
+    req = Request(url, data=body, headers=hdrs, method="POST")
+    for attempt in range(MAX_RETRIES):
+        try:
+            with urlopen(req, timeout=300) as resp:
+                data = json.loads(resp.read())
+                if not data.get("success", True):
+                    raise Exception(f"API error: {data.get('errors', [])}")
+                return data.get("result", data)
+        except HTTPError as e:
+            error_body = e.read().decode() if e.fp else str(e)
+            if attempt < MAX_RETRIES - 1 and e.code in (429, 500, 502, 503, 504):
+                time.sleep(2 ** attempt)
+                continue
+            raise Exception(f"HTTP {e.code}: {error_body}")
+    raise Exception("Max retries exceeded")
+
+# ---------------------------------------------------------------------------
+# Core operations (identical to cf-deploy.py)
+# ---------------------------------------------------------------------------
+
+def get_current_manifest(config):
+    acct, proj = config["account_id"], config["project_name"]
+    deployments = cf_api("GET", f"/accounts/{acct}/pages/projects/{proj}/deployments?per_page=1", config)
+    if not deployments:
+        return {}
+    deploy_id = deployments[0]["id"]
+    print(f"Current deployment: {deploy_id}", file=sys.stderr)
+    deployment = cf_api("GET", f"/accounts/{acct}/pages/projects/{proj}/deployments/{deploy_id}", config)
+    manifest = deployment.get("files", {})
+    print(f"Current site has {len(manifest)} files.", file=sys.stderr)
+    return manifest
+
+def get_upload_token(config):
+    return cf_api("GET", f"/accounts/{config['account_id']}/pages/projects/{config['project_name']}/upload-token", config)["jwt"]
+
+def check_missing_hashes(jwt, hashes):
+    if not hashes: return []
+    return cf_api("POST", "/pages/assets/check-missing", {}, body={"hashes": hashes}, headers={"jwt": jwt}, is_jwt=True)
+
+def upload_files(jwt, files_to_upload):
+    buckets, bucket, size = [], [], 0
+    for fh, b64, ct in files_to_upload:
+        if size + len(b64) > MAX_UPLOAD_SIZE or len(bucket) >= MAX_BUCKET_FILES:
+            if bucket: buckets.append(bucket)
+            bucket, size = [], 0
+        bucket.append((fh, b64, ct)); size += len(b64)
+    if bucket: buckets.append(bucket)
+    for i, bkt in enumerate(buckets):
+        payload = [{"key": h, "value": b, "metadata": {"contentType": c}, "base64": True} for h, b, c in bkt]
+        print(f"  Uploading bucket {i+1}/{len(buckets)} ({len(bkt)} files)...", file=sys.stderr)
+        cf_api("POST", "/pages/assets/upload", {}, body=payload, headers={"jwt": jwt}, is_jwt=True)
+
+def upsert_hashes(jwt, hashes):
+    if hashes: cf_api("POST", "/pages/assets/upsert-hashes", {}, body={"hashes": hashes}, headers={"jwt": jwt}, is_jwt=True)
+
+def create_deployment(config, manifest, branch="main", commit_message=""):
+    fields = {"manifest": json.dumps(manifest), "branch": branch, "commit_dirty": "true"}
+    if commit_message: fields["commit_message"] = commit_message
+    return cf_api_multipart(f"/accounts/{config['account_id']}/pages/projects/{config['project_name']}/deployments", config, fields)
+
+# ---------------------------------------------------------------------------
+# File collection + deploy
+# ---------------------------------------------------------------------------
+
+def get_content_type(filepath):
+    ct, _ = mimetypes.guess_type(filepath)
+    return ct or "application/octet-stream"
+
+def collect_files(paths, base_dir):
+    files = {}
+    for path_str in paths:
+        site_path = path_str.strip("/")
+        local_path = base_dir / site_path
+        if local_path.is_dir():
+            for fp in sorted(local_path.rglob("*")):
+                if fp.is_file():
+                    rel = fp.relative_to(base_dir)
+                    files["/" + str(rel).replace(os.sep, "/")] = (fp.read_bytes(), get_content_type(str(fp)))
+        elif local_path.is_file():
+            files["/" + site_path] = (local_path.read_bytes(), get_content_type(str(local_path)))
+        else:
+            print(f"WARNING: {local_path} not found, skipping.", file=sys.stderr)
+    return files
+
+def deploy(paths, base_dir, dry_run=False, delete_paths=None, stdin_content=None, commit_message=""):
+    config = get_config()
+    print("Fetching current deployment manifest...", file=sys.stderr)
+    current_manifest = get_current_manifest(config)
+
+    if stdin_content and len(paths) == 1:
+        site_key = "/" + paths[0].strip("/")
+        new_files = {site_key: (stdin_content, get_content_type(paths[0]))}
+    else:
+        new_files = collect_files(paths, base_dir)
+
+    if not new_files and not delete_paths:
+        print("No files to deploy.", file=sys.stderr); return
+
+    print(f"Computing hashes for {len(new_files)} file(s)...", file=sys.stderr)
+    new_hashes, file_data = {}, {}
+    for sp, (content, ct) in new_files.items():
+        fh = compute_hash(content, sp)
+        new_hashes[sp] = fh
+        file_data[fh] = (base64.b64encode(content).decode("ascii"), ct)
+        old = current_manifest.get(sp)
+        status = "NEW" if old is None else ("CHANGED" if old != fh else "UNCHANGED")
+        print(f"  {status}: {sp} ({fh[:12]}...)", file=sys.stderr)
+
+    merged = dict(current_manifest)
+    if delete_paths:
+        for dp in delete_paths:
+            k = "/" + dp.strip("/")
+            if k in merged: print(f"  DELETE: {k}", file=sys.stderr); del merged[k]
+    for sp, fh in new_hashes.items(): merged[sp] = fh
+
+    added = sum(1 for p in new_hashes if p not in current_manifest)
+    changed = sum(1 for p in new_hashes if p in current_manifest and current_manifest[p] != new_hashes[p])
+    deleted = len(delete_paths) if delete_paths else 0
+    print(f"\nSummary: {added} new, {changed} changed, {deleted} deleted | Total: {len(merged)} files", file=sys.stderr)
+
+    if dry_run: print("DRY RUN - no deployment created.", file=sys.stderr); return
+
+    to_check = [h for p, h in new_hashes.items() if current_manifest.get(p) != h]
+    if to_check:
+        jwt = get_upload_token(config)
+        missing = check_missing_hashes(jwt, to_check)
+        if missing:
+            upload_files(jwt, [(h, file_data[h][0], file_data[h][1]) for h in missing if h in file_data])
+        upsert_hashes(jwt, list(new_hashes.values()))
+
+    msg = commit_message or f"cf-deploy: {added} new, {changed} changed, {deleted} deleted"
+    result = create_deployment(config, merged, commit_message=msg)
+    print(f"\nDeployed! ID: {result.get('id')} | URL: {result.get('url')}", file=sys.stderr)
+    return result
+
+def main():
+    p = argparse.ArgumentParser(description="Deploy specific files to CF Pages (portable)")
+    p.add_argument("paths", nargs="*")
+    p.add_argument("--base-dir", type=Path, default=Path.cwd())
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--delete", nargs="+", dest="delete_paths")
+    p.add_argument("--stdin", action="store_true")
+    p.add_argument("-m", "--message", default="")
+    p.add_argument("--list", action="store_true", dest="list_files")
+    p.add_argument("--list-path", type=str, default=None)
+    p.add_argument("--manifest", action="store_true")
+    args = p.parse_args()
+
+    if args.manifest:
+        config = get_config()
+        print(json.dumps(get_current_manifest(config), indent=2, sort_keys=True)); return
+    if args.list_files or args.list_path is not None:
+        config = get_config()
+        manifest = get_current_manifest(config)
+        prefix = ("/" + args.list_path.strip("/")) if args.list_path else ""
+        for path in sorted(manifest):
+            if path.startswith(prefix): print(path)
+        return
+    if not args.paths and not args.delete_paths:
+        p.print_help(); sys.exit(1)
+    stdin_content = sys.stdin.buffer.read() if args.stdin else None
+    deploy(args.paths or [], args.base_dir, args.dry_run, args.delete_paths, stdin_content, args.message)
+
+if __name__ == "__main__":
+    main()

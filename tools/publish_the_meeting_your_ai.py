@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+import sys as _sys
+_sys.stderr.write("RETIRED 2026-06-07 P0 disarm — pushes dead exports/cf-pages-deploy mirror (stale $149/$499/$999) to live. Canonical deploy = github:puretechnyc/purebrain-site.\n")
+_sys.exit(1)
+# === RETIRED 2026-06-07 (P0 revenue-integrity disarm, Decision-2 Jared-GO).
+# The guard above fires before any import/deploy. This script deployed the full
+# exports/cf-pages-deploy dir via `npx wrangler pages deploy` (the dead mirror
+# holding stale $149/$499/$999 prices). Reversible: delete the three _sys lines. ===
 """
 Publish: "The Meeting Your AI Should Already Know About"
 
