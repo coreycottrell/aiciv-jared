@@ -58,4 +58,6 @@ const verdict = await agent(
       artifact:{type:'string', maxLength:300},
     }, required:['headline','answer'] } }
 )
+// OPTIONAL COMPOUNDING (no behavior change here): a caller may bridge this verdict
+// into canon via `tools/firewall_verdict_to_canon.py` (gate ENABLE_FIREWALL_CANON=1).
 return verdict   // FIREWALL: raw `raw[]` dies here; Primary gets only this.
