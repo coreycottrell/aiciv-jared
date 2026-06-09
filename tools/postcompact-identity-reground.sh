@@ -57,8 +57,11 @@ streak_file = Path("/home/jared/projects/AI-CIV/aether/.antidrift/clean-session-
 if streak_file.exists():
     with open(streak_file) as f:
         data = json.load(f)
-    data["streak"] = data.get("streak", 0) + 1
-    data["last"] = datetime.now(timezone.utc).isoformat()
+    data["clean_streak"] = data.get("clean_streak", 0) + 1
+    data["last_event"] = datetime.now(timezone.utc).isoformat()
+    # Clean up old schema keys if present
+    data.pop("streak", None)
+    data.pop("last", None)
     with open(streak_file, 'w') as f:
         json.dump(data, f, indent=2)
 PYTHON_STREAK

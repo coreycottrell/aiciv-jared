@@ -1,6 +1,6 @@
 ---
 lead: claude-code-expert
-rebuilt_ts: 2026-06-08T23:51:57Z
+rebuilt_ts: 2026-06-09T01:29:35Z
 ledger_lines_at_rebuild: 1
 source_log: .claude/memory/canon/claude-code-expert/log.jsonl
 mechanism: extractive-mechanical
