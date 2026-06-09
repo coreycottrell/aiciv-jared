@@ -31,6 +31,7 @@ import os
 import sys
 import json
 import time
+import fcntl
 import random
 import logging
 import argparse
@@ -43,11 +44,47 @@ CIV_ROOT = Path("/home/jared/projects/AI-CIV/aether")
 LOG_DIR = CIV_ROOT / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
+# Single-flight cross-batch lock (P0 account-safety, 2026-06-09).
+# Prevents the morning/afternoon/evening batch BOOPs from ever running
+# concurrently (e.g. during an executor backlog-flush), which would launch
+# parallel PureSurf sessions at once and defeat the human-spacing safeguard.
+# kernel-managed flock auto-releases on process death -> no stale-PID deadlock.
+LOCK_FILE = CIV_ROOT / ".linkedin_profile_viewer.lock"
+_lock_fd = None  # held open for process lifetime; do not close early
+
 SPREADSHEET_ID = "1yIjmsxFNujvNsopTuTdnbPqzTUVW-FKumLfiwCjA-d4"
 SHEET_TAB = "Profile Views"
 
 PURESURF_BASE = "https://surf.purebrain.ai"
-PURESURF_KEY_JARED = "WtHJY1zr0HuP4NmcBNMUSGXlM2kxIeibDDmY-btXSHs"
+
+# Canonical env-resolve pattern (matches tools/linkedin_scheduled_poster.py:93)
+# Reason: BAAS_API_KEY rotated 2026-05-10; hardcoded copies broke 48h.
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    _load_dotenv(str(CIV_ROOT / ".env"))
+except Exception:
+    _env_file = CIV_ROOT / ".env"
+    if _env_file.exists():
+        with open(_env_file) as _fh:
+            for _line in _fh:
+                _line = _line.strip()
+                if not _line or _line.startswith("#") or "=" not in _line:
+                    continue
+                _k, _, _v = _line.partition("=")
+                os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
+
+PURESURF_KEY_JARED = (
+    os.environ.get("PURESURF_API_KEY")
+    or os.environ.get("BAAS_API_KEY")
+    or ""
+)
+if not PURESURF_KEY_JARED:
+    print(
+        "FATAL: No PureSurf API key found. Set PURESURF_API_KEY or BAAS_API_KEY in .env",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
 LINKEDIN_PROFILE = "jared-linkedin-fresh"
 
 # Batch sizes
@@ -362,9 +399,42 @@ def determine_batch():
         log.info(f"Current ET hour is {hour}. Outside batch windows (9-10, 14-15, 18-19).")
         return None
 
+# -- Single-Flight Guard ----------------------------------------------------
+
+def acquire_single_flight_lock():
+    """Acquire an exclusive non-blocking flock so only one batch runs at a time.
+
+    If another live process already holds the lock, log a graceful-skip message
+    and exit(0) cleanly — NOT an error. The skipped batch touches no profiles,
+    so last_visited is unchanged and nothing is lost. The held fd is stored in a
+    module global for the process lifetime; the kernel auto-releases the flock on
+    process death, so a crashed run never deadlocks the next batch.
+    """
+    global _lock_fd
+    # Open (create if missing) and HOLD the descriptor open for the whole run.
+    _lock_fd = open(LOCK_FILE, "w")
+    try:
+        fcntl.flock(_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, IOError):
+        log.info(
+            "[profile-viewer] another batch already running, exiting to "
+            "preserve human-spacing safeguard"
+        )
+        # Do not close _lock_fd here — closing would not affect the holder's lock,
+        # and exiting flushes the fd anyway. Clean graceful skip.
+        sys.exit(0)
+    # Record our PID for observability; lock is held regardless of file contents.
+    _lock_fd.write(f"{os.getpid()}\n")
+    _lock_fd.flush()
+    return _lock_fd
+
+
 # -- CLI --------------------------------------------------------------------
 
 def main():
+    # P0 single-flight guard: must run BEFORE any PureSurf session launches.
+    acquire_single_flight_lock()
+
     parser = argparse.ArgumentParser(description="LinkedIn Profile Viewer - Passive Growth Engine")
     parser.add_argument("--batch", choices=["morning", "afternoon", "evening", "all", "auto"],
                         default="auto", help="Which batch to run (default: auto-detect)")
