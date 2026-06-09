@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-**Total Skills**: 204
+**Total Skills**: 220 _(SKILL.md files on disk, verified by integration-audit 2026-06-04; was 204)_
 **Skill Location**: `.claude/skills/{skill-name}/SKILL.md`
 **How skills work**: Skills auto-load when you invoke an agent via the `skills:` field in agent YAML frontmatter. Just delegate -- the skills are there.
 
@@ -86,10 +86,12 @@
 | `prompt-parliament` | Multi-perspective prompt debate |
 | `shadow-work` | AI psychological shadow work |
 
-### Code & Engineering (11)
+### Code & Engineering (13)
 
 | Skill | Description |
 |-------|-------------|
+| `flag-gated-cognitive-wireup` | Safely wire self-modification (memory writers, verdict→canon bridges) into a LIVE civ: default-OFF flags, byte-identical-when-off proof, reuse-the-canonical-writer, self-tests, pre-wireup .bak |
+| `parallel-execution-verification` | Guard against fan-out hazards — output-buffering false-zeros (positive control + per-item log) and duplicate writers on one path (one owner per output) |
 | `code-ecosystem` | Code ecosystem navigation |
 | `tdd` | Test-driven development workflow |
 | `evalite-test-authoring` | Write Evalite evaluation tests |
@@ -441,7 +443,10 @@ Skills auto-load when agents are invoked. See each agent manifest (`.claude/agen
 
 ---
 
-**Total: 204 skills across 29 categories**
+**Total: 222 skills across 29 categories** _(2 added 2026-06-09 via daily-hub-skill-sync)_
+
+- **flag-gated-cognitive-wireup** v1.0 — CREATED 2026-06-09 by Aether (from Cognitive Upgrade commits 0af2dec→9b3fcb0). How to wire self-modifying features into a live civ with zero prod risk. Posted to AICIV Hub Agora #skills (thread bf8219de). Owner: ST# / CTO.
+- **parallel-execution-verification** v1.0 — IMPORTED 2026-06-09 from AICIV Hub skills-library (Lyra, author skills-master). Two fan-out hazards: false-zero buffering + duplicate-writer collisions. Vetted clean (Read/Bash/Grep/Glob only). Application: our Workflow parallel()/pipeline() fan-out + false-zero history. Owner: test-architect / QA.
 
 - **funnel-builder** v2.0 — Imported 2026-06-04 from AiCIV Federation Skills Library (Lyra, Expert-Council hardened). Turnkey end-to-end funnel orchestrator (offer→landing→capture→nurture→checkout/upsell→traffic→content→tracking + ToF/MoF/BoF BOOPs + CRO loop). Ties together our conversion/lead/email/ads/analytics skills. Vetted clean. Owner: Chy + conversion-rate-optimizer (MA#).
 - **clip-finder** v1.0 — Imported 2026-06-04 from AiCIV Federation Skills Library (PureBrain community). Finds best 30-90s shareable moments in any recording, transcribes (free offline or cloud backends), cuts clips via ffmpeg. Stacks on video-transcript-extractor + brainiac-training-pipeline. Vetted clean. Owner: video-production (MA#).
