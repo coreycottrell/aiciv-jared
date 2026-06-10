@@ -3003,6 +3003,7 @@ def register_routes(app: Flask) -> None:
     _FW_ALLOWED_ORIGINS = {
         'https://ce.purebrain.ai',
         'https://sme.purebrain.ai',
+        'https://purebrain.ai',
     }
 
     def _fw_cors(resp):
