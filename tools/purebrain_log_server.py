@@ -2994,6 +2994,10 @@ def register_routes(app: Flask) -> None:
         'P-50F655985W396351ANIUH2TI': 'awakened',    # CAD Awakened
         'P-73T266252V6210811NIUH2TQ': 'partnered',   # CAD Partnered
         'P-1YH62815XH088872VNIUH2TQ': 'unified',     # CAD Unified
+        # ⚠️ TEST-ONLY (2026-06-10 $1 pre-flight, Jared GO): Chy's $1 CAD test plan
+        # on /check-out-test. REMOVE in post-$1 cleanup (or keep ONLY while the
+        # check-out-test page is an active sanctioned test surface).
+        'P-126332159F487914BNIUVSUA': 'awakened',    # CAD $1 TEST plan
     }
     _FW_CLIENTS_DB_PATH = '/home/jared/purebrain_portal/clients.db'
     _FW_PAYPAL_LIVE_BASE = 'https://api-m.paypal.com'
