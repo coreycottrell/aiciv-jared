@@ -16,6 +16,8 @@ Updated: 2026-02-12 (SSL support added by api-architect)
 Updated: 2026-02-17 (A-C-Gee landing-chat forwarding added by full-stack-developer)
 """
 
+import base64       # CE-SME: finish-wakeup HS256 verify + PayPal OAuth basic-auth
+import hashlib      # CE-SME: finish-wakeup HS256 signature
 import hmac
 import json
 import logging
@@ -26,6 +28,7 @@ import threading
 import time
 import urllib.request
 import urllib.error
+import httpx          # CE-SME: onboarding state-transition POST to Chy's worker (NOT urllib — urllib trips CF WAF 1010 on workers.dev)
 import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -497,7 +500,13 @@ def register_routes(app: Flask) -> None:
             # Onboarding/session data from client
             'aiName', 'userName', 'userTier', 'referralCode',
             'conversationId', 'brainId', 'projectId', 'title',
-            'createdAt', 'updatedAt', 'messageCount'
+            'createdAt', 'updatedAt', 'messageCount',
+            # F-1 (strict-bind): the awakening page passes aid=<sub> (Chy's &aid).
+            # Persisting account_id on the conversation record lets finish-wakeup
+            # bind STRICTLY by account id (strongest key) instead of falling back
+            # to payer-email-in-content. Accept snake/camel per the dual-convention
+            # pattern used throughout this route. PURELY ADDITIVE — absent = today.
+            'account_id', 'accountId'
         ]
         for field in optional_fields:
             if field in data:
@@ -615,13 +624,36 @@ def register_routes(app: Flask) -> None:
         #   This ensures sandbox test subscriptions (I-* IDs on sandbox API) are
         #   captured correctly even though no isSandbox flag is sent in verify-payment.
         _order_id_early = data.get('orderId', '')
+        # === CE-SME PAID-FIRST: SERVER-AUTHORITATIVE custom_id capture (additive) ===
+        # The paid-first partner flow (ce./sme.purebrain.ai) defers the seed from
+        # payment time to /api/finish-wakeup. Whether THIS order is paid-first is
+        # decided ONLY from the SERVER-FETCHED PayPal subscription custom_id below,
+        # NEVER from the client POST body. Chy sets custom_id='partner-paid-first'
+        # at subscription creation. A normal customer physically cannot set a PayPal
+        # subscription's custom_id, so a normal order leaves this empty -> NOT
+        # paid-first -> the legacy seed-at-payment branch runs byte-for-byte.
+        # Initialized '' here so it is defined even if the re-fetch is skipped/fails
+        # (fail-safe to current fire-at-payment behavior).
+        _server_custom_id = ''
+        # SERVER-FETCHED plan_id (top-level on the PayPal subscription). Used to
+        # harden the seed tier (P0-#6): the seed tier is derived from the
+        # PayPal-CONFIRMED plan_id, not the client-supplied tier.
+        _server_plan_id = ''
         # Tier-to-price fallback table (corrected 2026-05-22, constitutional pricing)
         _TIER_PRICES = {
             'awakened':  '297.00',
             'partnered': '597.00',
             'unified':   '1097.00',
         }
-        if _order_id_early.startswith('I-') and (not payer_email or not payer_name):
+        # === CE-SME PAID-FIRST: WIDENED I-* RE-FETCH (additive hardening) ===
+        # Re-fetch the PayPal subscription for EVERY I-* (subscription) order, NOT
+        # only when payer email/name are missing — the paid-first marker
+        # (_server_custom_id) and seed-tier hardening (_server_plan_id) are captured
+        # ONLY inside _apply_sub_data during this fetch. ADDITIVE: the fetch still
+        # ONLY fills MISSING payer fields. SCOPED to I-* only. Fail-safe: a fetch
+        # failure leaves _server_custom_id='' -> fire-at-payment.
+        if _order_id_early.startswith('I-'):
+            import base64 as _base64
             import base64 as _base64
 
             def _fetch_paypal_subscription(base_url, client_id, secret):
@@ -656,8 +688,21 @@ def register_routes(app: Flask) -> None:
 
             def _apply_sub_data(sub_data):
                 """Extract email, name, amount from a PayPal subscription response dict.
-                Updates nonlocal payer_email / payer_name and data['amount'] in place."""
-                nonlocal payer_email, payer_name
+                Updates nonlocal payer_email / payer_name and data['amount'] in place.
+                ALSO captures the SERVER-FETCHED custom_id (top-level on the PayPal
+                subscription object) for CE-SME paid-first detection — the ONLY
+                trusted source of the paid-first marker, never the client body."""
+                nonlocal payer_email, payer_name, _server_custom_id, _server_plan_id
+                # PayPal subscriptions expose custom_id + plan_id at the TOP LEVEL.
+                # Paid-first subs use custom_id exactly 'partner-paid-first'. Does NOT
+                # collide with the client-body 'PB-<TIER>-<uuid>' custom_id (different
+                # source: server fetch vs client POST).
+                _cid = (sub_data.get('custom_id') or '').strip()
+                if _cid:
+                    _server_custom_id = _cid
+                _pid = (sub_data.get('plan_id') or '').strip()
+                if _pid:
+                    _server_plan_id = _pid
                 _subscriber = sub_data.get('subscriber', {})
                 if not payer_email:
                     payer_email = (_subscriber.get('email_address') or '').strip()
@@ -866,12 +911,35 @@ def register_routes(app: Flask) -> None:
             except Exception as e:
                 logger.warning(f'Failed to increment spots counter: {e}')
 
+        # === CE-SME PAID-FIRST PER-ORDER GATE (server-derived, additive-safe) ===
+        # Derived ONLY from the SERVER-FETCHED PayPal custom_id captured in
+        # _apply_sub_data above. NEVER from the client POST body.
+        # - Normal purebrain.ai order: no/empty custom_id -> False -> legacy
+        #   seed-at-payment branch, byte-for-byte (a client cannot set custom_id).
+        # - PayPal re-fetch failed/skipped: stays '' -> False -> fire-at-payment
+        #   (FAIL-SAFE; never strands a seed).
+        # - Paid-first partner order (custom_id='partner-paid-first'): True -> seed
+        #   deferred to /api/finish-wakeup (gated by the kill-switch at the fire site).
+        _is_paid_first_order = (_server_custom_id == 'partner-paid-first')
+
         # === PRIMARY SEED TRIGGER — fires on PayPal payment ===
         # The naming ceremony conversation is already in purebrain_web_conversations.jsonl
         # keyed by metadata.orderId — look it up so we include AI name + full conversation.
 
         # Snapshot tier and amount as local variables so the closure captures concrete values.
-        _seed_tier   = data.get('tier', 'unknown')
+        # CE-SME P0-#6 FIX: do NOT trust the client-supplied tier for the seed. Map the
+        # PayPal-CONFIRMED (server-fetched) plan_id -> tier via the server allowlist.
+        # The legacy client tier is kept ONLY as a last-resort label if no server
+        # plan_id was captured (re-fetch skipped/failed) — never changes billing.
+        _PLAN_ID_TO_TIER = {
+            'P-4P998148HJ3439945NICOI7Q': 'awakened',   # USD $297
+            'P-3KL830539R502981PNICOI7Q': 'partnered',  # USD $597
+            'P-1KC17605JW4534516NICOI7Q': 'unified',    # USD $1097
+            'P-50F655985W396351ANIUH2TI': 'awakened',   # CAD
+            'P-73T266252V6210811NIUH2TQ': 'partnered',  # CAD
+            'P-1YH62815XH088872VNIUH2TQ': 'unified',    # CAD
+        }
+        _seed_tier   = _PLAN_ID_TO_TIER.get(_server_plan_id) or data.get('tier', 'unknown')
         _seed_amount = data.get('amount', '0.00')
         # 2026-03-26 FIX: Capture the page's chatflow session UUID if sent.
         # This is the UUID the page polls with on /api/magic-link/{uuid},
@@ -1347,6 +1415,18 @@ def register_routes(app: Flask) -> None:
                     _fired_orders = set()
                 if order_id in _seeds_fired_for_orders or order_id in _fired_orders:
                     _is_duplicate_webhook = True
+                elif _is_paid_first_order:
+                    # === CE-SME PAID-FIRST: do NOT pre-claim the dedup lock here ===
+                    # A paid-first order DEFERS its seed to /api/finish-wakeup. If we
+                    # claimed order_id in _seeds_fired_for_orders / the persisted file
+                    # NOW, the later finish-wakeup -> _send_seed_core call would see the
+                    # order already "fired" and SUPPRESS the deferred seed (strand it).
+                    # So we intentionally skip the pre-claim for paid-first orders. The
+                    # dedup claim is performed by finish-wakeup when the seed actually
+                    # fires. Replay protection for paid-first lives in the finish-wakeup
+                    # jti claim-lock + the send-seed idempotency guards. _is_duplicate_webhook
+                    # stays False so the NEW-PAYMENT alarm still fires once for the payment.
+                    pass
                 else:
                     # Claim this order_id atomically (in-memory + persisted) BEFORE
                     # firing, so a near-simultaneous duplicate is suppressed.
@@ -1361,8 +1441,28 @@ def register_routes(app: Flask) -> None:
         if _is_duplicate_webhook:
             logger.info(f'[payment-seed-dedup] Duplicate PayPal webhook suppressed for order_id={order_id} — NO 2nd seed, NO 2nd alarm')
         else:
-            # Fire for all orders: real orders get normal seed; sandbox/test get a marked test seed
-            threading.Thread(target=_fire_payment_seed, kwargs={'is_test': is_sandbox_or_test}, daemon=True).start()
+            # === CE-SME PAID-FIRST PER-ORDER SEED SCOPING (additive-safe) ===
+            # DEFAULT (no server custom_id) = CURRENT BEHAVIOR, byte-for-byte: the seed
+            # fires at payment exactly as before. _is_paid_first_order is True ONLY when
+            # the SERVER-FETCHED PayPal custom_id == 'partner-paid-first'. A normal order
+            # can never reach the deferral branch (a client cannot set custom_id; a
+            # failed/skipped re-fetch leaves it '' -> fire-at-payment fail-safe).
+            #
+            # CE_SME_PAID_FIRST_ENABLED is an EMERGENCY KILL-SWITCH only (default '1' =
+            # deferral active for paid-first). Set '0' to force EVERY order (even
+            # paid-first) back to fire-at-payment (full legacy rollback). It can NEVER
+            # suppress a normal order's seed.
+            _paid_first_active = os.environ.get('CE_SME_PAID_FIRST_ENABLED', '1') == '1'
+            if _is_paid_first_order and _paid_first_active:
+                # Paid-first partner order: seed DEFERRED to /api/finish-wakeup (fires
+                # after the user clicks Finish and PayPal is re-confirmed there).
+                # NOTE: the verify_payment _fire_payment_seed closure is NEVER called
+                # for this order, and is left byte-for-byte unchanged (option-b).
+                logger.info(f'[payment-seed] CE-SME paid-first order_id={order_id}: seed DEFERRED to /api/finish-wakeup (not fired at payment)')
+            else:
+                # CURRENT BEHAVIOR (unchanged, byte-for-byte): real orders get normal
+                # seed; sandbox/test get a marked test seed.
+                threading.Thread(target=_fire_payment_seed, kwargs={'is_test': is_sandbox_or_test}, daemon=True).start()
 
             # Portal notification (AI name resolved inside background thread above)
             _seed_msg = f'\n🌱 [SEED FIRED] {payer_name} — seed sent to Witness (PayPal trigger)'
@@ -2204,48 +2304,35 @@ def register_routes(app: Flask) -> None:
     # FROM: aether-aiciv@agentmail.to (onboarding inbox)
     # TO:   aiciv-seed-inbox@agentmail.to
     # -------------------------------------------------------------------------
-    @app.route('/api/send-seed', methods=['POST', 'OPTIONS'])
-    def send_seed():
-        """
-        Fire the SEED email for a new customer after their email is collected.
-
-        Expected JSON payload (accepts both snake_case and camelCase):
-        {
-            "session_uuid":  "...",     // or "sessionUuid"
-            "ai_name":       "...",     // or "aiName"
-            "human_name":    "...",     // or "humanName"
-            "human_email":   "...",     // or "humanEmail"
-            "tier":          "Awakened|Partnered|Unified",
-            "order_id":      "I-...",   // or "orderId"
-            "is_sandbox":    false,     // or "isSandbox"
-            "conversation":  [ {"role": "assistant"|"user", "content": "..."} ]
-        }
-        """
-        if request.method == 'OPTIONS':
-            resp = make_response('', 204)
-            resp.headers['Access-Control-Allow-Origin'] = '*'
-            resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-            resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
-            return resp
-
-        if not request.is_json:
-            resp = jsonify({'ok': False, 'error': 'Content-Type must be application/json'})
-            resp.headers['Access-Control-Allow-Origin'] = '*'
-            return resp, 400
-
-        try:
-            data = request.get_json()
-        except Exception:
-            resp = jsonify({'ok': False, 'error': 'Invalid JSON'})
-            resp.headers['Access-Control-Allow-Origin'] = '*'
-            return resp, 400
-
+    # =====================================================================
+    # CE-SME OPTION (b): _send_seed_core — the seed-build-and-send body of
+    # /api/send-seed, extracted so BOTH the send_seed route AND the new
+    # /api/finish-wakeup route fire the seed through ONE tested code path.
+    #
+    #   server_derived_tier: when set (only the finish-wakeup caller sets it),
+    #     it is the SERVER-derived tier (from the PayPal-confirmed plan_id via
+    #     the allowlist). It OVERRIDES the client-supplied `tier` in `data`,
+    #     closing the P0-#6 class hole on this seed path. External /api/send-seed
+    #     callers pass None -> current behavior, byte-for-byte.
+    #
+    # The route below (send_seed) keeps its EXACT externally-observable behavior:
+    # it does OPTIONS + JSON-parse exactly as before, then delegates to this core.
+    # All idempotency guards (seed_sent_uuids.json + _seeds_fired_for_orders) are
+    # inside this core, so finish-wakeup honors the same NEVER-double-seed dedup.
+    # =====================================================================
+    def _send_seed_core(data, server_derived_tier=None):
         # Accept both snake_case and camelCase for consistency with /api/verify-payment
         session_uuid = (data.get('session_uuid') or data.get('sessionUuid') or '').strip()
         ai_name      = (data.get('ai_name') or data.get('aiName') or '').strip()
         human_name   = (data.get('human_name') or data.get('humanName') or '').strip()
         human_email  = (data.get('human_email') or data.get('humanEmail') or '').strip()
-        tier         = (data.get('tier') or 'unknown').strip()
+        # CE-SME P0-#6 FIX (this path): a server-derived tier (finish-wakeup) ALWAYS
+        # wins over the client-supplied tier. The client tier is used ONLY when no
+        # server tier is provided (legacy /api/send-seed callers).
+        if server_derived_tier:
+            tier     = server_derived_tier.strip()
+        else:
+            tier     = (data.get('tier') or 'unknown').strip()
         order_id     = (data.get('order_id') or data.get('orderId') or '').strip()
         is_sandbox   = bool(data.get('is_sandbox', data.get('isSandbox', False)))
         conversation = data.get('conversation') or []
@@ -2523,6 +2610,48 @@ def register_routes(app: Flask) -> None:
         })
         resp.headers['Access-Control-Allow-Origin'] = '*'
         return resp
+
+    @app.route('/api/send-seed', methods=['POST', 'OPTIONS'])
+    def send_seed():
+        """
+        Fire the SEED email for a new customer after their email is collected.
+
+        Expected JSON payload (accepts both snake_case and camelCase):
+        {
+            "session_uuid":  "...",     // or "sessionUuid"
+            "ai_name":       "...",     // or "aiName"
+            "human_name":    "...",     // or "humanName"
+            "human_email":   "...",     // or "humanEmail"
+            "tier":          "Awakened|Partnered|Unified",
+            "order_id":      "I-...",   // or "orderId"
+            "is_sandbox":    false,     // or "isSandbox"
+            "conversation":  [ {"role": "assistant"|"user", "content": "..."} ]
+        }
+
+        CE-SME OPTION (b): thin wrapper. OPTIONS + JSON parse exactly as before,
+        then delegate to _send_seed_core(data) (no server tier override for the
+        external HTTP caller -> byte-for-byte current behavior).
+        """
+        if request.method == 'OPTIONS':
+            resp = make_response('', 204)
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+            resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+            return resp
+
+        if not request.is_json:
+            resp = jsonify({'ok': False, 'error': 'Content-Type must be application/json'})
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            return resp, 400
+
+        try:
+            data = request.get_json()
+        except Exception:
+            resp = jsonify({'ok': False, 'error': 'Invalid JSON'})
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            return resp, 400
+
+        return _send_seed_core(data)
 
     # -------------------------------------------------------------------------
     # /api/seed-addendum  (Step 5 of onboarding spec)
@@ -2842,6 +2971,563 @@ def register_routes(app: Flask) -> None:
         resp = jsonify({'ok': True, 'session_uuid': session_uuid})
         resp.headers['Access-Control-Allow-Origin'] = '*'
         return resp
+
+    # =====================================================================
+    # CE-SME CONSUME SIDE — OPTION (b)
+    #   _lookup_naming_conversation : reconstruct (ai_name, session_uuid,
+    #       conversation) from logs/purebrain_web_conversations.jsonl. This is a
+    #       FRESH standalone helper (NOT extracted from the verify_payment
+    #       _fire_payment_seed closure, which is left byte-for-byte untouched).
+    #       It mirrors the same JSONL S1-S4 lookup strategies. S5 (fuzzy name)
+    #       stays disabled by default (constitutional seed-flow rule).
+    #   POST /api/finish-wakeup     : the paid-first consume route. Verifies the
+    #       JWT, confirms PayPal, claims the jti once, advances the state machine,
+    #       then fires the seed via _send_seed_core (the EXISTING send-seed path)
+    #       with the SERVER-derived tier. It NEVER calls _fire_payment_seed.
+    # =====================================================================
+
+    # Canonical plan_id -> tier (NICOI7Q USD trio + CAD). Server-side ALLOWLIST.
+    _FW_PLAN_ID_TO_TIER = {
+        'P-4P998148HJ3439945NICOI7Q': 'awakened',    # USD $297
+        'P-3KL830539R502981PNICOI7Q': 'partnered',   # USD $597
+        'P-1KC17605JW4534516NICOI7Q': 'unified',     # USD $1097
+        'P-50F655985W396351ANIUH2TI': 'awakened',    # CAD Awakened
+        'P-73T266252V6210811NIUH2TQ': 'partnered',   # CAD Partnered
+        'P-1YH62815XH088872VNIUH2TQ': 'unified',     # CAD Unified
+    }
+    _FW_CLIENTS_DB_PATH = '/home/jared/purebrain_portal/clients.db'
+    _FW_PAYPAL_LIVE_BASE = 'https://api-m.paypal.com'
+    # CORS allowlist: /api/finish-wakeup is only called from the paid-first
+    # partner checkout pages. Echo the request Origin only when it matches; else
+    # omit the header entirely (never '*').
+    _FW_ALLOWED_ORIGINS = {
+        'https://ce.purebrain.ai',
+        'https://sme.purebrain.ai',
+    }
+
+    def _fw_cors(resp):
+        origin = request.headers.get('Origin', '')
+        if origin in _FW_ALLOWED_ORIGINS:
+            resp.headers['Access-Control-Allow-Origin'] = origin
+            resp.headers['Vary'] = 'Origin'
+        return resp
+
+    def _fw_b64url_decode(seg):
+        seg = seg.encode('ascii') if isinstance(seg, str) else seg
+        rem = len(seg) % 4
+        if rem:
+            seg += b'=' * (4 - rem)
+        return base64.urlsafe_b64decode(seg)
+
+    def _fw_verify_hs256_jwt(token, secret):
+        """Verify an HS256 JWT with hmac+hashlib only. Returns claims dict on
+        valid signature; raises ValueError otherwise. Does NOT validate claims."""
+        try:
+            header_b64, payload_b64, sig_b64 = token.split('.')
+        except ValueError:
+            raise ValueError('malformed token (expected 3 segments)')
+        header = json.loads(_fw_b64url_decode(header_b64))
+        if header.get('alg') != 'HS256':
+            # Reject alg=none / RS256 confusion.
+            raise ValueError(f"unexpected alg {header.get('alg')!r}")
+        signing_input = f'{header_b64}.{payload_b64}'.encode('ascii')
+        expected = hmac.new(secret.encode('utf-8'), signing_input, hashlib.sha256).digest()
+        actual = _fw_b64url_decode(sig_b64)
+        if not hmac.compare_digest(expected, actual):
+            raise ValueError('bad signature')
+        return json.loads(_fw_b64url_decode(payload_b64))
+
+    def _fw_fetch_paypal_subscription(subscription_id):
+        """Re-fetch a PayPal subscription from the LIVE API by I-xxx id.
+        Mirrors the OAuth+GET pattern in verify_payment. Raises on any failure."""
+        client_id = os.environ.get('PAYPAL_CLIENT_ID', '')
+        secret = os.environ.get('PAYPAL_SECRET', '')
+        if not client_id or not secret:
+            raise ValueError('PayPal live creds missing from env')
+        creds = f'{client_id}:{secret}'
+        b64 = base64.b64encode(creds.encode()).decode()
+        token_req = urllib.request.Request(
+            f'{_FW_PAYPAL_LIVE_BASE}/v1/oauth2/token',
+            data=b'grant_type=client_credentials',
+            headers={
+                'Authorization': f'Basic {b64}',
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            method='POST',
+        )
+        with urllib.request.urlopen(token_req, timeout=8) as r:
+            token_data = json.loads(r.read())
+        access_token = token_data.get('access_token', '')
+        if not access_token:
+            raise ValueError('no access_token from PayPal OAuth')
+        sub_req = urllib.request.Request(
+            f'{_FW_PAYPAL_LIVE_BASE}/v1/billing/subscriptions/{subscription_id}',
+            headers={
+                'Authorization': f'Bearer {access_token}',
+                'Content-Type': 'application/json',
+            },
+            method='GET',
+        )
+        with urllib.request.urlopen(sub_req, timeout=8) as r:
+            return json.loads(r.read())
+
+    def _fw_claim_jti_once(jti, sub, email, plan_id, payment_ref, derived_tier, iat, exp, ip):
+        """Atomic single-use claim against consumed_tokens (local SQLite mirror of
+        D1 625dde70). Returns True if THIS call claimed the jti (first use), False
+        if already consumed (replay).
+        SINGLE-HOST INVARIANT (FIX #2): this lock is LOCAL SQLite only. It protects
+        replays hitting THIS process. /api/finish-wakeup MUST run single-host until
+        the canonical D1 625dde70 consumed_tokens table exists + is enforced. Do NOT
+        multi-home / load-balance this route before then."""
+        import sqlite3
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with _file_lock:
+            conn = sqlite3.connect(_FW_CLIENTS_DB_PATH, timeout=10)
+            try:
+                conn.execute('PRAGMA journal_mode = WAL')
+                cur = conn.cursor()
+                cur.execute(
+                    """INSERT OR IGNORE INTO consumed_tokens
+                       (jti, sub, email, plan_id, payment_ref, derived_tier,
+                        consumed_at, consumer_ip, iat, exp)
+                       VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    (jti, sub, email, plan_id, payment_ref, derived_tier,
+                     now_iso, ip, iat, exp),
+                )
+                claimed = (cur.rowcount == 1)
+                conn.commit()
+                return claimed
+            finally:
+                conn.close()
+
+    # CE-SME OPTION 2: onboarding state lives ONLY in the canonical D1 625dde70,
+    # written via Chy's secret-gated worker endpoint (she owns the 625dde70 write).
+    # This server NO LONGER writes onboarding_state to local SQLite — see the
+    # finish-wakeup route where _fw_advance_state_to_provisioning (local dual-write)
+    # was REMOVED in favor of _post_onboarding_transition below. Avoids split-brain.
+    _ONBOARDING_TRANSITION_URL = (
+        'https://ce-sme-production.in0v8.workers.dev/api/onboarding/transition'
+    )
+
+    def _post_onboarding_transition(sub, status, payment_ref):
+        """BEST-EFFORT, post-facto onboarding state transition against the CANONICAL
+        store (D1 625dde70) via Chy's secret-gated worker endpoint.
+
+        Uses httpx (NOT urllib — urllib trips the Cloudflare WAF 1010 bot-block on
+        non-browser callers). Targets the workers.dev host on purpose: the zoned
+        host CF-1010 bot-blocks server-to-server callers, the workers.dev host does
+        not.
+
+        SEMANTICS (critical):
+          - Called AFTER the critical path (jti already claimed / seed already fired).
+          - Chy's endpoint is idempotent + legal-forward-only, so retries are SAFE.
+          - This is BEST-EFFORT: any failure/timeout/non-2xx LOGS a warning and
+            returns False. It NEVER raises, NEVER blocks, and NEVER reverses the
+            seed/jti critical path. State is post-facto reconcilable.
+          - The jti claim-lock stays LOCAL SQLite (single-host) by design; only the
+            onboarding STATE moves to D1 via this call.
+
+        Body contract: {sub, status, ts(unix int), payment_ref}
+        Responses (Chy): 200 ok | 200 idempotent | 401 bad secret | 404 unknown sub |
+                         409 illegal/backward | 400 malformed.
+        Returns True on 2xx, False otherwise (never raises)."""
+        try:
+            secret = os.environ.get('ONBOARDING_TRANSITION_SECRET', '')
+            if not secret:
+                logger.warning(
+                    f'[onboarding-transition] ONBOARDING_TRANSITION_SECRET missing from '
+                    f'env — skipping {status} transition for sub={sub} (best-effort; '
+                    f'state reconcilable post-facto)'
+                )
+                return False
+            body = {
+                'sub': sub,
+                'status': status,
+                'ts': int(time.time()),
+                'payment_ref': payment_ref,
+            }
+            resp = httpx.post(
+                _ONBOARDING_TRANSITION_URL,
+                headers={'X-Onboarding-Transition-Secret': secret},
+                json=body,
+                timeout=10.0,
+            )
+            if 200 <= resp.status_code < 300:
+                logger.info(
+                    f'[onboarding-transition] {status} OK sub={sub} '
+                    f'payment_ref={payment_ref} (canonical D1 625dde70 via worker)'
+                )
+                return True
+            logger.warning(
+                f'[onboarding-transition] {status} non-2xx ({resp.status_code}) for '
+                f'sub={sub} payment_ref={payment_ref} — best-effort, NOT blocking '
+                f'critical path; idempotent-retry-safe'
+            )
+            return False
+        except Exception as e:
+            logger.warning(
+                f'[onboarding-transition] {status} POST failed for sub={sub} '
+                f'payment_ref={payment_ref}: {e} — best-effort, NOT blocking critical '
+                f'path; idempotent-retry-safe'
+            )
+            return False
+
+    def _fw_advance_state_to_provisioning(payment_ref, derived_tier):
+        """DEPRECATED / INERT (CE-SME OPTION 2): local-SQLite onboarding_state write.
+        NO LONGER CALLED — onboarding state now lives ONLY in D1 625dde70 via Chy's
+        worker endpoint (_post_onboarding_transition). Kept inert to avoid touching
+        the migration/columns; do NOT re-wire this (would re-introduce dual-write /
+        split-brain). Transition the clients row to 'provisioning' (forward-only)
+        using the SERVER-derived tier. Logs (does not fail the request) if 0 rows
+        matched."""
+        import sqlite3
+        now_iso = datetime.now(timezone.utc).isoformat()
+        try:
+            conn = sqlite3.connect(_FW_CLIENTS_DB_PATH, timeout=10)
+            conn.execute('PRAGMA journal_mode = WAL')
+            cur = conn.cursor()
+            cur.execute(
+                """UPDATE clients
+                      SET onboarding_state = 'provisioning',
+                          onboarding_state_updated_at = ?,
+                          tier = ?
+                    WHERE paypal_subscription_id = ?
+                      AND onboarding_state IN ('paid','awakening_pending','awakened')""",
+                (now_iso, derived_tier, payment_ref),
+            )
+            updated = cur.rowcount
+            conn.commit()
+            conn.close()
+            if updated == 0:
+                logger.warning(
+                    f'[finish-wakeup] state advance matched 0 rows for sub={payment_ref} '
+                    f'(account row may not exist yet; portal sync to reconcile)'
+                )
+            return updated
+        except Exception as e:
+            logger.error(f'[finish-wakeup] state advance failed for sub={payment_ref}: {e}')
+            return -1
+
+    def _lookup_naming_conversation(order_id, payer_email, session_uuid_hint, account_id=None, strict=False):
+        """Reconstruct (ai_name, session_uuid, conversation_list) for a paid-first
+        order from logs/purebrain_web_conversations.jsonl. Mirrors the S1-S4 lookup
+        used in _fire_payment_seed (S5 fuzzy-name stays disabled by default per the
+        constitutional seed-flow rule). Returns ('', session_uuid_hint, []) if no
+        match — the caller then leaves the seed UNFIRED (token NOT consumed) so the
+        order is never seeded WITHOUT a real conversation/name (Matt Keough guard).
+
+        F-1 (MEDIUM, security re-pass): when strict=True (finish-wakeup ONLY) the
+        winner is chosen from STRONG KEYS ONLY — S0(account_id) > S1(orderId) >
+        S2(sessionUuid). The S3 (payer-email-in-content) and S4 (recency) fallbacks
+        are NEVER consulted in strict mode, so two real partners sharing an email can
+        never cross-bind one customer's AI-name/conversation to another. No strong-key
+        match in strict mode -> ai_name='' -> caller returns 425 (retryable, jti NOT
+        consumed). strict=False (default/legacy) is byte-equivalent to the prior
+        S1>S2>S3>S4 behavior; S0 is additive and cannot fire when account_id is None."""
+        _ai_name = ''
+        _session_uuid = (session_uuid_hint or '').strip() or (f'payment-{order_id}' if order_id else '')
+        _conversation = []
+        try:
+            _conv_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), '..', 'logs',
+                'purebrain_web_conversations.jsonl'
+            )
+            if not os.path.exists(_conv_path):
+                return (_ai_name, _session_uuid, _conversation)
+
+            _payer_email_lower = (payer_email or '').lower().strip()
+            _account_id_str = str(account_id).strip() if account_id is not None else ''
+            _now_utc = datetime.now(timezone.utc)
+            _payment_page_patterns = ['/awakened', '/partnered', '/unified', '/pay-test', '/insiders', '/live', '/ce', '/sme']
+
+            _best_by_account = None; _best_by_account_count = 0   # S0 (strongest key)
+            _best_by_order = None;   _best_by_order_count = 0
+            _best_by_uuid = None;    _best_by_uuid_count = 0
+            _best_by_email = None;   _best_by_email_count = 0
+            _best_by_recency = None; _best_by_recency_count = 0; _best_by_recency_ts = None
+
+            with open(_conv_path, 'r') as _cf:
+                for _line in _cf:
+                    _line = _line.strip()
+                    if not _line:
+                        continue
+                    try:
+                        _entry = json.loads(_line)
+                        _meta = _entry.get('metadata') or {}
+                        _msgs = _entry.get('messages') or []
+                        _msg_count = len(_msgs)
+                        _entry_order = _meta.get('orderId', '')
+
+                        # S0: match by account_id (STRONGEST key — works in strict + legacy).
+                        # account_id is stamped on the conversation record from the awakening
+                        # page's aid=<sub>; comparing it to the JWT sub is forge-resistant.
+                        if _account_id_str:
+                            _entry_acct = (
+                                _entry.get('account_id') or _entry.get('accountId')
+                                or _meta.get('account_id') or _meta.get('accountId') or ''
+                            )
+                            if str(_entry_acct).strip() == _account_id_str and _msg_count > _best_by_account_count:
+                                _best_by_account = _entry; _best_by_account_count = _msg_count
+                        # S1: match by orderId (strong key — valid in strict + legacy)
+                        if order_id and _entry_order == order_id and _msg_count > _best_by_order_count:
+                            _best_by_order = _entry; _best_by_order_count = _msg_count
+                        # S2: match by sessionUuid (strong key — valid in strict + legacy)
+                        if session_uuid_hint:
+                            _entry_suuid = (_entry.get('session_uuid') or '').strip()
+                            _meta_suuid = (_meta.get('sessionUuid') or '').strip()
+                            if (_entry_suuid == session_uuid_hint or _meta_suuid == session_uuid_hint) and _msg_count > _best_by_uuid_count:
+                                _best_by_uuid = _entry; _best_by_uuid_count = _msg_count
+                        # S3 (email-in-content) + S4 (recency) are WEAK fallbacks. F-1:
+                        # they are SKIPPED ENTIRELY in strict mode so finish-wakeup can
+                        # never cross-bind on a shared/typo'd payer email.
+                        if not strict:
+                            # S3: match by payer email in message content
+                            if _payer_email_lower and _msg_count >= 3:
+                                for _m in _msgs:
+                                    if _payer_email_lower in (_m.get('content') or '').lower():
+                                        if _msg_count > _best_by_email_count:
+                                            _best_by_email = _entry; _best_by_email_count = _msg_count
+                                        break
+                            # S4: most recent payment-page conversation in last 30 min, >5 msgs
+                            if _msg_count > 5:
+                                _page_url = (_meta.get('page_url') or '').lower()
+                                if any(p in _page_url for p in _payment_page_patterns):
+                                    _entry_ts_str = _entry.get('server_timestamp', '')
+                                    if _entry_ts_str:
+                                        try:
+                                            _entry_ts = datetime.fromisoformat(_entry_ts_str)
+                                            if (_now_utc - _entry_ts).total_seconds() / 60.0 <= 30:
+                                                if _best_by_recency_ts is None or _entry_ts > _best_by_recency_ts:
+                                                    _best_by_recency = _entry
+                                                    _best_by_recency_count = _msg_count
+                                                    _best_by_recency_ts = _entry_ts
+                                        except (ValueError, TypeError):
+                                            pass
+                    except Exception:
+                        continue
+
+            # Winner precedence: S0(account_id) > S1(orderId) > S2(sessionUuid) >
+            # S3(email) > S4(recency). In strict mode _best_by_email/_best_by_recency
+            # are ALWAYS None (never populated above), so the S3/S4 branches are
+            # structurally unreachable — strict can only ever return S0/S1/S2.
+            _best_match = None; _strategy = 'none'
+            if _best_by_account and _best_by_account_count > 0:
+                _best_match = _best_by_account; _strategy = f'S0-accountId ({_best_by_account_count})'
+            elif _best_by_order and _best_by_order_count > 0:
+                _best_match = _best_by_order; _strategy = f'S1-orderId ({_best_by_order_count})'
+            elif _best_by_uuid and _best_by_uuid_count > 0:
+                _best_match = _best_by_uuid; _strategy = f'S2-sessionUuid ({_best_by_uuid_count})'
+            elif _best_by_email and _best_by_email_count > 0:
+                _best_match = _best_by_email; _strategy = f'S3-payerEmail ({_best_by_email_count})'
+            elif _best_by_recency and _best_by_recency_count > 0:
+                _best_match = _best_by_recency; _strategy = f'S4-recentConv ({_best_by_recency_count})'
+
+            logger.info(
+                f'[finish-wakeup-lookup] strict={strict} order={order_id} uuid={session_uuid_hint} '
+                f'acct={_account_id_str} email={payer_email}: S0={_best_by_account_count} '
+                f'S1={_best_by_order_count} S2={_best_by_uuid_count} '
+                f'S3={_best_by_email_count} S4={_best_by_recency_count} | winner={_strategy}'
+            )
+
+            if _best_match:
+                _msgs = _best_match.get('messages') or []
+                _ai_name = _best_match.get('aiName') or ''
+                if not _ai_name:
+                    _mc = _best_match.get('metadata') or {}
+                    _ai_name = _mc.get('ai_name') or _mc.get('civ_name') or ''
+                if not session_uuid_hint:
+                    _session_uuid = _best_match.get('session_id') or _session_uuid
+                for _m in _msgs:
+                    _role = (_m.get('role') or 'unknown')
+                    _content = (_m.get('content') or '').strip()
+                    if _content and not _content.startswith('[The person just clicked'):
+                        _conversation.append({'role': _role, 'content': _content})
+        except Exception as _e:
+            logger.warning(f'[finish-wakeup-lookup] failed for order={order_id}: {_e}')
+
+        return (_ai_name, _session_uuid, _conversation)
+
+    @app.route('/api/finish-wakeup', methods=['POST', 'OPTIONS'])
+    def finish_wakeup():
+        if request.method == 'OPTIONS':
+            resp = make_response('', 204)
+            _fw_cors(resp)
+            resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+            resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+            return resp
+
+        def _err(code, msg):
+            r = jsonify({'ok': False, 'error': msg})
+            _fw_cors(r)
+            return r, code
+
+        # --- Extract token (Authorization: Bearer <jwt> OR JSON body {token}) ---
+        auth = request.headers.get('Authorization', '')
+        token = ''
+        if auth.startswith('Bearer '):
+            token = auth[len('Bearer '):].strip()
+        if not token and request.is_json:
+            token = ((request.get_json(silent=True) or {}).get('token') or '').strip()
+        if not token:
+            return _err(401, 'missing token')
+
+        secret = os.environ.get('ONBOARDING_TOKEN_SECRET', '')
+        if not secret:
+            logger.critical('[finish-wakeup] ONBOARDING_TOKEN_SECRET missing from env — cannot verify')
+            return _err(500, 'server token secret not configured')
+
+        # --- (a) HS256 signature ---
+        try:
+            claims = _fw_verify_hs256_jwt(token, secret)
+        except Exception as e:
+            logger.info(f'[finish-wakeup] 401 bad token: {e}')
+            return _err(401, 'invalid token signature')
+
+        # --- (b) Claim validation: aud / iss / exp ---
+        now = int(datetime.now(timezone.utc).timestamp())
+        if claims.get('aud') != 'finish-wakeup':
+            return _err(401, 'wrong audience')
+        if claims.get('iss') != 'ce-sme':
+            return _err(401, 'wrong issuer')
+        iat = claims.get('iat')
+        exp = claims.get('exp')
+        if not isinstance(exp, int) or not isinstance(iat, int):
+            return _err(401, 'missing iat/exp')
+        if exp <= now:
+            return _err(401, 'token expired')
+        if exp - iat > 1800:
+            return _err(401, 'token lifetime exceeds 30min')
+
+        jti = (claims.get('jti') or '').strip()
+        # CE-SME PROD FIX: coerce sub to str — Chy's clients.id is an INTEGER PK, so her
+        # real worker mints `sub` as an int. `(999001 or '')` -> 999001, then .strip()
+        # would AttributeError -> HTTP 500 on EVERY real partner. str() coerces int->str;
+        # `or ''` keeps None/empty -> '' (NOT "None") so missing-claim handling is unchanged.
+        sub = str(claims.get('sub') or '').strip()
+        email = (claims.get('email') or '').strip()
+        token_plan_id = (claims.get('plan_id') or '').strip()
+        payment_ref = (claims.get('payment_ref') or '').strip()
+        session_uuid_hint = (claims.get('session_uuid') or claims.get('sessionUuid') or '').strip()
+        if not jti or not payment_ref:
+            return _err(401, 'missing jti or payment_ref')
+
+        # --- (d) DEFENSE IN DEPTH: re-fetch PayPal, confirm ACTIVE + plan match ---
+        #     Done BEFORE consuming the jti so a transient PayPal error does not
+        #     burn the user's single-use token (503 retryable; token NOT consumed).
+        try:
+            sub_data = _fw_fetch_paypal_subscription(payment_ref)
+        except Exception as e:
+            logger.warning(f'[finish-wakeup] PayPal re-fetch failed for {payment_ref}: {e}')
+            r = jsonify({'ok': False, 'error': 'payment confirmation temporarily unavailable, retry shortly', 'retryable': True})
+            _fw_cors(r)
+            return r, 503
+
+        pp_status = (sub_data.get('status') or '').upper()
+        pp_plan_id = (sub_data.get('plan_id') or '').strip()
+        pp_subscriber = sub_data.get('subscriber', {}) or {}
+        pp_email = (pp_subscriber.get('email_address') or '').strip()
+        _pp_name = pp_subscriber.get('name', {}) or {}
+        pp_human_name = f"{(_pp_name.get('given_name') or '').strip()} {(_pp_name.get('surname') or '').strip()}".strip()
+
+        if pp_status != 'ACTIVE':
+            logger.warning(f'[finish-wakeup] 402 sub {payment_ref} status={pp_status} (not ACTIVE)')
+            return _err(402, f'subscription not active (status={pp_status})')
+
+        # Token plan_id must agree with PayPal's plan_id (catches forged plan in token).
+        if token_plan_id and token_plan_id != pp_plan_id:
+            logger.warning(
+                f'[finish-wakeup] 403 plan mismatch sub={payment_ref} '
+                f'token_plan={token_plan_id} paypal_plan={pp_plan_id}'
+            )
+            return _err(403, 'plan_id mismatch between token and PayPal')
+
+        # Tier is derived SERVER-SIDE from PayPal's confirmed plan_id ONLY.
+        derived_tier = _FW_PLAN_ID_TO_TIER.get(pp_plan_id)
+        if not derived_tier:
+            logger.warning(f'[finish-wakeup] 403 plan {pp_plan_id} not in allowlist (sub={payment_ref})')
+            return _err(403, 'plan not in allowlist')
+
+        # --- Pre-flight the conversation lookup BEFORE consuming the jti, so a
+        #     missing/unrecoverable conversation does NOT burn the single-use token
+        #     (the customer can retry once the conversation is logged). This honors
+        #     the constitutional "never seed without an AI name" guard.
+        _seed_email = email or pp_email
+        # F-1 STRICT BIND: finish-wakeup is the ONLY strict caller. account_id=sub
+        # (the JWT-carried, str-coerced account id) is the strongest binding key;
+        # strict=True forbids the S3 email-in-content + S4 recency fallbacks, so a
+        # shared/typo'd payer email can NEVER cross-bind another customer's AI-name.
+        _lk_ai_name, _lk_session_uuid, _lk_conversation = _lookup_naming_conversation(
+            order_id=payment_ref, payer_email=_seed_email, session_uuid_hint=session_uuid_hint,
+            account_id=sub, strict=True
+        )
+        if not _lk_ai_name:
+            logger.warning(
+                f'[finish-wakeup] 409-deferred: no AI name / conversation recoverable yet for '
+                f'sub={payment_ref} email={_seed_email}. Token NOT consumed; client may retry.'
+            )
+            r = jsonify({'ok': False, 'error': 'naming conversation not found yet, retry shortly', 'retryable': True})
+            _fw_cors(r)
+            return r, 425  # Too Early — conversation not yet logged; retryable, token NOT burned
+
+        # --- (c) SINGLE-USE jti claim-lock (AFTER payment confirmed + conversation found) ---
+        claimed = _fw_claim_jti_once(
+            jti=jti, sub=sub, email=_seed_email, plan_id=pp_plan_id,
+            payment_ref=payment_ref, derived_tier=derived_tier,
+            iat=iat, exp=exp, ip=request.remote_addr,
+        )
+        if not claimed:
+            logger.info(f'[finish-wakeup] 409 replay — jti already consumed: {jti}')
+            return _err(409, 'token already used')
+
+        # --- (e-awakened) CANONICAL state transition -> 'awakened' (D1 625dde70 via
+        #     Chy's worker). Fired AFTER the JWT verified + jti claimed. Best-effort:
+        #     _post_onboarding_transition NEVER raises/blocks/reverses the critical
+        #     path (jti is already claimed; the transition is post-facto + idempotent).
+        _post_onboarding_transition(sub=sub, status='awakened', payment_ref=payment_ref)
+
+        # NOTE (CE-SME OPTION 2): the local-SQLite dual-write
+        # `_fw_advance_state_to_provisioning(payment_ref, derived_tier)` was REMOVED
+        # here. Onboarding state now lives ONLY in D1 625dde70 via Chy's endpoint
+        # (the 'provisioning' transition fires below, AFTER the seed dispatches).
+
+        # --- Fire the seed via the EXISTING send-seed path (OPTION b). NEVER calls
+        #     _fire_payment_seed. _send_seed_core honors the same dedup guards
+        #     (seed_sent_uuids.json + _seeds_fired_for_orders) so a replay or a
+        #     prior fire cannot double-seed. server_derived_tier OVERRIDES any tier.
+        _seed_data = {
+            'session_uuid': _lk_session_uuid,
+            'ai_name': _lk_ai_name,
+            'human_name': pp_human_name,
+            'human_email': _seed_email,
+            'order_id': payment_ref,
+            'is_sandbox': False,
+            'conversation': _lk_conversation,
+        }
+        try:
+            _send_seed_core(_seed_data, server_derived_tier=derived_tier)
+        except Exception as e:
+            logger.error(f'[finish-wakeup] seed dispatch failed for {payment_ref}: {e}')
+            # Token already consumed + state advanced; report partial success so the
+            # client does not retry-loop. Seed failure is alarmed via logger.error.
+            r = jsonify({'ok': True, 'tier': derived_tier, 'seed': 'dispatch_error'})
+            _fw_cors(r)
+            return r, 202
+
+        # --- (e-provisioning) CANONICAL state transition -> 'provisioning' (D1
+        #     625dde70 via Chy's worker). Fired AFTER the ONE seed dispatched.
+        #     Best-effort: never raises/blocks/reverses (seed already fired; the
+        #     transition is post-facto + idempotent-retry-safe).
+        #     NOTE: the 'live' transition is fired SEPARATELY by agentmail_monitor on
+        #     portal-confirm — OUT OF SCOPE here.
+        _post_onboarding_transition(sub=sub, status='provisioning', payment_ref=payment_ref)
+
+        logger.info(
+            f'[finish-wakeup] OK sub={payment_ref} tier={derived_tier} '
+            f'email={_seed_email} jti={jti} ai_name={_lk_ai_name} -> seed fired via send-seed, state=provisioning'
+        )
+        r = jsonify({'ok': True, 'tier': derived_tier, 'state': 'provisioning'})
+        _fw_cors(r)
+        return r
 
     # -------------------------------------------------------------------------
     # /api/held-seeds  (Diagnostic endpoint)
