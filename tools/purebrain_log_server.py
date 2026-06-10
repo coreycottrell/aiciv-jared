@@ -615,12 +615,11 @@ def register_routes(app: Flask) -> None:
         #   This ensures sandbox test subscriptions (I-* IDs on sandbox API) are
         #   captured correctly even though no isSandbox flag is sent in verify-payment.
         _order_id_early = data.get('orderId', '')
-        # Tier-to-price fallback table (matches pay-test-sandbox-3 PRICES config)
+        # Tier-to-price fallback table (corrected 2026-05-22, constitutional pricing)
         _TIER_PRICES = {
-            'awakened':  '149.00',
-            'bonded':    '299.00',
-            'partnered': '499.00',
-            'unified':   '999.00',
+            'awakened':  '297.00',
+            'partnered': '597.00',
+            'unified':   '1097.00',
         }
         if _order_id_early.startswith('I-') and (not payer_email or not payer_name):
             import base64 as _base64
@@ -1329,63 +1328,99 @@ def register_routes(app: Flask) -> None:
             except Exception as _exc:
                 logger.error(f'[payment-seed] Failed to fire seed for {order_id}: {_exc}')
 
-        # Fire for all orders: real orders get normal seed; sandbox/test get a marked test seed
-        threading.Thread(target=_fire_payment_seed, kwargs={'is_test': is_sandbox_or_test}, daemon=True).start()
+        # --- DOUBLE-FIRE GUARD (2026-06-07): suppress duplicate PayPal webhooks ---
+        # PayPal can deliver the SAME order_id webhook twice. Without this guard the
+        # second delivery launched a 2nd seed thread (line below) AND a 2nd portal/
+        # Telegram alarm — a false alarm + duplicate seed email (hit "Corneille
+        # Zamilus" 05-24). We dedup on order_id using BOTH the in-memory
+        # _seeds_fired_for_orders set AND a persisted file so a process restart
+        # BETWEEN the two webhook deliveries still catches the duplicate.
+        # Reuses _file_lock; mirrors the seed_sent_uuids.json idempotency pattern.
+        _pmt_dedup_file = os.path.join(DEFAULT_LOG_DIR, 'payment_seeds_fired_orders.json')
+        _is_duplicate_webhook = False
+        if order_id:
+            with _file_lock:
+                try:
+                    with open(_pmt_dedup_file, 'r') as _df:
+                        _fired_orders = set(json.load(_df))
+                except (FileNotFoundError, json.JSONDecodeError):
+                    _fired_orders = set()
+                if order_id in _seeds_fired_for_orders or order_id in _fired_orders:
+                    _is_duplicate_webhook = True
+                else:
+                    # Claim this order_id atomically (in-memory + persisted) BEFORE
+                    # firing, so a near-simultaneous duplicate is suppressed.
+                    _seeds_fired_for_orders.add(order_id)
+                    _fired_orders.add(order_id)
+                    try:
+                        with open(_pmt_dedup_file, 'w') as _df:
+                            json.dump(sorted(_fired_orders), _df)
+                    except Exception as _df_err:
+                        logger.warning(f'[payment-seed-dedup] Failed to persist fired order_id={order_id}: {_df_err}')
 
-        # Portal notification (AI name resolved inside background thread above)
-        _seed_msg = f'\n🌱 [SEED FIRED] {payer_name} — seed sent to Witness (PayPal trigger)'
-        try:
-            _sf = '/home/jared/projects/AI-CIV/aether/.current_session'
-            with open(_sf) as _f:
-                _sn = _f.read().strip()
-            subprocess.Popen(
-                ['tmux', 'send-keys', '-t', _sn, _seed_msg, ''],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
-        except Exception:
-            pass
+        if _is_duplicate_webhook:
+            logger.info(f'[payment-seed-dedup] Duplicate PayPal webhook suppressed for order_id={order_id} — NO 2nd seed, NO 2nd alarm')
+        else:
+            # Fire for all orders: real orders get normal seed; sandbox/test get a marked test seed
+            threading.Thread(target=_fire_payment_seed, kwargs={'is_test': is_sandbox_or_test}, daemon=True).start()
 
-                # --- Payment notifications (tmux portal + Telegram, background threads) ---
-        _pay_name   = payer_name or '(unknown)'
-        _pay_email  = payer_email or '(unknown)'
-        _pay_amount = data.get('amount', '0.00')
-        _pay_tier   = data.get('tier', 'unknown')
-        _pay_page   = data.get('pageUrl', data.get('page_url', ''))
-        _pay_sub_id = data.get('orderId', '')
-        _pay_tmux_msg = (
-            f'\n\U0001f525 [NEW PAYMENT] {_pay_name} just paid ${_pay_amount} ({_pay_tier})'
-            + (f' on {_pay_page}' if _pay_page else '')
-            + f'\n   Subscription: {_pay_sub_id}'
-            + f'\n   Email: {_pay_email}'
-        )
-        _pay_tg_msg = (
-            f'\U0001f525 NEW PAYMENT\n'
-            f'{_pay_name} just paid ${_pay_amount} ({_pay_tier})'
-            + (f'\nPage: {_pay_page}' if _pay_page else '')
-            + f'\nSubscription: {_pay_sub_id}'
-            + f'\nEmail: {_pay_email}'
-        )
-
-        def _payment_notify_portal(_msg=_pay_tmux_msg, _oid=_pay_sub_id):
+            # Portal notification (AI name resolved inside background thread above)
+            _seed_msg = f'\n🌱 [SEED FIRED] {payer_name} — seed sent to Witness (PayPal trigger)'
             try:
                 _sf = '/home/jared/projects/AI-CIV/aether/.current_session'
                 with open(_sf) as _f:
                     _sn = _f.read().strip()
                 subprocess.Popen(
-                    ['tmux', 'send-keys', '-t', _sn, _msg, ''],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    ['tmux', 'send-keys', '-t', _sn, _seed_msg, ''],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
                 )
-                logger.info(f'Payment portal injection sent for order={_oid}')
-            except Exception as _exc:
-                logger.warning(f'Payment portal injection failed: {_exc}')
+            except Exception:
+                pass
 
-        def _payment_notify_telegram(_msg=_pay_tg_msg, _oid=_pay_sub_id):
-            _send_telegram_notification(_msg)
-            logger.info(f'Payment Telegram notification sent for order={_oid}')
+        # --- Payment notifications (tmux portal + Telegram, background threads) ---
+        # DOUBLE-FIRE GUARD: suppress the "NEW PAYMENT" portal+Telegram alarm on a
+        # duplicate PayPal webhook (same order_id) — this was the false-alarm source.
+        if not _is_duplicate_webhook:
+            _pay_name   = payer_name or '(unknown)'
+            _pay_email  = payer_email or '(unknown)'
+            _pay_amount = data.get('amount', '0.00')
+            _pay_tier   = data.get('tier', 'unknown')
+            _pay_page   = data.get('pageUrl', data.get('page_url', ''))
+            _pay_sub_id = data.get('orderId', '')
+            _pay_tmux_msg = (
+                f'\n\U0001f525 [NEW PAYMENT] {_pay_name} just paid ${_pay_amount} ({_pay_tier})'
+                + (f' on {_pay_page}' if _pay_page else '')
+                + f'\n   Subscription: {_pay_sub_id}'
+                + f'\n   Email: {_pay_email}'
+            )
+            _pay_tg_msg = (
+                f'\U0001f525 NEW PAYMENT\n'
+                f'{_pay_name} just paid ${_pay_amount} ({_pay_tier})'
+                + (f'\nPage: {_pay_page}' if _pay_page else '')
+                + f'\nSubscription: {_pay_sub_id}'
+                + f'\nEmail: {_pay_email}'
+            )
 
-        for _tgt in (_payment_notify_portal, _payment_notify_telegram):
-            threading.Thread(target=_tgt, daemon=True).start()
+            def _payment_notify_portal(_msg=_pay_tmux_msg, _oid=_pay_sub_id):
+                try:
+                    _sf = '/home/jared/projects/AI-CIV/aether/.current_session'
+                    with open(_sf) as _f:
+                        _sn = _f.read().strip()
+                    subprocess.Popen(
+                        ['tmux', 'send-keys', '-t', _sn, _msg, ''],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    logger.info(f'Payment portal injection sent for order={_oid}')
+                except Exception as _exc:
+                    logger.warning(f'Payment portal injection failed: {_exc}')
+
+            def _payment_notify_telegram(_msg=_pay_tg_msg, _oid=_pay_sub_id):
+                _send_telegram_notification(_msg)
+                logger.info(f'Payment Telegram notification sent for order={_oid}')
+
+            for _tgt in (_payment_notify_portal, _payment_notify_telegram):
+                threading.Thread(target=_tgt, daemon=True).start()
 
         # === REFERRAL COMMISSION RECORDING ===
         # If this payment is from a referred customer, record the 5% commission
@@ -1393,7 +1428,9 @@ def register_routes(app: Flask) -> None:
         # email in the referrals table to find if they were referred, so we don't
         # need the referral code here — just the payer email.
         # Skip for sandbox/test orders to avoid polluting commission data.
-        if payer_email and '@' in payer_email and not is_sandbox_or_test:
+        # DOUBLE-FIRE GUARD: also skip on a duplicate PayPal webhook (same order_id)
+        # so a referred customer's commission is recorded exactly once.
+        if payer_email and '@' in payer_email and not is_sandbox_or_test and not _is_duplicate_webhook:
             _comm_email  = payer_email
             _comm_order  = data.get('orderId', '')
             _comm_tier   = data.get('tier', 'unknown')
@@ -3092,7 +3129,7 @@ def register_routes(app: Flask) -> None:
                     '<div style="background:rgba(42,147,193,0.08);border:1px solid rgba(42,147,193,0.3);border-radius:10px;padding:22px 24px;">'
                     '<div style="font-size:12px;color:#f1420b;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:10px;">Your Private Investor Access</div>'
                     '<p style="color:#c0c8d4;font-size:15px;line-height:1.6;margin:0 0 10px 0;">'
-                    'Pitch Deck: <a href="https://purebrain.ai/pitch-v2" style="color:#2a93c1;text-decoration:none;font-weight:600;">https://purebrain.ai/pitch-v2</a>'
+                    'Pitch Deck: <a href="https://purebrain.ai/pitch-v4/" style="color:#2a93c1;text-decoration:none;font-weight:600;">https://purebrain.ai/pitch-v4/</a>'
                     '</p>'
                     '<p style="color:#c0c8d4;font-size:15px;line-height:1.6;margin:0 0 10px 0;">'
                     'Access Code: <span style="color:#ffffff;font-weight:700;letter-spacing:1.5px;">PUREBRAIN2026</span>'
@@ -3104,7 +3141,7 @@ def register_routes(app: Flask) -> None:
                     '<tr><td style="padding:22px 40px 18px 40px;" align="center">'
                     '<table role="presentation" cellpadding="0" cellspacing="0" border="0">'
                     '<tr><td style="background-color:#f1420b;border-radius:8px;" bgcolor="#f1420b">'
-                    '<a href="https://purebrain.ai/pitch-v2" target="_blank" style="display:inline-block;padding:16px 40px;color:#ffffff;font-size:17px;font-weight:700;text-decoration:none;letter-spacing:0.5px;">'
+                    '<a href="https://purebrain.ai/pitch-v4/" target="_blank" style="display:inline-block;padding:16px 40px;color:#ffffff;font-size:17px;font-weight:700;text-decoration:none;letter-spacing:0.5px;">'
                     'View Pitch Deck &#8594;'
                     '</a>'
                     '</td></tr>'
@@ -3175,7 +3212,7 @@ def register_routes(app: Flask) -> None:
                     'This is Aether, AI Co-CEO at Pure Technology. Jared mentioned you would\n'
                     'like to learn more about PureBrain.\n\n'
                     'YOUR PRIVATE INVESTOR ACCESS:\n'
-                    'Pitch Deck: https://purebrain.ai/pitch-v2\n'
+                    'Pitch Deck: https://purebrain.ai/pitch-v4/\n'
                     'Access Code: PUREBRAIN2026\n'
                     f'{_pdf_text_note}\n'
                     'The deck covers our $10T+ market convergence thesis, the Three Minds\n'
@@ -3382,6 +3419,148 @@ def register_routes(app: Flask) -> None:
         resp = jsonify({'ok': True, 'status': status, 'message': alarm_text})
         resp.headers['Access-Control-Allow-Origin'] = '*'
         return resp
+
+    # =============================================================================
+    # FUNNEL STATUS: stuck-customer observability (Decision 4, 2026-06-07)
+    # =============================================================================
+    # Read-only, side-effect-free. For each recent payment, computes the onboarding
+    # funnel stage (PAID -> SEEDED -> MAGIC_LINK -> PORTAL) from server-local logs.
+    # Magic-link / portal state lives in D1 (not server-local), so those stages are
+    # reported as "unknown" rather than guessed — honesty over false-complete.
+    @app.route('/api/funnel-status', methods=['GET', 'OPTIONS'])
+    def funnel_status():
+        if request.method == 'OPTIONS':
+            resp = jsonify({'ok': True})
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            resp.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+            return resp
+
+        # Window: default last 7 days; override with ?days=N
+        try:
+            _days = int(request.args.get('days', '7'))
+        except (TypeError, ValueError):
+            _days = 7
+        _cutoff = datetime.now(timezone.utc) - timedelta(days=_days)
+
+        def _redact(email):
+            if not email or '@' not in email:
+                return email or ''
+            _local, _dom = email.split('@', 1)
+            return (_local[:2] + '***@' + _dom)
+
+        def _is_sandbox_rec(order_id, email):
+            _e = (email or '').lower()
+            _o = (order_id or '')
+            return (
+                _e.startswith('sb-')
+                or _e.endswith('@personal.example.com')
+                or _e.endswith('@business.example.com')
+                or _o.startswith('TEST') or _o.startswith('test')
+            )
+
+        # --- Load PAID events ---
+        _payments_path = os.path.join(DEFAULT_LOG_DIR, 'purebrain_payments.jsonl')
+        _paid = {}  # order_id -> {order_id, email, name, tier, paid_at}
+        try:
+            with open(_payments_path) as _pf:
+                for _line in _pf:
+                    _line = _line.strip()
+                    if not _line:
+                        continue
+                    try:
+                        _r = json.loads(_line)
+                    except json.JSONDecodeError:
+                        continue
+                    _oid = _r.get('orderId') or _r.get('order_id')
+                    _email = _r.get('payerEmail') or _r.get('payer_email') or ''
+                    if not _oid or _is_sandbox_rec(_oid, _email):
+                        continue
+                    _ts = _r.get('server_timestamp', '')
+                    try:
+                        _ts_dt = datetime.fromisoformat(_ts.replace('Z', '+00:00')) if _ts else None
+                    except ValueError:
+                        _ts_dt = None
+                    if _ts_dt and _ts_dt < _cutoff:
+                        continue
+                    # Keep earliest record per order_id (collapses duplicate webhooks)
+                    if _oid not in _paid or (_ts and _ts < _paid[_oid]['paid_at']):
+                        _paid[_oid] = {
+                            'order_id': _oid,
+                            'email': _email,
+                            'name': _r.get('payerName') or _r.get('payer_name') or '',
+                            'tier': _r.get('tier', 'unknown'),
+                            'paid_at': _ts,
+                        }
+        except FileNotFoundError:
+            _paid = {}
+
+        # --- Load SEEDED events (match by order_id OR by payer email) ---
+        _seeded_order_ids = set()
+        _seeded_emails = set()
+        _seed_events_path = os.path.join(DEFAULT_LOG_DIR, 'seed_events.jsonl')
+        try:
+            with open(_seed_events_path) as _sf:
+                for _line in _sf:
+                    _line = _line.strip()
+                    if not _line:
+                        continue
+                    try:
+                        _s = json.loads(_line)
+                    except json.JSONDecodeError:
+                        continue
+                    if _s.get('is_sandbox'):
+                        continue
+                    if _s.get('order_id'):
+                        _seeded_order_ids.add(_s['order_id'])
+                    if _s.get('human_email'):
+                        _seeded_emails.add(_s['human_email'].lower())
+        except FileNotFoundError:
+            pass
+
+        # --- Build funnel rows ---
+        _rows = []
+        _stuck_counts = {'no_seed': 0, 'seeded_ok': 0}
+        for _oid, _p in sorted(_paid.items(), key=lambda kv: kv[1]['paid_at'], reverse=True):
+            _seeded = (_oid in _seeded_order_ids) or (_p['email'].lower() in _seeded_emails)
+            # Magic-link + portal state require D1 (not server-local) -> unknown
+            _flags = {
+                'paid': True,
+                'seeded': _seeded,
+                'magic_link': None,   # unknown — lives in D1
+                'portal': None,       # unknown — lives in D1
+            }
+            if not _seeded:
+                _stuck_at = 'SEED'
+                _last_stage = 'PAID'
+                _stuck_counts['no_seed'] += 1
+            else:
+                # Seeded but downstream (magic-link/portal) is D1-only -> cannot confirm
+                _stuck_at = 'MAGIC_LINK_OR_PORTAL (unknown — verify in D1/portal)'
+                _last_stage = 'SEEDED'
+                _stuck_counts['seeded_ok'] += 1
+            _rows.append({
+                'order_id': _oid,
+                'payer_email': _redact(_p['email']),
+                'payer_name': _p['name'],
+                'tier': _p['tier'],
+                'paid_at': _p['paid_at'],
+                'last_completed_stage': _last_stage,
+                'stuck_at': _stuck_at,
+                'stage_flags': _flags,
+            })
+
+        _resp = jsonify({
+            'ok': True,
+            'window_days': _days,
+            'generated_at': datetime.now(timezone.utc).isoformat(),
+            'total_paid_orders': len(_rows),
+            'stuck_no_seed': _stuck_counts['no_seed'],
+            'seeded_pending_downstream': _stuck_counts['seeded_ok'],
+            'note': 'magic_link/portal stages live in D1 and are reported null (unknown) — confirm in portal/D1. Duplicate webhooks collapsed by earliest record per order_id.',
+            'funnel': _rows,
+        })
+        _resp.headers['Access-Control-Allow-Origin'] = '*'
+        return _resp
 
     # =============================================================================
     # EPHEMERAL SECRETS: Burn-on-read secret sharing
