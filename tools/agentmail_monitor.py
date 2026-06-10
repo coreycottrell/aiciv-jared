@@ -35,6 +35,7 @@ import time
 import urllib.request
 import urllib.parse
 import urllib.error
+import httpx          # CE-SME: dashboard-access-link POST to Chy's worker (NOT urllib — urllib trips CF WAF 1010 on workers.dev)
 import logging
 from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
@@ -376,7 +377,77 @@ def parse_magic_link_body(body: str) -> dict:
     return result
 
 
-def _get_fallback_email_html(human_first: str, ai_name: str, magic_link: str) -> str:
+# ─── CE/SME Dashboard Access Link (additive, fail-soft) ──────────────────────
+
+# Chy's live endpoint. Targets the workers.dev host on purpose: the zoned host
+# CF-1010 bot-blocks server-to-server callers; workers.dev does not. httpx (NOT
+# urllib — urllib trips the Cloudflare WAF 1010 bot-block).
+_DASHBOARD_ACCESS_LINK_URL = (
+    "https://ce-sme-production.in0v8.workers.dev/api/dashboard-access-link"
+)
+
+
+def fetch_dashboard_access_link(customer_email: str):
+    """Mint a FRESH one-time ce.purebrain.ai dashboard access link for this customer.
+
+    BEST-EFFORT / FAIL-SOFT: this is ADDITIVE to the welcome email. It NEVER
+    raises and NEVER blocks the welcome email. Any missing-secret / non-2xx /
+    timeout / exception logs a warning (never the secret) and returns None, in
+    which case the caller sends the portal-only welcome email.
+
+    The returned token is ONE-TIME — this MUST be called fresh at send time per
+    recipient; the result is never cached or reused.
+
+    Returns: the dashboard url (str) on success, else None.
+    """
+    if not customer_email or "@" not in customer_email:
+        return None
+    # OTS read from ENV (the .env-derived dict), same secret used for the
+    # onboarding state-transition call. NEVER hardcoded, NEVER logged.
+    secret = ENV.get("ONBOARDING_TRANSITION_SECRET", "")
+    if not secret:
+        log.warning(
+            "[dashboard-access-link] ONBOARDING_TRANSITION_SECRET missing from env — "
+            "sending portal-only welcome email (additive link skipped; fail-soft)"
+        )
+        return None
+    try:
+        resp = httpx.post(
+            _DASHBOARD_ACCESS_LINK_URL,
+            headers={"X-Onboarding-Transition-Secret": secret},
+            json={"email": customer_email},
+            timeout=10.0,
+        )
+        if 200 <= resp.status_code < 300:
+            try:
+                url = (resp.json() or {}).get("url")
+            except Exception:
+                url = None
+            if url and isinstance(url, str) and url.startswith("https://"):
+                log.info(
+                    f"[dashboard-access-link] minted fresh access link for {customer_email}"
+                )
+                return url
+            log.warning(
+                "[dashboard-access-link] 2xx but no usable url in response — "
+                "portal-only welcome email (fail-soft)"
+            )
+            return None
+        # Do NOT log resp.text: a misconfigured endpoint could echo the header back.
+        log.warning(
+            f"[dashboard-access-link] non-2xx ({resp.status_code}) for {customer_email} — "
+            f"portal-only welcome email (fail-soft)"
+        )
+        return None
+    except Exception as e:
+        log.warning(
+            f"[dashboard-access-link] POST failed for {customer_email}: "
+            f"{type(e).__name__} — portal-only welcome email (fail-soft)"
+        )
+        return None
+
+
+def _get_fallback_email_html(human_first: str, ai_name: str, magic_link: str, dashboard_link: str = None) -> str:
     """Generate inline HTML email when template file is missing."""
     return (
         "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'>"
@@ -396,34 +467,62 @@ def _get_fallback_email_html(human_first: str, ai_name: str, magic_link: str) ->
         f"<body><div class='w'>"
         f"<h1>Welcome, {human_first}.<br><span class='ai'>{ai_name}</span> is ready.</h1>"
         f"<p>Your personal AI has been built and is waiting. Tap below to enter.</p>"
+        f"<p style='font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#6b7280;margin-bottom:8px;'>Your PureBrain portal</p>"
         f"<a href='{magic_link}' class='btn'>Enter {ai_name}'s Brain Stream &rarr;</a>"
         f"<p style='font-size:13px;color:#6b7280;'>This link is personal to you.</p>"
-        f"<div class='ft'><a href='https://purebrain.ai'>purebrain.ai</a>"
+        + (
+            (
+                f"<p style='font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#6b7280;margin:24px 0 8px;'>Your CE/SME dashboard</p>"
+                f"<a href='{dashboard_link}' class='btn' style='background:transparent;border:1px solid rgba(42,147,193,0.6);color:#2a93c1;'>Open your CE / SME dashboard &rarr;</a>"
+                f"<p style='font-size:13px;color:#6b7280;'>A one-time secure access link — it sets up your dashboard login.</p>"
+            )
+            if dashboard_link else ""
+        )
+        + f"<div class='ft'><a href='https://purebrain.ai'>purebrain.ai</a>"
         f" | <a href='mailto:support@puremarketing.ai'>support@puremarketing.ai</a></div>"
         f"</div></body></html>"
     )
 
 
-def send_welcome_email(human_email: str, human_first: str, ai_name: str, magic_link: str):
+def send_welcome_email(human_email: str, human_first: str, ai_name: str, magic_link: str, dashboard_link: str = None):
     """
     Send the welcome email to the customer via Google SMTP (purebrain@puremarketing.ai).
     Uses approved template at tools/templates/magic-link-welcome-email.html (repo-persisted).
     Falls back to inline HTML if the repo template file is somehow missing.
+
+    dashboard_link (optional, additive, fail-soft): when present, a second clearly
+    labeled CE/SME dashboard CTA is rendered alongside the portal magic link. When
+    None, the email renders portal-only exactly as before (the template's
+    <!--DASHBOARD_CTA_START--> .. <!--DASHBOARD_CTA_END--> block is stripped).
     """
     if not human_email or "@" not in human_email:
         log.warning(f"Cannot send welcome email: invalid address '{human_email}'")
         return
 
     # Load and render template (repo-persisted; survives reboots)
-    # Placeholder tokens in the template are double-brace: {{HUMAN_FIRST_NAME}}, {{CIV_NAME}}, {{MAGIC_LINK}}
+    # Placeholder tokens in the template are double-brace: {{HUMAN_FIRST_NAME}}, {{CIV_NAME}}, {{MAGIC_LINK}}, {{DASHBOARD_LINK}}
     if MAGIC_LINK_EMAIL_TEMPLATE.exists():
         html = MAGIC_LINK_EMAIL_TEMPLATE.read_text(encoding="utf-8")
         html = html.replace("{{HUMAN_FIRST_NAME}}", human_first)
         html = html.replace("{{CIV_NAME}}", ai_name)
         html = html.replace("{{MAGIC_LINK}}", magic_link)
+        # Dashboard CTA: fill the token when we have a link, else strip the whole
+        # sentinel block so there is never a broken button or leftover {{DASHBOARD_LINK}}.
+        if dashboard_link:
+            html = html.replace("{{DASHBOARD_LINK}}", dashboard_link)
+            # Keep the block content but remove the sentinel markers themselves.
+            html = html.replace("<!--DASHBOARD_CTA_START-->", "")
+            html = html.replace("<!--DASHBOARD_CTA_END-->", "")
+        else:
+            html = re.sub(
+                r"<!--DASHBOARD_CTA_START-->.*?<!--DASHBOARD_CTA_END-->",
+                "",
+                html,
+                flags=re.DOTALL,
+            )
     else:
         log.warning("Magic link email template not found at repo path — using fallback HTML")
-        html = _get_fallback_email_html(human_first, ai_name, magic_link)
+        html = _get_fallback_email_html(human_first, ai_name, magic_link, dashboard_link)
 
     subject = f"Your AI {ai_name} is Ready — Enter Your Brain Stream"
     smtp_user = ENV.get("SMTP_USER", "purebrain@puremarketing.ai")
@@ -443,9 +542,13 @@ def send_welcome_email(human_email: str, human_first: str, ai_name: str, magic_l
 
         plain = (
             f"Hi {human_first},\n\n{ai_name} is ready for you.\n\n"
-            f"Enter your Brain Stream: {magic_link}\n\n"
+            f"Your PureBrain portal — enter your Brain Stream:\n{magic_link}\n\n"
             f"This link is personal to you — do not share it.\n\n"
-            f"— Aether, Pure Technology\npurebrain.ai"
+            + (
+                f"Your CE/SME dashboard (one-time secure access link):\n{dashboard_link}\n\n"
+                if dashboard_link else ""
+            )
+            + f"— Aether, Pure Technology\npurebrain.ai"
         )
         msg_obj.attach(MIMEText(plain, "plain"))
         msg_obj.attach(MIMEText(html, "html"))
@@ -578,7 +681,12 @@ def handle_magic_link_email(msg: dict, full_body: str):
     if emails_to_send:
         for _addr in emails_to_send:
             _first = human_first  # Use same first name for both
-            send_welcome_email(_addr, _first, ai_name, magic_link_pb)
+            # Mint a FRESH one-time CE/SME dashboard access link per recipient at
+            # send time (token is one-time — never cached/reused). FAIL-SOFT: on
+            # any failure this returns None and we send the portal-only welcome
+            # email. The dashboard link is ADDITIVE and must never block the send.
+            _dashboard_link = fetch_dashboard_access_link(_addr)
+            send_welcome_email(_addr, _first, ai_name, magic_link_pb, _dashboard_link)
         _dual = len(emails_to_send) > 1
         log.info(
             f"Welcome email sent to {len(emails_to_send)} address(es): {emails_to_send}"
