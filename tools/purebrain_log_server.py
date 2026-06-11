@@ -4016,14 +4016,16 @@ def register_routes(app: Flask) -> None:
                 _msg['Subject'] = _subject
                 _msg['From'] = f'Aether (PureBrain) <{_smtp_user}>'
                 _msg['To'] = _email
-                _msg['Bcc'] = 'jared@puretechnology.nyc'
+                _msg['Bcc'] = 'jared@puretechnology.nyc, support@puremarketing.ai'
                 _msg['Reply-To'] = 'jared@puretechnology.nyc'
 
                 with smtplib.SMTP('smtp.gmail.com', 587, timeout=30) as _server:
                     _server.ehlo()
                     _server.starttls()
                     _server.login(_smtp_user, _smtp_pass)
-                    _server.sendmail(_smtp_user, [_email, 'jared@puretechnology.nyc'], _msg.as_string())
+                    # ST# 2026-06-11: additive support@ BCC (envelope + header; smtplib
+                    # only raises if ALL recipients refused — client send never blocked).
+                    _server.sendmail(_smtp_user, [_email, 'jared@puretechnology.nyc', 'support@puremarketing.ai'], _msg.as_string())
 
                 logger.info(f'[send-investor-brief] Email sent to {_email} via Google SMTP')
             except Exception as exc:

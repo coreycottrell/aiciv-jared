@@ -537,7 +537,7 @@ def send_welcome_email(human_email: str, human_first: str, ai_name: str, magic_l
         msg_obj["Subject"] = subject
         msg_obj["From"] = f"Aether | PureBrain <{smtp_user}>"
         msg_obj["To"] = human_email
-        msg_obj["Bcc"] = "jared@puretechnology.nyc"
+        msg_obj["Bcc"] = "jared@puretechnology.nyc, support@puremarketing.ai"
         msg_obj["Reply-To"] = "support@puremarketing.ai"
 
         plain = (
@@ -557,7 +557,11 @@ def send_welcome_email(human_email: str, human_first: str, ai_name: str, magic_l
             server.ehlo()
             server.starttls()
             server.login(smtp_user, smtp_pass)
-            server.sendmail(smtp_user, [human_email, "jared@puretechnology.nyc"], msg_obj.as_string())
+            # ST# 2026-06-11: additive support@ BCC — envelope list MUST include it
+            # (SMTP delivers to envelope recipients, not the Bcc header alone).
+            # Partial-refusal semantics: smtplib only raises if ALL recipients are
+            # refused, so a support@ refusal can never block the client's email.
+            server.sendmail(smtp_user, [human_email, "jared@puretechnology.nyc", "support@puremarketing.ai"], msg_obj.as_string())
 
         log.info(f"Welcome email sent to {human_email} (AI={ai_name})")
 
