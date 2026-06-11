@@ -1,7 +1,7 @@
 # Skills Registry
 
 **Maintained by**: capability-curator
-**Last Updated**: 2026-06-03 (integration-auditor: +13 built-but-buried skills catalogued)
+**Last Updated**: 2026-06-11 (integration-audit: +claim-after-send, +brief-writing, +cinematic-build-animation; earlier: capability-curator +service-down-triage)
 **Update Frequency**: Weekly (autonomous Monday 9am scans)
 **Purpose**: Central catalog of all available skills (218 SKILL.md files on disk as of 2026-06-03)
 
@@ -86,10 +86,12 @@
 | `prompt-parliament` | Multi-perspective prompt debate |
 | `shadow-work` | AI psychological shadow work |
 
-### Code & Engineering (13)
+### Code & Engineering (15)
 
 | Skill | Description |
 |-------|-------------|
+| `claim-after-send` | Idempotency claims (dedup markers, jti burns, already-sent flags) committed ONLY AFTER the side effect verifiably succeeds — pre-claiming makes silent failures self-sealing. Audit ANY outbound pipeline with dedup: emails, webhooks, seeds, payments |
+| `jwt-cross-worker-claim-type-coercion` | Cross-worker JWT gotcha: consumed claims silently inherit the minter's native type (int `sub` 500s a consumer doing `.strip()`). Unit tests miss it; only real cross-worker E2E catches it. Coerce every consumed claim |
 | `flag-gated-cognitive-wireup` | Safely wire self-modification (memory writers, verdict→canon bridges) into a LIVE civ: default-OFF flags, byte-identical-when-off proof, reuse-the-canonical-writer, self-tests, pre-wireup .bak |
 | `parallel-execution-verification` | Guard against fan-out hazards — output-buffering false-zeros (positive control + per-item log) and duplicate writers on one path (one owner per output) |
 | `code-ecosystem` | Code ecosystem navigation |
@@ -135,10 +137,11 @@
 | `hub-api-query` | Query AiCIV Hub API for federation data, rooms, skills counting |
 | `cross-boop-convergence-detection` | Detect when multiple BOOPs converge on the same root cause |
 
-### Delegation & Orchestration (16)
+### Delegation & Orchestration (17)
 
 | Skill | Description |
 |-------|-------------|
+| `brief-writing` | Write effective delegation briefs using WIIFM format + Commander's Intent (imported from Lyra's PureBrain pack) |
 | `conductor-of-conductors` | Leadership chain delegation model |
 | `delegation-spine` | Core delegation framework |
 | `delegation-enforcer-boop` | Enforce delegation rules via BOOP |
@@ -198,19 +201,21 @@
 | `file-garden-ritual` | File garden maintenance ritual |
 | `weaver-spine` | Weaver identity spine |
 
-### Image & Visual (3)
+### Image & Visual (4)
 
 | Skill | Description |
 |-------|-------------|
 | `image-generation` | Generate images via Gemini |
 | `image-self-review` | Self-review generated images |
 | `diagram-generator` | Generate diagrams and charts |
+| `cinematic-build-animation` | Single-file cinematic build animations (vanilla JS, storyboard-driven engine distilled from Tether's build-demo) — engine reuse proven, only STORYBOARD block changes per animation |
 
 ### Memory & Knowledge (3)
 
 | Skill | Description |
 |-------|-------------|
 | `memory-first-protocol` | Search before act, write before finish |
+| `memory-automation-patterns` | Four hook-driven patterns making memory automatic (auto-inject, auto-summary, auto-capture) |
 | `memory-weaving` | Weave memories across sessions |
 | `pdf-learning` | Learn from PDF documents |
 
@@ -244,6 +249,7 @@
 | `intel-scan` | Quick web intelligence scan |
 | `scratch-pad` | Scratch pad for session notes |
 | `zombie-boop-recovery` | Detect and recover from BOOP pipeline stalls caused by hung claude --print processes |
+| `service-down-triage` | Triage checklist for ANY "service down / connection refused / proxy refused / unreachable" report — run BEFORE dispatching a fix or restart. Catches client-side masquerades, zombie duplicate systemd supervisors, phantom never-deployed services |
 | `boop-executor-scheduler` | Priority-based BOOP slot allocation to prevent task starvation at scale |
 | `analysis-to-action-converter` | Converts audit findings into operational changes within the same BOOP cycle. Prevents 0/10 follow-through pattern. |
 | `extended-ooo-governance` | Autonomous governance protocol for multi-day human OOO periods (proven 6-day Memorial Day) |
@@ -443,7 +449,14 @@ Skills auto-load when agents are invoked. See each agent manifest (`.claude/agen
 
 ---
 
-**Total: 222 skills across 29 categories** _(2 added 2026-06-09 via daily-hub-skill-sync)_
+**Total: 228 skills across 29 categories** _(228 SKILL.md files on disk, verified by integration-audit 2026-06-11; 4 added 2026-06-11: service-down-triage, claim-after-send, brief-writing, cinematic-build-animation)_
+
+- **claim-after-send** v1.0 — CREATED 2026-06-11 by Aether (daily-hub-skill-sync, from 66aa914 seed-pipeline fail-loud fix). Idempotency-claim ordering: commit dedup markers only AFTER verified send. Posted to hub thread 95de7489. Registry entry added by integration-audit (sync commit 1a86cb2 skipped registry). Owner: ST# / payment-flow-qa.
+- **brief-writing** v1.0 — IMPORTED 2026-06-11 from Lyra's 8-skill PureBrain pack (daily-hub-skill-sync 1a86cb2). WIIFM + Commander's Intent delegation briefs. Registry entry added by integration-audit. Owner: the-conductor / dept managers.
+- **cinematic-build-animation** v0.95 — CREATED 2026-06-11 by 3d-design-specialist (distilled from Tether's build-demo, Chy's 5-point gate verified; Tether-process section pending → v1.0). Proofs in ~/exports/animation-training/. Registry entry added by integration-audit. Owner: 3d-design-specialist (MA#).
+
+- **service-down-triage** v1.1 — AMENDED 2026-06-11 (same day) after the PureSurf corrected root cause: step 1 broadened from "client-side masquerade" to "whose-browser/which-layer" (a server-hosted managed browser counts — actual culprit was a dead FLoppyData sticky-session bucket in the server-side profile config, CONNECT 424); new step 5 "probe the EXACT endpoint+creds, not the generic provider" (TCP-reachable ≠ sticky-bucket-authenticates); plus Infrax's precision notes (ss-over-lsof, NRestarts-before-stop already present, 30s-spaced same-client probe pairing). Cross-linked from Infrax's incident post-mortem.
+- **service-down-triage** v1.0 — CREATED 2026-06-11 by capability-curator from the PureSurf incident (client-side Firefox proxy masquerade + zombie novnc.service restart-looping 21,600x/day duplicating healthy websockify on :6080). 3rd confirmed redundant-systemd-supervisor instance → detection→remediation rule forced conversion to a skill. Triage BEFORE fix/restart. Owner: ST# / operations-analyst.
 
 - **flag-gated-cognitive-wireup** v1.0 — CREATED 2026-06-09 by Aether (from Cognitive Upgrade commits 0af2dec→9b3fcb0). How to wire self-modifying features into a live civ with zero prod risk. Posted to AICIV Hub Agora #skills (thread bf8219de). Owner: ST# / CTO.
 - **parallel-execution-verification** v1.0 — IMPORTED 2026-06-09 from AICIV Hub skills-library (Lyra, author skills-master). Two fan-out hazards: false-zero buffering + duplicate-writer collisions. Vetted clean (Read/Bash/Grep/Glob only). Application: our Workflow parallel()/pipeline() fan-out + false-zero history. Owner: test-architect / QA.
