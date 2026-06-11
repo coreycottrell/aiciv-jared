@@ -42,6 +42,7 @@ import random
 import hashlib
 import logging
 import argparse
+import subprocess
 import traceback
 from datetime import datetime, timezone, timedelta, date
 from pathlib import Path
@@ -69,8 +70,14 @@ STATE_FILE = CIV_ROOT / ".linkedin_comment_scheduler_state.json"
 WEEKLY_STATE_FILE = CIV_ROOT / ".linkedin_comment_scheduler_weekly.json"
 
 PURESURF_HOST = "http://157.180.69.225:8901"
-PURESURF_KEY = "O_EnHpl-94xMLwvWZRNBIc6WGnfl5bkk9Ogk7eew_bg"
-PURESURF_JARED_KEY = "WtHJY1zr0HuP4NmcBNMUSGXlM2kxIeibDDmY-btXSHs"
+try:
+    from dotenv import load_dotenv
+    load_dotenv(CIV_ROOT / ".env")
+except ImportError:
+    pass
+_BAAS_KEY = os.environ.get("BAAS_API_KEY", "")
+PURESURF_KEY = _BAAS_KEY
+PURESURF_JARED_KEY = _BAAS_KEY
 LINKEDIN_PROFILE = "jared-linkedin-fresh"
 
 ET = timezone(timedelta(hours=-4))  # EDT (Apr-Nov). Switch to -5 for EST.
@@ -343,6 +350,35 @@ def execute_js(session_id: str, script: str) -> dict:
     return puresurf_request("POST", f"/sessions/{session_id}/execute", {
         "script": script,
     }, timeout=30)
+
+
+def js_string_result(res: dict) -> str:
+    """Extract the string result of an execute_js call. Returns '' on any error.
+
+    2026-06-11 preclaim-audit F7: the in-page JS returns explicit sentinels
+    ('clicked'/'typed'/'submitted' vs 'not_found'/'input_not_found'/
+    'submit_not_found'). These MUST be checked before recording a comment as
+    posted — never count an unverified attempt.
+    """
+    if not isinstance(res, dict) or res.get("error"):
+        return ""
+    r = res.get("result", "")
+    return r if isinstance(r, str) else str(r)
+
+
+def send_telegram_alert(message: str) -> bool:
+    """Fail-soft Telegram alert to Jared via tg_send.sh (never raises)."""
+    try:
+        result = subprocess.run(
+            [str(CIV_ROOT / "tools" / "tg_send.sh"), message],
+            capture_output=True, text=True, timeout=15, cwd=str(CIV_ROOT),
+        )
+        if result.returncode == 0:
+            return True
+        log.warning(f"tg_send.sh failed: {result.stderr[:200]}")
+    except Exception as e:
+        log.warning(f"Telegram alert failed: {e}")
+    return False
 
 
 def click_element(session_id: str, selector: str) -> dict:
@@ -714,6 +750,15 @@ def execute_burst(state: dict, window_name: str, comment_count: int, dry_run: bo
                 submit_result = execute_js(session_id, submit_js)
                 time.sleep(2)
 
+                # 2026-06-11 preclaim-audit F7: verify the JS sentinels BEFORE
+                # any recording. 'typed' + 'submitted' = verified post; anything
+                # else ('not_found', 'input_not_found', 'submit_not_found',
+                # transport error) = failed attempt that must NOT be counted.
+                _click = js_string_result(click_result)
+                _type = js_string_result(type_result)
+                _submit = js_string_result(submit_result)
+                comment_verified = (_type == "typed" and _submit == "submitted")
+
                 # Add reaction (non-Like)
                 reaction = pick_reaction()
                 reaction_js = f"""
@@ -748,17 +793,60 @@ def execute_burst(state: dict, window_name: str, comment_count: int, dry_run: bo
                 # Navigate to the specific post
                 navigate(session_id, post_url if post_url.startswith("http") else f"https://www.linkedin.com{post_url}", wait_seconds=5)
                 time.sleep(3)
-                # TODO: implement post-page commenting flow
-                reaction = pick_reaction()
+                # 2026-06-11 preclaim-audit F7: post-page commenting flow is NOT
+                # implemented (TODO) — this branch posts NOTHING. It must never
+                # count as posted or burn the author's dedup slot.
+                log.warning(f"SKIPPED: post-page commenting flow not implemented — no comment posted for {author} ({post_url})")
+                state["errors"].append({
+                    "time": now_et().isoformat(),
+                    "window": window_name,
+                    "error": "skipped_post_page_flow_not_implemented",
+                    "target": author,
+                    "post_url": post_url,
+                })
+                save_state(state)
+                continue
             else:
-                reaction = pick_reaction()
+                # No post index and no URL — nothing was (or could be) posted.
+                log.warning(f"SKIPPED: no post index or URL for {author} — no comment posted")
+                state["errors"].append({
+                    "time": now_et().isoformat(),
+                    "window": window_name,
+                    "error": "skipped_no_index_or_url",
+                    "target": author,
+                })
+                save_state(state)
+                continue
 
             # Take screenshot proof
             timestamp = now_et().strftime("%Y%m%d_%H%M%S")
             screenshot_name = f"linkedin-comment-{window_name}-{i+1}-{timestamp}.png"
             screenshot_path = screenshot(session_id, screenshot_name)
 
-            # Record the comment
+            if not comment_verified:
+                # 2026-06-11 preclaim-audit F7: failed attempt — do NOT count,
+                # do NOT burn dedup, record the failure where monitoring sees it.
+                log.error(
+                    f"Comment NOT verified for {author}: click='{_click or '?'}' "
+                    f"type='{_type or '?'}' submit='{_submit or '?'}' — not counted, dedup not burned"
+                )
+                state["errors"].append({
+                    "time": now_et().isoformat(),
+                    "window": window_name,
+                    "error": f"comment_failed click={_click or '?'} type={_type or '?'} submit={_submit or '?'}",
+                    "target": author,
+                    "post_url": post_url,
+                    "screenshot": screenshot_path,
+                })
+                save_state(state)
+                # Keep the human-like gap even on failure (pacing safety)
+                if i < comment_count - 1:
+                    gap = random.randint(MIN_COMMENT_GAP_SECONDS, MAX_COMMENT_GAP_SECONDS)
+                    log.info(f"Waiting {gap}s before next comment...")
+                    time.sleep(gap)
+                continue
+
+            # Record the comment (VERIFIED post only)
             state["total_comments_posted"] += 1
             state["commented_on_today"].append(author)
             state["comments"].append({
@@ -983,9 +1071,24 @@ def main():
                 count = state["burst_sizes"][name]
                 log.info(f"FORCE: Firing {name} window ({count} comments)")
                 posted = execute_burst(state, name, count, dry_run=args.dry_run)
+                # 2026-06-11 preclaim-audit F11: keep the single-shot fired burn
+                # (unburned windows would re-fire every 30-min cron — ban risk),
+                # but record an explicit outcome so monitoring can distinguish
+                # success from a fired-but-zero-posted window, and alert loud.
                 state["windows_fired"][name] = True
+                state.setdefault("window_outcomes", {})[name] = {
+                    "posted": posted,
+                    "target": count,
+                    "completed_at": now_et().isoformat(),
+                    "outcome": "posted" if posted > 0 else "zero_posted",
+                }
                 save_state(state)
                 log.info(f"Force burst complete: {posted} comments posted")
+                if posted == 0 and not args.dry_run:
+                    send_telegram_alert(
+                        f"LinkedIn comment scheduler: window '{name}' (forced) fired with 0/{count} "
+                        f"comments posted. Errors in state file — check logs/linkedin-comments.log"
+                    )
                 break
         else:
             log.info("FORCE: No unfired windows remaining")
@@ -998,10 +1101,26 @@ def main():
         count = state["burst_sizes"][window]
         log.info(f"Window '{window}' is ready to fire ({count} comments)")
         posted = execute_burst(state, window, count, dry_run=args.dry_run)
+        # 2026-06-11 preclaim-audit F11: keep the single-shot fired burn (an
+        # unburned window would re-fire on every */30 cron run inside the window
+        # — repeated automation attempts = ban risk), but record an explicit
+        # outcome field and alert LOUDLY when a window completes with zero posts
+        # (today's live evidence: morning+midday fired:true, 0 posted, silent).
         state["windows_fired"][window] = True
+        state.setdefault("window_outcomes", {})[window] = {
+            "posted": posted,
+            "target": count,
+            "completed_at": now_et().isoformat(),
+            "outcome": "posted" if posted > 0 else "zero_posted",
+        }
         save_state(state)
         log.info(f"Window '{window}' complete: {posted} comments posted. "
                  f"Day total: {state['total_comments_posted']}")
+        if posted == 0 and not args.dry_run:
+            send_telegram_alert(
+                f"LinkedIn comment scheduler: window '{window}' fired with 0/{count} "
+                f"comments posted. Errors in state file — check logs/linkedin-comments.log"
+            )
     else:
         next_info = get_next_window_info(state)
         if next_info.get("window"):

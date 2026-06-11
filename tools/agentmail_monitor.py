@@ -54,6 +54,14 @@ POLL_INTERVAL = 30  # seconds
 MAGIC_LINKS_FILE = CIV_ROOT / ".magic-links.json"
 _magic_links_lock = threading.Lock()
 
+# 2026-06-11 preclaim-audit F2: dead-letter files + retry cap (claim-after-send).
+# Failed welcome-email sends are recorded here for manual replay; messages whose
+# handler keeps failing are claimed after MAX_HANDLER_ATTEMPTS with a LOUD alert
+# (never silently, never hot-looping).
+BLOCKED_WELCOME_FILE = CIV_ROOT / "logs/blocked_welcome_emails.jsonl"
+DEAD_LETTER_FILE = CIV_ROOT / "logs/agentmail_dead_letter.jsonl"
+MAX_HANDLER_ATTEMPTS = 3
+
 # Email template path -- persisted in-repo so it survives reboots (/tmp gets wiped).
 # Fallback to _get_fallback_email_html() is the last resort if the file is somehow absent.
 MAGIC_LINK_EMAIL_TEMPLATE = Path(__file__).parent / "templates" / "magic-link-welcome-email.html"
@@ -190,7 +198,9 @@ def get_message(message_id: str) -> dict:
 
 def send_message(to: str, subject: str, text: str, reply_to: str = None) -> dict:
     """Send an email via AgentMail."""
-    url = f"https://api.agentmail.to/v0/inboxes/{INBOX}/messages"
+    # 2026-06-11 preclaim-audit F9: canonical send endpoint is /messages/send —
+    # bare /messages 404s (institutional memory; post_april27_skills.py:316).
+    url = f"https://api.agentmail.to/v0/inboxes/{INBOX}/messages/send"
     body = {"to": [to], "subject": subject, "text": text}
     if reply_to:
         body["in_reply_to"] = reply_to
@@ -225,21 +235,30 @@ def get_active_tmux_pane() -> str:
     return "%1"  # fallback to known Primary pane
 
 
-def inject_to_tmux(message: str):
-    """Inject a message notification into the active tmux pane."""
+def inject_to_tmux(message: str) -> bool:
+    """Inject a message notification into the active tmux pane.
+
+    Returns True only when tmux send-keys exited 0 (claim-after-send:
+    callers must not treat a swallowed failure as delivery).
+    """
     pane = get_active_tmux_pane()
     try:
-        subprocess.run(
+        result = subprocess.run(
             ["tmux", "send-keys", "-t", pane, message, ""],
             timeout=5
         )
-        log.info(f"Injected to tmux pane {pane}")
+        if result.returncode == 0:
+            log.info(f"Injected to tmux pane {pane}")
+            return True
+        log.warning(f"tmux inject failed: send-keys rc={result.returncode} (pane {pane})")
+        return False
     except Exception as e:
         log.warning(f"tmux inject failed: {e}")
+        return False
 
 
-def send_telegram(message: str):
-    """Send message to Jared via Telegram."""
+def send_telegram(message: str) -> bool:
+    """Send message to Jared via Telegram. Returns True only on confirmed send."""
     try:
         result = subprocess.run(
             [str(TG_SEND), message],
@@ -248,10 +267,13 @@ def send_telegram(message: str):
         )
         if result.returncode == 0:
             log.info("Telegram alert sent")
+            return True
         else:
             log.warning(f"tg_send.sh failed: {result.stderr}")
+            return False
     except Exception as e:
         log.warning(f"Telegram send failed: {e}")
+        return False
 
 
 # ─── Message Classification ─────────────────────────────────────────────────
@@ -484,7 +506,18 @@ def _get_fallback_email_html(human_first: str, ai_name: str, magic_link: str, da
     )
 
 
-def send_welcome_email(human_email: str, human_first: str, ai_name: str, magic_link: str, dashboard_link: str = None):
+def _dead_letter_welcome(entry: dict):
+    """Append a failed welcome-email row to logs/blocked_welcome_emails.jsonl for manual replay."""
+    try:
+        BLOCKED_WELCOME_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(BLOCKED_WELCOME_FILE, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+        log.error(f"Welcome email dead-letter row written: {BLOCKED_WELCOME_FILE}")
+    except Exception as e:
+        log.error(f"FAILED to write welcome dead-letter row: {e} | entry={entry}")
+
+
+def send_welcome_email(human_email: str, human_first: str, ai_name: str, magic_link: str, dashboard_link: str = None) -> bool:
     """
     Send the welcome email to the customer via Google SMTP (purebrain@puremarketing.ai).
     Uses approved template at tools/templates/magic-link-welcome-email.html (repo-persisted).
@@ -494,10 +527,14 @@ def send_welcome_email(human_email: str, human_first: str, ai_name: str, magic_l
     labeled CE/SME dashboard CTA is rendered alongside the portal magic link. When
     None, the email renders portal-only exactly as before (the template's
     <!--DASHBOARD_CTA_START--> .. <!--DASHBOARD_CTA_END--> block is stripped).
+
+    2026-06-11 preclaim-audit F2: returns True ONLY after server.sendmail completes.
+    Every failure path is LOUD: dead-letter row + Telegram FAILURE alert + ERROR log.
+    Callers must check the return value — never assert "sent" without it.
     """
     if not human_email or "@" not in human_email:
         log.warning(f"Cannot send welcome email: invalid address '{human_email}'")
-        return
+        return False
 
     # Load and render template (repo-persisted; survives reboots)
     # Placeholder tokens in the template are double-brace: {{HUMAN_FIRST_NAME}}, {{CIV_NAME}}, {{MAGIC_LINK}}, {{DASHBOARD_LINK}}
@@ -530,7 +567,19 @@ def send_welcome_email(human_email: str, human_first: str, ai_name: str, magic_l
 
     if not smtp_pass:
         log.error("No GOOGLE_APP_PASSWORD in .env — cannot send welcome email")
-        return
+        _dead_letter_welcome({
+            "time": datetime.now(timezone.utc).isoformat(),
+            "to": human_email,
+            "ai_name": ai_name,
+            "magic_link": magic_link,
+            "error": "missing GOOGLE_APP_PASSWORD",
+        })
+        send_telegram(
+            f"WELCOME EMAIL FAILED (config): no GOOGLE_APP_PASSWORD in .env\n"
+            f"To: {human_email}\nAI: {ai_name}\n"
+            f"Dead-letter: logs/blocked_welcome_emails.jsonl — manual replay needed"
+        )
+        return False
 
     try:
         msg_obj = MIMEMultipart("alternative")
@@ -564,12 +613,26 @@ def send_welcome_email(human_email: str, human_first: str, ai_name: str, magic_l
             server.sendmail(smtp_user, [human_email, "jared@puretechnology.nyc", "support@puremarketing.ai"], msg_obj.as_string())
 
         log.info(f"Welcome email sent to {human_email} (AI={ai_name})")
+        return True
 
     except Exception as e:
         log.error(f"Failed to send welcome email to {human_email}: {e}")
+        _dead_letter_welcome({
+            "time": datetime.now(timezone.utc).isoformat(),
+            "to": human_email,
+            "ai_name": ai_name,
+            "magic_link": magic_link,
+            "error": str(e),
+        })
+        send_telegram(
+            f"WELCOME EMAIL FAILED (SMTP): {e}\n"
+            f"To: {human_email}\nAI: {ai_name}\n"
+            f"Dead-letter: logs/blocked_welcome_emails.jsonl — manual replay needed"
+        )
+        return False
 
 
-def handle_magic_link_email(msg: dict, full_body: str):
+def handle_magic_link_email(msg: dict, full_body: str) -> bool:
     """
     Full pipeline for a Witness MAGIC LINK email:
     1. Parse all fields from email body
@@ -577,6 +640,10 @@ def handle_magic_link_email(msg: dict, full_body: str):
     3. Store in .magic-links.json keyed by session UUID
     4. Send welcome email to customer
     5. Notify Jared on Telegram
+
+    2026-06-11 preclaim-audit F2: returns True ONLY when every welcome email was
+    verified-sent. False keeps the message unclaimed (caller retries up to
+    MAX_HANDLER_ATTEMPTS before a loud dead-letter claim).
     """
     log.info(f"MAGIC LINK email detected: subject='{msg.get('subject')}'")
 
@@ -589,7 +656,7 @@ def handle_magic_link_email(msg: dict, full_body: str):
             f"Subject: {msg.get('subject')}\n"
             f"Preview: {full_body[:400]}"
         )
-        return
+        return False
 
     uuid_val = parsed.get("uuid", "")
     ai_name = parsed.get("ai_name", "Your AI")
@@ -682,6 +749,9 @@ def handle_magic_link_email(msg: dict, full_body: str):
         store_magic_link(_jared_key, entry)
         log.info(f"[SANDBOX BYPASS] Magic link also stored under {_jared_key} for poller fallback")
 
+    # 2026-06-11 preclaim-audit F2: track ACTUAL per-address send results —
+    # never claim "sent" for addresses whose send raised or was skipped.
+    _send_results = {}
     if emails_to_send:
         for _addr in emails_to_send:
             _first = human_first  # Use same first name for both
@@ -690,16 +760,31 @@ def handle_magic_link_email(msg: dict, full_body: str):
             # any failure this returns None and we send the portal-only welcome
             # email. The dashboard link is ADDITIVE and must never block the send.
             _dashboard_link = fetch_dashboard_access_link(_addr)
-            send_welcome_email(_addr, _first, ai_name, magic_link_pb, _dashboard_link)
+            _send_results[_addr] = send_welcome_email(_addr, _first, ai_name, magic_link_pb, _dashboard_link) is True
+        _sent = sorted(a for a, ok in _send_results.items() if ok)
+        _failed = sorted(a for a, ok in _send_results.items() if not ok)
         _dual = len(emails_to_send) > 1
-        log.info(
-            f"Welcome email sent to {len(emails_to_send)} address(es): {emails_to_send}"
-            + (" (dual-email: PayPal + chatbox differ)" if _dual else "")
-        )
+        if not _failed:
+            log.info(
+                f"Welcome email sent to {len(_sent)} address(es): {set(_sent)}"
+                + (" (dual-email: PayPal + chatbox differ)" if _dual else "")
+            )
+        else:
+            log.error(
+                f"Welcome email FAILED for {len(_failed)}/{len(emails_to_send)} address(es): "
+                f"failed={_failed} sent={_sent} (UUID={uuid_val})"
+            )
     else:
+        _sent, _failed = [], []
         log.warning(f"No valid email addresses for welcome email (UUID={uuid_val})")
 
-    # Notify Jared
+    # Notify Jared — report actual per-address outcome, never assert unverified sends
+    if emails_to_send:
+        _welcome_line = f"Welcome email: SENT {len(_sent)}/{len(emails_to_send)} address(es)"
+        if _failed:
+            _welcome_line += f" — FAILED: {', '.join(_failed)} (dead-lettered, see blocked_welcome_emails.jsonl)"
+    else:
+        _welcome_line = "Welcome email: NOT SENT — no valid addresses"
     _email_summary = f"{human_email}"
     if paypal_email and paypal_email.lower().strip() != (human_email or "").lower().strip():
         _email_summary += f" + PayPal: {paypal_email}"
@@ -710,16 +795,54 @@ def handle_magic_link_email(msg: dict, full_body: str):
         f"UUID: {uuid_val}\n"
         f"Container: {container}\n"
         f"Link: {magic_link_pb}\n"
-        f"Welcome email: {len(emails_to_send)} address(es)"
+        f"{_welcome_line}"
     )
-    log.info(f"Magic link pipeline complete for UUID={uuid_val}")
+
+    _all_sent = bool(emails_to_send) and not _failed
+    if _all_sent:
+        log.info(f"Magic link pipeline complete for UUID={uuid_val}")
+    else:
+        log.error(f"Magic link pipeline INCOMPLETE for UUID={uuid_val} — welcome delivery not verified")
+    return _all_sent
 
 
 # ─── Main Loop ──────────────────────────────────────────────────────────────
 
+def _dead_letter_message(msg: dict, attempts: int):
+    """Claim a permanently-failing message LOUDLY: durable row + Telegram alert."""
+    entry = {
+        "time": datetime.now(timezone.utc).isoformat(),
+        "message_id": msg.get("message_id", ""),
+        "from": msg.get("from", ""),
+        "subject": msg.get("subject", ""),
+        "attempts": attempts,
+        "reason": "handler failed repeatedly — claimed to stop retries; MANUAL REPLAY NEEDED",
+    }
+    try:
+        DEAD_LETTER_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(DEAD_LETTER_FILE, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception as e:
+        log.error(f"FAILED to write dead-letter row: {e} | entry={entry}")
+    send_telegram(
+        f"AGENTMAIL DEAD-LETTER: message failed {attempts} attempts — claiming it.\n"
+        f"From: {entry['from']}\nSubject: {entry['subject']}\n"
+        f"msg_id: {entry['message_id']}\n"
+        f"Row: logs/agentmail_dead_letter.jsonl — MANUAL REPLAY NEEDED"
+    )
+
+
 def process_new_messages(state: dict) -> int:
-    """Check for new messages and process them. Returns count of new messages."""
+    """Check for new messages and process them. Returns count of new messages.
+
+    2026-06-11 preclaim-audit F2/F10 (claim-after-send): a msg_id is burned into
+    seen_ids ONLY after its handler succeeds. Failed messages stay unclaimed and
+    are retried on the next poll, capped at MAX_HANDLER_ATTEMPTS (tracked in the
+    state file) — then claimed WITH a loud dead-letter alert. No silent sealing,
+    no hot-loop.
+    """
     seen_ids = set(state.get("seen_ids", []))
+    failed_attempts = state.get("failed_attempts", {})
     new_count = 0
 
     try:
@@ -758,22 +881,43 @@ def process_new_messages(state: dict) -> int:
         # ── Priority: Magic Link handler ──────────────────────────────────
         if is_magic_link_email(msg):
             try:
-                handle_magic_link_email(msg, full_body)
+                handled_ok = handle_magic_link_email(msg, full_body) is True
             except Exception as e:
                 log.error(f"Magic link handler error: {e}")
                 send_telegram(f"MAGIC LINK handler error: {e}\nSubject: {msg.get('subject')}")
+                handled_ok = False
         else:
-            # Generic notification path
-            inject_to_tmux(format_notification(msg, full_body))
-            send_telegram(format_telegram_alert(msg, full_body))
+            # Generic notification path — delivered if AT LEAST ONE channel
+            # confirmed (F10: both channels down = message must stay unclaimed)
+            tmux_ok = inject_to_tmux(format_notification(msg, full_body))
+            tg_ok = send_telegram(format_telegram_alert(msg, full_body))
+            handled_ok = bool(tmux_ok or tg_ok)
+            if not handled_ok:
+                log.error(f"Both notify channels failed (tmux + telegram) for msg {msg_id} — leaving unclaimed for retry")
 
-        seen_ids.add(msg_id)
-        new_count += 1
+        if handled_ok:
+            seen_ids.add(msg_id)
+            failed_attempts.pop(msg_id, None)
+            new_count += 1
+        else:
+            attempts = failed_attempts.get(msg_id, 0) + 1
+            failed_attempts[msg_id] = attempts
+            if attempts >= MAX_HANDLER_ATTEMPTS:
+                # Claim WITH a loud dead-letter alert — stops the retry loop
+                # without silently sealing the failure.
+                seen_ids.add(msg_id)
+                failed_attempts.pop(msg_id, None)
+                log.error(f"DEAD-LETTER: msg {msg_id} failed {attempts} attempts — claiming with alert")
+                _dead_letter_message(msg, attempts)
+                new_count += 1
+            else:
+                log.warning(f"Handler failed for msg {msg_id} (attempt {attempts}/{MAX_HANDLER_ATTEMPTS}) — will retry next poll")
 
         if new_count > 1:
             time.sleep(1)
 
     state["seen_ids"] = list(seen_ids)
+    state["failed_attempts"] = failed_attempts
     state["processed_count"] = state.get("processed_count", 0) + new_count
     state["last_check"] = datetime.now(timezone.utc).isoformat()
     save_state(state)
