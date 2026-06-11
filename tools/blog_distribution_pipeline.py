@@ -341,8 +341,13 @@ def send_telegram_notification(post, linkedin_text, results):
         status_lines = ['📢 **BLOG DISTRIBUTED**', '', f'**{post["title"]}**', post['url'], '']
 
         for platform, success in results.items():
-            emoji = '✅' if success else '⚠️'
-            status_lines.append(f'{emoji} {platform}')
+            # 2026-06-11 preclaim-audit F12: LinkedIn is a manual copy-paste
+            # step — label it honestly instead of a fabricated ✅.
+            if success == 'manual':
+                status_lines.append(f'📋 {platform} (manual copy-paste)')
+            else:
+                emoji = '✅' if success else '⚠️'
+                status_lines.append(f'{emoji} {platform}')
 
         status_lines.extend(['', '---', '📋 **LinkedIn (copy-paste):**', '', linkedin_text])
 
@@ -387,7 +392,9 @@ def distribute_post(post, dry_run=False):
 
     # LinkedIn (always create text, even in dry run)
     linkedin_text = create_linkedin_text(post)
-    results['LinkedIn'] = True  # Text created successfully
+    # 2026-06-11 preclaim-audit F12: LinkedIn is manual copy-paste — never
+    # claim it as posted (was: True → rendered as ✅ when nothing was posted).
+    results['LinkedIn'] = 'manual'
 
     if dry_run:
         print(f'\n  📋 LinkedIn (copy-paste ready):')
@@ -431,8 +438,14 @@ def cmd_check():
     for post in new_posts:
         results = distribute_post(post)
 
-        # Mark as distributed
-        state['distributed_posts'].append(post['id'])
+        # 2026-06-11 preclaim-audit F12: only mark distributed when at least one
+        # automated platform actually succeeded (claim-after-send) — otherwise
+        # leave unclaimed so the next check retries instead of sealing a total
+        # failure forever.
+        if any(v is True for v in results.values()):
+            state['distributed_posts'].append(post['id'])
+        else:
+            print(f'  ⚠️  No platform succeeded for "{post["title"]}" — NOT marked distributed (will retry next check)')
 
         # Keep only last 100 post IDs
         if len(state['distributed_posts']) > 100:
