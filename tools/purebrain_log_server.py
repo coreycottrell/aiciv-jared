@@ -4115,10 +4115,11 @@ def register_routes(app: Flask) -> None:
         # Push to portal via /api/notify
         def _push_to_portal():
             try:
-                token_path = os.path.join(
-                    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                    'exports', 'app-purebrain-ai-full-repo', 'portal-server', '.portal-token'
-                )
+                # ST# 2026-06-11 FIX: read the LIVE portal token (what 127.0.0.1:8097
+                # validates against), not the stale May-7 exports/ repo snapshot.
+                # Root cause of every nightly onboarding-alarm portal-notify 401.
+                # See exports/portal-files/st-onboarding-guard-portal-notify-401-diagnosis-2026-06-11.md
+                token_path = '/home/jared/purebrain_portal/.portal-token'
                 portal_token = ''
                 if os.path.exists(token_path):
                     with open(token_path) as f:
