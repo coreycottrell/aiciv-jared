@@ -77,6 +77,25 @@ _file_lock = threading.Lock()
 # Used by the dedup guard to prevent double-firing on the same order.
 _seeds_fired_for_orders: set = set()
 
+# --- CLAIM-AFTER-SEND IN-FLIGHT GUARDS (2026-06-11, ST# fail-loud refactor) ---
+# Root cause fixed: idempotency claims (seed_sent_uuids.json,
+# payment_seeds_fired_orders.json, finish-wakeup jti consumption) used to be
+# committed BEFORE the side effect (AgentMail send). A silently-failed send was
+# therefore self-sealing: every retry returned ok:true/duplicate forever and the
+# paying customer never got an AI. Claims are now committed ONLY after a
+# verified successful send. These in-flight sets close the resulting race
+# window: a concurrent duplicate request during the send window sees the key
+# "in progress" and is suppressed exactly like a durable duplicate, while a
+# FAILED send releases the key so a retry / fallback path can fire.
+#
+# LOCK ORDER RULE: _seed_inflight_lock is a LEAF lock — never acquire _file_lock
+# (or any other lock) while holding it. _file_lock MAY be held when briefly
+# taking _seed_inflight_lock. This prevents lock-order inversion deadlocks.
+_seed_inflight_lock = threading.Lock()
+_seed_inflight_uuids: set = set()            # _send_seed_core: session_uuid mid-send
+_payment_seed_inflight_orders: set = set()   # _fire_payment_seed: order_id launched, claim not yet committed
+_fw_jti_inflight: set = set()                # /api/finish-wakeup: jti being processed (durable claim deferred)
+
 # --- CONSTITUTIONAL GUARD: AI name must NEVER be empty in a seed email ---
 # Added 2026-04-08 after Matt Keough's seed went out with no AI name.
 # "It cannot happen again." — Jared
@@ -1387,14 +1406,99 @@ def register_routes(app: Flask) -> None:
                     text=_md_body,
                     html=_html_body,
                 )
-                # Mark this order as seeded so chatbox /api/send-seed does not double-fire
+                # === DURABLE DEDUP CLAIM — committed ONLY after the send above
+                # returned without raising (CLAIM-AFTER-SEND, 2026-06-11). The
+                # launcher no longer pre-claims; it only reserves the order_id
+                # in _payment_seed_inflight_orders. Mark this order as seeded so
+                # chatbox /api/send-seed does not double-fire, and persist so a
+                # process restart between duplicate webhooks still dedups.
                 if order_id:
                     _seeds_fired_for_orders.add(order_id)
+                    try:
+                        with _file_lock:
+                            _pmt_file_t = os.path.join(DEFAULT_LOG_DIR, 'payment_seeds_fired_orders.json')
+                            try:
+                                with open(_pmt_file_t, 'r') as _df_t:
+                                    _fired_t = set(_json.load(_df_t))
+                            except (FileNotFoundError, ValueError):
+                                _fired_t = set()
+                            _fired_t.add(order_id)
+                            with open(_pmt_file_t, 'w') as _df_t:
+                                _json.dump(sorted(_fired_t), _df_t)
+                    except Exception as _df_err_t:
+                        logger.warning(f'[payment-seed-dedup] Failed to persist fired order_id={order_id}: {_df_err_t}')
 
                 logger.info(f'[payment-seed] Seed fired for {order_id} ({payer_name}, {payer_email}, AI: {_ai_name}, test={is_test})')
 
+                # Portal "[SEED FIRED]" injection — moved here (2026-06-11) from
+                # the launcher, where it used to fire unconditionally BEFORE the
+                # send even ran (premature success signal). Message text is
+                # byte-identical; it now fires ONLY after a verified send.
+                _seed_msg = f'\n\U0001f331 [SEED FIRED] {payer_name} — seed sent to Witness (PayPal trigger)'
+                try:
+                    _sf_t = '/home/jared/projects/AI-CIV/aether/.current_session'
+                    with open(_sf_t) as _f_t:
+                        _sn_t = _f_t.read().strip()
+                    subprocess.Popen(
+                        ['tmux', 'send-keys', '-t', _sn_t, _seed_msg, ''],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                    )
+                except Exception:
+                    pass
+
             except Exception as _exc:
-                logger.error(f'[payment-seed] Failed to fire seed for {order_id}: {_exc}')
+                # === FAIL-LOUD (2026-06-11): a failed payment seed used to be
+                # logger.error-only WITH the dedup already pre-claimed — the
+                # failure was self-sealing (chatbox /api/send-seed fallback
+                # suppressed forever as 'payment-seed-already-fired'). Now: no
+                # claim was committed, we dead-letter + Telegram-alert, and the
+                # finally-block below releases the in-flight reservation so the
+                # chatbox fallback or a retry can fire.
+                logger.error(
+                    f'[payment-seed] SEED SEND FAILED for order={order_id} '
+                    f'(payer={payer_name} <{payer_email}>, tier={_seed_tier}, amount=${_seed_amount}): {_exc}. '
+                    f'NO dedup claim committed — order remains retryable (chatbox /api/send-seed fallback can fire). '
+                    f'Dead-lettered to logs/blocked_seeds.jsonl.'
+                )
+                try:
+                    _failed_record = {
+                        'timestamp': datetime.now(timezone.utc).isoformat(),
+                        'order_id': order_id,
+                        'payer_email': payer_email,
+                        'payer_name': payer_name,
+                        'amount': _seed_amount,
+                        'tier': _seed_tier,
+                        'session_uuid': _page_session_uuid,
+                        'reason': f'AgentMail seed send failed in _fire_payment_seed: {_exc}',
+                        'requires_action': 'retry seed (order NOT claimed — chatbox /api/send-seed fallback or manual dispatch will fire)',
+                    }
+                    _failed_path = os.path.join(DEFAULT_LOG_DIR, 'blocked_seeds.jsonl')
+                    os.makedirs(os.path.dirname(_failed_path), exist_ok=True)
+                    with open(_failed_path, 'a') as _bf_t:
+                        _bf_t.write(_json.dumps(_failed_record) + '\n')
+                except Exception as _bj_err_t:
+                    logger.error(f'[payment-seed] Failed to append blocked_seeds.jsonl after send failure: {_bj_err_t}')
+                try:
+                    _send_telegram_notification(
+                        f'\U0001f6a8 PAYMENT SEED SEND FAILED\n'
+                        f'Order: {order_id}\n'
+                        f'Payer: {payer_name} ({payer_email})\n'
+                        f'Tier: {_seed_tier} (${_seed_amount})\n'
+                        f'Error: {_exc}\n'
+                        f'No dedup claim committed — chatbox fallback/retry can re-fire. '
+                        f'See logs/blocked_seeds.jsonl'
+                    )
+                except Exception:
+                    pass
+            finally:
+                # ALWAYS release the in-flight reservation (added by the
+                # launcher). On success the durable claim above already covers
+                # dedup; on ANY other exit (send failure, blocked-no-match,
+                # held-AI-name) the order becomes claimable again so the seed
+                # is never silently stranded.
+                if order_id:
+                    with _seed_inflight_lock:
+                        _payment_seed_inflight_orders.discard(order_id)
 
         # --- DOUBLE-FIRE GUARD (2026-06-07): suppress duplicate PayPal webhooks ---
         # PayPal can deliver the SAME order_id webhook twice. Without this guard the
@@ -1413,7 +1517,15 @@ def register_routes(app: Flask) -> None:
                         _fired_orders = set(json.load(_df))
                 except (FileNotFoundError, json.JSONDecodeError):
                     _fired_orders = set()
-                if order_id in _seeds_fired_for_orders or order_id in _fired_orders:
+                # CLAIM-AFTER-SEND (2026-06-11): an order whose seed thread is
+                # currently mid-send (in-flight) is treated as "in progress" —
+                # suppressed exactly like a durable duplicate to prevent a
+                # double-launch. A FAILED send releases the in-flight entry
+                # (see _fire_payment_seed finally-block) so it becomes
+                # claimable again.
+                with _seed_inflight_lock:
+                    _order_inflight = order_id in _payment_seed_inflight_orders
+                if order_id in _seeds_fired_for_orders or order_id in _fired_orders or _order_inflight:
                     _is_duplicate_webhook = True
                 elif _is_paid_first_order:
                     # === CE-SME PAID-FIRST: do NOT pre-claim the dedup lock here ===
@@ -1428,15 +1540,15 @@ def register_routes(app: Flask) -> None:
                     # stays False so the NEW-PAYMENT alarm still fires once for the payment.
                     pass
                 else:
-                    # Claim this order_id atomically (in-memory + persisted) BEFORE
-                    # firing, so a near-simultaneous duplicate is suppressed.
-                    _seeds_fired_for_orders.add(order_id)
-                    _fired_orders.add(order_id)
-                    try:
-                        with open(_pmt_dedup_file, 'w') as _df:
-                            json.dump(sorted(_fired_orders), _df)
-                    except Exception as _df_err:
-                        logger.warning(f'[payment-seed-dedup] Failed to persist fired order_id={order_id}: {_df_err}')
+                    # CLAIM-AFTER-SEND (2026-06-11): reserve the order_id
+                    # IN-FLIGHT only (was: durable pre-claim to the in-memory
+                    # set + persisted file BEFORE the thread even ran, which
+                    # made a failed send permanently unretryable). The durable
+                    # claim is committed inside _fire_payment_seed AFTER a
+                    # verified successful send. The in-flight reservation still
+                    # suppresses a near-simultaneous duplicate webhook.
+                    with _seed_inflight_lock:
+                        _payment_seed_inflight_orders.add(order_id)
 
         if _is_duplicate_webhook:
             logger.info(f'[payment-seed-dedup] Duplicate PayPal webhook suppressed for order_id={order_id} — NO 2nd seed, NO 2nd alarm')
@@ -1462,20 +1574,65 @@ def register_routes(app: Flask) -> None:
             else:
                 # CURRENT BEHAVIOR (unchanged, byte-for-byte): real orders get normal
                 # seed; sandbox/test get a marked test seed.
-                threading.Thread(target=_fire_payment_seed, kwargs={'is_test': is_sandbox_or_test}, daemon=True).start()
+                # SECURITY HARDENING (2026-06-11, finding E): if Thread(...).start()
+                # raises (thread exhaustion), the in-flight reservation added at
+                # launch would leak until restart — permanently sealing webhook
+                # retry AND the chatbox /api/send-seed fallback (the exact
+                # self-sealing class this build eliminates). Roll back the
+                # reservation, dead-letter, and alert loudly instead.
+                try:
+                    threading.Thread(target=_fire_payment_seed, kwargs={'is_test': is_sandbox_or_test}, daemon=True).start()
+                except Exception as _thr_exc:
+                    if order_id:
+                        # LEAF-LOCK RULE: _seed_inflight_lock only — no _file_lock
+                        # (or any other lock) is held or acquired inside it.
+                        with _seed_inflight_lock:
+                            _payment_seed_inflight_orders.discard(order_id)
+                    logger.error(
+                        f'[payment-seed] SEED THREAD LAUNCH FAILED for order={order_id} '
+                        f'(payer={payer_name} <{payer_email}>, tier={_seed_tier}, amount=${_seed_amount}): {_thr_exc}. '
+                        f'In-flight reservation rolled back — NO claim committed, order remains retryable '
+                        f'(duplicate webhook or chatbox /api/send-seed fallback can fire). '
+                        f'Dead-lettered to logs/blocked_seeds.jsonl.'
+                    )
+                    try:
+                        _failed_record = {
+                            'timestamp': datetime.now(timezone.utc).isoformat(),
+                            'order_id': order_id,
+                            'payer_email': payer_email,
+                            'payer_name': payer_name,
+                            'amount': _seed_amount,
+                            'tier': _seed_tier,
+                            'session_uuid': _page_session_uuid,
+                            'reason': f'seed thread launch failed in payment webhook (threading.Thread.start): {_thr_exc}',
+                            'requires_action': 'retry seed (reservation rolled back — webhook retry or chatbox /api/send-seed fallback will fire)',
+                        }
+                        _failed_path = os.path.join(DEFAULT_LOG_DIR, 'blocked_seeds.jsonl')
+                        os.makedirs(os.path.dirname(_failed_path), exist_ok=True)
+                        with open(_failed_path, 'a') as _bf_l:
+                            _bf_l.write(json.dumps(_failed_record) + '\n')
+                    except Exception as _bj_err_l:
+                        logger.error(f'[payment-seed] Failed to append blocked_seeds.jsonl after thread-launch failure: {_bj_err_l}')
+                    try:
+                        _send_telegram_notification(
+                            f'\U0001f6a8 PAYMENT SEED THREAD LAUNCH FAILED\n'
+                            f'Order: {order_id}\n'
+                            f'Payer: {payer_name} ({payer_email})\n'
+                            f'Tier: {_seed_tier} (${_seed_amount})\n'
+                            f'Error: {_thr_exc}\n'
+                            f'Reservation rolled back — retry/fallback can re-fire. '
+                            f'See logs/blocked_seeds.jsonl'
+                        )
+                    except Exception:
+                        pass
 
-            # Portal notification (AI name resolved inside background thread above)
-            _seed_msg = f'\n🌱 [SEED FIRED] {payer_name} — seed sent to Witness (PayPal trigger)'
-            try:
-                _sf = '/home/jared/projects/AI-CIV/aether/.current_session'
-                with open(_sf) as _f:
-                    _sn = _f.read().strip()
-                subprocess.Popen(
-                    ['tmux', 'send-keys', '-t', _sn, _seed_msg, ''],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-                )
-            except Exception:
-                pass
+            # NOTE (2026-06-11 claim-after-send): the portal "[SEED FIRED]"
+            # injection that used to fire HERE — unconditionally, before the
+            # seed thread had even attempted the send (and even for paid-first
+            # orders whose seed is deferred entirely) — now fires INSIDE
+            # _fire_payment_seed strictly AFTER a verified successful send.
+            # Paid-first deferred orders get their real SEED FIRED notification
+            # from _send_seed_core when /api/finish-wakeup fires the seed.
 
         # --- Payment notifications (tmux portal + Telegram, background threads) ---
         # DOUBLE-FIRE GUARD: suppress the "NEW PAYMENT" portal+Telegram alarm on a
@@ -2361,8 +2518,43 @@ def register_routes(app: Flask) -> None:
             resp.headers['Access-Control-Allow-Origin'] = '*'
             return resp, 422
 
-        # --- Idempotency guard: never send a seed twice for the same session_uuid ---
+        # === CLAIM-AFTER-SEND IN-FLIGHT GATE (2026-06-11) ===
+        # The uuid is NO LONGER pre-claimed into seed_sent_uuids.json before the
+        # send (pre-claim made a failed send permanently unretryable: every
+        # retry returned ok:true/duplicate forever). The claim now commits ONLY
+        # after a verified successful send, inside _send_seed_core_locked. This
+        # in-flight reservation closes the resulting race window: a concurrent
+        # request for the same uuid during the send sees the same
+        # duplicate-suppressed response the old pre-claim produced.
+        with _seed_inflight_lock:
+            if session_uuid in _seed_inflight_uuids:
+                logger.info(f'[send-seed] Duplicate seed suppressed for UUID={session_uuid} (send in-flight)')
+                resp = jsonify({'ok': True, 'message_id': 'duplicate-suppressed', 'duplicate': True})
+                resp.headers['Access-Control-Allow-Origin'] = '*'
+                return resp
+            _seed_inflight_uuids.add(session_uuid)
+        try:
+            return _send_seed_core_locked(
+                session_uuid, ai_name, human_name, human_email,
+                tier, order_id, is_sandbox, conversation,
+            )
+        finally:
+            # ALWAYS release the in-flight reservation: on success the durable
+            # uuid claim is already committed; on failure or an unexpected
+            # exception the uuid becomes retryable (never self-sealing).
+            with _seed_inflight_lock:
+                _seed_inflight_uuids.discard(session_uuid)
+
+    def _send_seed_core_locked(session_uuid, ai_name, human_name, human_email,
+                               tier, order_id, is_sandbox, conversation):
+        """Body of _send_seed_core, executed while session_uuid holds the
+        in-flight reservation (see _send_seed_core). CLAIM-AFTER-SEND: all
+        durable dedup state (seed_sent_uuids.json, _seeds_fired_for_orders),
+        the seed_sent audit row, and the SEED FIRED notifications commit ONLY
+        after a verified successful AgentMail send (_msg_id truthy)."""
+        # --- Idempotency guard (READ-ONLY): never send a seed twice for the same session_uuid ---
         seed_state_file = os.path.join(DEFAULT_LOG_DIR, 'seed_sent_uuids.json')
+        sent_uuids = []
         with _file_lock:
             try:
                 try:
@@ -2370,21 +2562,23 @@ def register_routes(app: Flask) -> None:
                         sent_uuids = json.load(_f)
                 except (FileNotFoundError, json.JSONDecodeError):
                     sent_uuids = []
-
-                if session_uuid in sent_uuids:
-                    logger.info(f'[send-seed] Duplicate seed suppressed for UUID={session_uuid}')
-                    resp = jsonify({'ok': True, 'message_id': 'duplicate-suppressed', 'duplicate': True})
-                    resp.headers['Access-Control-Allow-Origin'] = '*'
-                    return resp
-
-                sent_uuids.append(session_uuid)
-                with open(seed_state_file, 'w') as _f:
-                    json.dump(sent_uuids, _f)
             except Exception as _guard_err:
                 logger.warning(f'[send-seed] Idempotency check failed: {_guard_err}')
 
+        if session_uuid in sent_uuids:
+            logger.info(f'[send-seed] Duplicate seed suppressed for UUID={session_uuid}')
+            resp = jsonify({'ok': True, 'message_id': 'duplicate-suppressed', 'duplicate': True})
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            return resp
+
         # --- Order-level dedup: skip if payment seed already fired for this order_id ---
-        if order_id and order_id in _seeds_fired_for_orders:
+        # (2026-06-11) An order whose payment-seed thread is mid-send (in-flight)
+        # counts as "in progress" — same suppressed response. A FAILED payment
+        # seed releases its in-flight entry, so this fallback path becomes
+        # fireable again (that is the fix: failure must not seal the fallback).
+        with _seed_inflight_lock:
+            _pmt_order_inflight = bool(order_id) and order_id in _payment_seed_inflight_orders
+        if order_id and (order_id in _seeds_fired_for_orders or _pmt_order_inflight):
             logger.info(f'[send-seed] Suppressed — payment seed already fired for order_id={order_id} (session={session_uuid})')
             resp = jsonify({'ok': True, 'message_id': 'payment-seed-already-fired', 'duplicate': True})
             resp.headers['Access-Control-Allow-Origin'] = '*'
@@ -2484,6 +2678,7 @@ def register_routes(app: Flask) -> None:
 
         # Fire seed via AgentMail FROM aether-aiciv (onboarding inbox, reserved for this)
         _msg_id = None
+        _send_failure_reason = None
         try:
             import sys as _sys
             _tools_dir = os.path.dirname(os.path.abspath(__file__))
@@ -2540,12 +2735,91 @@ def register_routes(app: Flask) -> None:
                 attachments=[_attachment],
             )
             _msg_id = _result.message_id
-            logger.info(f'[send-seed] Chatbox seed (addendum) fired for UUID={session_uuid}, msg_id={_msg_id} — note: primary seed already fired on payment')
-            # Mark this order as seeded (dedup guard for double-fire protection)
-            if order_id:
-                _seeds_fired_for_orders.add(order_id)
         except Exception as _exc:
+            _send_failure_reason = f'{type(_exc).__name__}: {_exc}'
             logger.error(f'[send-seed] AgentMail send failed for UUID={session_uuid}: {_exc}')
+
+        # === FAIL-LOUD GATE (2026-06-11): falsy _msg_id (exception OR an
+        # AgentMail response without a message id) = send NOT verified. No
+        # dedup claim, no seed_sent audit row, no success notifications — the
+        # state stays fully retryable (an identical call re-attempts the send).
+        # Dead-letter + Telegram alert so a failure can never be silent again.
+        if not _msg_id:
+            if _send_failure_reason is None:
+                _send_failure_reason = 'AgentMail returned falsy message_id (send not confirmed)'
+            logger.error(
+                f'[send-seed] SEED SEND FAILED for UUID={session_uuid} '
+                f'(AI: {ai_name}, human: {human_name} <{human_email}>, order={order_id or "-"}, tier={tier}): '
+                f'{_send_failure_reason}. NO dedup claim, NO seed_sent row, NO success notifications — '
+                f'fully retryable. Dead-lettered to logs/blocked_seeds.jsonl.'
+            )
+            try:
+                _failed_record = {
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'order_id': order_id,
+                    'payer_email': human_email,
+                    'payer_name': human_name,
+                    'ai_name': ai_name,
+                    'tier': tier,
+                    'session_uuid': session_uuid,
+                    'reason': f'AgentMail seed send failed in _send_seed_core: {_send_failure_reason}',
+                    'requires_action': 'retry seed (uuid NOT claimed — an identical /api/send-seed or finish-wakeup retry will re-attempt)',
+                }
+                _failed_path = os.path.join(DEFAULT_LOG_DIR, 'blocked_seeds.jsonl')
+                os.makedirs(os.path.dirname(_failed_path), exist_ok=True)
+                with open(_failed_path, 'a') as _bf:
+                    _bf.write(json.dumps(_failed_record) + '\n')
+            except Exception as _bj_err:
+                logger.error(f'[send-seed] Failed to append blocked_seeds.jsonl after send failure: {_bj_err}')
+            try:
+                _send_telegram_notification(
+                    f'\U0001f6a8 SEED SEND FAILED (send-seed path)\n'
+                    f'UUID: {session_uuid}\n'
+                    f'AI: {ai_name} / Human: {human_name} ({human_email})\n'
+                    f'Tier: {tier} / Order: {order_id or "-"}\n'
+                    f'Error: {_send_failure_reason}\n'
+                    f'uuid NOT claimed — retry will re-attempt. See logs/blocked_seeds.jsonl'
+                )
+            except Exception:
+                pass
+            # SECURITY (2026-06-11, finding D): browser body is GENERIC — raw
+            # exception text can embed internal endpoints/filesystem paths.
+            # The detailed _send_failure_reason lives in logger.error,
+            # blocked_seeds.jsonl, and the Telegram alert above (ops-only).
+            resp = jsonify({
+                'ok': False,
+                'error': 'seed send failed, retry shortly',
+                'retryable': True,
+                'session_uuid': session_uuid,
+            })
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            return resp, 502
+
+        # === SUCCESS PATH (send verified: _msg_id truthy). Everything below is
+        # byte-identical to the pre-2026-06-11 success path — only the ORDERING
+        # changed (claims, audit row, notifications now commit AFTER the send).
+        logger.info(f'[send-seed] Chatbox seed (addendum) fired for UUID={session_uuid}, msg_id={_msg_id} — note: primary seed already fired on payment')
+        # Mark this order as seeded (dedup guard for double-fire protection)
+        if order_id:
+            _seeds_fired_for_orders.add(order_id)
+
+        # Claim the uuid into seed_sent_uuids.json — AFTER the verified send
+        # (was: pre-claimed before the send, which sealed failures forever).
+        with _file_lock:
+            try:
+                try:
+                    with open(seed_state_file, 'r') as _f:
+                        _sent_uuids_now = json.load(_f)
+                except (FileNotFoundError, json.JSONDecodeError):
+                    _sent_uuids_now = []
+                if session_uuid not in _sent_uuids_now:
+                    _sent_uuids_now.append(session_uuid)
+                    with open(seed_state_file, 'w') as _f:
+                        json.dump(_sent_uuids_now, _f)
+            except Exception as _claim_err:
+                # Seed DID send — log loudly; duplicate-protection degrades to
+                # the in-memory order dedup until this file is writable again.
+                logger.error(f'[send-seed] POST-SEND uuid claim write failed for UUID={session_uuid}: {_claim_err}')
 
         # Log to JSONL for auditability
         seed_log_file = os.path.join(DEFAULT_LOG_DIR, 'seed_events.jsonl')
@@ -3105,6 +3379,23 @@ def register_routes(app: Flask) -> None:
             finally:
                 conn.close()
 
+    def _fw_jti_is_consumed(jti):
+        """READ-ONLY replay check against consumed_tokens — does NOT claim.
+        Part of the DEFERRED-CLAIM design (2026-06-11): /api/finish-wakeup
+        consumes the jti ONLY after the seed dispatch succeeds, so an
+        already-consumed token must be rejected up front without burning
+        anything. Returns True if the jti has been durably consumed."""
+        import sqlite3
+        with _file_lock:
+            conn = sqlite3.connect(_FW_CLIENTS_DB_PATH, timeout=10)
+            try:
+                cur = conn.execute(
+                    'SELECT 1 FROM consumed_tokens WHERE jti = ? LIMIT 1', (jti,)
+                )
+                return cur.fetchone() is not None
+            finally:
+                conn.close()
+
     # CE-SME OPTION 2: onboarding state lives ONLY in the canonical D1 625dde70,
     # written via Chy's secret-gated worker endpoint (she owns the 625dde70 write).
     # This server NO LONGER writes onboarding_state to local SQLite — see the
@@ -3505,65 +3796,149 @@ def register_routes(app: Flask) -> None:
             _fw_cors(r)
             return r, 425  # Too Early — conversation not yet logged; retryable, token NOT burned
 
-        # --- (c) SINGLE-USE jti claim-lock (AFTER payment confirmed + conversation found) ---
-        claimed = _fw_claim_jti_once(
-            jti=jti, sub=sub, email=_seed_email, plan_id=pp_plan_id,
-            payment_ref=payment_ref, derived_tier=derived_tier,
-            iat=iat, exp=exp, ip=request.remote_addr,
-        )
-        if not claimed:
-            logger.info(f'[finish-wakeup] 409 replay — jti already consumed: {jti}')
-            return _err(409, 'token already used')
-
-        # --- (e-awakened) CANONICAL state transition -> 'awakened' (D1 625dde70 via
-        #     Chy's worker). Fired AFTER the JWT verified + jti claimed. Best-effort:
-        #     _post_onboarding_transition NEVER raises/blocks/reverses the critical
-        #     path (jti is already claimed; the transition is post-facto + idempotent).
-        _post_onboarding_transition(sub=sub, status='awakened', payment_ref=payment_ref)
-
-        # NOTE (CE-SME OPTION 2): the local-SQLite dual-write
-        # `_fw_advance_state_to_provisioning(payment_ref, derived_tier)` was REMOVED
-        # here. Onboarding state now lives ONLY in D1 625dde70 via Chy's endpoint
-        # (the 'provisioning' transition fires below, AFTER the seed dispatches).
-
-        # --- Fire the seed via the EXISTING send-seed path (OPTION b). NEVER calls
-        #     _fire_payment_seed. _send_seed_core honors the same dedup guards
-        #     (seed_sent_uuids.json + _seeds_fired_for_orders) so a replay or a
-        #     prior fire cannot double-seed. server_derived_tier OVERRIDES any tier.
-        _seed_data = {
-            'session_uuid': _lk_session_uuid,
-            'ai_name': _lk_ai_name,
-            'human_name': pp_human_name,
-            'human_email': _seed_email,
-            'order_id': payment_ref,
-            'is_sandbox': False,
-            'conversation': _lk_conversation,
-        }
+        # --- (c) SINGLE-USE jti — DEFERRED CLAIM (2026-06-11 claim-after-send) ---
+        # WHY deferred-claim instead of claim-then-rollback: the old ordering
+        # consumed the jti BEFORE seed dispatch, so a failed dispatch left the
+        # customer "paid, no AI, no retry" (single-use token burned). A rollback
+        # (DELETE the consumed row on failure) has its own unfixable race: a
+        # process crash between claim and rollback still strands the token.
+        # Deferred-claim is provably race-safe in THIS codebase because:
+        #   (a) /api/finish-wakeup is SINGLE-HOST by documented invariant (see
+        #       _fw_claim_jti_once docstring) — an in-process lock covers ALL
+        #       concurrent requests for this route;
+        #   (b) the _fw_jti_inflight set (leaf-lock guarded) atomically rejects
+        #       a second concurrent request with the same jti for the entire
+        #       send window (no double-dispatch, no double-claim);
+        #   (c) the durable INSERT OR IGNORE claim after the send remains the
+        #       final arbiter, and the seed path's own dedup guards
+        #       (seed_sent_uuids.json + order-level) make even a hypothetical
+        #       double-pass unable to double-seed.
+        with _seed_inflight_lock:
+            if jti in _fw_jti_inflight:
+                logger.info(f'[finish-wakeup] 409 concurrent in-flight — jti already being processed: {jti}')
+                return _err(409, 'token already used')
+            _fw_jti_inflight.add(jti)
         try:
-            _send_seed_core(_seed_data, server_derived_tier=derived_tier)
-        except Exception as e:
-            logger.error(f'[finish-wakeup] seed dispatch failed for {payment_ref}: {e}')
-            # Token already consumed + state advanced; report partial success so the
-            # client does not retry-loop. Seed failure is alarmed via logger.error.
-            r = jsonify({'ok': True, 'tier': derived_tier, 'seed': 'dispatch_error'})
+            # Read-only durable replay check. The jti is NOT consumed yet — a
+            # transient seed failure below leaves it usable for retry.
+            if _fw_jti_is_consumed(jti):
+                logger.info(f'[finish-wakeup] 409 replay — jti already consumed: {jti}')
+                return _err(409, 'token already used')
+
+            # --- (e-awakened) CANONICAL state transition -> 'awakened' (D1 625dde70 via
+            #     Chy's worker). Fired AFTER the JWT verified + jti reserved in-flight.
+            #     Best-effort: _post_onboarding_transition NEVER raises/blocks/reverses
+            #     the critical path (the transition is post-facto + idempotent, so a
+            #     seed-failure retry re-firing 'awakened' is safe).
+            _post_onboarding_transition(sub=sub, status='awakened', payment_ref=payment_ref)
+
+            # NOTE (CE-SME OPTION 2): the local-SQLite dual-write
+            # `_fw_advance_state_to_provisioning(payment_ref, derived_tier)` was REMOVED
+            # here. Onboarding state now lives ONLY in D1 625dde70 via Chy's endpoint
+            # (the 'provisioning' transition fires below, AFTER the seed dispatches).
+
+            # --- Fire the seed via the EXISTING send-seed path (OPTION b). NEVER calls
+            #     _fire_payment_seed. _send_seed_core honors the same dedup guards
+            #     (seed_sent_uuids.json + _seeds_fired_for_orders) so a replay or a
+            #     prior fire cannot double-seed. server_derived_tier OVERRIDES any tier.
+            _seed_data = {
+                'session_uuid': _lk_session_uuid,
+                'ai_name': _lk_ai_name,
+                'human_name': pp_human_name,
+                'human_email': _seed_email,
+                'order_id': payment_ref,
+                'is_sandbox': False,
+                'conversation': _lk_conversation,
+            }
+            _seed_ok = False
+            _seed_fail_reason = ''
+            try:
+                _core_result = _send_seed_core(_seed_data, server_derived_tier=derived_tier)
+                # _send_seed_core (fail-loud refactor 2026-06-11) returns a Flask
+                # Response on success/duplicate and a (Response, status) tuple on
+                # validation/send failure. Inspect the HONEST result — the old code
+                # discarded it, which made the dispatch_error branch unreachable.
+                if isinstance(_core_result, tuple):
+                    _core_resp, _core_status = _core_result[0], _core_result[1]
+                else:
+                    _core_resp, _core_status = _core_result, 200
+                _core_payload = {}
+                try:
+                    _core_payload = _core_resp.get_json(silent=True) or {}
+                except Exception:
+                    pass
+                _seed_ok = (_core_status < 400) and bool(_core_payload.get('ok'))
+                if not _seed_ok:
+                    _seed_fail_reason = str(_core_payload.get('error') or f'send-seed returned HTTP {_core_status}')
+            except Exception as e:
+                _seed_fail_reason = f'{type(e).__name__}: {e}'
+
+            if not _seed_ok:
+                # HONEST FAILURE (2026-06-11): no fake 'provisioning', no jti burn.
+                # The page shows a real error; the SAME token retries the whole
+                # flow (PayPal re-confirm -> seed) because the jti was never
+                # durably consumed. _send_seed_core already dead-lettered +
+                # alerted for send failures; this adds the finish-wakeup context.
+                logger.error(
+                    f'[finish-wakeup] SEED DISPATCH FAILED sub_id={sub} payment_ref={payment_ref} '
+                    f'email={_seed_email}: {_seed_fail_reason}. jti NOT consumed — customer/page can retry. '
+                    f'Onboarding state NOT advanced to provisioning.'
+                )
+                try:
+                    _send_telegram_notification(
+                        f'\U0001f6a8 FINISH-WAKEUP SEED FAILED\n'
+                        f'sub={sub}\n'
+                        f'payment_ref={payment_ref}\n'
+                        f'email={_seed_email}\n'
+                        f'Reason: {_seed_fail_reason}\n'
+                        f'jti NOT consumed — customer retry possible. See logs/blocked_seeds.jsonl'
+                    )
+                except Exception:
+                    pass
+                r = jsonify({
+                    'ok': False,
+                    'state': 'seed_failed',
+                    'error': 'seed dispatch failed, retry shortly',
+                    'retryable': True,
+                })
+                _fw_cors(r)
+                return r, 502
+
+            # Seed verified dispatched — NOW durably consume the single-use jti.
+            claimed = _fw_claim_jti_once(
+                jti=jti, sub=sub, email=_seed_email, plan_id=pp_plan_id,
+                payment_ref=payment_ref, derived_tier=derived_tier,
+                iat=iat, exp=exp, ip=request.remote_addr,
+            )
+            if not claimed:
+                # Unreachable while the in-flight reservation is held on a single
+                # host; log loudly if it ever fires (seed already sent once — the
+                # seed path's dedup guards prevented any double-seed).
+                logger.error(
+                    f'[finish-wakeup] post-send jti claim found {jti} ALREADY consumed — '
+                    f'investigate (single-host invariant violated?); seed dedup guards held, no double-seed'
+                )
+
+            # --- (e-provisioning) CANONICAL state transition -> 'provisioning' (D1
+            #     625dde70 via Chy's worker). Fired AFTER the ONE seed dispatched.
+            #     Best-effort: never raises/blocks/reverses (seed already fired; the
+            #     transition is post-facto + idempotent-retry-safe).
+            #     NOTE: the 'live' transition is fired SEPARATELY by agentmail_monitor on
+            #     portal-confirm — OUT OF SCOPE here.
+            _post_onboarding_transition(sub=sub, status='provisioning', payment_ref=payment_ref)
+
+            logger.info(
+                f'[finish-wakeup] OK sub={payment_ref} tier={derived_tier} '
+                f'email={_seed_email} jti={jti} ai_name={_lk_ai_name} -> seed fired via send-seed, state=provisioning'
+            )
+            r = jsonify({'ok': True, 'tier': derived_tier, 'state': 'provisioning'})
             _fw_cors(r)
-            return r, 202
-
-        # --- (e-provisioning) CANONICAL state transition -> 'provisioning' (D1
-        #     625dde70 via Chy's worker). Fired AFTER the ONE seed dispatched.
-        #     Best-effort: never raises/blocks/reverses (seed already fired; the
-        #     transition is post-facto + idempotent-retry-safe).
-        #     NOTE: the 'live' transition is fired SEPARATELY by agentmail_monitor on
-        #     portal-confirm — OUT OF SCOPE here.
-        _post_onboarding_transition(sub=sub, status='provisioning', payment_ref=payment_ref)
-
-        logger.info(
-            f'[finish-wakeup] OK sub={payment_ref} tier={derived_tier} '
-            f'email={_seed_email} jti={jti} ai_name={_lk_ai_name} -> seed fired via send-seed, state=provisioning'
-        )
-        r = jsonify({'ok': True, 'tier': derived_tier, 'state': 'provisioning'})
-        _fw_cors(r)
-        return r
+            return r
+        finally:
+            # ALWAYS release the in-flight jti reservation: on success the
+            # durable claim is committed; on failure the jti is free to retry.
+            with _seed_inflight_lock:
+                _fw_jti_inflight.discard(jti)
 
     # -------------------------------------------------------------------------
     # /api/held-seeds  (Diagnostic endpoint)
