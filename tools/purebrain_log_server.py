@@ -3374,6 +3374,20 @@ def register_routes(app: Flask) -> None:
         if not token and request.is_json:
             token = ((request.get_json(silent=True) or {}).get('token') or '').strip()
         if not token:
+            # OBSERVABILITY (2026-06-11): this branch used to 401 SILENTLY, which made
+            # Jared's live /sme-awakening failures (00:27:45 / 00:43:24) undiagnosable
+            # from the log. Log the SHAPE of the failure (header presence/length/scheme)
+            # but NEVER the token value itself.
+            _body_token_field = False
+            try:
+                _body_token_field = bool(request.is_json and (request.get_json(silent=True) or {}).get('token') is not None)
+            except Exception:
+                pass
+            logger.warning(
+                f'[finish-wakeup] 401 missing token: auth_header_present={bool(auth)} '
+                f'auth_header_len={len(auth)} bearer_scheme={auth.startswith("Bearer ")} '
+                f'body_token_field={_body_token_field} origin={request.headers.get("Origin", "-")}'
+            )
             return _err(401, 'missing token')
 
         secret = os.environ.get('ONBOARDING_TOKEN_SECRET', '')
@@ -3389,19 +3403,35 @@ def register_routes(app: Flask) -> None:
             return _err(401, 'invalid token signature')
 
         # --- (b) Claim validation: aud / iss / exp ---
+        # OBSERVABILITY (2026-06-11): EVERY 401 below now logs its reason + safe claim
+        # context (payment_ref / aud / iss / timestamps are NOT secrets; the token
+        # value itself is NEVER logged). Before this, all claim-validation 401s were
+        # silent — the live failure root cause (lifetime cap) was invisible in the log.
         now = int(datetime.now(timezone.utc).timestamp())
+        _pref_safe = str(claims.get('payment_ref') or '-')
         if claims.get('aud') != 'finish-wakeup':
+            logger.warning(f'[finish-wakeup] 401 wrong audience: aud={claims.get("aud")!r} payment_ref={_pref_safe}')
             return _err(401, 'wrong audience')
         if claims.get('iss') != 'ce-sme':
+            logger.warning(f'[finish-wakeup] 401 wrong issuer: iss={claims.get("iss")!r} payment_ref={_pref_safe}')
             return _err(401, 'wrong issuer')
         iat = claims.get('iat')
         exp = claims.get('exp')
         if not isinstance(exp, int) or not isinstance(iat, int):
+            logger.warning(f'[finish-wakeup] 401 missing/non-int iat/exp: iat_type={type(iat).__name__} exp_type={type(exp).__name__} payment_ref={_pref_safe}')
             return _err(401, 'missing iat/exp')
         if exp <= now:
+            logger.warning(f'[finish-wakeup] 401 token expired: exp={exp} now={now} (expired {now - exp}s ago) payment_ref={_pref_safe}')
             return _err(401, 'token expired')
-        if exp - iat > 1800:
-            return _err(401, 'token lifetime exceeds 30min')
+        # CE-SME TTL CONTRACT (amended 2026-06-11): the mint side (Chy, ce-sme-production
+        # worker) extended token life to 60min so the naming ceremony cannot outlive the
+        # token. The old 1800s cap silently 401'd Jared's live run twice (token minted
+        # 00:15:57 exp 01:15:57 = 3600s lifetime; reproduced + log-proven 2026-06-11).
+        # Cap is now 3900s (60min mint + clock slack). `exp` is still strictly enforced
+        # and `jti` is single-use, so this bounds mint-policy drift, not replay exposure.
+        if exp - iat > 3900:
+            logger.warning(f'[finish-wakeup] 401 token lifetime {exp - iat}s exceeds 3900s cap payment_ref={_pref_safe}')
+            return _err(401, 'token lifetime exceeds limit')
 
         jti = (claims.get('jti') or '').strip()
         # CE-SME PROD FIX: coerce sub to str — Chy's clients.id is an INTEGER PK, so her
@@ -3414,6 +3444,7 @@ def register_routes(app: Flask) -> None:
         payment_ref = (claims.get('payment_ref') or '').strip()
         session_uuid_hint = (claims.get('session_uuid') or claims.get('sessionUuid') or '').strip()
         if not jti or not payment_ref:
+            logger.warning(f'[finish-wakeup] 401 missing jti or payment_ref: jti_present={bool(jti)} payment_ref_present={bool(payment_ref)} sub={sub or "-"}')
             return _err(401, 'missing jti or payment_ref')
 
         # --- (d) DEFENSE IN DEPTH: re-fetch PayPal, confirm ACTIVE + plan match ---
