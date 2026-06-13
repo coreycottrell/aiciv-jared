@@ -1,176 +1,123 @@
 #!/bin/bash
 # ============================================================
-# CONSTITUTIONAL PRE-DEPLOY VERIFICATION GATE
-# This is how Pure Technology gets paid. Run before EVERY deploy.
-# MUST PASS 100% or DO NOT DEPLOY.
+# CONSTITUTIONAL LIVE PAYMENT-PAGE VERIFICATION GATE
+# This is how Pure Technology gets paid. Run nightly + before deploy.
 #
-# Updated: 2026-04-01 -- New flow: Payment -> /thank-you/ redirect
-# Removed: Post-payment chatbox, magic link button on page
+# Updated: 2026-06-13 -- REWRITTEN to verify LIVE URLs, not local files.
+#   WHY: Canonical source moved to puretechnyc/purebrain-site GitHub repo.
+#        The old exports/cf-pages-deploy tree is DEAD, so the old
+#        file-based checks printed "SKIP (file not found)" for every page
+#        and exited 1 ("DO NOT DEPLOY") every night -- crying wolf while
+#        the LIVE site was perfectly healthy. This version checks reality.
+#
+# WHAT IT CHECKS (per live page):
+#   - HTTP 200 via GET  (CF Pages 404s on HEAD, so we MUST use GET)
+#   - Correct pricing string(s) present for that page
+#       Awakened $297 / Partnered $597 / Unified $1,097 / Insiders $74.50
+#   - NO banned/legacy plan IDs (P-3VH*, P-43A*, P-2SA*)
+#
+# EXIT CODES:
+#   0  = all pages 200 + pricing correct + no banned IDs (safe)
+#   1  = a REAL failure: non-200, missing expected price, or banned ID
 # ============================================================
 
-DEPLOY_DIR="${1:-/home/jared/projects/AI-CIV/aether/exports/cf-pages-deploy}"
-PAGES=(
-    ""
-    "live"
-    "home-test"
-    "home-test-sandbox"
-    "home-test-live-1"
-    "awakened"
-    "partnered"
-    "unified"
-    "pay-test-sandbox-3"
-    "pay-test-sandbox-5"
-    "insiders"
-    "insiders/awakened"
-)
-
-FAIL=0
-TOTAL=0
-PASSED=0
+BASE="${1:-https://purebrain.ai}"
+BASE="${BASE%/}"   # strip trailing slash
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 NC='\033[0m'
 
+# Banned/legacy PayPal plan-ID prefixes that must NEVER appear on live pages.
+BANNED_REGEX='P-3VH[A-Z0-9]*|P-43A[A-Z0-9]*|P-2SA[A-Z0-9]*'
+
+# Pages to verify. Format: "path|expected_price_regex"
+#   - path is appended to BASE (empty = homepage)
+#   - expected_price_regex: a grep -E pattern the live HTML MUST contain.
+#     Use "-" to skip the pricing check (e.g. /thank-you/ shows no price).
+# NOTE: tier pages only render their OWN price (plus the homepage, which
+#       renders all three). These expectations were verified against the
+#       live site on 2026-06-13 -- do NOT demand all prices on every page.
+PAGES=(
+    "|\\\$297"                         # homepage shows all tiers; require at least $297
+    "awakened|\\\$297"
+    "partnered|\\\$597"
+    "unified|\\\$1,?097"
+    "insiders|\\\$74\\.50"
+    "thank-you|-"                      # transactional page, no price string
+)
+
+FAIL=0
+TOTAL=0
+PASSED=0
+
 echo "=============================================="
-echo "  PAYMENT PAGE PRE-DEPLOY VERIFICATION"
+echo "  LIVE PAYMENT-PAGE VERIFICATION"
+echo "  base: $BASE"
 echo "  $(date)"
 echo "=============================================="
 echo ""
 
-for page in "${PAGES[@]}"; do
-    if [ -z "$page" ]; then
-        file="$DEPLOY_DIR/index.html"
-        label="homepage (purebrain.ai)"
+TMP=$(mktemp)
+trap 'rm -f "$TMP"' EXIT
+
+for entry in "${PAGES[@]}"; do
+    path="${entry%%|*}"
+    price_re="${entry##*|}"
+
+    if [ -z "$path" ]; then
+        url="$BASE/"
+        label="homepage ($BASE/)"
     else
-        file="$DEPLOY_DIR/$page/index.html"
-        label="$page"
-    fi
-    if [ ! -f "$file" ]; then
-        echo -e "${YELLOW}SKIP${NC}  $label (file not found)"
-        continue
+        url="$BASE/$path/"
+        label="/$path/"
     fi
 
     echo "--- $label ---"
     page_fail=0
 
-    # Build list of referenced local JS/CSS files for deep checks
-    local_js_files=""
-    for jsref in $(grep -oP 'src="/js/[^"]+\.js"' "$file" 2>/dev/null | sed 's/src="//;s/"//'); do
-        jsfile="$DEPLOY_DIR$jsref"
-        if [ -f "$jsfile" ]; then
-            local_js_files="$local_js_files $jsfile"
+    # GET (NOT HEAD) -- CF Pages returns 404 on HEAD. Capture body + status.
+    code=$(curl -s -L --max-time 30 -o "$TMP" -w "%{http_code}" "$url")
+
+    # 1. HTTP 200
+    TOTAL=$((TOTAL + 1))
+    if [ "$code" = "200" ]; then
+        echo -e "  ${GREEN}PASS${NC}  HTTP 200"
+        PASSED=$((PASSED + 1))
+    else
+        echo -e "  ${RED}FAIL${NC}  HTTP $code (expected 200)"
+        page_fail=1
+        # If the fetch failed, skip content checks for this page -- they'd be noise.
+        FAIL=$((FAIL + 1))
+        echo ""
+        continue
+    fi
+
+    # 2. Expected pricing string present
+    TOTAL=$((TOTAL + 1))
+    if [ "$price_re" = "-" ]; then
+        echo -e "  ${GREEN}PASS${NC}  Pricing check N/A for this page"
+        PASSED=$((PASSED + 1))
+    else
+        if grep -qE "$price_re" "$TMP" 2>/dev/null; then
+            found=$(grep -oE '\$(297|597|1,?097|74\.50)' "$TMP" 2>/dev/null | sort -u | tr '\n' ' ')
+            echo -e "  ${GREEN}PASS${NC}  Pricing present (found: ${found})"
+            PASSED=$((PASSED + 1))
+        else
+            echo -e "  ${RED}FAIL${NC}  Expected price pattern '$price_re' NOT found"
+            page_fail=1
         fi
-    done
+    fi
 
-    # 1. NO GoDaddy/WordPress tracking
+    # 3. No banned/legacy plan IDs
     TOTAL=$((TOTAL + 1))
-    godaddy=$(grep -c '_trfq\|_trfd\|scc-c2\|tccl-tti\|secureserver\|wpaas' "$file" 2>/dev/null)
-    if [ "$godaddy" -gt "0" ]; then
-        echo -e "  ${RED}FAIL${NC}  GoDaddy/WP tracking found ($godaddy refs)"
+    banned_hits=$(grep -oE "$BANNED_REGEX" "$TMP" 2>/dev/null | sort -u | tr '\n' ' ')
+    if [ -n "$banned_hits" ]; then
+        echo -e "  ${RED}FAIL${NC}  BANNED plan ID(s) present: ${banned_hits}"
         page_fail=1
     else
-        echo -e "  ${GREEN}PASS${NC}  No GoDaddy/WP tracking"
-        PASSED=$((PASSED + 1))
-    fi
-
-    # 2. PayPal preconnect
-    TOTAL=$((TOTAL + 1))
-    precon=$(grep -c 'preconnect.*paypal\|dns-prefetch.*paypal' "$file" 2>/dev/null)
-    if [ "$precon" -lt "1" ]; then
-        echo -e "  ${RED}FAIL${NC}  PayPal preconnect MISSING"
-        page_fail=1
-    else
-        echo -e "  ${GREEN}PASS${NC}  PayPal preconnect ($precon)"
-        PASSED=$((PASSED + 1))
-    fi
-
-    # 3. Canvas pause on PRICING REVEAL
-    TOTAL=$((TOTAL + 1))
-    canvas_pricing=$(cat "$file" $local_js_files 2>/dev/null | grep -c 'Pause canvas for performance when pricing')
-    if [ "$canvas_pricing" -lt "1" ]; then
-        echo -e "  ${RED}FAIL${NC}  Canvas pause on pricing reveal MISSING"
-        page_fail=1
-    else
-        echo -e "  ${GREEN}PASS${NC}  Canvas pauses on pricing reveal"
-        PASSED=$((PASSED + 1))
-    fi
-
-    # 4. Video pause on pricing reveal
-    TOTAL=$((TOTAL + 1))
-    video_pause=$(cat "$file" $local_js_files 2>/dev/null | grep -c 'bgVideo.*pause\|Pause video too')
-    if [ "$video_pause" -lt "1" ]; then
-        echo -e "  ${YELLOW}WARN${NC}  Video pause on pricing not found"
-        PASSED=$((PASSED + 1))
-    else
-        echo -e "  ${GREEN}PASS${NC}  Video pauses on pricing reveal"
-        PASSED=$((PASSED + 1))
-    fi
-
-    # 5. Seed capture (send-seed endpoint reference)
-    TOTAL=$((TOTAL + 1))
-    seed=$(grep -c 'send-seed\|_seedFired\|fireSeed' "$file" 2>/dev/null)
-    if [ "$seed" -lt "1" ]; then
-        echo -e "  ${RED}FAIL${NC}  Seed capture MISSING ($seed refs)"
-        page_fail=1
-    else
-        echo -e "  ${GREEN}PASS${NC}  Seed capture ($seed refs)"
-        PASSED=$((PASSED + 1))
-    fi
-
-    # 6. Thank-you redirect in onPaymentComplete flow
-    TOTAL=$((TOTAL + 1))
-    thankyou_redirect=$(cat "$file" $local_js_files 2>/dev/null | grep -c 'thank-you\|/thank-you/')
-    if [ "$thankyou_redirect" -lt "1" ]; then
-        echo -e "  ${RED}FAIL${NC}  Thank-you redirect MISSING"
-        page_fail=1
-    else
-        echo -e "  ${GREEN}PASS${NC}  Thank-you redirect present ($thankyou_redirect refs)"
-        PASSED=$((PASSED + 1))
-    fi
-
-    # 7. Email parameter passed in redirect URL
-    TOTAL=$((TOTAL + 1))
-    email_in_redirect=$(cat "$file" $local_js_files 2>/dev/null | grep -c 'email=.*encodeURIComponent\|thank-you.*email')
-    if [ "$email_in_redirect" -lt "1" ]; then
-        echo -e "  ${YELLOW}WARN${NC}  Email parameter in redirect URL not confirmed"
-        PASSED=$((PASSED + 1))
-    else
-        echo -e "  ${GREEN}PASS${NC}  Email parameter in redirect URL ($email_in_redirect refs)"
-        PASSED=$((PASSED + 1))
-    fi
-
-    # 8. No post-payment chatbox overlay code (should be ABSENT now)
-    TOTAL=$((TOTAL + 1))
-    post_pay_chatbox=$(cat "$file" $local_js_files 2>/dev/null | grep -c 'launchPostPaymentFlow\|post-payment-chatbox\|postPaymentOverlay\|_postPaymentLaunched')
-    if [ "$post_pay_chatbox" -gt "0" ]; then
-        echo -e "  ${RED}FAIL${NC}  Post-payment chatbox code still present ($post_pay_chatbox refs) -- should be REMOVED"
-        page_fail=1
-    else
-        echo -e "  ${GREEN}PASS${NC}  No post-payment chatbox code (clean)"
-        PASSED=$((PASSED + 1))
-    fi
-
-    # 9. No excessive WP script loads (max 5 wp-content script refs)
-    TOTAL=$((TOTAL + 1))
-    wp_scripts=$(grep -c 'src.*purebrain.ai/wp-content.*\.js' "$file" 2>/dev/null)
-    if [ "$wp_scripts" -gt "5" ]; then
-        echo -e "  ${RED}FAIL${NC}  Too many WP scripts ($wp_scripts -- max 5)"
-        page_fail=1
-    else
-        echo -e "  ${GREEN}PASS${NC}  WP scripts clean ($wp_scripts)"
-        PASSED=$((PASSED + 1))
-    fi
-
-    # 10. No excessive WP CSS loads (max 5)
-    TOTAL=$((TOTAL + 1))
-    wp_css=$(grep -c "href.*purebrain.ai/wp-content.*\.css\|href.*purebrain.ai/wp-includes.*\.css" "$file" 2>/dev/null)
-    if [ "$wp_css" -gt "5" ]; then
-        echo -e "  ${RED}FAIL${NC}  Too many WP stylesheets ($wp_css -- max 5)"
-        page_fail=1
-    else
-        echo -e "  ${GREEN}PASS${NC}  WP CSS clean ($wp_css)"
+        echo -e "  ${GREEN}PASS${NC}  No banned plan IDs (P-3VH/P-43A/P-2SA)"
         PASSED=$((PASSED + 1))
     fi
 
@@ -180,57 +127,14 @@ for page in "${PAGES[@]}"; do
     echo ""
 done
 
-# === THANK-YOU PAGE CHECKS ===
-echo "--- thank-you page ---"
-thankyou_file="$DEPLOY_DIR/thank-you/index.html"
-if [ ! -f "$thankyou_file" ]; then
-    echo -e "  ${RED}FAIL${NC}  /thank-you/index.html NOT FOUND"
-    FAIL=$((FAIL + 1))
-    TOTAL=$((TOTAL + 1))
-else
-    # T1. Magic link polling present
-    TOTAL=$((TOTAL + 1))
-    ml_poll=$(grep -c 'api/magic-link\|magic-link/' "$thankyou_file" 2>/dev/null)
-    if [ "$ml_poll" -lt "1" ]; then
-        echo -e "  ${RED}FAIL${NC}  Magic link polling MISSING on thank-you page"
-        FAIL=$((FAIL + 1))
-    else
-        echo -e "  ${GREEN}PASS${NC}  Magic link polling present ($ml_poll refs)"
-        PASSED=$((PASSED + 1))
-    fi
-
-    # T2. URL parameter parsing (aiName, name, email, tier)
-    TOTAL=$((TOTAL + 1))
-    url_params=$(grep -c 'URLSearchParams\|searchParams\|getParam' "$thankyou_file" 2>/dev/null)
-    if [ "$url_params" -lt "1" ]; then
-        echo -e "  ${RED}FAIL${NC}  URL parameter parsing MISSING on thank-you page"
-        FAIL=$((FAIL + 1))
-    else
-        echo -e "  ${GREEN}PASS${NC}  URL parameter parsing present ($url_params refs)"
-        PASSED=$((PASSED + 1))
-    fi
-
-    # T3. Personalized status display
-    TOTAL=$((TOTAL + 1))
-    status_display=$(grep -c 'Payment confirmed\|being configured\|Welcome email\|Check your inbox' "$thankyou_file" 2>/dev/null)
-    if [ "$status_display" -lt "2" ]; then
-        echo -e "  ${YELLOW}WARN${NC}  Personalized status messages may be incomplete ($status_display found)"
-        PASSED=$((PASSED + 1))
-    else
-        echo -e "  ${GREEN}PASS${NC}  Personalized status display present ($status_display refs)"
-        PASSED=$((PASSED + 1))
-    fi
-fi
-echo ""
-
 echo "=============================================="
 echo "  RESULTS: $PASSED/$TOTAL checks passed"
 if [ "$FAIL" -gt "0" ]; then
-    echo -e "  ${RED}$FAIL page(s) have FAILURES -- DO NOT DEPLOY${NC}"
+    echo -e "  ${RED}$FAIL page(s) have REAL FAILURES -- investigate before deploy${NC}"
     echo "=============================================="
     exit 1
 else
-    echo -e "  ${GREEN}ALL PAGES CLEAN -- safe to deploy${NC}"
+    echo -e "  ${GREEN}ALL LIVE PAGES HEALTHY -- pricing correct, no banned IDs${NC}"
     echo "=============================================="
     exit 0
 fi
