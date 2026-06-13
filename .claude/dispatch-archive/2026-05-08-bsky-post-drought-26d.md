@@ -28,3 +28,6 @@ Sub-agent restraint: This BOOP cannot dispatch (can't spawn sub-agents). Aether'
 ## State
 - `.claude/bsky_daily_counts.json` updated
 - `.claude/bsky_last_check.txt` updated to 2026-05-08T10:55:59Z
+
+---
+RESOLVED 2026-06-11 by bsky-presence-boop: drought broken at day 60. Posted Compound Week blog thread (https://bsky.app/profile/purebrain.ai/post/3mnyruiexpk2p). Root cause: no posting BOOP scheduled + no registry. Fix: registry created at .claude/registries/bluesky-registry.md with 4 more pending posts; presence-boop now drains queue (1 thread/day max per bsky-safety).

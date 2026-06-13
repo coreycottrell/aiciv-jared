@@ -24,6 +24,10 @@ Whitelisted senders (auto-notify + flagged for AI response):
 Usage:
   python3 tools/agentmail_general_monitor.py
 
+  # Single check with 30s timeout (safe for BOOP cycles):
+  python3 tools/agentmail_general_monitor.py --check-only
+  python3 tools/agentmail_general_monitor.py --check-only --timeout 20
+
 Background (nohup):
   nohup python3 tools/agentmail_general_monitor.py >> logs/agentmail_general_monitor.log 2>&1 &
 
@@ -37,6 +41,7 @@ Date: 2026-03-20
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -70,6 +75,31 @@ WHITELIST = {
     "acg-aiciv@agentmail.to",
     "metis.pa.mh@gmail.com",  # Metis - General Counsel AI (Michael Hancock)
     "mthancock@gmail.com",  # Michael Hancock - General Counsel (human)
+    "anchoraiciv@agentmail.to",  # Anchor - AI CIV
+    "flux.civ@agentmail.to",  # Flux - AI CIV (Command Center)
+    # PT team humans — synced from team-comms-whitelist skill
+    # (sheet 1HALg8Vxu-LtS6OVq_CeO1gT4vFBUKxjtyKpJcTKM_0E), dispatch 2026-05-05
+    "jared@puretechnology.nyc",  # Jared Sanborn - CEO (constitutional primary)
+    "coreycmusic@gmail.com",  # Corey Cottrell - Co-founder
+    "melanie@puretechnology.nyc",  # Melanie Salvador - Vice-Chair
+    "melanie@makrvf.com",  # Melanie Salvador - alt
+    "russell@puretechnology.nyc",  # Russell Korus - Sister CIV/Advisory
+    "ahsen@puretechnology.nyc",  # Ahsen Awan - VP Product
+    "alex.seant@puretechnology.nyc",  # Alex Seant - Sr Tech Eng
+    "jsmith@puretechnology.nyc",  # John Smith - VP Sales
+    "philbliss@blissforresults.com",  # Phil Bliss - CMO
+    "mdaser@puretechnology.nyc",  # Mike Daser - SVP HR
+    "robert.orlowski@puretechnology.nyc",  # Robert Orlowski - SVP Marketing
+    "nathan@puremarketing.ai",  # Nathan Olson - Pres Marketing
+    "nathan@puretechnology.nyc",  # Nathan Olson - alt
+    "fasmar@cynoratech.com",  # Faris Asmar - CSO
+    "farisasmar@hotmail.com",  # Faris Asmar - alt
+    "waqas@puretechnology.nyc",  # Waqas - Prodigy
+    "zafeer@puretechnology.nyc",  # Zafeer - Prodigy
+    "shahbaz@puretechnology.nyc",  # Shahbaz - Prodigy
+    "natasha@puretechnology.nyc",  # Natasha Green
+    "ashley@puretechnology.nyc",  # Ashley Tom
+    "support@puremarketing.ai",  # Team support inbox
 }
 
 # ─── Logging ─────────────────────────────────────────────────────────────────
@@ -361,6 +391,62 @@ def process_new_messages(seen: set) -> tuple[set, int]:
     return seen, new_count
 
 
+# ─── Timeout Enforcement (for --check-only mode) ────────────────────────────
+
+class TimeoutError(Exception):
+    """Raised when --check-only exceeds its timeout."""
+    pass
+
+
+def _timeout_handler(signum, frame):
+    raise TimeoutError("AgentMail check-only exceeded timeout")
+
+
+# ─── Check-Only Mode ─────────────────────────────────────────────────────────
+
+def run_check_only(timeout_seconds: int = 30) -> int:
+    """Single poll cycle with strict timeout. Returns exit code.
+
+    Designed for BOOP cycle invocation:
+      python3 tools/agentmail_general_monitor.py --check-only --timeout 30
+
+    Guarantees process exit within timeout_seconds regardless of API state.
+    Returns 0 on success, 1 on error, 2 on timeout.
+    """
+    # Install SIGALRM-based hard timeout (Linux only, but that's our platform)
+    signal.signal(signal.SIGALRM, _timeout_handler)
+    signal.alarm(timeout_seconds)
+
+    try:
+        log.info(f"AgentMail check-only mode (timeout={timeout_seconds}s)")
+
+        seen = load_seen_ids()
+        is_fresh = len(seen) == 0
+
+        if is_fresh:
+            log.info("Fresh state — seeding from existing inbox")
+            seen = seed_seen_ids_from_inbox(seen)
+        else:
+            log.info(f"Loaded {len(seen)} previously seen IDs")
+
+        seen, new = process_new_messages(seen)
+        if new > 0:
+            log.info(f"check-only: processed {new} new message(s)")
+        else:
+            log.info("check-only: no new messages")
+
+        signal.alarm(0)  # Cancel the alarm
+        return 0
+
+    except TimeoutError:
+        log.error(f"check-only: TIMEOUT after {timeout_seconds}s — exiting to prevent zombie")
+        return 2
+    except Exception as e:
+        log.error(f"check-only: error: {e}")
+        signal.alarm(0)
+        return 1
+
+
 # ─── Entry Point ─────────────────────────────────────────────────────────────
 
 def run():
@@ -406,5 +492,21 @@ def run():
         time.sleep(POLL_INTERVAL)
 
 
+def _parse_timeout_arg() -> int:
+    """Parse --timeout N from argv. Returns timeout in seconds (default 30)."""
+    for i, arg in enumerate(sys.argv):
+        if arg == "--timeout" and i + 1 < len(sys.argv):
+            try:
+                return max(5, int(sys.argv[i + 1]))
+            except ValueError:
+                pass
+    return 30
+
+
 if __name__ == "__main__":
-    run()
+    if "--check-only" in sys.argv:
+        timeout = _parse_timeout_arg()
+        exit_code = run_check_only(timeout_seconds=timeout)
+        sys.exit(exit_code)
+    else:
+        run()

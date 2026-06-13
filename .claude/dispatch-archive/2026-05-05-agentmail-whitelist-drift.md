@@ -54,3 +54,6 @@ Option (b) is the correct long-term fix — the spreadsheet is already the const
 This was caught during a sub-agent BOOP. Sub-agents can't spawn dept managers (Anthropic sub-agent constraint). Filing here for Aether-primary to route on next conductor cycle.
 
 — human-liaison
+
+---
+**RESOLVED 2026-06-13T01:11Z** by agent-architect capability-gap BOOP (3rd detection rule): all ~20 team entries merged into WHITELIST, syntax-checked, daemon restarted, new list confirmed in startup log incl. jared@puretechnology.nyc. Long-term option (b) dynamic sheet load remains an ST# enhancement.

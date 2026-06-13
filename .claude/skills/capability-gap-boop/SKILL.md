@@ -158,6 +158,21 @@ If the latest entry is more than 14 days old, the claude-code-expert agent shoul
 
 ---
 
+## In-Cycle Conversion Mandate (added 2026-06-13)
+
+**Measured failure**: the 2026-06-12 digest's 6-item action queue had 5 items unexecuted
+24h later (~0% conversion). Digests that only recommend plateau at detection
+(enforcer-authority-ceiling anti-pattern).
+
+**Rule**: before writing the digest, the BOOP agent MUST execute every action that is
+(a) trivial and reversible (file creates/moves, list additions, registry rows, archiving
+resolved dispatches), (b) default-YES in its own decision framing, and (c) not touching
+constitutional/money/deploy gates. Verify each execution (syntax check, daemon log line,
+file exists) before claiming it. The digest's EXECUTED section cites these with evidence;
+the ACTION QUEUE carries ONLY items genuinely requiring ST#/dept builds or Jared authority.
+Each cycle also re-checks the prior digest's queue: any unexecuted default-YES item found
+twice = execute now under the 3rd-detection rule, not re-recommend.
+
 ## Output Format
 
 At each 12-hour BOOP, produce this gap analysis report:
