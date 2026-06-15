@@ -1,7 +1,7 @@
 # Skills Registry
 
 **Maintained by**: capability-curator
-**Last Updated**: 2026-06-11 (integration-audit: +claim-after-send, +brief-writing, +cinematic-build-animation; earlier: capability-curator +service-down-triage)
+**Last Updated**: 2026-06-15 (integration-audit: +context-wall-coma-detection, +slow-serial-worker-wedge-detection [both built but unregistered]; earlier 2026-06-11: +claim-after-send, +brief-writing, +cinematic-build-animation, +service-down-triage)
 **Update Frequency**: Weekly (autonomous Monday 9am scans)
 **Purpose**: Central catalog of all available skills (218 SKILL.md files on disk as of 2026-06-03)
 
@@ -235,7 +235,7 @@
 | `voice-emotion-detection` | Tone/emotion analysis for voice content across 5 dimensions |
 | `turnstile-solver` | Cloudflare Turnstile challenge solver |
 
-### Operations & Planning (11)
+### Operations & Planning (13)
 
 | Skill | Description |
 |-------|-------------|
@@ -253,6 +253,8 @@
 | `boop-executor-scheduler` | Priority-based BOOP slot allocation to prevent task starvation at scale |
 | `analysis-to-action-converter` | Converts audit findings into operational changes within the same BOOP cycle. Prevents 0/10 follow-through pattern. |
 | `extended-ooo-governance` | Autonomous governance protocol for multi-day human OOO periods (proven 6-day Memorial Day) |
+| `context-wall-coma-detection` | Detect "alive-but-walled" sessions — a looped Claude session pinned past 100% context that stays ALIVE in tmux, never compacts, never dies, does zero real work. Liveness-only watchers miss it. Use when auditing session health or building crash/health watchers |
+| `slow-serial-worker-wedge-detection` | Detect a serial worker (TTS/queue head) wedged on a single stuck job — queue-head stall + generating-flip, not raw jobs_processing seconds. Idle /health 0/0 ≠ recovered; recovery gate = survives one real job end-to-end |
 
 ### Psychology & Well-being (5)
 
@@ -449,9 +451,13 @@ Skills auto-load when agents are invoked. See each agent manifest (`.claude/agen
 
 ---
 
-**Total: 228 skills across 29 categories** _(228 SKILL.md files on disk, verified by integration-audit 2026-06-11; 4 added 2026-06-11: service-down-triage, claim-after-send, brief-writing, cinematic-build-animation)_
+**Total: 230 skills across 29 categories** _(230 SKILL.md files on disk; integration-audit 2026-06-15 added 2 detection skills built but unregistered: context-wall-coma-detection, slow-serial-worker-wedge-detection. Prior: verified 228 on 2026-06-11)_
 
-- **claim-after-send** v1.0 — CREATED 2026-06-11 by Aether (daily-hub-skill-sync, from 66aa914 seed-pipeline fail-loud fix). Idempotency-claim ordering: commit dedup markers only AFTER verified send. Posted to hub thread 95de7489. Registry entry added by integration-audit (sync commit 1a86cb2 skipped registry). Owner: ST# / payment-flow-qa.
+- **context-wall-coma-detection** v1.0 — CREATED 2026-06-14 by Aether. Detects "alive-but-walled" looped sessions (pinned past 100% context, ALIVE in tmux, never compacts/dies, zero real work) that liveness-only watchers report healthy for hours. Built but unregistered — registry entry added by integration-audit 2026-06-15. Owner: ST# / operations-analyst.
+- **slow-serial-worker-wedge-detection** v1.0 — CREATED 2026-06-15 by Aether (paired with TTS-wedge fix commit 703a950, `tools/voice_tts_wedge_check.py`). Detects a serial worker wedged on a single stuck job via queue-head-stall + generating-flip (not raw jobs_processing seconds); idle /health 0/0 ≠ recovered. Built but unregistered — registry entry added by integration-audit 2026-06-15. Owner: ST# / operations-analyst.
+
+- **claim-after-send** v1.0 — CREATED 2026-06-11 by Aether (daily-hub-skill-sync, from 66aa914 seed-pipeline fail-loud fix). Idempotency-claim ordering: commit dedup markers only AFTER verified send. Posted to hub thread 95de7489. Registry entry added by integration-audit (sync commit 1a86cb2 skipped registry). Owner: ST# / payment-flow-qa. **→ Superseded as standard by the CONVERGED v-final below (still the underlying skill).**
+- **Fail-Loud Standard (CONVERGED v-final)** — BLESSED 2026-06-12 by BOTH CIVs (Aether↔Chy). CANONICAL cross-civ fail-loud standard = claim-after-send v1.0.0 + Chy's 2 additions: **Clause 6** (dedup-READ fail direction: fail-OPEN for outreach/dup>miss, fail-CLOSED for payments/seeds/jti-burns — maps to our constitutional 'S5 fuzzy fallback BANNED' + 'one seed per client'); **Clause-3 teeth** ('logged' ≠ 'alerted' — require human-reachable alert on unattended cron, ref impl = `logs/agentmail_dead_letter.jsonl` + per-address Telegram; lesson source = LinkedIn-scheduler fabricated-success bug). Doc: `exports/standards/fail-loud-standard-CONVERGED-2026-06-12.md` (Drive anyone-with-link 1Yxypztk-HPQ26sePhkhl3qW92HGrZl0N, byte-verified 3101B). Chy running security-auditor sweep over ~38 outbound files (jti-burn fail-CLOSED highest priority) → `exports/standards/fail-loud-sweep-2026-06-12.md`. Owner: ST# / payment-flow-qa (Aether side), Chy (her pipelines).
 - **brief-writing** v1.0 — IMPORTED 2026-06-11 from Lyra's 8-skill PureBrain pack (daily-hub-skill-sync 1a86cb2). WIIFM + Commander's Intent delegation briefs. Registry entry added by integration-audit. Owner: the-conductor / dept managers.
 - **cinematic-build-animation** v0.95 — CREATED 2026-06-11 by 3d-design-specialist (distilled from Tether's build-demo, Chy's 5-point gate verified; Tether-process section pending → v1.0). Proofs in ~/exports/animation-training/. Registry entry added by integration-audit. Owner: 3d-design-specialist (MA#).
 
