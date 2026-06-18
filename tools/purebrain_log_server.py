@@ -130,6 +130,9 @@ _ephemeral_lock = threading.Lock()
 # Single-source constants so a confirmed contract change is a 1-line edit:
 BRIDGE_SECRET_HEADER = 'X-Bridge-Secret'
 LIVE_CHAT_BRIDGE_INBOX = os.path.join(DEFAULT_LOG_DIR, 'live_chat_bridge_inbox.jsonl')
+# Max inbound chat-event text length (bytes/chars) — caps disk-fill DoS on the
+# append-only inbox JSONL. Oversized -> 413. Flag-gated path only.
+LIVE_CHAT_BRIDGE_MAX_TEXT = 16384
 # Import-time snapshot (informational only). NOT used for gating — _bridge_enabled()
 # re-reads os.environ at request time so tests/operators can toggle without re-import.
 LIVE_CHAT_BRIDGE_ENABLED = os.environ.get('LIVE_CHAT_BRIDGE_ENABLED', '0') == '1'
@@ -4922,6 +4925,10 @@ def register_routes(app: Flask) -> None:
         data = request.get_json(silent=True)
         if data is None or not isinstance(data, dict):
             return _bridge_cors(make_response(jsonify({'error': 'Invalid JSON'}), 400))
+
+        # Cap inbound text size to prevent disk-fill DoS on the append-only inbox.
+        if len(str(data.get('text', '') or '')) > LIVE_CHAT_BRIDGE_MAX_TEXT:
+            return _bridge_cors(make_response(jsonify({'error': 'text too large'}), 413))
 
         # Provisional schema. # TODO(contract): confirm schema with Morphe.
         event = {
