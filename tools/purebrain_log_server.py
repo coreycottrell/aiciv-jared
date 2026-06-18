@@ -114,6 +114,90 @@ _held_seeds: list = []
 _ephemeral_secrets: Dict[str, Dict[str, Any]] = {}
 _ephemeral_lock = threading.Lock()
 
+# ===== LIVE CHAT BRIDGE (DO<->Portal) — feature-flagged, additive, 2026-06-18 =====
+# Portal side of the Durable-Object <-> Portal live-chat bridge.
+# ADDITIVE ONLY. DEFAULT OFF. When the flag is OFF the chat-event and agent-reply
+# routes return 503 and do nothing; the health route still reports flag_enabled:false.
+# Secrets are read ONLY from env at request time (never hardcoded, never logged as values).
+#
+# Env vars introduced (all optional; absence == disabled / misconfigured):
+#   LIVE_CHAT_BRIDGE_ENABLED      '1' to enable the bridge routes (default '0' == OFF)
+#   BRIDGE_SECRET_DO_TO_PORTAL    shared secret for DO->portal inbound auth
+#   BRIDGE_SECRET_PORTAL_TO_DO    shared secret sent on portal->DO outbound calls
+#   BRIDGE_DO_CALLBACK_URL        DO endpoint to forward agent replies to
+#   BRIDGE_PRESENCE_DO_URL        PresenceDO endpoint for agent-presence pushes
+#
+# Single-source constants so a confirmed contract change is a 1-line edit:
+BRIDGE_SECRET_HEADER = 'X-Bridge-Secret'
+LIVE_CHAT_BRIDGE_INBOX = os.path.join(DEFAULT_LOG_DIR, 'live_chat_bridge_inbox.jsonl')
+# Import-time snapshot (informational only). NOT used for gating — _bridge_enabled()
+# re-reads os.environ at request time so tests/operators can toggle without re-import.
+LIVE_CHAT_BRIDGE_ENABLED = os.environ.get('LIVE_CHAT_BRIDGE_ENABLED', '0') == '1'
+
+
+def _bridge_enabled() -> bool:
+    """Re-read the bridge feature flag from env at request time (test-toggleable)."""
+    return os.environ.get('LIVE_CHAT_BRIDGE_ENABLED', '0') == '1'
+
+
+def _bridge_check_inbound_secret(provided: Optional[str], configured_var: str) -> str:
+    """Constant-time inbound secret check.
+
+    Returns one of: 'ok', 'misconfigured' (configured secret empty/unset),
+    'denied' (missing header or mismatch). Never logs secret values.
+    """
+    configured = os.environ.get(configured_var, '')
+    if not configured:
+        # Fail closed: an unset secret must NOT allow an auth bypass.
+        return 'misconfigured'
+    if not provided:
+        return 'denied'
+    # hmac.compare_digest requires equal-type operands.
+    if hmac.compare_digest(str(provided), str(configured)):
+        return 'ok'
+    return 'denied'
+
+
+def _route_inbound_chat_event(event: dict) -> None:
+    """Provisional sink for DO->portal chat events.
+
+    This server is API-only and has no in-process chat store, so until the real
+    portal inbox/delivery mechanism is confirmed we append a normalized record to
+    a JSONL inbox file. Best-effort; callers handle their own response codes.
+    # TODO(contract): confirm portal inbox/delivery mechanism with Morphe.
+    """
+    record = dict(event) if isinstance(event, dict) else {'raw': event}
+    record['received_at'] = datetime.now(timezone.utc).isoformat()
+    os.makedirs(DEFAULT_LOG_DIR, exist_ok=True)
+    with _file_lock:
+        with open(LIVE_CHAT_BRIDGE_INBOX, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(record) + '\n')
+
+
+def push_agent_presence(presence: dict) -> bool:
+    """Push agent presence to the PresenceDO (best-effort, never raises).
+
+    Reads BRIDGE_PRESENCE_DO_URL from env; if unset this is a no-op returning False.
+    Sends BRIDGE_SECRET_HEADER = BRIDGE_SECRET_PORTAL_TO_DO. Not wired into any route
+    yet (no trigger defined) — available for later use.
+    # TODO(contract): confirm presence payload + endpoint with Morphe.
+    """
+    url = os.environ.get('BRIDGE_PRESENCE_DO_URL', '')
+    if not url:
+        logger.debug('presence DO not configured (BRIDGE_PRESENCE_DO_URL unset)')
+        return False
+    try:
+        headers = {
+            'Content-Type': 'application/json',
+            BRIDGE_SECRET_HEADER: os.environ.get('BRIDGE_SECRET_PORTAL_TO_DO', ''),
+        }
+        resp = httpx.post(url, json=presence, headers=headers, timeout=10.0)
+        return 200 <= resp.status_code < 300
+    except Exception as e:
+        logger.warning(f'[bridge] presence push failed: {type(e).__name__}')
+        return False
+# ===== END LIVE CHAT BRIDGE module helpers =====
+
 
 def _validate_ai_name_for_seed(ai_name: str, context: str, **kwargs) -> bool:
     """
@@ -4798,6 +4882,145 @@ def register_routes(app: Flask) -> None:
             })
             resp.headers['Access-Control-Allow-Origin'] = '*'
             return resp
+
+    # ===== LIVE CHAT BRIDGE (DO<->Portal) routes — feature-flagged, additive, 2026-06-18 =====
+    # All three routes gate on _bridge_enabled() (re-reads env at request time).
+    # When the flag is OFF, chat-event/agent-reply return 503 and do nothing.
+    # Secrets read from env only; never logged as values; constant-time compare.
+
+    def _bridge_cors(resp):
+        """Attach permissive CORS header (mirrors other bridge/ephemeral routes)."""
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Access-Control-Allow-Headers'] = f'Content-Type, {BRIDGE_SECRET_HEADER}'
+        resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        return resp
+
+    @app.route('/api/bridge/chat-event', methods=['POST', 'OPTIONS'])
+    def bridge_chat_event():
+        """DO->portal inbound live-chat message.
+
+        Auth: BRIDGE_SECRET_HEADER compared (constant-time) against
+        BRIDGE_SECRET_DO_TO_PORTAL. Disabled -> 503. Bad/missing secret -> 401.
+        """
+        if request.method == 'OPTIONS':
+            return _bridge_cors(make_response('', 204))
+
+        if not _bridge_enabled():
+            return _bridge_cors(make_response(jsonify({'error': 'live chat bridge disabled'}), 503))
+
+        secret_state = _bridge_check_inbound_secret(
+            request.headers.get(BRIDGE_SECRET_HEADER), 'BRIDGE_SECRET_DO_TO_PORTAL'
+        )
+        if secret_state == 'misconfigured':
+            logger.warning('[bridge] chat-event rejected: DO_TO_PORTAL secret not configured')
+            return _bridge_cors(make_response(jsonify({'error': 'bridge secret not configured'}), 503))
+        if secret_state != 'ok':
+            return _bridge_cors(make_response(jsonify({'error': 'unauthorized'}), 401))
+
+        if not request.is_json:
+            return _bridge_cors(make_response(jsonify({'error': 'Content-Type must be application/json'}), 400))
+        data = request.get_json(silent=True)
+        if data is None or not isinstance(data, dict):
+            return _bridge_cors(make_response(jsonify({'error': 'Invalid JSON'}), 400))
+
+        # Provisional schema. # TODO(contract): confirm schema with Morphe.
+        event = {
+            'conversation_id': data.get('conversation_id'),
+            'sender': data.get('sender'),
+            'text': data.get('text'),
+            'ts': data.get('ts'),
+        }
+        try:
+            _route_inbound_chat_event(event)
+        except Exception as e:
+            logger.warning(f'[bridge] chat-event sink failed: {type(e).__name__}')
+            return _bridge_cors(make_response(jsonify({'error': 'failed to route event'}), 500))
+
+        return _bridge_cors(make_response(
+            jsonify({'ok': True, 'conversation_id': event['conversation_id']}), 200
+        ))
+
+    @app.route('/api/bridge/agent-reply', methods=['POST', 'OPTIONS'])
+    def bridge_agent_reply():
+        """portal->DO outbound agent reply.
+
+        Inbound leg authed with BRIDGE_SECRET_DO_TO_PORTAL (portal-internal callers).
+        # TODO(contract): confirm whether agent-reply inbound should be authed with
+        # DO_TO_PORTAL or an internal token — confirm with Morphe.
+        Outbound forward to BRIDGE_DO_CALLBACK_URL using BRIDGE_SECRET_PORTAL_TO_DO.
+        """
+        if request.method == 'OPTIONS':
+            return _bridge_cors(make_response('', 204))
+
+        if not _bridge_enabled():
+            return _bridge_cors(make_response(jsonify({'error': 'live chat bridge disabled'}), 503))
+
+        secret_state = _bridge_check_inbound_secret(
+            request.headers.get(BRIDGE_SECRET_HEADER), 'BRIDGE_SECRET_DO_TO_PORTAL'
+        )
+        if secret_state == 'misconfigured':
+            logger.warning('[bridge] agent-reply rejected: DO_TO_PORTAL secret not configured')
+            return _bridge_cors(make_response(jsonify({'error': 'bridge secret not configured'}), 503))
+        if secret_state != 'ok':
+            return _bridge_cors(make_response(jsonify({'error': 'unauthorized'}), 401))
+
+        if not request.is_json:
+            return _bridge_cors(make_response(jsonify({'error': 'Content-Type must be application/json'}), 400))
+        data = request.get_json(silent=True)
+        if data is None or not isinstance(data, dict):
+            return _bridge_cors(make_response(jsonify({'error': 'Invalid JSON'}), 400))
+
+        callback_url = os.environ.get('BRIDGE_DO_CALLBACK_URL', '')
+        if not callback_url:
+            return _bridge_cors(make_response(
+                jsonify({'error': 'DO callback URL not configured'}), 503
+            ))
+
+        # Provisional outbound payload. # TODO(contract): confirm outbound payload + header with Morphe.
+        payload = {
+            'conversation_id': data.get('conversation_id'),
+            'sender': 'agent',
+            'text': data.get('text'),
+            'ts': data.get('ts'),
+        }
+        out_headers = {
+            'Content-Type': 'application/json',
+            BRIDGE_SECRET_HEADER: os.environ.get('BRIDGE_SECRET_PORTAL_TO_DO', ''),
+        }
+        try:
+            resp = httpx.post(callback_url, json=payload, headers=out_headers, timeout=10.0)
+        except Exception as e:
+            logger.warning(f'[bridge] agent-reply forward error: {type(e).__name__}')
+            return _bridge_cors(make_response(jsonify({'ok': False, 'error': 'DO forward timeout'}), 504))
+
+        if 200 <= resp.status_code < 300:
+            return _bridge_cors(make_response(
+                jsonify({'ok': True, 'forwarded': True, 'do_status': resp.status_code}), 200
+            ))
+        return _bridge_cors(make_response(
+            jsonify({'ok': False, 'do_status': resp.status_code}), 502
+        ))
+
+    @app.route('/api/bridge/health', methods=['GET'])
+    def bridge_health():
+        """Bridge health — read-only presence booleans, no secret values.
+
+        No auth required by design: this returns ONLY booleans indicating whether
+        config is present (never the secret values themselves), so it is safe to
+        expose for ops/monitoring without authentication.
+        """
+        resp = jsonify({
+            'ok': True,
+            'flag_enabled': _bridge_enabled(),
+            'do_to_portal_secret_present': bool(os.environ.get('BRIDGE_SECRET_DO_TO_PORTAL', '')),
+            'portal_to_do_secret_present': bool(os.environ.get('BRIDGE_SECRET_PORTAL_TO_DO', '')),
+            'do_callback_configured': bool(os.environ.get('BRIDGE_DO_CALLBACK_URL', '')),
+            'presence_do_configured': bool(os.environ.get('BRIDGE_PRESENCE_DO_URL', '')),
+            'ts': datetime.now(timezone.utc).isoformat(),
+        })
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        return resp
+    # ===== END LIVE CHAT BRIDGE routes =====
 
     @app.errorhandler(400)
     def bad_request(e):
