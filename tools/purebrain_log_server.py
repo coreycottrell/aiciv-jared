@@ -161,13 +161,26 @@ def _bridge_check_inbound_secret(provided: Optional[str], configured_var: str) -
     return 'denied'
 
 
-def _route_inbound_chat_event(event: dict) -> None:
-    """Provisional sink for DO->portal chat events.
+def _bridge_do_url(path: str) -> str:
+    """Build a DO Worker target URL from the BASE callback url + path.
 
-    This server is API-only and has no in-process chat store, so until the real
-    portal inbox/delivery mechanism is confirmed we append a normalized record to
-    a JSONL inbox file. Best-effort; callers handle their own response codes.
-    # TODO(contract): confirm portal inbox/delivery mechanism with Morphe.
+    CONFIRMED (Morphe 2026-06-18): BRIDGE_DO_CALLBACK_URL is the Worker BASE only
+    (e.g. https://live-chat.purebrain.ai). The portal appends '/agent-reply' and
+    '/presence'. Returns '' if the base is unset (callers fail-closed).
+    `path` must start with '/'.
+    """
+    base = os.environ.get('BRIDGE_DO_CALLBACK_URL', '').rstrip('/')
+    if not base:
+        return ''
+    return base + path
+
+
+def _route_inbound_chat_event(event: dict) -> None:
+    """Sink for DO->portal chat events.
+
+    CONFIRMED (Morphe 2026-06-18): this server is API-only and has no in-process
+    chat store, so we append the normalized (type-dispatched) record to a JSONL
+    inbox file. Best-effort; callers handle their own response codes.
     """
     record = dict(event) if isinstance(event, dict) else {'raw': event}
     record['received_at'] = datetime.now(timezone.utc).isoformat()
@@ -180,21 +193,25 @@ def _route_inbound_chat_event(event: dict) -> None:
 def push_agent_presence(presence: dict) -> bool:
     """Push agent presence to the PresenceDO (best-effort, never raises).
 
-    Reads BRIDGE_PRESENCE_DO_URL from env; if unset this is a no-op returning False.
-    Sends BRIDGE_SECRET_HEADER = BRIDGE_SECRET_PORTAL_TO_DO. Not wired into any route
-    yet (no trigger defined) — available for later use.
-    # TODO(contract): confirm presence payload + endpoint with Morphe.
+    CONFIRMED (Morphe 2026-06-18): presence goes to BRIDGE_DO_CALLBACK_URL base +
+    '/presence' (NOT a separate env var). If the base is unset this is a no-op
+    returning False. Sends BRIDGE_SECRET_HEADER = BRIDGE_SECRET_PORTAL_TO_DO.
+    Never logs secret values.
     """
-    url = os.environ.get('BRIDGE_PRESENCE_DO_URL', '')
+    url = _bridge_do_url('/presence')
     if not url:
-        logger.debug('presence DO not configured (BRIDGE_PRESENCE_DO_URL unset)')
+        logger.debug('presence DO not configured (BRIDGE_DO_CALLBACK_URL unset)')
         return False
+    agent_id = presence.get('agent_id') if isinstance(presence, dict) else None
+    status = presence.get('status') if isinstance(presence, dict) else None
+    ts = presence.get('ts') if isinstance(presence, dict) else None
+    payload = {'type': 'presence', 'agent_id': agent_id, 'status': status, 'ts': ts}
     try:
         headers = {
             'Content-Type': 'application/json',
             BRIDGE_SECRET_HEADER: os.environ.get('BRIDGE_SECRET_PORTAL_TO_DO', ''),
         }
-        resp = httpx.post(url, json=presence, headers=headers, timeout=10.0)
+        resp = httpx.post(url, json=payload, headers=headers, timeout=10.0)
         return 200 <= resp.status_code < 300
     except Exception as e:
         logger.warning(f'[bridge] presence push failed: {type(e).__name__}')
@@ -4926,35 +4943,72 @@ def register_routes(app: Flask) -> None:
         if data is None or not isinstance(data, dict):
             return _bridge_cors(make_response(jsonify({'error': 'Invalid JSON'}), 400))
 
-        # Cap inbound text size to prevent disk-fill DoS on the append-only inbox.
-        if len(str(data.get('text', '') or '')) > LIVE_CHAT_BRIDGE_MAX_TEXT:
-            return _bridge_cors(make_response(jsonify({'error': 'text too large'}), 413))
+        # CONFIRMED (Morphe 2026-06-18): type-dispatch on `type` over 4 inbound kinds.
+        evt_type = data.get('type')
+        if evt_type not in ('new_message', 'state_change', 'typing', 'visitor_presence'):
+            return _bridge_cors(make_response(jsonify({'error': 'unknown type'}), 400))
 
-        # Provisional schema. # TODO(contract): confirm schema with Morphe.
-        event = {
-            'conversation_id': data.get('conversation_id'),
-            'sender': data.get('sender'),
-            'text': data.get('text'),
-            'ts': data.get('ts'),
-        }
+        # Cap inbound body size (new_message only) to prevent disk-fill DoS on the
+        # append-only inbox JSONL. Oversized -> 413.
+        if evt_type == 'new_message' and \
+                len(str(data.get('body', '') or '')) > LIVE_CHAT_BRIDGE_MAX_TEXT:
+            return _bridge_cors(make_response(jsonify({'error': 'body too large'}), 413))
+
+        # Normalize per type (no arbitrary passthrough; fixed fields per contract §1).
+        if evt_type == 'new_message':
+            event = {
+                'type': 'new_message',
+                'conversation_id': data.get('conversation_id'),
+                'msg_seq': data.get('msg_seq'),
+                'sender': data.get('sender'),
+                'body': data.get('body'),
+                'ts': data.get('ts'),
+            }
+        elif evt_type == 'state_change':
+            event = {
+                'type': 'state_change',
+                'conversation_id': data.get('conversation_id'),
+                'state': data.get('state'),
+                'ts': data.get('ts'),
+            }
+        elif evt_type == 'typing':
+            event = {
+                'type': 'typing',
+                'conversation_id': data.get('conversation_id'),
+                'who': data.get('who'),
+                'typing': data.get('typing'),
+                'ts': data.get('ts'),
+            }
+        else:  # visitor_presence
+            event = {
+                'type': 'visitor_presence',
+                'conversation_id': data.get('conversation_id'),
+                'geo': data.get('geo'),
+                'page': data.get('page'),
+                'ip_country': data.get('ip_country'),
+                'ts': data.get('ts'),
+            }
+
         try:
             _route_inbound_chat_event(event)
         except Exception as e:
             logger.warning(f'[bridge] chat-event sink failed: {type(e).__name__}')
             return _bridge_cors(make_response(jsonify({'error': 'failed to route event'}), 500))
 
+        # Ack: echo incoming msg_seq (new_message); state_change/typing/visitor_presence
+        # have no msg_seq -> echo whatever is present, else null.
         return _bridge_cors(make_response(
-            jsonify({'ok': True, 'conversation_id': event['conversation_id']}), 200
+            jsonify({'ok': True, 'msg_seq': data.get('msg_seq')}), 200
         ))
 
     @app.route('/api/bridge/agent-reply', methods=['POST', 'OPTIONS'])
     def bridge_agent_reply():
-        """portal->DO outbound agent reply.
+        """portal->DO outbound agent reply / claim / presence.
 
-        Inbound leg authed with BRIDGE_SECRET_DO_TO_PORTAL (portal-internal callers).
-        # TODO(contract): confirm whether agent-reply inbound should be authed with
-        # DO_TO_PORTAL or an internal token — confirm with Morphe.
-        Outbound forward to BRIDGE_DO_CALLBACK_URL using BRIDGE_SECRET_PORTAL_TO_DO.
+        CONFIRMED (Morphe 2026-06-18): inbound leg authed with BRIDGE_SECRET_DO_TO_PORTAL
+        — portal-internal callers present the DO_TO_PORTAL secret; no separate token.
+        Outbound forward to BRIDGE_DO_CALLBACK_URL base + '/agent-reply' using
+        BRIDGE_SECRET_PORTAL_TO_DO (httpx, not urllib).
         """
         if request.method == 'OPTIONS':
             return _bridge_cors(make_response('', 204))
@@ -4977,32 +5031,60 @@ def register_routes(app: Flask) -> None:
         if data is None or not isinstance(data, dict):
             return _bridge_cors(make_response(jsonify({'error': 'Invalid JSON'}), 400))
 
-        callback_url = os.environ.get('BRIDGE_DO_CALLBACK_URL', '')
-        if not callback_url:
+        # CONFIRMED (Morphe 2026-06-18): type-dispatch on `type` over 3 outbound kinds.
+        out_type = data.get('type')
+        if out_type not in ('agent_reply', 'claim', 'presence'):
+            return _bridge_cors(make_response(jsonify({'error': 'unknown type'}), 400))
+
+        # BRIDGE_DO_CALLBACK_URL is the Worker BASE; append '/agent-reply'. Fail-closed
+        # (503) when the base is unset.
+        target = _bridge_do_url('/agent-reply')
+        if not target:
             return _bridge_cors(make_response(
                 jsonify({'error': 'DO callback URL not configured'}), 503
             ))
 
-        # Provisional outbound payload. # TODO(contract): confirm outbound payload + header with Morphe.
-        payload = {
-            'conversation_id': data.get('conversation_id'),
-            'sender': 'agent',
-            'text': data.get('text'),
-            'ts': data.get('ts'),
-        }
+        # Normalize per type (fixed fields per contract §2).
+        if out_type == 'agent_reply':
+            payload = {
+                'type': 'agent_reply',
+                'conversation_id': data.get('conversation_id'),
+                'msg_seq': data.get('msg_seq'),
+                'sender': data.get('sender'),
+                'sender_id': data.get('sender_id'),
+                'body': data.get('body'),
+                'ts': data.get('ts'),
+            }
+        elif out_type == 'claim':
+            payload = {
+                'type': 'claim',
+                'conversation_id': data.get('conversation_id'),
+                'agent_id': data.get('agent_id'),
+                'ts': data.get('ts'),
+            }
+        else:  # presence
+            payload = {
+                'type': 'presence',
+                'agent_id': data.get('agent_id'),
+                'status': data.get('status'),
+                'ts': data.get('ts'),
+            }
+
         out_headers = {
             'Content-Type': 'application/json',
             BRIDGE_SECRET_HEADER: os.environ.get('BRIDGE_SECRET_PORTAL_TO_DO', ''),
         }
         try:
-            resp = httpx.post(callback_url, json=payload, headers=out_headers, timeout=10.0)
+            resp = httpx.post(target, json=payload, headers=out_headers, timeout=10.0)
         except Exception as e:
             logger.warning(f'[bridge] agent-reply forward error: {type(e).__name__}')
             return _bridge_cors(make_response(jsonify({'ok': False, 'error': 'DO forward timeout'}), 504))
 
+        # On DO 2xx, echo msg_seq from body (else null). Never echo DO response body
+        # (no secret leak).
         if 200 <= resp.status_code < 300:
             return _bridge_cors(make_response(
-                jsonify({'ok': True, 'forwarded': True, 'do_status': resp.status_code}), 200
+                jsonify({'ok': True, 'msg_seq': data.get('msg_seq')}), 200
             ))
         return _bridge_cors(make_response(
             jsonify({'ok': False, 'do_status': resp.status_code}), 502
@@ -5021,8 +5103,7 @@ def register_routes(app: Flask) -> None:
             'flag_enabled': _bridge_enabled(),
             'do_to_portal_secret_present': bool(os.environ.get('BRIDGE_SECRET_DO_TO_PORTAL', '')),
             'portal_to_do_secret_present': bool(os.environ.get('BRIDGE_SECRET_PORTAL_TO_DO', '')),
-            'do_callback_configured': bool(os.environ.get('BRIDGE_DO_CALLBACK_URL', '')),
-            'presence_do_configured': bool(os.environ.get('BRIDGE_PRESENCE_DO_URL', '')),
+            'do_callback_configured': bool(os.environ.get('BRIDGE_DO_CALLBACK_URL', '').rstrip('/')),
             'ts': datetime.now(timezone.utc).isoformat(),
         })
         resp.headers['Access-Control-Allow-Origin'] = '*'
