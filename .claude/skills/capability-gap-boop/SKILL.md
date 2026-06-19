@@ -18,6 +18,21 @@ introduced: 2026-04-12
 
 ---
 
+## GATED ITEMS — DO NOT RE-LIST (source-level suppression)
+
+Some gaps have already been surfaced to Jared and are waiting on HIS decision, not on more
+analysis. Re-listing them every cycle is the recommend-not-execute plateau in action: the
+recommendation gets mistaken for the deed. **Items below MUST NOT appear as fresh "gaps" or
+"actions" in any digest. They are surfaced-live and Jared-gated.** Only Jared answering
+(or a NO-GO) removes them. If new evidence materially changes the case, note it as an
+UPDATE to the existing gated item — never as a new gap.
+
+| Item | Status | Surfaced | Notes |
+|------|--------|----------|-------|
+| `property-data-sourcing` skill | Jared-GATED, surfaced-live (portal 2026-06-19) | re-listed 06-16/17/18/19 (4 cycles) | capability-curator pre-staged to build on GO. DO NOT re-list. On GO → dispatch capability-curator; on NO-GO → strike this row. |
+
+---
+
 ## Purpose
 
 The collective grows by identifying its own gaps. This BOOP prevents two failure modes:

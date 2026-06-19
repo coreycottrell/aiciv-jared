@@ -215,6 +215,17 @@ If you find yourself writing code or running security checks directly, stop. Inv
 
 ---
 
+## Back-Half Verify Gate Alarm (ship:qa ratio)
+
+The pipeline silently skips its BACK half (BUILD fires; QA/verify does not). Enforce a hard ratio check every cycle:
+
+- Count `ptt-fullstack` (or any `*-fullstack`) SHIP events in the last 24h.
+- Count paired `ptt-qa` + `operations-analyst` VERIFY receipts in the same 24h.
+- **ALARM + BLOCK new "done" claims** when `ship_count > 2 * verify_count`. A ship has no verify receipt unless a QA pass OR an operations-analyst live-GET-probe receipt exists for that exact deploy.
+- On alarm: dispatch `operations-analyst` to produce a ship↔qa↔live matrix THIS cycle; do not mark the engineering flow healthy until the ratio is back under 2:1 or the gap is explained (e.g. counting artifact: submodule double-count, bundled commits, staging-vs-apex).
+
+> History: 2026-06-18 nightly flagged 12:1; 06-19 operations-analyst audit overturned it as a counting artifact (real ~4:2, nothing customer-live unverified). The alarm is still correct policy — it forced the audit that produced the truth.
+
 ## Related Skills
 
 - `verification-before-completion` - Never claim a step done without showing the evidence
@@ -223,5 +234,5 @@ If you find yourself writing code or running security checks directly, stop. Inv
 
 ---
 
-**Last Updated**: 2026-02-21
+**Last Updated**: 2026-06-19
 **Created by**: agent-architect (on behalf of Jared's directive)

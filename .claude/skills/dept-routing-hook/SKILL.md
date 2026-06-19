@@ -74,6 +74,12 @@ STILL UNSURE?
 - Invoking `web-researcher` directly for business research
 - Invoking `qa-engineer` directly for testing
 - Invoking `browser-vision-tester` directly for visual testing
+- **Invoking `general-purpose` for ANY task a named department owns.** `general-purpose`
+  is BANNED whenever a dept manager (ST#/MA#/SD#/PD#/OP#/LC#/AF#/HR#/PR# or a named
+  specialist) could own the work — it bypasses dept-classification entirely. It crowded
+  to #2 most-used agent (41 invocations/7d) precisely by absorbing dept-ownable tasks.
+  `general-purpose` is permitted ONLY for genuinely cross-cutting search/multi-step work
+  with no owning department. If a named dept exists, classify and route there instead.
 
 ## Permitted Direct Invocations (Infrastructure Only)
 
