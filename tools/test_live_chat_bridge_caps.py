@@ -33,6 +33,11 @@ at_text = 'x' * MAX_TEXT          # exactly at the cap == allowed (cap is strict
 over_convo = 'c' * (MAX_CONVO + 1)
 ok_convo = 'c' * MAX_CONVO
 
+# Non-string oversized carriers: a giant LIST and a giant DICT whose json.dumps()
+# serialization exceeds MAX_TEXT. These bypass any naive isinstance(str) check.
+over_list = ['y'] * (MAX_TEXT + 1)             # json.dumps len >> MAX_TEXT
+over_dict = {str(i): 'z' for i in range(MAX_TEXT)}  # json.dumps len >> MAX_TEXT
+
 _passed = 0
 
 
@@ -57,6 +62,53 @@ def test_oversized_rejected():
     for label, payload in cases:
         offending = pls._bridge_oversized_field(payload)
         check(f'{label} -> rejected (offending={offending})', offending is not None)
+
+
+def test_nonstring_oversized_rejected():
+    print('[1b] oversized NON-STRING values (list/dict) are REJECTED (type-agnostic):')
+    # Sanity: the carriers really do serialize over the cap.
+    import json as _json
+    check('over_list serializes > MAX_TEXT', len(_json.dumps(over_list)) > MAX_TEXT)
+    check('over_dict serializes > MAX_TEXT', len(_json.dumps(over_dict)) > MAX_TEXT)
+    cases = [
+        ('body as giant list',   {'type': 'new_message', 'conversation_id': 'a', 'body': over_list}),
+        ('body as giant dict',   {'type': 'new_message', 'conversation_id': 'a', 'body': over_dict}),
+        ('sender as giant list', {'type': 'new_message', 'conversation_id': 'a', 'sender': over_list}),
+        ('sender as oversized str', {'type': 'new_message', 'conversation_id': 'a', 'sender': over_text}),
+        ('msg_seq as giant list', {'type': 'new_message', 'conversation_id': 'a', 'msg_seq': over_list}),
+        ('msg_seq as oversized str', {'type': 'new_message', 'conversation_id': 'a', 'msg_seq': over_text}),
+        ('ts as giant list',     {'type': 'state_change', 'conversation_id': 'a', 'ts': over_list}),
+        ('ts as oversized str',  {'type': 'state_change', 'conversation_id': 'a', 'ts': over_text}),
+        ('typing as giant list', {'type': 'typing', 'conversation_id': 'a', 'typing': over_list}),
+        ('typing as oversized str', {'type': 'typing', 'conversation_id': 'a', 'typing': over_text}),
+        ('conversation_id as giant list', {'type': 'new_message', 'conversation_id': over_list, 'body': 'hi'}),
+    ]
+    for label, payload in cases:
+        offending = pls._bridge_oversized_field(payload)
+        check(f'{label} -> rejected (offending={offending})', offending is not None)
+    # Confirm the offending field NAME is the field we stuffed (not a false positive elsewhere).
+    check('body-as-list reports offending=body',
+          pls._bridge_oversized_field({'type': 'new_message', 'conversation_id': 'a', 'body': over_list}) == 'body')
+    check('sender-as-list reports offending=sender',
+          pls._bridge_oversized_field({'type': 'new_message', 'conversation_id': 'a', 'sender': over_list}) == 'sender')
+
+
+def test_short_scalars_accepted():
+    print('[1c] valid short scalars (int/bool/str) are ACCEPTED, NOT serialized away:')
+    cases = [
+        ('msg_seq=42 (int)',   {'type': 'new_message', 'conversation_id': 'a', 'body': 'hi', 'msg_seq': 42}),
+        ('typing=True (bool)', {'type': 'typing', 'conversation_id': 'a', 'who': 'visitor', 'typing': True}),
+        ('typing=False (bool)', {'type': 'typing', 'conversation_id': 'a', 'who': 'visitor', 'typing': False}),
+        ('ts iso string',      {'type': 'state_change', 'conversation_id': 'a',
+                                'state': 'open', 'ts': '2026-06-21T12:00:00Z'}),
+        ('normal small body',  {'type': 'new_message', 'conversation_id': 'a', 'body': 'hello there'}),
+        ('sender short str',   {'type': 'new_message', 'conversation_id': 'a', 'body': 'hi', 'sender': 'visitor'}),
+        ('msg_seq float',      {'type': 'new_message', 'conversation_id': 'a', 'body': 'hi', 'msg_seq': 3.5}),
+        ('ts None',            {'type': 'state_change', 'conversation_id': 'a', 'state': 'open', 'ts': None}),
+    ]
+    for label, payload in cases:
+        offending = pls._bridge_oversized_field(payload)
+        check(f'{label} -> accepted (offending={offending})', offending is None)
 
 
 def test_valid_accepted():
@@ -130,6 +182,10 @@ def main():
     print(f'LIVE_CHAT_BRIDGE_INBOX_ROTATE_BYTES= {ROTATE}')
     print()
     test_oversized_rejected()
+    print()
+    test_nonstring_oversized_rejected()
+    print()
+    test_short_scalars_accepted()
     print()
     test_valid_accepted()
     print()

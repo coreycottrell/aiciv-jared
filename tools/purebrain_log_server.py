@@ -146,26 +146,65 @@ LIVE_CHAT_BRIDGE_INBOX_ROTATE_BYTES = 50 * 1024 * 1024
 LIVE_CHAT_BRIDGE_ENABLED = os.environ.get('LIVE_CHAT_BRIDGE_ENABLED', '0') == '1'
 
 
-def _bridge_oversized_field(data: dict) -> Optional[str]:
-    """Validate every string-typed free-text field this chat-event contract accepts
-    against the size caps. Pure helper (no Flask) so it is unit-testable.
+# Every non-`type` field that lands in a normalized inbox `event` dict, across all
+# 4 inbound kinds. Union of new_message/state_change/typing/visitor_presence per
+# _route_inbound_chat_event's allowlist. conversation_id is bounded separately
+# (shorter cap); all others share LIVE_CHAT_BRIDGE_MAX_TEXT. This list MUST stay in
+# sync with the event dicts built in bridge_chat_event().
+LIVE_CHAT_BRIDGE_TEXT_FIELDS = (
+    'body', 'state', 'who', 'geo', 'page', 'ip_country',
+    'sender', 'msg_seq', 'ts', 'typing',
+)
 
-    Checks ALL 4 inbound types' string fields in ONE place:
-      new_message.body / state_change.state / typing.who /
-      visitor_presence.geo|page|ip_country  -> LIVE_CHAT_BRIDGE_MAX_TEXT
+
+def _bridge_value_oversized(val, limit: int) -> bool:
+    """Type-agnostic size bound for one inbound field value.
+
+    A compromised-but-authed DO Worker can serialize multi-MB into ANY field
+    (e.g. body/sender as a giant JSON list/dict instead of a string), bypassing a
+    naive isinstance(str) check. So we bound the SERIALIZED size regardless of type:
+
+      - str            -> fast char-length check.
+      - list / dict    -> json.dumps(default=str) length check (the only structural
+                          carriers of disk-fill risk).
+      - short scalars  -> int / bool / float / None / absent are ACCEPTED without
+                          serializing (cheap fast-path; carry no disk-fill risk).
+
+    Returns True if the value exceeds `limit`.
+    """
+    if isinstance(val, str):
+        return len(val) > limit
+    if isinstance(val, (list, dict)):
+        try:
+            return len(json.dumps(val, default=str)) > limit
+        except (TypeError, ValueError):
+            # Unserializable structural value -> treat as oversized (reject, fail-closed).
+            return True
+    # int / bool / float / None / absent: short scalar, no disk-fill risk.
+    return False
+
+
+def _bridge_oversized_field(data: dict) -> Optional[str]:
+    """Validate every field this chat-event contract writes to the inbox against the
+    size caps, TYPE-AGNOSTICALLY. Pure helper (no Flask) so it is unit-testable.
+
+    Checks every non-`type` allowlisted field across ALL 4 inbound types in ONE place:
       conversation_id (any type)             -> LIVE_CHAT_BRIDGE_MAX_CONVO_ID
+      body/state/who/geo/page/ip_country/
+      sender/msg_seq/ts/typing               -> LIVE_CHAT_BRIDGE_MAX_TEXT
+
+    Oversized NON-string values (e.g. body=[<10MB list>], sender={...}) are caught
+    via serialized-size, not skipped. Short scalars (int/bool/float/None/absent) are
+    accepted without serializing.
 
     Returns the name of the first oversized field, or None if all within bounds.
-    Non-string / absent values are ignored (they carry no disk-fill risk here).
     """
     if not isinstance(data, dict):
         return None
-    convo_id = data.get('conversation_id')
-    if isinstance(convo_id, str) and len(convo_id) > LIVE_CHAT_BRIDGE_MAX_CONVO_ID:
+    if _bridge_value_oversized(data.get('conversation_id'), LIVE_CHAT_BRIDGE_MAX_CONVO_ID):
         return 'conversation_id'
-    for field in ('body', 'state', 'who', 'geo', 'page', 'ip_country'):
-        val = data.get(field)
-        if isinstance(val, str) and len(val) > LIVE_CHAT_BRIDGE_MAX_TEXT:
+    for field in LIVE_CHAT_BRIDGE_TEXT_FIELDS:
+        if _bridge_value_oversized(data.get(field), LIVE_CHAT_BRIDGE_MAX_TEXT):
             return field
     return None
 
@@ -5000,9 +5039,18 @@ def register_routes(app: Flask) -> None:
         # Hard cap the whole request body (route-scoped — NOT a global Flask
         # MAX_CONTENT_LENGTH, which would break the unbounded money-path
         # /api/log-conversation transcript payload). Oversized -> 413.
-        if request.content_length is not None and \
-                request.content_length > LIVE_CHAT_BRIDGE_MAX_BODY:
-            return _bridge_cors(make_response(jsonify({'error': 'request body too large'}), 413))
+        if request.content_length is not None:
+            # Fast path: trust the declared length header.
+            if request.content_length > LIVE_CHAT_BRIDGE_MAX_BODY:
+                return _bridge_cors(make_response(jsonify({'error': 'request body too large'}), 413))
+        else:
+            # Chunked Transfer-Encoding -> no content_length, so the header check
+            # above is skipped. Materialize the body and bound it BEFORE parsing
+            # JSON, else a chunked request bypasses the route body cap entirely.
+            # cache=True keeps the buffered body available for request.get_json() below.
+            _raw = request.get_data(cache=True)
+            if len(_raw) > LIVE_CHAT_BRIDGE_MAX_BODY:
+                return _bridge_cors(make_response(jsonify({'error': 'request body too large'}), 413))
 
         if not request.is_json:
             return _bridge_cors(make_response(jsonify({'error': 'Content-Type must be application/json'}), 400))
