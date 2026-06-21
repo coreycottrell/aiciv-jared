@@ -133,9 +133,57 @@ LIVE_CHAT_BRIDGE_INBOX = os.path.join(DEFAULT_LOG_DIR, 'live_chat_bridge_inbox.j
 # Max inbound chat-event text length (bytes/chars) — caps disk-fill DoS on the
 # append-only inbox JSONL. Oversized -> 413. Flag-gated path only.
 LIVE_CHAT_BRIDGE_MAX_TEXT = 16384
+# Max chars for conversation_id (used in logging/paths). Short bound -> 413 if over.
+LIVE_CHAT_BRIDGE_MAX_CONVO_ID = 256
+# Hard cap on the bridge chat-event request body (scoped to the flag-gated bridge
+# route only — NOT a global Flask MAX_CONTENT_LENGTH, which would break the
+# unbounded money-path /api/log-conversation transcript payload). Oversized -> 413.
+LIVE_CHAT_BRIDGE_MAX_BODY = 64 * 1024
+# Rotate the append-only inbox JSONL once it crosses this size (single roll to .1).
+LIVE_CHAT_BRIDGE_INBOX_ROTATE_BYTES = 50 * 1024 * 1024
 # Import-time snapshot (informational only). NOT used for gating — _bridge_enabled()
 # re-reads os.environ at request time so tests/operators can toggle without re-import.
 LIVE_CHAT_BRIDGE_ENABLED = os.environ.get('LIVE_CHAT_BRIDGE_ENABLED', '0') == '1'
+
+
+def _bridge_oversized_field(data: dict) -> Optional[str]:
+    """Validate every string-typed free-text field this chat-event contract accepts
+    against the size caps. Pure helper (no Flask) so it is unit-testable.
+
+    Checks ALL 4 inbound types' string fields in ONE place:
+      new_message.body / state_change.state / typing.who /
+      visitor_presence.geo|page|ip_country  -> LIVE_CHAT_BRIDGE_MAX_TEXT
+      conversation_id (any type)             -> LIVE_CHAT_BRIDGE_MAX_CONVO_ID
+
+    Returns the name of the first oversized field, or None if all within bounds.
+    Non-string / absent values are ignored (they carry no disk-fill risk here).
+    """
+    if not isinstance(data, dict):
+        return None
+    convo_id = data.get('conversation_id')
+    if isinstance(convo_id, str) and len(convo_id) > LIVE_CHAT_BRIDGE_MAX_CONVO_ID:
+        return 'conversation_id'
+    for field in ('body', 'state', 'who', 'geo', 'page', 'ip_country'):
+        val = data.get(field)
+        if isinstance(val, str) and len(val) > LIVE_CHAT_BRIDGE_MAX_TEXT:
+            return field
+    return None
+
+
+def _rotate_inbox_if_needed() -> None:
+    """Single-roll size-based rotation for the append-only bridge inbox JSONL.
+
+    When the inbox exceeds LIVE_CHAT_BRIDGE_INBOX_ROTATE_BYTES, move it to
+    '<inbox>.1' (overwriting any prior .1) before the next append. MUST be called
+    while holding _file_lock so it is concurrency-safe with the append.
+    """
+    try:
+        size = os.path.getsize(LIVE_CHAT_BRIDGE_INBOX)
+    except OSError:
+        # File does not exist yet (or stat failed) -> nothing to rotate.
+        return
+    if size > LIVE_CHAT_BRIDGE_INBOX_ROTATE_BYTES:
+        os.replace(LIVE_CHAT_BRIDGE_INBOX, LIVE_CHAT_BRIDGE_INBOX + '.1')
 
 
 def _bridge_enabled() -> bool:
@@ -186,6 +234,8 @@ def _route_inbound_chat_event(event: dict) -> None:
     record['received_at'] = datetime.now(timezone.utc).isoformat()
     os.makedirs(DEFAULT_LOG_DIR, exist_ok=True)
     with _file_lock:
+        # Concurrency-safe size-based rotation BEFORE append (inside the lock).
+        _rotate_inbox_if_needed()
         with open(LIVE_CHAT_BRIDGE_INBOX, 'a', encoding='utf-8') as f:
             f.write(json.dumps(record) + '\n')
 
@@ -508,6 +558,16 @@ def create_app(
         Configured Flask application.
     """
     app = Flask(__name__)
+
+    # NOTE (live-chat-bridge hardening, 2026-06-21): we deliberately do NOT set a
+    # global app.config['MAX_CONTENT_LENGTH'] = 64KB. The money-path
+    # /api/log-conversation endpoint accepts the FULL conversation transcript
+    # ('messages'/'conversationHistory' array, re-sent in full on every log and
+    # with no message-count cap), which routinely exceeds 64KB on long chats.
+    # A global 64KB limit would 413 legitimate transcript logging and break the
+    # money path. The bridge disk-fill DoS cap is therefore SCOPED to the
+    # flag-gated /api/bridge/chat-event route (per-request content_length check +
+    # per-field LIVE_CHAT_BRIDGE_MAX_TEXT caps) instead of a global limit.
 
     # Configure log directory
     log_dir = log_dir or DEFAULT_LOG_DIR
@@ -4937,6 +4997,13 @@ def register_routes(app: Flask) -> None:
         if secret_state != 'ok':
             return _bridge_cors(make_response(jsonify({'error': 'unauthorized'}), 401))
 
+        # Hard cap the whole request body (route-scoped — NOT a global Flask
+        # MAX_CONTENT_LENGTH, which would break the unbounded money-path
+        # /api/log-conversation transcript payload). Oversized -> 413.
+        if request.content_length is not None and \
+                request.content_length > LIVE_CHAT_BRIDGE_MAX_BODY:
+            return _bridge_cors(make_response(jsonify({'error': 'request body too large'}), 413))
+
         if not request.is_json:
             return _bridge_cors(make_response(jsonify({'error': 'Content-Type must be application/json'}), 400))
         data = request.get_json(silent=True)
@@ -4948,11 +5015,12 @@ def register_routes(app: Flask) -> None:
         if evt_type not in ('new_message', 'state_change', 'typing', 'visitor_presence'):
             return _bridge_cors(make_response(jsonify({'error': 'unknown type'}), 400))
 
-        # Cap inbound body size (new_message only) to prevent disk-fill DoS on the
-        # append-only inbox JSONL. Oversized -> 413.
-        if evt_type == 'new_message' and \
-                len(str(data.get('body', '') or '')) > LIVE_CHAT_BRIDGE_MAX_TEXT:
-            return _bridge_cors(make_response(jsonify({'error': 'body too large'}), 413))
+        # Cap ALL inbound free-text string fields (across all 4 types) + conversation_id
+        # in ONE place to prevent disk-fill DoS on the append-only inbox JSONL.
+        # Oversized -> 413. (Subsumes the old new_message.body-only check.)
+        _oversized = _bridge_oversized_field(data)
+        if _oversized is not None:
+            return _bridge_cors(make_response(jsonify({'error': f'{_oversized} too large'}), 413))
 
         # Normalize per type (no arbitrary passthrough; fixed fields per contract §1).
         if evt_type == 'new_message':
