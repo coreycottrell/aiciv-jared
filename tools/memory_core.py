@@ -171,9 +171,82 @@ class MemoryStore:
 
         return f"{entry.date}--{entry.type}-{topic_slug}.md"
 
+    # Default location of the canonical-slug alias map (markdown table:
+    # alias -> canonical). See .claude/AGENT-SLUG-ALIASES.md.
+    _ALIAS_MAP_PATH = Path(".claude") / "AGENT-SLUG-ALIASES.md"
+
+    def _load_slug_aliases(self) -> Dict[str, str]:
+        """Load and cache the alias->canonical slug map (lazy, fail-open).
+
+        Parses the markdown table in AGENT-SLUG-ALIASES.md where each row is:
+            | `canonical-slug` | `alias-a`, `alias-b`, ... |
+        Returns a flat dict mapping every lowercased alias to its canonical
+        slug. If the file is missing or unparseable, returns an empty map and
+        NEVER raises — canonicalization then becomes a no-op (fail-open).
+        """
+        cached = getattr(self, "_slug_aliases", None)
+        if cached is not None:
+            return cached
+
+        aliases: Dict[str, str] = {}
+        try:
+            path = Path(getattr(self, "_alias_map_path", self._ALIAS_MAP_PATH))
+            text = path.read_text(encoding="utf-8")
+            for line in text.splitlines():
+                line = line.strip()
+                # Only consider markdown table rows with at least two columns.
+                if not line.startswith("|") or "|" not in line[1:]:
+                    continue
+                cells = [c.strip() for c in line.strip("|").split("|")]
+                if len(cells) < 2:
+                    continue
+                canonical = cells[0].strip().strip("`").strip()
+                alias_blob = cells[1]
+                # Skip header / separator rows (no backticked canonical slug,
+                # or separator rows made of dashes).
+                if not canonical or set(canonical) <= set("-: "):
+                    continue
+                if "`" not in cells[0]:
+                    # Header row like "Canonical slug ... | Aliases ..." has no
+                    # backticks — ignore it.
+                    continue
+                for raw_alias in alias_blob.split(","):
+                    alias = raw_alias.strip().strip("`").strip()
+                    if alias:
+                        aliases[alias.lower()] = canonical
+        except Exception:
+            # Fail-open: any error (missing file, parse issue) -> no remapping.
+            aliases = {}
+
+        self._slug_aliases = aliases
+        return aliases
+
+    def _canonicalize_slug(self, agent_id: str) -> str:
+        """Resolve an agent_id to its canonical slug, or return it unchanged.
+
+        Fail-open: returns agent_id verbatim if no alias matches or on any
+        error. Never raises, never blocks a write.
+        """
+        try:
+            if not agent_id:
+                return agent_id
+            return self._load_slug_aliases().get(agent_id.lower(), agent_id)
+        except Exception:
+            return agent_id
+
     def _get_agent_dir(self, agent_id: str) -> Path:
         """Get or create directory for agent's memories."""
-        agent_dir = self.agent_learnings_dir / agent_id
+        canonical = self._canonicalize_slug(agent_id)
+        if canonical != agent_id:
+            try:
+                import logging
+                logging.getLogger("memory_core").warning(
+                    "slug-canon: %s -> %s", agent_id, canonical
+                )
+            except Exception:
+                import sys
+                print(f"slug-canon: {agent_id} -> {canonical}", file=sys.stderr)
+        agent_dir = self.agent_learnings_dir / canonical
         agent_dir.mkdir(parents=True, exist_ok=True)
         return agent_dir
 
