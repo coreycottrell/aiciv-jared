@@ -19,7 +19,7 @@ ALIAS_MD = """# Agent Canonical-Slug Alias Map
 ## Canonical map (alias -> canonical)
 | Canonical slug (has manifest) | Aliases to collapse |
 |-------------------------------|---------------------|
-| `ptt-fullstack`     | `ptt-full-stack`, `ptt-fullstack-dev`, `ptt-fullstack-developer`, `ptt` |
+| `ptt-fullstack`     | `ptt-full-stack`, `ptt-fullstack-dev`, `ptt-full-stack-developer`, `ptt-fullstack-developer`, `ptt` |
 | `ptt-qa`            | `ptt-qa-engineer` |
 | `the-conductor`     | `conductor`, `primary`, `aether` |
 """
@@ -73,6 +73,42 @@ def run():
             failures.append(f"fail-open: expected unchanged, got '{d4.name}'")
         else:
             print(f"PASS  failopen  (no map) ptt-fullstack-dev -> {d4.name}")
+
+        # 5. Whole ptt-fullstack family (exact-map members) -> ptt-fullstack
+        store5 = _store_with_map(tmp, ALIAS_MD)
+        for src in (
+            "ptt",
+            "ptt-full-stack",
+            "ptt-fullstack-dev",
+            "ptt-fullstack-developer",
+            "ptt-full-stack-developer",
+        ):
+            dd = store5._get_agent_dir(src)
+            if dd.name != "ptt-fullstack":
+                failures.append(f"family: {src!r} expected 'ptt-fullstack', got '{dd.name}'")
+            else:
+                print(f"PASS  family  {src} -> {dd.name}")
+
+        # 6. NOVEL future variant (NOT in map) -> ptt-fullstack via prefix fallback
+        dnov = store5._get_agent_dir("ptt-fullstack-v2")
+        if dnov.name != "ptt-fullstack":
+            failures.append(f"prefix: 'ptt-fullstack-v2' expected 'ptt-fullstack', got '{dnov.name}'")
+        else:
+            print(f"PASS  prefix  ptt-fullstack-v2 -> {dnov.name}")
+
+        # 7. ptt-qa is its OWN canonical -> must NOT be folded into ptt-fullstack
+        dqa = store5._get_agent_dir("ptt-qa")
+        if dqa.name != "ptt-qa":
+            failures.append(f"no-overmatch: 'ptt-qa' expected 'ptt-qa', got '{dqa.name}'")
+        else:
+            print(f"PASS  no-overmatch  ptt-qa -> {dqa.name}")
+
+        # 8. ptt-qa-* novel variant -> ptt-qa (prefix), NOT ptt-fullstack, NOT ptt
+        dqae = store5._get_agent_dir("ptt-qa-engineer")
+        if dqae.name != "ptt-qa":
+            failures.append(f"no-overmatch: 'ptt-qa-engineer' expected 'ptt-qa', got '{dqae.name}'")
+        else:
+            print(f"PASS  no-overmatch  ptt-qa-engineer -> {dqae.name}")
 
     if failures:
         print("\nFAILURES:")

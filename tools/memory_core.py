@@ -224,13 +224,49 @@ class MemoryStore:
     def _canonicalize_slug(self, agent_id: str) -> str:
         """Resolve an agent_id to its canonical slug, or return it unchanged.
 
-        Fail-open: returns agent_id verbatim if no alias matches or on any
+        Two-stage resolution:
+          1. EXACT-MAP lookup (authoritative). Explicit aliases and canonical
+             targets that are also listed as their own row always win here.
+          2. PREFIX FALLBACK (safe). If no exact match, fold the slug to a
+             canonical target C only when slug == C or slug startswith C + "-".
+             Canonical targets are the DISTINCT values (left column) of the
+             alias map — derived, never hardcoded. The canonical with the
+             LONGEST matching C / "C-" prefix wins, so a more-specific
+             canonical (e.g. 'ptt-qa') is never swallowed by a shorter one
+             (e.g. 'ptt'): 'ptt-qa' / 'ptt-qa-engineer' resolve to 'ptt-qa',
+             while 'ptt-fullstack-v2' folds to 'ptt-fullstack'. Ambiguous ties
+             (two equal-length matches) leave the slug unchanged (fail-open).
+
+        Fail-open: returns agent_id verbatim if nothing matches or on any
         error. Never raises, never blocks a write.
         """
         try:
             if not agent_id:
                 return agent_id
-            return self._load_slug_aliases().get(agent_id.lower(), agent_id)
+            key = agent_id.lower()
+            amap = self._load_slug_aliases()
+
+            # Stage 1: exact alias map (authoritative).
+            exact = amap.get(key)
+            if exact is not None:
+                return exact
+
+            # Stage 2: safe prefix fallback over canonical targets.
+            # Canonical targets = distinct right-column values, lowercased.
+            canonicals = {c.lower() for c in amap.values()}
+            best = None          # canonical with the longest matching prefix
+            best_len = -1        # length of that match
+            ambiguous = False
+            for c in canonicals:
+                if key == c or key.startswith(c + "-"):
+                    if len(c) > best_len:
+                        best, best_len, ambiguous = c, len(c), False
+                    elif len(c) == best_len and c != best:
+                        ambiguous = True
+            if best is not None and not ambiguous:
+                return best
+
+            return agent_id
         except Exception:
             return agent_id
 
