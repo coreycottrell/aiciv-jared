@@ -1959,9 +1959,26 @@ def register_routes(app: Flask) -> None:
             return '', 204
 
         import json as _json
+        import re as _re
 
         magic_links_file = '/home/jared/projects/AI-CIV/aether/.magic-links.json'
         email_param = (request.args.get('email') or '').strip().lower()
+
+        # The page may pass an "email:" prefixed path segment (email-key poll)
+        # rather than a bare UUID. Normalize: derive the identifier and, if it
+        # carries an inline email, fold it into email_param ONLY when the query
+        # param is absent. An empty email after the prefix is treated as no-id.
+        _id = (session_uuid or '').strip()
+        if _id.lower().startswith('email:'):
+            _inline_email = _id[len('email:'):].strip().lower()
+            if _inline_email and not email_param:
+                email_param = _inline_email
+            # Keep the full "email:{x}" form so the Fallback-1 key lookup matches.
+
+        _UUID_RE = _re.compile(
+            r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+            _re.IGNORECASE,
+        )
 
         try:
             try:
@@ -1970,48 +1987,36 @@ def register_routes(app: Flask) -> None:
             except (FileNotFoundError, _json.JSONDecodeError):
                 links = {}
 
-            # Primary lookup: by UUID key
-            entry = links.get(session_uuid)
+            # EMPTY/MALFORMED GUARD (fail-closed):
+            # If we have no usable email AND the path segment is not an exact
+            # UUID key present in the file, there is nothing safe to match.
+            # Return pending immediately — no scans, no fallbacks.
+            _has_uuid_key = bool(_id) and (_id in links) and _UUID_RE.match(_id) is not None
+            if not email_param and not _has_uuid_key:
+                return jsonify({'status': 'pending'})
 
-            # Fallback 1: check email:{email} key directly
+            # Primary lookup: by exact UUID key
+            entry = links.get(_id) if _id else None
+
+            # Fallback 1: exact email:{email} key (page polls by email-key)
             if not entry and email_param:
                 entry = links.get(f'email:{email_param}')
 
-            # Fallback 2: scan all entries for matching human_email
+            # Fallback 2: scan entries for EXACT human_email match (case-insensitive,
+            # full-string equality — never substring/prefix).
             if not entry and email_param:
                 for _key, _val in links.items():
                     if isinstance(_val, dict):
                         stored_email = (_val.get('human_email') or '').strip().lower()
-                        if stored_email == email_param:
+                        if stored_email and stored_email == email_param:
                             entry = _val
                             break
 
-            # Fallback 3: check if there's a recent entry for same sandbox PayPal email
-            # (handles case where page polls with chat email but link stored under PayPal email)
-            if not entry and email_param:
-                # Look up client in clients.db to find PayPal email
-                try:
-                    import sqlite3
-                    _db = sqlite3.connect('/home/jared/purebrain_portal/clients.db')
-                    _row = _db.execute(
-                        'SELECT email FROM clients WHERE email = ? OR goes_by = ? ORDER BY last_active_at DESC LIMIT 1',
-                        (email_param, email_param)
-                    ).fetchone()
-                    if not _row:
-                        # Try matching by subscription in the pay-test flow
-                        _row2 = _db.execute(
-                            'SELECT email FROM clients WHERE last_active_at > datetime("now", "-30 minutes") ORDER BY last_active_at DESC LIMIT 1'
-                        ).fetchone()
-                        if _row2:
-                            _alt_email = (_row2[0] or '').strip().lower()
-                            if _alt_email and _alt_email != email_param:
-                                _alt_entry = links.get(f'email:{_alt_email}')
-                                if _alt_entry:
-                                    entry = _alt_entry
-                                    logger.info(f'Magic link found via alt email lookup: {email_param} -> {_alt_email}')
-                    _db.close()
-                except Exception as _e:
-                    logger.warning(f'Magic link alt email lookup failed: {_e}')
+            # NOTE: The former "Fallback 3" (clients.db last_active_at -30min
+            # most-recent-active scan) was REMOVED 2026-06-29. It served a
+            # DIFFERENT customer's magic link to the current poller — a privacy
+            # breach + wrong-onboarding bug. There is no safe variant; only an
+            # exact identity match may serve a link.
 
             if entry and entry.get('status') == 'ready' and entry.get('magic_link'):
                 logger.info(
@@ -3116,6 +3121,30 @@ def register_routes(app: Flask) -> None:
             resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
             return resp
 
+        # --- ADDITIVE shared-secret gate (Stripe-webhook caller; 2026-06-29) ---
+        # /api/send-seed is a constitutional endpoint. Today it is effectively open
+        # (CORS '*'). The Stripe webhook needs an authenticated path WITHOUT breaking
+        # the existing PayPal / chatbox / finish-wakeup callers that send no secret.
+        # Mechanism (backward compatible):
+        #   * If SEED_INBOUND_SECRET env is UNSET/empty -> behavior is byte-for-byte
+        #     as before (open). Every legacy caller keeps working unchanged.
+        #   * If SEED_INBOUND_SECRET IS set -> a request that supplies the
+        #     X-Seed-Secret header MUST match (constant-time) or it is rejected 401.
+        #     A request that supplies NO X-Seed-Secret header is STILL allowed
+        #     (legacy compatibility) — the secret only HARDENS the authenticated
+        #     caller; it does not yet make the header mandatory. Phase C will flip
+        #     the header to required once every legacy caller is confirmed to send
+        #     it (see SPEC G / open-fallback removal). This makes the change purely
+        #     additive: it can only REJECT a request that presents a WRONG secret.
+        _seed_secret_cfg = os.environ.get('SEED_INBOUND_SECRET', '')
+        _provided_seed_secret = request.headers.get('X-Seed-Secret')
+        if _seed_secret_cfg and _provided_seed_secret is not None:
+            if not hmac.compare_digest(str(_provided_seed_secret), str(_seed_secret_cfg)):
+                logger.warning('[send-seed] 401 X-Seed-Secret mismatch (value never logged)')
+                resp = jsonify({'ok': False, 'error': 'unauthorized'})
+                resp.headers['Access-Control-Allow-Origin'] = '*'
+                return resp, 401
+
         if not request.is_json:
             resp = jsonify({'ok': False, 'error': 'Content-Type must be application/json'})
             resp.headers['Access-Control-Allow-Origin'] = '*'
@@ -3127,6 +3156,56 @@ def register_routes(app: Flask) -> None:
             resp = jsonify({'ok': False, 'error': 'Invalid JSON'})
             resp.headers['Access-Control-Allow-Origin'] = '*'
             return resp, 400
+
+        # --- ADDITIVE transcript-hydration-on-empty (Stripe-webhook caller; 2026-06-29) ---
+        # The Stripe webhook (Stripe-hosted Checkout runs no page JS) cannot read the
+        # Python conversation JSONL, so it POSTs identity fields with conversation:[].
+        # The LOCKED core (_send_seed_core / _send_seed_core_locked) does NOT self-
+        # hydrate. So hydrate HERE in the wrapper, ONLY in the empty-conversation case,
+        # using the SAME _lookup_naming_conversation helper finish-wakeup uses.
+        #
+        # STRICT backward compatibility: this block ONLY runs when the caller sent an
+        # EMPTY/absent conversation. Any caller that already passes a non-empty
+        # conversation (PayPal verify-path, chatbox, finish-wakeup, page callers)
+        # skips this entirely -> their behavior is byte-for-byte unchanged. A failed
+        # lookup leaves conversation as [] and lets the LOCKED core's existing
+        # ai_name guard (422/held) make the constitutional decision — we never
+        # fabricate a transcript.
+        try:
+            _existing_conv = data.get('conversation') if isinstance(data, dict) else None
+            _has_conv = isinstance(_existing_conv, list) and len(_existing_conv) > 0
+            _hydra_uuid = (data.get('session_uuid') or data.get('sessionUuid') or '').strip() if isinstance(data, dict) else ''
+            _hydra_order = (data.get('order_id') or data.get('orderId') or '').strip() if isinstance(data, dict) else ''
+            _hydra_email = (data.get('human_email') or data.get('humanEmail') or '').strip() if isinstance(data, dict) else ''
+            if (not _has_conv) and (_hydra_uuid or _hydra_order):
+                # strict=False (default/legacy lookup semantics): S1(orderId) >
+                # S2(sessionUuid) > S3(email-in-content) > S4(recency). This is the
+                # same non-strict recovery the legacy PayPal verify path relied on.
+                _lk_name, _lk_uuid, _lk_conv = _lookup_naming_conversation(
+                    order_id=_hydra_order,
+                    payer_email=_hydra_email,
+                    session_uuid_hint=_hydra_uuid,
+                    account_id=None,
+                    strict=False,
+                )
+                if _lk_conv:
+                    data['conversation'] = _lk_conv
+                    logger.info(
+                        f'[send-seed] Hydrated empty conversation from logs '
+                        f'(uuid={_hydra_uuid or "-"} order={_hydra_order or "-"} '
+                        f'msgs={len(_lk_conv)})'
+                    )
+                # If the caller did NOT supply ai_name, adopt the recovered one so the
+                # constitutional ai_name guard can pass for webhook callers that rely
+                # on log recovery (PayPal/page callers already pass ai_name -> untouched).
+                _caller_ai_name = (data.get('ai_name') or data.get('aiName') or '').strip()
+                if (not _caller_ai_name) and _lk_name:
+                    data['ai_name'] = _lk_name
+                    logger.info('[send-seed] Hydrated ai_name from logs for empty-conversation caller')
+        except Exception as _hydra_err:
+            # Hydration is best-effort: a failure must NEVER change the legacy path.
+            # Fall through with whatever the caller sent; the locked core's guards apply.
+            logger.warning(f'[send-seed] conversation hydration skipped: {type(_hydra_err).__name__}')
 
         return _send_seed_core(data)
 
