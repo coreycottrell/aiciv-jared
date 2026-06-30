@@ -3178,15 +3178,24 @@ def register_routes(app: Flask) -> None:
             _hydra_order = (data.get('order_id') or data.get('orderId') or '').strip() if isinstance(data, dict) else ''
             _hydra_email = (data.get('human_email') or data.get('humanEmail') or '').strip() if isinstance(data, dict) else ''
             if (not _has_conv) and (_hydra_uuid or _hydra_order):
-                # strict=False (default/legacy lookup semantics): S1(orderId) >
-                # S2(sessionUuid) > S3(email-in-content) > S4(recency). This is the
-                # same non-strict recovery the legacy PayPal verify path relied on.
+                # strict=True (STRONG KEYS ONLY): S0(accountId) > S1(orderId) >
+                # S2(sessionUuid). The S3(email-in-content) + S4(recency) fallbacks
+                # are structurally unreachable in strict mode. WHY: a tier-only
+                # Stripe buyer arrives with a freshly-minted uuid + brand-new order +
+                # no prior naming conversation, so S1/S2 MISS. Under strict=False the
+                # lookup fell through to S4 = the most-recent STRANGER's payment-page
+                # transcript (<30 min, >5 msgs) and adopted it unconditionally, then
+                # the locked core emailed THIS buyer's seed with the STRANGER's
+                # transcript embedded = cross-customer transcript exfil. strict=True
+                # makes a no-strong-key buyer get conversation=[] so the locked core's
+                # own ai_name guard (422/held) decides — never a stranger's data.
+                # (Maps to feedback_identity_keyed_pipeline_fallbacks_exact_or_fail_closed.)
                 _lk_name, _lk_uuid, _lk_conv = _lookup_naming_conversation(
                     order_id=_hydra_order,
                     payer_email=_hydra_email,
                     session_uuid_hint=_hydra_uuid,
                     account_id=None,
-                    strict=False,
+                    strict=True,
                 )
                 if _lk_conv:
                     data['conversation'] = _lk_conv
