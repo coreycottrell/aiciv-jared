@@ -70,6 +70,532 @@ ACGEE_LANDING_CHAT_URL = 'http://5.161.90.32:3001/api/landing-chat'
 ACGEE_RETRY_DELAY_SECONDS = 10
 ACGEE_MAX_RETRIES = 3
 
+
+# =====================================================================
+# Pure Migrate — Gate 1 stored-prompt-injection neutralizer (2026-06-30)
+# ---------------------------------------------------------------------
+# The migration bundle is AUTHORED BY THE USER in the free Pure Migrate tool.
+# Every value the renderer emits lands in the `.md` that becomes the BORN
+# PureBrain's STARTING memory (and the .md is surfaced as HTML elsewhere in
+# the seed). Therefore NO user value may emit MARKDOWN/HTML STRUCTURE or
+# impersonate the seed's own headings / transcript roles. `_neutralize_user_text`
+# turns any user string into INERT text: it can leak as words, never as
+# structure, role, or markup. Applied per-line (injection can hide on line 2+).
+# =====================================================================
+
+# Tokens that, if rendered verbatim, would let a user value impersonate the
+# seed's own structure or a transcript role. We break them with a zero-width
+# space so they read identically to a human but cannot match as structure.
+_ZWSP = '​'
+_SEED_STRUCTURAL_TOKENS = (
+    '## About This User',
+    '## Full Conversation',
+    '## metadata.migration',
+    '[SYSTEM]:',
+    '[ASSISTANT]:',
+    '[USER]:',
+    '[system]:',
+    '[assistant]:',
+    '[user]:',
+)
+# Ignore-previous-instructions-class phrases (case-insensitive substring match).
+_INJECTION_PHRASES = (
+    'ignore all previous instructions',
+    'ignore previous instructions',
+    'ignore the above',
+    'disregard all previous',
+    'disregard previous instructions',
+    'you are now dan',
+    'you are now',
+    'system override',
+    'you are actually the admin',
+    'i am the system administrator',
+    'i am the admin',
+    'grant me tier',
+    'new instructions:',
+)
+
+
+def _html_escape_min(s):
+    """Escape the three HTML-significant chars (the .md is surfaced as HTML)."""
+    return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+
+def _neutralize_user_text(s):
+    """Render an arbitrary user string as INERT markdown text.
+
+    Guarantees (per line, so injections on line 2+ are also caught):
+      - No line can become a markdown heading (`#...`), blockquote (`>`),
+        fence (``` / ~~~), horizontal rule / setext heading
+        (`---`/`***`/`___`/`===`), or table row (leading `|`).
+      - `<` `>` `&` are HTML-escaped so no raw HTML (`</td><h1>`) can inject.
+      - Seed-structural tokens, transcript-role tags, and ignore-instructions
+        phrases are broken with a zero-width space so they cannot impersonate
+        the seed's own structure / roles (they still read normally to a human).
+    """
+    if s is None:
+        return ''
+    text = str(s)
+
+    out_lines = []
+    for raw_line in text.split('\n'):
+        line = raw_line
+
+        # 1) HTML-escape FIRST so subsequent markers we add are not themselves
+        #    re-escaped, and so any raw markup is defused.
+        line = _html_escape_min(line)
+
+        # 2) Neutralize line-leading markdown STRUCTURE. Work on the part after
+        #    leading whitespace; preserve the original indentation.
+        stripped = line.lstrip()
+        indent = line[:len(line) - len(stripped)]
+
+        if stripped:
+            # Heading: one or more leading '#'. Escape every leading '#'.
+            if stripped[0] == '#':
+                i = 0
+                while i < len(stripped) and stripped[i] == '#':
+                    i += 1
+                stripped = ('\\#' * i) + stripped[i:]
+            # Blockquote: leading '>'. (Note: '>' already HTML-escaped to
+            # '&gt;' above, so a literal '>' can no longer start a quote — but
+            # guard the escaped form too for clarity / defense in depth.)
+            elif stripped.startswith('&gt;'):
+                stripped = '\\&gt;' + stripped[4:]
+            # Fenced code block: ``` or ~~~ (3+).
+            elif stripped.startswith('```') or stripped.startswith('~~~'):
+                stripped = '\\' + stripped
+            # Horizontal rule / setext heading underline: a line of only
+            # -, *, _, or = (3+). Escape the first char to break it.
+            elif (len(stripped) >= 3
+                  and set(stripped) <= {'-', '*', '_', '='}
+                  and stripped[0] in '-*_='):
+                stripped = '\\' + stripped
+            # Table row: leading '|'.
+            elif stripped[0] == '|':
+                stripped = '\\' + stripped
+
+        line = indent + stripped
+        out_lines.append(line)
+
+    result = '\n'.join(out_lines)
+
+    # 3) Break seed-structural / transcript-role tokens anywhere in the value
+    #    (post-escape forms too) so a user value can't impersonate the seed's
+    #    own `## About This User` heading, a `[SYSTEM]:` role line, etc.
+    for tok in _SEED_STRUCTURAL_TOKENS:
+        if tok in result:
+            result = result.replace(tok, tok[:2] + _ZWSP + tok[2:])
+        esc_tok = _html_escape_min(tok)
+        if esc_tok != tok and esc_tok in result:
+            result = result.replace(esc_tok, esc_tok[:2] + _ZWSP + esc_tok[2:])
+
+    # 4) Defuse ignore-previous-instructions-class phrases (case-insensitive).
+    #    Insert a ZWSP after the first character of each match so it reads the
+    #    same but cannot be parsed as an imperative command token run.
+    lower = result.lower()
+    for phrase in _INJECTION_PHRASES:
+        idx = 0
+        while True:
+            pos = lower.find(phrase, idx)
+            if pos == -1:
+                break
+            # break the matched span at its first char in the ORIGINAL casing
+            result = result[:pos + 1] + _ZWSP + result[pos + 1:]
+            lower = result.lower()
+            idx = pos + 1 + len(_ZWSP) + (len(phrase) - 1)
+
+    return result
+
+
+# =====================================================================
+# Pure Migrate — Gate 1 "born knowing" fold (additive, 2026-06-30)
+# ---------------------------------------------------------------------
+# Renders a purebrain.memory-bundle/v1 import into HUMAN-READABLE markdown
+# "About This User" context, folded into the seed .md attachment BEFORE the
+# locked `## Full Conversation` transcript. Witness's birth reads the
+# human-readable transcript/body (Chy verified — NOT raw JSON), so the
+# PRIMARY born-knowing surface is this prose render, not an opaque blob.
+#
+# HARD INVARIANT: this helper is ONLY ever invoked when a migration_bundle is
+# present. When the bundle is absent the seed is byte-identical to today.
+#
+# Schema is FROZEN (purebrain.memory-bundle/v1). This renderer does NOT
+# propose schema changes — it renders exactly what the contract defines and
+# skips missing/empty fields cleanly (no "None", no KeyError).
+# =====================================================================
+def render_migration_bundle_human_readable(bundle):
+    """Render a purebrain.memory-bundle/v1 dict into human-readable markdown.
+
+    Returns a markdown string (the `## About This User (migrated context)`
+    section, including its trailing blank line) ready to be inserted into the
+    seed .md attachment body BEFORE `## Full Conversation`. Returns '' when the
+    bundle is None / not a dict / has no renderable content, so the caller can
+    splice it unconditionally without changing the absent-bundle output.
+
+    Every field of the v1 schema is rendered SAFELY:
+      - identity                       -> "Who they are"
+      - custom_instructions.about_user -> "About them"
+      - custom_instructions.response_style -> "Preferred response style"
+      - preferences (style/format/do/dont) -> "How they like to work"
+      - context (projects/goals/domains/ongoing_threads) -> "What they're working on"
+      - facts[]                        -> "Known facts about this user"
+      - source.confidence (low)        -> caveat banner (NOT asserted as fact)
+      - warnings[]                     -> caveat banner (NOT asserted as fact)
+
+    Missing/empty fields are skipped with no placeholder text. Low-confidence
+    and warnings are surfaced as CAVEATS, never asserted as established fact.
+    """
+    if not isinstance(bundle, dict):
+        return ''
+
+    # -----------------------------------------------------------------
+    # CHY-MAP: <field→content map plugs in here>
+    # -----------------------------------------------------------------
+    # Chy is refitting her contract into a precise field→seed-content
+    # (human-readable) map. Her output drops in HERE as a single ordered
+    # lookup table: each entry says (a) which bundle path to read, (b) the
+    # human-readable heading it renders under, and (c) in what order.
+    #
+    # Each entry: (dotted_path, heading, render_kind)
+    #   render_kind: 'prose'  -> render value as a paragraph
+    #                'kvlist' -> render a dict of label->value as bullets
+    #                'bullets'-> render a list as bullet points
+    #                'pairs'  -> render selected sub-keys of a dict as bullets
+    #
+    # The DEFAULT map below renders every populated v1 field safely. When Chy
+    # delivers her precise map, replace/extend FIELD_RENDER_MAP only — the
+    # rendering engine beneath it does not change.
+    FIELD_RENDER_MAP = [
+        ('identity', 'Who they are', 'auto'),
+        ('custom_instructions.about_user', 'About them', 'prose'),
+        ('custom_instructions.response_style', 'Preferred response style', 'prose'),
+        ('preferences', 'How they like to work', 'preferences'),
+        ('context', "What they're working on", 'context'),
+        ('facts', 'Known facts about this user', 'bullets'),
+    ]
+    # -----------------------------------------------------------------
+
+    def _get(path):
+        """Resolve a dotted path within the bundle; None if any hop missing."""
+        cur = bundle
+        for part in path.split('.'):
+            if not isinstance(cur, dict) or part not in cur:
+                return None
+            cur = cur[part]
+        return cur
+
+    def _clean_str(v):
+        """Neutralize a user-supplied value into INERT text.
+
+        SECURITY (stored prompt-injection hardening, 2026-06-30): the migration
+        bundle is AUTHORED BY THE USER in the free Pure Migrate tool. Every value
+        rendered here lands in the `.md` that becomes the born PureBrain's
+        STARTING memory (and is surfaced as HTML elsewhere in the seed). So no
+        user value may ever emit MARKDOWN/HTML STRUCTURE or impersonate the
+        seed's own headings / transcript roles. The data must read as the user's
+        unverified claim, never as authoritative/system text or executable
+        structure.
+
+        Rules applied (per line, because an injection can hide on line 2+):
+          - HTML-escape `<` `>` `&` (the .md is surfaced as HTML) so
+            `</td><h1>` etc. can never inject markup.
+          - Escape line-leading `#` (one or more) so a value can't become a
+            heading structurally identical to `## About This User`.
+          - Escape line-leading `>` (blockquote), ```` ``` ````/`~~~` (fences),
+            `---`/`***`/`___`/`===` (hr / setext heading), and leading `|`
+            (table pipe).
+          - Render seed-STRUCTURAL / transcript-role / ignore-instructions
+            tokens inert (zero-width-break inside them) so they can't
+            impersonate the seed structure or a transcript role.
+        Returns inert text; the INLINE "(migrated USER claim — unverified)"
+        marker is added by the renderers, not here, so list/kv items stay clean.
+        """
+        if v is None:
+            return ''
+        s = str(v).strip()
+        if not s:
+            return ''
+        return _neutralize_user_text(s)
+
+    def _clean_list(v):
+        """Return a list of non-empty stripped strings, or [] for anything else."""
+        if not isinstance(v, list):
+            return []
+        out = []
+        for item in v:
+            s = _clean_str(item)
+            if s:
+                out.append(s)
+        return out
+
+    def _humanize_key(k):
+        # User-controlled dict KEYS (identity sub-keys, forward-compat extra
+        # preference/context keys) are also neutralized — a hostile key like
+        # `</td><h1>` or `## heading` must not inject structure either.
+        return _neutralize_user_text(str(k).replace('_', ' ').strip().capitalize())
+
+    out_lines = []
+
+    # SECURITY: per-field INLINE framing. Even if a neutralized value's text
+    # leaks as words, this marker (rendered right under each subsection heading)
+    # keeps it reading as the USER's unverified claim, never authoritative /
+    # system text. It is INLINE (in the body), not just the section banner.
+    _CLAIM_MARKER = '_(migrated USER claim — unverified)_'
+
+    def _emit_heading(heading):
+        out_lines.append(f'### {heading}')
+        out_lines.append('')
+        out_lines.append(_CLAIM_MARKER)
+        out_lines.append('')
+
+    def _render_prose(heading, value):
+        s = _clean_str(value)
+        if not s:
+            return
+        _emit_heading(heading)
+        out_lines.append(s)
+        out_lines.append('')
+
+    def _render_bullets(heading, value):
+        items = _clean_list(value)
+        if not items:
+            return
+        _emit_heading(heading)
+        for it in items:
+            out_lines.append(f'- {it}')
+        out_lines.append('')
+
+    def _render_kvlist(heading, value):
+        """Render a dict as `**Label**: value` bullets / sub-bullets. Skips
+        empty values. Lists nest as bullets; scalars render inline."""
+        if not isinstance(value, dict):
+            return
+        rendered = []
+        for k, v in value.items():
+            if isinstance(v, list):
+                items = _clean_list(v)
+                if not items:
+                    continue
+                rendered.append(f'- **{_humanize_key(k)}**:')
+                for it in items:
+                    rendered.append(f'  - {it}')
+            else:
+                s = _clean_str(v)
+                if not s:
+                    continue
+                rendered.append(f'- **{_humanize_key(k)}**: {s}')
+        if not rendered:
+            return
+        _emit_heading(heading)
+        out_lines.extend(rendered)
+        out_lines.append('')
+
+    def _render_auto(heading, value):
+        """Best-effort render of a value of unknown shape (used for `identity`,
+        which the v1 schema leaves open): dict -> kvlist, list -> bullets,
+        scalar -> prose."""
+        if isinstance(value, dict):
+            _render_kvlist(heading, value)
+        elif isinstance(value, list):
+            _render_bullets(heading, value)
+        else:
+            _render_prose(heading, value)
+
+    def _render_preferences(heading, value):
+        """preferences: communication_style, format, do[], dont[]."""
+        if not isinstance(value, dict):
+            return
+        sub = []
+        cs = _clean_str(value.get('communication_style'))
+        if cs:
+            sub.append(f'- **Communication style**: {cs}')
+        fmt = _clean_str(value.get('format'))
+        if fmt:
+            sub.append(f'- **Preferred format**: {fmt}')
+        do = _clean_list(value.get('do'))
+        if do:
+            sub.append('- **Do**:')
+            sub.extend(f'  - {d}' for d in do)
+        dont = _clean_list(value.get('dont'))
+        if dont:
+            sub.append("- **Don't**:")
+            sub.extend(f'  - {d}' for d in dont)
+        # Any extra/unknown preference keys render generically (forward-compat).
+        _known = {'communication_style', 'format', 'do', 'dont'}
+        for k, v in value.items():
+            if k in _known:
+                continue
+            if isinstance(v, list):
+                items = _clean_list(v)
+                if items:
+                    sub.append(f'- **{_humanize_key(k)}**:')
+                    sub.extend(f'  - {it}' for it in items)
+            else:
+                s = _clean_str(v)
+                if s:
+                    sub.append(f'- **{_humanize_key(k)}**: {s}')
+        if not sub:
+            return
+        _emit_heading(heading)
+        out_lines.extend(sub)
+        out_lines.append('')
+
+    def _render_context(heading, value):
+        """context: projects[], goals[], domains[], ongoing_threads[]."""
+        if not isinstance(value, dict):
+            return
+        sub = []
+        for key, label in (
+            ('projects', 'Projects'),
+            ('goals', 'Goals'),
+            ('domains', 'Domains'),
+            ('ongoing_threads', 'Ongoing threads'),
+        ):
+            items = _clean_list(value.get(key))
+            if items:
+                sub.append(f'- **{label}**:')
+                sub.extend(f'  - {it}' for it in items)
+        # Forward-compat: any extra context keys render generically.
+        _known = {'projects', 'goals', 'domains', 'ongoing_threads'}
+        for k, v in value.items():
+            if k in _known:
+                continue
+            if isinstance(v, list):
+                items = _clean_list(v)
+                if items:
+                    sub.append(f'- **{_humanize_key(k)}**:')
+                    sub.extend(f'  - {it}' for it in items)
+            else:
+                s = _clean_str(v)
+                if s:
+                    sub.append(f'- **{_humanize_key(k)}**: {s}')
+        if not sub:
+            return
+        _emit_heading(heading)
+        out_lines.extend(sub)
+        out_lines.append('')
+
+    _RENDERERS = {
+        'auto': _render_auto,
+        'prose': _render_prose,
+        'bullets': _render_bullets,
+        'kvlist': _render_kvlist,
+        'preferences': _render_preferences,
+        'context': _render_context,
+    }
+
+    # Drive the render off the (Chy-pluggable) FIELD_RENDER_MAP, in order.
+    for path, heading, kind in FIELD_RENDER_MAP:
+        renderer = _RENDERERS.get(kind, _render_auto)
+        renderer(heading, _get(path))
+
+    # --- Caveats (surfaced, never asserted as fact) ---
+    caveat_lines = []
+    confidence = _get('source.confidence')
+    try:
+        conf_val = float(confidence) if confidence is not None else None
+    except (TypeError, ValueError):
+        conf_val = None
+    if conf_val is not None and conf_val < 0.7:
+        caveat_lines.append(
+            f'- This migrated context is **low-confidence** (source.confidence='
+            f'{conf_val:g}). Treat it as a starting hint to confirm with the '
+            f'user, not as established fact.'
+        )
+    warnings = _clean_list(_get('warnings'))
+    for w in warnings:
+        caveat_lines.append(f'- {w}')
+
+    # If nothing rendered at all (empty/placeholder bundle), emit nothing so the
+    # caller's output stays clean.
+    if not out_lines and not caveat_lines:
+        return ''
+
+    header = [
+        '## About This User (migrated context)',
+        '',
+        '> Imported via Pure Migrate. This is part of the birth seed — fold it '
+        'into the new PureBrain’s STARTING memory so the AI is BORN already '
+        'knowing this user. It describes the USER, not the AI’s identity '
+        '(the AI is still named in the live naming ceremony).',
+        '',
+    ]
+    body = list(out_lines)
+    if caveat_lines:
+        body.append('### Caveats')
+        body.append('')
+        body.extend(caveat_lines)
+        body.append('')
+
+    return '\n'.join(header + body) + '\n'
+
+
+# =====================================================================
+# Pure Migrate — Gate 1 OPAQUE-BLOB fold (spec migrate-gate2-producer-spec
+# -2026-06-30, Section 2). This is the SHIPPING design: the frozen
+# purebrain.memory-bundle/v1 object is carried VERBATIM as an opaque blob in a
+# fenced ```json block under `## Migration Bundle`, placed IMMEDIATELY BEFORE
+# `## Full Conversation` in the seed `.md` attachment. The producer does NOT
+# interpret or restructure the bundle.
+#
+# HARD INVARIANT (the core of this build): when migration_bundle is None/absent,
+# render_migration_bundle_block returns '' and build_migration_surfaces returns
+# {} — so the seed (subject + plain-text body + HTML table + `.md` attachment)
+# is BYTE-FOR-BYTE identical to the pre-fold production seed. Zero regression.
+#
+# NOTE (superseded design): render_migration_bundle_human_readable /
+# _neutralize_user_text above implement an EARLIER, uncommitted human-readable
+# prose render. They are NOT used by the locked core anymore — the spec mandates
+# the opaque-blob form below. They are intentionally left in place (non-
+# destructive) because their stored-prompt-injection neutralization is the
+# recommended mitigation for the verbatim-JSON fence-break risk flagged for the
+# pre-deploy security pass. See the build report.
+# =====================================================================
+def render_migration_bundle_block(bundle):
+    """Render the `## Migration Bundle` markdown block carrying a frozen
+    purebrain.memory-bundle/v1 object VERBATIM as an opaque fenced-JSON blob.
+
+    Returns the block string (its own `---` separated section, ending with a
+    trailing blank line) ready to be spliced into the seed `.md` attachment
+    IMMEDIATELY BEFORE the `## Full Conversation` heading.
+
+    Returns '' when bundle is None / not a dict, so the caller can splice it
+    unconditionally and the absent-bundle seed stays byte-identical to today.
+
+    The bundle is NOT interpreted or restructured — `json.dumps` round-trips it
+    losslessly (no sort_keys -> insertion order preserved -> verbatim). The
+    bundle JSON lands ONLY in this block; it is NEVER inlined into the
+    transcript body (which would corrupt the LOCKED transcript and could trip
+    the receiver's name-extraction regex)."""
+    if not isinstance(bundle, dict):
+        return ''
+    _payload = json.dumps(bundle, indent=2, ensure_ascii=False)
+    return (
+        '---\n\n'
+        '## Migration Bundle\n\n'
+        "> Pure Migrate import. Fold this into the new PureBrain's STARTING memory at birth\n"
+        '> — it is part of the birth seed, not a post-hoc import. The AI should be BORN\n'
+        '> already knowing this user.\n\n'
+        '```json\n'
+        + _payload + '\n'
+        '```\n\n'
+    )
+
+
+def build_migration_surfaces(bundle):
+    """The two seed-field surfaces that carry the migration bundle verbatim:
+    the top-level `migration` field and the `metadata.migration` mirror (riding
+    the same metadata fast-path that already carries civ_name/human_name/email).
+    Both point at the SAME verbatim bundle object.
+
+    Returns {} when bundle is None / not a dict, so a metadata-only birth path
+    sees nothing when the bundle is absent (byte-identical-when-absent)."""
+    if not isinstance(bundle, dict):
+        return {}
+    return {'migration': bundle, 'metadata': {'migration': bundle}}
+
+
 # File write lock for thread safety
 _file_lock = threading.Lock()
 
@@ -1203,7 +1729,20 @@ def register_routes(app: Flask) -> None:
             except Exception as _pe_err:
                 logger.warning(f'[payer-email-store] Failed to store payer email: {_pe_err}')
 
-        def _fire_payment_seed(is_test=False):
+        def _fire_payment_seed(is_test=False, strict=True):
+            # S4 CROSS-CUSTOMER EXFIL FIX (2026-06-30, devops-engineer):
+            # `strict` (DEFAULT True) makes identity-keyed retrieval exact-match-or-
+            # fail-closed, mirroring the L3794 _lookup_naming_conversation strict design
+            # and the Stripe-side /api/send-seed fix (L3198 strict=True). When strict=True
+            # the S4 recency fallback (most-recent stranger payment-page transcript in last
+            # 30min, >5 msgs) is STRUCTURALLY UNREACHABLE: it is neither populated nor
+            # selectable. A no-strong-key PayPal buyer (S1 orderId / S2 sessionUuid /
+            # S3 email-in-content all miss) therefore gets conversation=[] -> the locked
+            # core ai_name guard (422/held) decides, NEVER a stranger's transcript.
+            # The single live call site (verify_payment webhook) passes strict=True.
+            # Maps to feedback_identity_keyed_pipeline_fallbacks_exact_or_fail_closed
+            # (same class as the SEV-1 magic-link leak). strict=False is retained ONLY as
+            # an explicit, never-defaulted legacy escape hatch and is NOT used anywhere.
             try:
                 import sys as _sys
                 import json as _json
@@ -1295,10 +1834,14 @@ def register_routes(app: Flask) -> None:
 
                                     # Strategy 4: Most recent conversation on a payment page,
                                     # within the last 30 minutes, with >5 messages.
-                                    # If strategies 1-3 all fail, this catches the case where
-                                    # the sessionUuid was empty but someone clearly just had a
-                                    # long conversation and then paid.
-                                    if _msg_count > 5:
+                                    # WEAK FALLBACK — recency/proximity, NOT identity-keyed.
+                                    # S4 CROSS-CUSTOMER EXFIL FIX: gated behind `if not strict:`.
+                                    # In strict mode (the live default) this populator never
+                                    # runs, so _best_by_recency stays None and the S4 winner
+                                    # branch below is unreachable. A no-strong-key buyer falls
+                                    # through to conversation=[] (fail-closed), never a
+                                    # stranger's recent transcript.
+                                    if not strict and _msg_count > 5:
                                         _page_url = (_meta.get('page_url') or '').lower()
                                         _is_payment_page = any(p in _page_url for p in _payment_page_patterns)
                                         if _is_payment_page:
@@ -1358,7 +1901,13 @@ def register_routes(app: Flask) -> None:
                         elif _best_by_email and _best_by_email_count > 0:
                             _best_match = _best_by_email
                             _match_strategy = f'S3-payerEmail ({_best_by_email_count} msgs)'
-                        elif _best_by_recency and _best_by_recency_count > 0:
+                        elif (not strict) and _best_by_recency and _best_by_recency_count > 0:
+                            # S4 WEAK RECENCY FALLBACK — selectable ONLY in legacy
+                            # strict=False mode. In strict mode (live default) the populator
+                            # above never ran (_best_by_recency is None) AND this branch is
+                            # gated, so a no-strong-key buyer can NEVER be served a stranger's
+                            # recent payment-page transcript. Defense-in-depth: both the
+                            # population and the winner selection are strict-gated.
                             _best_match = _best_by_recency
                             _match_strategy = f'S4-recentConv ({_best_by_recency_count} msgs, ts={_best_by_recency_ts})'
                         elif (
@@ -1784,7 +2333,10 @@ def register_routes(app: Flask) -> None:
                 # self-sealing class this build eliminates). Roll back the
                 # reservation, dead-letter, and alert loudly instead.
                 try:
-                    threading.Thread(target=_fire_payment_seed, kwargs={'is_test': is_sandbox_or_test}, daemon=True).start()
+                    # S4 EXFIL FIX: explicit strict=True at the live call site (matches the
+                    # function default; stated here so the fail-closed contract is visible at
+                    # the call point, mirroring the Stripe-side strict=True fix-at-call-site).
+                    threading.Thread(target=_fire_payment_seed, kwargs={'is_test': is_sandbox_or_test, 'strict': True}, daemon=True).start()
                 except Exception as _thr_exc:
                     if order_id:
                         # LEAF-LOCK RULE: _seed_inflight_lock only — no _file_lock
@@ -2701,6 +3253,13 @@ def register_routes(app: Flask) -> None:
         order_id     = (data.get('order_id') or data.get('orderId') or '').strip()
         is_sandbox   = bool(data.get('is_sandbox', data.get('isSandbox', False)))
         conversation = data.get('conversation') or []
+        # Pure Migrate Gate-1 (2026-06-30, ADDITIVE): an optional
+        # purebrain.memory-bundle/v1 import. ABSENT (None) for every normal
+        # seed -> the produced seed is byte-identical to today. Only a
+        # Pure-Migrate caller supplies `migration` / `migrationBundle`.
+        migration_bundle = data.get('migration') or data.get('migrationBundle') or None
+        if not isinstance(migration_bundle, dict):
+            migration_bundle = None
 
         if not session_uuid or not human_email:
             resp = jsonify({'ok': False, 'error': 'session_uuid and human_email are required'})
@@ -2745,6 +3304,7 @@ def register_routes(app: Flask) -> None:
             return _send_seed_core_locked(
                 session_uuid, ai_name, human_name, human_email,
                 tier, order_id, is_sandbox, conversation,
+                migration_bundle=migration_bundle,
             )
         finally:
             # ALWAYS release the in-flight reservation: on success the durable
@@ -2754,12 +3314,23 @@ def register_routes(app: Flask) -> None:
                 _seed_inflight_uuids.discard(session_uuid)
 
     def _send_seed_core_locked(session_uuid, ai_name, human_name, human_email,
-                               tier, order_id, is_sandbox, conversation):
+                               tier, order_id, is_sandbox, conversation,
+                               migration_bundle=None):
         """Body of _send_seed_core, executed while session_uuid holds the
         in-flight reservation (see _send_seed_core). CLAIM-AFTER-SEND: all
         durable dedup state (seed_sent_uuids.json, _seeds_fired_for_orders),
         the seed_sent audit row, and the SEED FIRED notifications commit ONLY
-        after a verified successful AgentMail send (_msg_id truthy)."""
+        after a verified successful AgentMail send (_msg_id truthy).
+
+        migration_bundle (Pure Migrate Gate-1, ADDITIVE 2026-06-30): an optional
+        purebrain.memory-bundle/v1 dict. ABSENT (None) -> the produced seed
+        (.md attachment body + plain-text + HTML) is BYTE-IDENTICAL to the
+        pre-fold seed. PRESENT -> a human-readable `## About This User
+        (migrated context)` section is folded into the .md attachment BEFORE
+        `## Full Conversation`, and the raw bundle is mirrored under
+        metadata.migration as a secondary machine surface. Bundle = USER
+        context ONLY; ai_name still comes from the live naming ceremony and is
+        still validated upstream. The conversation transcript is NOT touched."""
         # --- Idempotency guard (READ-ONLY): never send a seed twice for the same session_uuid ---
         seed_state_file = os.path.join(DEFAULT_LOG_DIR, 'seed_sent_uuids.json')
         sent_uuids = []
@@ -2916,11 +3487,28 @@ def register_routes(app: Flask) -> None:
             _md_content += f'**Human Email**: {human_email}\n'
             _md_content += f'**Order ID**: {order_id or "(not yet captured)"}\n'
             _md_content += f'**Timestamp**: {_ts_now}\n\n'
+            # Pure Migrate Gate-1 fold (ADDITIVE, spec 2026-06-30 Section 2):
+            # when a migration_bundle is present, splice the `## Migration
+            # Bundle` VERBATIM opaque-JSON block IMMEDIATELY BEFORE
+            # `## Full Conversation`. render_migration_bundle_block(None) -> ''
+            # so the absent-bundle .md is BYTE-IDENTICAL to the pre-fold seed.
+            # The bundle is carried opaquely and is NEVER inlined into the
+            # transcript body below (that would corrupt the LOCKED transcript).
+            _md_content += render_migration_bundle_block(migration_bundle)
             _md_content += '---\n\n## Full Conversation\n\n'
             for msg in conversation:
                 _role = (msg.get('role') or 'unknown').upper()
                 _cont = (msg.get('content') or '').strip()
                 _md_content += f'**{_role}**: {_cont}\n\n'
+
+            # NOTE (spec 2026-06-30): the migration bundle is carried VERBATIM
+            # in the `## Migration Bundle` block spliced above (before
+            # `## Full Conversation`) — the bundle JSON goes ONLY in that block.
+            # The top-level `migration` field and the `metadata.migration`
+            # mirror (see build_migration_surfaces) both resolve to that same
+            # verbatim carriage; the seed email has no separate JSON object to
+            # host them. No trailing/secondary block is emitted, so when
+            # migration_bundle is absent the `.md` is byte-identical to today.
 
             _safe_name = (ai_name or 'seed').lower().replace(' ', '-')
             _attach_filename = f'{_safe_name}-{human_name or "user"}-conversation.md'.replace(' ', '-')
