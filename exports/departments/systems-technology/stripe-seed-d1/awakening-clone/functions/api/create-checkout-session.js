@@ -42,11 +42,43 @@ function priceByTier(env) {
   };
 }
 
-function json(body, status) {
-  return new Response(JSON.stringify(body), {
-    status: status || 200,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-  });
+// ---- CORS (cross-origin money-path call) ----
+// The standalone pricing pages live on https://purebrain.ai (apex) and
+// https://www.purebrain.ai (www) but this endpoint is served from the
+// awakening-clone CF Pages project, so the "Checkout with Stripe" POST is
+// cross-origin. The browser BLOCKS the response (hiding even the error body the
+// page reads) unless Access-Control-Allow-Origin echoes the caller's Origin. We
+// reflect a FIXED ALLOWLIST only (never "*", never credentials) — this endpoint
+// intentionally serves the public purebrain.ai site.
+const CORS_ALLOWLIST = new Set([
+  "https://purebrain.ai",
+  "https://www.purebrain.ai",
+]);
+
+function corsHeaders(request, methods) {
+  const origin = (request && request.headers.get("Origin")) || "";
+  const h = {
+    "Access-Control-Allow-Methods": methods,
+    "Access-Control-Allow-Headers": "Content-Type, Accept",
+    "Access-Control-Max-Age": "86400",
+    "Vary": "Origin",
+  };
+  if (CORS_ALLOWLIST.has(origin)) {
+    h["Access-Control-Allow-Origin"] = origin;
+  }
+  return h;
+}
+
+function json(body, status, request) {
+  const headers = { "Content-Type": "application/json", "Cache-Control": "no-store" };
+  if (request) Object.assign(headers, corsHeaders(request, "POST, OPTIONS"));
+  return new Response(JSON.stringify(body), { status: status || 200, headers });
+}
+
+export async function onRequestOptions(context) {
+  // Preflight: 204 + CORS headers (no body). Without this, OPTIONS fell through
+  // to method-not-allowed (405) and failed the browser preflight before the POST.
+  return new Response(null, { status: 204, headers: corsHeaders(context.request, "POST, OPTIONS") });
 }
 
 function isEmail(s) {
@@ -62,18 +94,18 @@ export async function onRequestPost(context) {
   // with is_sandbox:true (see webhook).
   const sk = env.STRIPE_SECRET_KEY || env.STRIPE_SECRET_KEY_LIVE;
   if (!sk) {
-    return json({ error: "Server not configured (missing Stripe secret)." }, 500);
+    return json({ error: "Server not configured (missing Stripe secret)." }, 500, request);
   }
 
   let body;
   try {
     const ct = request.headers.get("content-type") || "";
     if (!ct.includes("application/json")) {
-      return json({ error: "Content-Type must be application/json" }, 400);
+      return json({ error: "Content-Type must be application/json" }, 400, request);
     }
     body = await request.json();
   } catch (_) {
-    return json({ error: "Invalid JSON" }, 400);
+    return json({ error: "Invalid JSON" }, 400, request);
   }
 
   // ---- TIER-ONLY checkout (cold-load card button) ----
@@ -103,7 +135,7 @@ export async function onRequestPost(context) {
   if (!price) {
     // KEPT: unknown/missing tier is still a hard 400 (security-critical — the
     // tier drives the price + the webhook's FATAL tier/amount mismatch gate).
-    return json({ error: "Unknown or missing tier." }, 400);
+    return json({ error: "Unknown or missing tier." }, 400, request);
   }
 
   // Return URL = thank-you contract (exact param names confirmed in
@@ -170,25 +202,26 @@ export async function onRequestPost(context) {
     });
     data = await resp.json();
   } catch (e) {
-    return json({ error: "Stripe request failed." }, 502);
+    return json({ error: "Stripe request failed." }, 502, request);
   }
 
   if (!resp.ok) {
     const msg = (data && data.error && data.error.message) || "Stripe error";
-    return json({ error: msg }, resp.status);
+    return json({ error: msg }, resp.status, request);
   }
 
   // Embedded mode returns client_secret (NOT a redirect url).
   if (!data.client_secret) {
-    return json({ error: "Stripe did not return a client_secret." }, 502);
+    return json({ error: "Stripe did not return a client_secret." }, 502, request);
   }
 
   // client_secret + id are client-facing redirect/mount tokens (safe). sk never
   // appears in this response.
-  return json({ client_secret: data.client_secret, id: data.id });
+  return json({ client_secret: data.client_secret, id: data.id }, 200, request);
 }
 
 export async function onRequest(context) {
+  if (context.request.method === "OPTIONS") return onRequestOptions(context);
   if (context.request.method === "POST") return onRequestPost(context);
-  return json({ error: "Method not allowed. Use POST." }, 405);
+  return json({ error: "Method not allowed. Use POST." }, 405, context.request);
 }
