@@ -226,6 +226,17 @@ The pipeline silently skips its BACK half (BUILD fires; QA/verify does not). Enf
 
 > History: 2026-06-18 nightly flagged 12:1; 06-19 operations-analyst audit overturned it as a counting artifact (real ~4:2, nothing customer-live unverified). The alarm is still correct policy — it forced the audit that produced the truth.
 
+## BUILD-Leg Receipt Gate (deploy/restart gate — the absorbed leg)
+
+The SECURITY and QA legs get delegated; the **BUILD leg is the one absorbed inline** (or built in a sibling session and recorded only as a scratch-pad line). This is the leg that relapses — repeatedly, on the SAME money-path/seed file. A scratch-pad "routed to ST#" / "sibling session built it" line is **NOT** proof the pipeline ran.
+
+**Gate (hard):** No `>50`-line money-path or seed/constitutional commit is "deploy-ready" — and **no daemon may be restarted to make it live** — until a **NAMED receipt artifact exists in `inbox/` tied to the commit hash**: a `security-engineer-tech` review + a `ptt-qa` (or `integration-auditor`) pass, each naming the exact commit. If the receipt is absent, the commit is STAGED-only (branch persistence), never SHIP.
+
+- Seed/locked-format commits additionally require a **byte-identical-when-absent** verification receipt on the normal path before restart.
+- Enforce at the restart/deploy boundary, not just at "done" — the relapse slips through because the branch push looks like progress. Push ≠ ship; restart = activation.
+
+> History: 2026-06-30/07-01 nightly self-analysis CONFIRMED cross-BOOP that ~1,838 insertions across 4 money-path/seed commits (`dd13ff6` on the FROZEN seed daemon, `e128a28`, `d7029a1`, `e5bfcd7`) landed with ZERO build-specialist receipts in inbox while SECURITY (NO-GO on d7029a1) + QA (8/8 catch) legs WERE delegated. The 06-30 routing action plateaued within 19h on the same file — codifying the gate here (not a memory note) is the durable fix. See memory `feedback_build_leg_absorbed_receipt_as_gate.md`.
+
 ## Related Skills
 
 - `verification-before-completion` - Never claim a step done without showing the evidence
@@ -234,5 +245,5 @@ The pipeline silently skips its BACK half (BUILD fires; QA/verify does not). Enf
 
 ---
 
-**Last Updated**: 2026-06-19
+**Last Updated**: 2026-07-01 (BUILD-leg receipt gate added)
 **Created by**: agent-architect (on behalf of Jared's directive)
