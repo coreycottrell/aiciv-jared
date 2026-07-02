@@ -875,6 +875,26 @@ def _validate_ai_name_for_seed(ai_name: str, context: str, **kwargs) -> bool:
     return True
 
 
+def _seed_conversation_is_empty(conversation) -> bool:
+    """
+    CONSTITUTIONAL GUARD PREDICATE (2026-07-01, Jason/"Verun" incident):
+    Return True when the naming-ceremony conversation carries NO real content —
+    i.e. there is not a single message with a non-whitespace `content`. An empty
+    conversation MUST block the seed (fail-closed), mirroring the payment-seed
+    hard-block. A Pure Migrate `migration_bundle` supplies USER context ONLY
+    (never the naming transcript), so it is intentionally NOT consulted here:
+    its presence must NOT let an empty naming ceremony through.
+
+    Empty is defined EXACTLY as the send-guard uses it:
+        not any((m.get('content') or '').strip() for m in conversation)
+
+    Extracted to module scope so it is directly unit-testable without a Flask
+    request/app context. The send path early-returns a held 422 when this is
+    True; when False the produced seed is byte-identical to prior behavior.
+    """
+    return not any((m.get('content') or '').strip() for m in (conversation or []))
+
+
 def generate_self_signed_cert():
     """
     Generate self-signed SSL certificate if it doesn't exist.
@@ -3280,6 +3300,81 @@ def register_routes(app: Flask) -> None:
             resp = jsonify({
                 'ok': False,
                 'error': 'ai_name is required — seed blocked to prevent sending without AI name',
+                'held': True,
+            })
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            return resp, 422
+
+        # --- CONSTITUTIONAL GUARD: Block seed if the naming conversation is EMPTY ---
+        # Added 2026-07-01 after the Jason/"Verun" incident: an addendum-path seed
+        # was emailed to a paying customer with NO conversation content — conv_text
+        # rendered '(no conversation history)' and the seed sent anyway. The
+        # PAYMENT-seed path already fails closed (finish-wakeup 425 + blocked_seeds
+        # dead-letter); this /api/send-seed addendum path did NOT. That asymmetry
+        # IS the bug. Fix: HOLD, never send an empty naming ceremony.
+        #
+        # migration_bundle (Pure Migrate, dd13ff6) is USER context ONLY and does
+        # NOT supply a transcript, so it MUST NOT bypass this guard: a migrated
+        # user still needs a real naming ceremony. The strict
+        # _lookup_naming_conversation (e5bfcd7 S4-exfil fix) is intentionally NOT
+        # weakened — empty MUST block here, never fall back to a stranger's chat.
+        if _seed_conversation_is_empty(conversation):
+            logger.critical(
+                f'[send-seed] BLOCKED: empty conversation — refusing to send seed for '
+                f'UUID={session_uuid} ai_name={ai_name!r} human_email={human_email!r} '
+                f'order_id={order_id!r} (migration_bundle_present={migration_bundle is not None}). '
+                f'Seed held for manual review.'
+            )
+            # Dead-letter to logs/blocked_seeds.jsonl — SAME append pattern the
+            # payment-seed hard-block path uses (see _fire_payment_seed).
+            try:
+                _blocked_record = {
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'order_id': order_id,
+                    'payer_email': human_email,
+                    'payer_name': human_name,
+                    'ai_name': ai_name,
+                    'tier': tier,
+                    'session_uuid': session_uuid,
+                    'reason': 'empty_conversation',
+                    'requires_action': 'manual review + manual seed dispatch',
+                }
+                _blocked_path = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)), '..', 'logs', 'blocked_seeds.jsonl'
+                )
+                os.makedirs(os.path.dirname(_blocked_path), exist_ok=True)
+                with open(_blocked_path, 'a') as _bf:
+                    _bf.write(json.dumps(_blocked_record) + '\n')
+            except Exception as _bjerr:
+                logger.error(f'[send-seed] Failed to append blocked_seeds.jsonl (empty conversation): {_bjerr}')
+
+            # PORTAL alert — Jared is portal-primary (a Telegram-only alert is
+            # invisible to him). ADDITIVE: mirrors the investor-inquiry
+            # _notify_portal tmux injection; removes no existing alert path.
+            try:
+                _sess_file = '/home/jared/projects/AI-CIV/aether/.current_session'
+                try:
+                    with open(_sess_file) as _sf:
+                        _sess_name = _sf.read().strip()
+                except Exception:
+                    _sess_name = 'aether'
+                _portal_msg = (
+                    f'[SEED BLOCKED — empty conversation] order={order_id or "(none)"} '
+                    f'ai_name={ai_name or "(none)"} email={human_email} uuid={session_uuid}. '
+                    f'HELD, NOT sent. Manual review + manual seed dispatch required. '
+                    f'See logs/blocked_seeds.jsonl'
+                )
+                subprocess.Popen(
+                    ['tmux', 'send-keys', '-t', _sess_name, f'\n{_portal_msg}\n', 'Enter'],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception as _perr:
+                logger.warning(f'[send-seed] Portal alert failed for empty-conversation block: {_perr}')
+
+            resp = jsonify({
+                'ok': False,
+                'error': 'conversation is empty — seed blocked to prevent sending an empty naming ceremony',
                 'held': True,
             })
             resp.headers['Access-Control-Allow-Origin'] = '*'
