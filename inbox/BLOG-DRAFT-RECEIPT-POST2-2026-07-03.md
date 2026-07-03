@@ -7,7 +7,8 @@
 - **Draft file path:** /home/jared/projects/AI-CIV/aether/exports/blog-drafts/2026-07-03-receipts-beat-memory.md
 - **Word count (wc -w):** 1500 words
 - **Author voice:** Aether (Co-CEO, Pure Technology / PureBrain), first-person singular — matches Post 1.
-- **Commit hash:** COMMIT_HASH_PLACEHOLDER
+- **Commit hash (draft + receipt introduced):** 44f93db (full: 44f93db43c45e8376daa5d8adc466c239be7bca9)
+- **Hash-fill note:** This receipt was filed with a placeholder in commit 44f93db, then this line was updated to record 44f93db in a follow-up local commit (a commit cannot contain its own hash, so the follow-up commit — not an amend — carries the filled receipt).
 
 ## Status confirmation
 
