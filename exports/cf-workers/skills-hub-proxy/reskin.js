@@ -14,10 +14,10 @@
  *     override block before the first </head>;
  *   - statically relabels "AiCIV HUB" -> "PureBrain Skills Hub" (and "AiCIV" ->
  *     "PureBrain") in the shipped HTML (catches <title>);
- *   - splices a client <script> before the first </body> that (a) injects a
- *     self-contained inline SVG hexagon logo into the topbar, and (b) re-runs the
- *     relabel after Swagger's CLIENT-SIDE render via a MutationObserver + a bounded
- *     setInterval polling fallback.
+ *   - splices a client <script> before the first </body> that (a) injects the real
+ *     PureBrain hexagon logo (<img> from purebrain.ai) + an Oswald wordmark lockup
+ *     into the topbar, and (b) re-runs the relabel after Swagger's CLIENT-SIDE render
+ *     via a MutationObserver + a bounded setInterval polling fallback.
  *
  * Defensive: if `html` is not a string, or lacks </head> / </body> markers, the
  * original input is returned unchanged. Never throws.
@@ -89,8 +89,16 @@ const FONTS_AND_STYLE = `
     color: var(--pb-text) !important;
     text-decoration: none !important;
   }
-  #pb-logo { display: inline-flex; align-items: center; }
-  #pb-logo svg { display: block; height: 34px; width: 34px; }
+  #pb-logo { display: inline-flex; align-items: center; gap: 10px; }
+  #pb-logo img { display: block; height: 40px; width: 40px; }
+  #pb-logo .pb-wordmark {
+    font-family: 'Oswald', sans-serif !important;
+    font-weight: 700 !important;
+    font-size: 22px !important;
+    letter-spacing: 0.5px;
+    color: var(--pb-text) !important;
+    line-height: 1;
+  }
   .swagger-ui .topbar .download-url-wrapper .select-label span { color: var(--pb-text-dim) !important; }
   .swagger-ui .topbar .download-url-wrapper input[type=text] {
     background: var(--pb-panel) !important;
@@ -244,23 +252,16 @@ const RELABEL_SCRIPT = `
   var OLD_SHORT = "AiCIV";
   var NEW_SHORT = "PureBrain";
 
-  // Self-contained inline SVG hexagon logo (no network dependency -> no PNG corruption).
+  // Real PureBrain hexagon logo (<img> on our own HTTPS domain) + Oswald wordmark lockup.
   var LOGO_SVG =
-    '<span id="pb-logo" aria-hidden="true">' +
-    '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">' +
-    '<defs><linearGradient id="pbHexStroke" x1="0" y1="0" x2="1" y2="1">' +
-    '<stop offset="0%" stop-color="#00BFFF"/><stop offset="100%" stop-color="#0080FF"/>' +
-    '</linearGradient></defs>' +
-    '<polygon points="50,4 89.8,27 89.8,73 50,96 10.2,73 10.2,27" ' +
-    'fill="#0b1830" stroke="url(#pbHexStroke)" stroke-width="5" stroke-linejoin="round"/>' +
-    '<circle cx="50" cy="20" r="4.5" fill="#FF8C00"/>' +
-    '<circle cx="74" cy="38" r="3.5" fill="#FFA500"/>' +
-    '<circle cx="30" cy="42" r="3" fill="#FF8C00"/>' +
-    '<circle cx="50" cy="52" r="4" fill="#FFA500"/>' +
-    '<line x1="50" y1="20" x2="50" y2="52" stroke="#00BFFF" stroke-width="1.6" opacity="0.7"/>' +
-    '<line x1="74" y1="38" x2="50" y2="52" stroke="#00BFFF" stroke-width="1.6" opacity="0.7"/>' +
-    '<line x1="30" y1="42" x2="50" y2="52" stroke="#00BFFF" stroke-width="1.6" opacity="0.7"/>' +
-    '</svg></span>';
+    '<span id="pb-logo">' +
+    '<img src="https://purebrain.ai/purebrain-hexagon-logo.png" alt="PureBrain" ' +
+    'width="40" height="40" ' +
+    'style="display:block;height:40px;width:40px;" />' +
+    '<span class="pb-wordmark" ' +
+    'style="font-family:Oswald,sans-serif;font-weight:700;font-size:22px;' +
+    'letter-spacing:0.5px;color:#e6ecff;line-height:1;">PureBrain</span>' +
+    '</span>';
 
   function fix(str) {
     if (typeof str !== "string") return str;
