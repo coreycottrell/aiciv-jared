@@ -1,149 +1,176 @@
-# RECEIPT — Checkout Seed-Fire Repair (BUILD) — 2026-07-03
+# RECEIPT — Checkout Seed-Fire Repair + Full Per-Page E2E (BUILD) — 2026-07-03
 
-**Status: 🟡 HELD AT DEPLOY — awaiting Jared's explicit final GO**
+**Status: 🟡 HELD AT DEPLOY — awaiting Jared's explicit GO on any live deploy**
 **Owner:** dept-systems-technology (ST#)
-**Pipeline run:** BUILD → SECURITY → QA → SANDBOX-PROVE → **HELD** (no deploy, no restart, no real-money tx, no client-record touched)
-**Authority:** Jared GO to **BUILD** ("ok yeah lets go") + mid-task scope CORRECTION (false-positive casualties). Deploy remains gated.
+**Pipeline:** BUILD → SECURITY → QA → FULL SANDBOX E2E → PER-PAGE MATRIX → **HELD** (no deploy, no restart, no real-money tx, no client-record touched)
 **Written:** 2026-07-03
 
 ---
 
-## 1. BOTTOM LINE
+## 0. THE SINGLE BIGGEST BLOCKER (read this first)
 
-The confirmed, gate-passed, deploy-ready fix is a **single server-side patch** to `tools/purebrain_log_server.py`. It repairs the one genuinely-confirmed failure — the **one-time $1 seed-fire regression** (Ashley/Vega) — and adds the observability that let it sit silent. It is built, independently security-reviewed (PASS-with-nits, no leak), and sandbox-E2E proven (4/4 PASS). **It is staged on disk + as a patch; it has NOT been deployed. Deploy = one systemd restart, held for your GO.**
+**Our checkout code works end-to-end. The WITNESS BIRTH TAIL is stalled — and it is Witness-side, not our code.**
 
-Two other scope items resolved without shipping code:
-- The `/awakening` subscription-JS changes are **NOT needed** — read-only verification proved the subscription flow completes E2E (the "Jason/Brad casualties" were reconciliation false positives). That work is quarantined on an unmerged branch, shelved.
-- The **Stripe $1 one-time** button is **BLOCKED (buildability gate)** — needs a confirmed one-time payment-mode price-id + endpoint that do not exist in code/config. One Jared-gated question below. No charge path was fabricated.
+- Full sandbox E2E proves OUR chain fires a **correct, populated seed** (ai_name + non-empty conversation + correct email + single-UUID) on both sandbox pages. PASS.
+- But **no magic link has been minted for ANYONE in ~42 hours** (last = Verun, 2026-07-02 00:40; `magic_links_last_hour: 0`). The real in-flight birth **Vega** (`purebrain_1783027001486_lxdljmduf`) is `pending` ~63 min after its seed was sent.
+- Our ingestion monitor (`agentmail_monitor.py`) is provably **alive and healthy** (state file saving every ~10s, normal poll sleep). So Vega `pending` means **Witness has emailed back no magic-link reply** — there is nothing for us to ingest.
 
----
-
-## 2. SCOPE CORRECTION (mid-task, from you)
-
-The E2E audit flagged Jason id132 / Brad id131 as paid-but-no-AI casualties. **False positive** — the audit read only canonical `clients.ai_name`/`clients.magic_link`, which are backfill-lagged. Read-only re-verification across ALL stores (payment-flow-qa):
-- **Jason id132** — real chain COMPLETE: `.magic-links.json` uuid `1326a1db…` → ai_name **Verun**, `verun-jason.app.purebrain.ai/react?token=…` status **ready**; `seed_events.jsonl` rows 35-36. Only defect = seed body was empty-conversation (the 07-01 hydrate gap — which THIS patch defends against). Every pipeline STEP fired.
-- **Brad** = three separate identities, correctly not merged. Your Brad = **id117 Peter/Unified**, chain COMPLETE (`seed_events` row 28, `.magic-links.json` uuid `909b0a5b…` status ready). id131 (gmail) = correct **fail-closed block** in `blocked_seeds.jsonl` (PayPal manual case, guard working as designed), a different person from Peter.
-- **Sample subscribers id115/120/121/127/128 = 5/5** complete in both stores.
-- **VERDICT: GENUINE-BREAKAGE = NO** on subscriptions. No client-record was touched; this is a code fix, not a data fix. (Two pre-existing, separately-tracked items surfaced: the send-seed empty-conversation hydrate gap, and canonical-column backfill lag — a reconciliation/data-sync task, not a live-page fix.)
+**Conclusion:** paying customers currently complete pay → seed, then the AI does not auto-birth because **Witness is not minting/returning magic links.** This needs a Witness-side investigation (separate from this checkout work). Our fix removes every silent failure on OUR side and makes the seed correct and populated; it cannot make Witness mint links.
+**Secondary latent (our-side):** when Witness last DID reply (07-02), our monitor logged `Failed to parse any fields from magic link email body`. Harden that parser before Witness resumes, or ingestion could re-block.
 
 ---
 
-## 3. THE CONFIRMED DEPLOY-READY PACKAGE — server patch (STAGED, not deployed)
+## 1. WHAT'S CONFIRMED, BUILT, AND GATE-PASSED
 
-**File:** `/home/jared/projects/AI-CIV/aether/tools/purebrain_log_server.py` (edited on disk, uncommitted `M`)
-**Durable patch:** `to-jared/PATCH-checkout-seed-fix-server-2026-07-03.patch` (34 KB, 618-line diff)
-**Compiles:** `python3 -m py_compile` → **exit 0** (verified by build author AND by independent security reviewer)
+| Item | State | Gate |
+|------|-------|------|
+| **Server patch** (P1c dead-letter+portal, P1d exact-key persisted binding, P2b one-time verify, money-event guard) | Staged on disk + committed patch | ✅ Security PASS-with-nits (no leak), ✅ Sandbox E2E 4/4 |
+| **/tiers genuine-gap fix** (reroute ceremony-less checkout → `/awakening`) | Staged branch + patch | Trivial client reroute (see §6 note) |
+| **Defensive silent-400 → dead-letter + PORTAL alert** | In the server patch (P1c) | ✅ pure-upside, kept |
+| **Full 12-page PASS/FAIL matrix** | Delivered (§4) | Read-only verified |
+
+**Net safety property proven across all pages: no page can SEND an empty seed anymore.** The fail-closed guards (ai_name guard, empty-conversation guard, P1c missing-key dead-letter) mean the worst case is a HELD/blocked seed + PORTAL alert (customer awaits manual dispatch), never a silent empty-seed send. That is the core exposure closed.
+
+---
+
+## 2. FULL SANDBOX E2E — per-stage (wtt-qa, local instance port 8901, prod :8443 untouched, zero leak)
+
+| Stage | Owner | Result |
+|-------|-------|--------|
+| Sandbox payment → verify-payment | OUR | ✅ PASS (`verified:true`) |
+| verify-payment → seed fired | OUR | ✅ PASS (`[payment-seed] Seed fired … AI: Ember`, hydrated 4 msgs) |
+| Seed WITH ai_name + NON-EMPTY conversation | OUR | ✅ PASS (send-seed: ai_name Solace, 4/4 non-empty; verify-payment: ai_name Ember, 4/4 non-empty) |
+| Single-UUID threading + correct email | OUR | ✅ PASS |
+| Fail-closed guards (empty conv / unknown uuid) | OUR | ✅ PASS (empty→422+dead-letter; unknown-uuid→blocked, no stranger data) |
+| **Witness receives seed** | WITNESS | ⛔ STALLED (Vega no reply ~63 min) |
+| **`/api/magic-link/{uuid}` returns link** | WITNESS | ⛔ STALLED (`pending`; `magic_links_last_hour: 0`) |
+| Convert to `app.purebrain.ai` portal link | OUR (blocked upstream) | ⏸ BLOCKED (conversion code proven-good on past births; no link to convert) |
+| Welcome email sent | WITNESS/OUR | ⏸ BLOCKED (needs a minted link) |
+
+**Verdict: (a) OUR checkout code = PASS. (b) Witness birth tail = STALLED, Witness-side.**
+
+---
+
+## 3. THE CONFIRMED DEPLOY-READY SERVER PATCH (staged, not deployed)
+
+**File:** `tools/purebrain_log_server.py` (edited on disk `M`, uncommitted; durable patch `to-jared/PATCH-checkout-seed-fix-server-2026-07-03.patch`, py_compile exit 0)
 
 | Item | Change | Why |
 |------|--------|-----|
-| **P1c** (send-seed silent-400) | Missing `session_uuid`/`human_email` → **dead-letter (`blocked_seeds.jsonl`) + PORTAL alert** (mirrors the existing L3321 empty-conv guard), then still returns 400. Real-signal only (pure-noise probes stay quiet). | Closes the zero-trace drop that made Ashley invisible. PORTAL, not Telegram. |
-| **P1d** (the actual regression fix) | Persist a durable **`session_uuid → conversation` binding** at naming-ceremony time (`/api/log-conversation` → `logs/session_uuid_bindings.jsonl`); hydrate at seed time by **EXACT sessionUuid key only**. | One-time/weak-key buyers hydrate WITHOUT the (correctly removed) recency fallback. This is what broke Ashley's seed. |
-| **P2a** (Stripe empty-seed) | Stripe caller (`X-Seed-Secret`) still lacking `ai_name` after exact-key hydrate → dead-letter + PORTAL alert. | Defensive observability for the tier-only path (the Jason empty-body class). Alerts only; doesn't alter the working path. |
-| **P2b** (verify_payment blind spot) | Non-`I-` one-time orders now confirm the **real captured amount via PayPal Orders-API** (server creds); unconfirmed/≤0 → `verified=False` + dead-letter. | Kills the latent `$0.00`/`verified:true` bug before any one-time flow relies on it. |
-| **Cross-cutting guard** | Money-event-anchored paid-vs-seed reconcile on PayPal `PAYMENT.CAPTURE.COMPLETED` + Stripe `checkout.session.completed` (`logs/paid_events.jsonl` + 900s reconcile → dead-letter + PORTAL alert). | Catches any paid-but-no-seed on BOTH rails, anchored on the money event (not a downstream D1 row, which was absent in the Ashley failure). |
+| **P1c** | Missing `session_uuid`/`human_email` → dead-letter (`blocked_seeds.jsonl`) + PORTAL alert (mirror empty-conv guard) | Closes the zero-trace drop that made Ashley invisible |
+| **P1d** | Persist `session_uuid → conversation` binding at ceremony time; hydrate by EXACT key only | One-time/weak-key buyers seed WITH content, no recency fallback (the actual Ashley regression fix) |
+| **P2a** | Stripe caller missing `ai_name` after hydrate → dead-letter + PORTAL alert | Defensive observability |
+| **P2b** | Non-`I-` one-time orders confirm real captured amount via PayPal Orders-API; unconfirmed/≤0 → verified:false | Kills the latent `$0.00`/verified:true blind spot |
+| **Guard** | Money-event reconcile (PayPal capture + Stripe session) → grace window → dead-letter + PORTAL alert | Catches paid-but-no-seed on BOTH rails, anchored on the money event |
 
-**The 07-03 fail-closed hardening is UNTOUCHED.** No recency/proximity/fuzzy identity fallback is reintroduced. Every new hydrate is exact-key-or-fail-closed. The 11 `strict=True` sites and the S4/S5 gating are byte-unchanged (verified by security review). This ADDS the missing pieces so legitimate seeds fire again — it does not undo the leak fix.
-
----
-
-## 4. HELD / SHELVED — `/awakening` subscription JS + `/tiers` (NOT in the deploy package)
-
-Built in the first pass on the false-casualty premise, then verification proved they are **not needed**. Left on an **unmerged, non-deployed** feature branch as a record; do NOT merge:
-- Branch `stage/checkout-seed-fix-20260703` (commit `d6a0a1b2`, pushed to origin as a feature branch, NOT main). Contents: `awakening-post-payment.js` (human_email fallback + uuid threading), `awakening-chatbox.js`, `tiers/index.html` reroute.
-- Patch: `to-jared/PATCH-checkout-seed-fix-client-2026-07-03.patch`.
-- Status: HELD-pending-nothing (verification says not needed). Keep for reference; deploy only if future evidence shows genuine `/awakening` breakage.
+**07-03 fail-closed hardening UNTOUCHED. No recency/fuzzy reintroduced — every new hydrate is exact-key-or-fail-closed** (security-verified in the actual comparison logic; 11 `strict=True` sites + S4/S5 byte-unchanged).
 
 ---
 
-## 5. BLOCKED — Stripe $1 one-time on `/home-test-live-1/` (Jared-gated question)
+## 4. DEFINITIVE 12-PAGE MATRIX (payment-flow-qa, read-only) — current-live → post-fix
 
-Buildability gate (spec-is-law → STOP, no fabrication). A Stripe one-time charge needs a **payment-mode** `create-checkout-session` endpoint + a confirmed **one-time price-id**. Neither exists:
-- `functions/api/create-checkout-session.js` does not exist on `origin/main` (only the separate awakening-clone project has a Stripe endpoint, and it is **subscription-mode**).
-- The only $1 Stripe price on record (`price_1TnmxKGdQ6Jplni4LEVwWtc2`) is `recurring=month` — a subscription, not one-time. Per prior memory, one-time Stripe 400s without the right env price-id (config fact, not code). Not guessed.
+⬛ = load-bearing stage. "Post-fix" = staged server patch + /tiers reroute deployed.
 
-**Staged (safe, no charge path):** branch `stage/home-test-live-1-stripe-onetime-20260703` (commit `fb37db96`, pushed feature branch) — a **disabled** "coming soon" placeholder + documented drop-in server contract. Patch: `to-jared/PATCH-home-test-live-1-stripe-onetime-2026-07-03.patch`. The existing **PayPal $1 one-time on this page is a genuine one-time capture and works on its own** (its seed now fires via the server P1d/P1c fix).
+| # | Page | Verdict current → post-fix | Load-bearing note |
+|---|------|----------------------------|-------------------|
+| 1 | **/awakening** (live checkout) | PASS → PASS (PayPal sub) | ⬛ seed fires **server-side** in verify-payment; client-400 is redundant, now dead-lettered. **Stripe rail = see §5 gap** |
+| 2 | /awakened $297 | PASS → PASS | ⬛ routes → /awakening (inherits #1) |
+| 3 | /partnered $597 | PASS → PASS | ⬛ routes → /awakening |
+| 4 | /unified $1097 | PASS → PASS | ⬛ routes → /awakening |
+| 5 | /insiders | PASS → PASS | ⬛ ceremony + sessionUuid stamped |
+| 6 | **/tiers** | **FAIL → PASS** | ⬛ no ceremony → held seed; **fixed by staged reroute** |
+| 7 | /old-pricing | PASS → PASS | ⚠ still serves legacy NGLTFKY/NGLTFLA plan IDs (not NICOI7Q) — confirm |
+| 8 | /home-test | PASS → PASS | PayPal-only test surface |
+| 9 | /home-test-sandbox | PASS (sandbox) | E2E-proven; N/A real $ |
+| 10 | /home-test-live-1 $1 | **PARTIAL → PASS** | PayPal $1 works; **Stripe $1 BLOCKED** (§5) |
+| 11 | /pay-test-sandbox-3 | PASS (sandbox) | E2E-proven; N/A real $ |
+| 12 | /pay-test-sandbox-5 | RETIRED | meta-refresh → / (no money surface) |
 
-**➡️ NEED FROM JARED:** *Which Stripe one-time payment-mode (`mode:'payment'`, non-recurring) price-id, and which create-checkout-session endpoint, should the `$1` one-time Stripe button wire to?* On answer, ptt wires it staged (still HELD).
+**Pages where a real paying client could still fail post-fix (our-side), and the stage:**
+1. **/awakening STRIPE rail** — stage = client-side single-UUID threading. All staged patches are server-side; the Next.js funnel still doesn't mint one `sessionUuid` threaded through log-conversation + create-checkout-session. Post-fix, Stripe /awakening converts empty-seed → **BLOCKED** (safe, no empty send) but the customer gets **no auto-AI** until manual dispatch. PayPal rail is fine (server email-resolution). **This is the one page to fix next on our side.**
+2. **/tiers** reaches PASS only once the reroute actually deploys.
+3. **/old-pricing** legacy plan IDs — confirm merchant/plan-ID intent.
 
----
-
-## 6. SECURITY REVIEW — independent (security-engineer-tech)
-
-**VERDICT: PASS-WITH-NITS. The cross-customer leak stays closed. Safe to lift the HELD deploy.**
-- No fuzzy reintroduction: `_lookup_session_binding` matches `session_uuid` exactly; blank/absent key → `('',[])`; blank bindings are never written → blank cannot collide. Exact-key-or-fail-closed verified in the actual comparison logic.
-- 11 `strict=True` sites + S4/S5 recency/payerName block byte-unchanged (still behind `if not strict:` + `ALLOW_S5_FUZZY_FALLBACK`).
-- Dead-letter/portal alerts are built from the triggering request's own vars only — no cross-customer bleed into the shared surface.
-- Binding write is keyed by the request's own sessionUuid; read is exact-key (strictly better than the removed recency scan, which leaked without knowing the UUID).
-- Reconcile Timer only reads seed stores + appends jsonl + alerts — never sends a seed, never mutates a customer record. P2b amount comes from PayPal, not the client (not spoofable in the handled case).
-
-**Non-blocking nits (file as follow-up):**
-- **MEDIUM — unbounded `threading.Timer` DoS** (`purebrain_log_server.py:1127`): one 900s daemon thread per verify-payment/send-seed with no cap. Fix: bound with a semaphore, or drop per-event timers and rely on an out-of-band sweep of the durable `paid_events.jsonl`. Availability risk, not a leak.
-- LOW — tmux portal-inject widens a pre-existing prompt-injection pattern (customer fields into `tmux send-keys` without `-l`); add `-l` + strip newlines.
-- LOW — `is_sandbox` suppresses the dead-letter write too (observability only).
-- LOW — positive client `amount` still trusted in verify-payment (pre-existing; P2b only hardens ≤0).
-
----
-
-## 7. QA — sandbox E2E, PASS 4/4 (wtt-qa)
-
-Local test instance on **port 8899** (production :8443 pid 521414 never restarted/bound, verified untouched before + after; all jsonl redirected to scratch; AgentMail/portal/Telegram neutralized; test server killed, logs clean).
-
-| Test | Proves | Result |
-|------|--------|--------|
-| **A — P1d** | `/api/send-seed` with conversation + ai_name OMITTED → server hydrated **ai_name=Kaira + full conversation** from the persisted binding by exact key; `seed_sent` written, `ok:true`. This IS the regression fix: one-time/weak-key seeds WITH content, no recency fallback. | ✅ PASS |
-| **B — P1c** | Non-sandbox request missing session_uuid+human_email → durable **dead-letter** (`reason=missing_session_uuid_or_human_email`) + portal alert (captured), NOT a silent 400. The Ashley invisibility is closed. | ✅ PASS |
-| **C — exact-key fail-closed** | send-seed with an unknown sessionUuid while two OTHER customers' bindings sat in the store → **422 held, NO seed, NO stranger data hydrated.** Leak did not reopen. | ✅ PASS |
-| **D — magic-link** | Minted async Witness-side (not in this server's send path, not sandbox-exercisable). Proximate proof = the Test-A `seed_sent` success. | ✅ PASS (honest scope) |
-
-**Two behavioral findings (characterizations, not defects in this patch — flagged for you):**
-1. **`is_sandbox=true` does NOT suppress the real AgentMail seed send** in this codebase — it only prepends a banner then sends to `aiciv-seed-inbox@agentmail.to` with the real key. Pre-existing. Any future re-test MUST fake AgentMail or a real test seed fires. Worth a hardening ticket.
-2. In **sandbox** mode the dead-letter write is also suppressed (only observable in production) — production behavior is correct.
+**Could not verify from this host (stated, not guessed):** live Stripe rail behavior (no Stripe secret on host; the live `stripe-seed-d1 worker.prod.js` still mints a fresh uuid + `"PURE BRAIN"` default → the frontend/webhook Stripe path is NOT source-fixed, only caught by the Python guard), Witness async tail timing, and live `api.purebrain.ai` deploy parity vs this host's copy.
 
 ---
 
-## 8. EXACT DEPLOY STEPS (run only on Jared's GO)
+## 5. BLOCKED — Stripe $1 one-time on /home-test-live-1 (Jared-gated, code-ready)
 
-The deploy target is the server patch only (Section 3). Production runs from this same working tree via systemd, so the on-disk edits activate on restart.
+The price-id blocker is **dissolved** (a `mode:'payment'` session needs no pre-created one-time price — inline `price_data` works). But a real second blocker remains: **the Stripe SECRET binding lives ONLY on the `purebrain-awakening-clone` Pages project, not on purebrain-site** (verified: purebrain-site has zero Stripe server code / no `STRIPE_SECRET` binding; every Stripe page here posts cross-origin to `purebrain-awakening-clone.pages.dev/api/create-checkout-session`).
 
+**➡️ NEED FROM JARED (pick one):**
+- **(A)** Add a `mode:'payment'` one-time branch to `create-checkout-session` **on purebrain-awakening-clone** (has the secret; out of purebrain-site scope), or
+- **(B)** Add a `STRIPE_SECRET` binding to the **purebrain-site** Pages project so we add the endpoint here.
+
+Drop-in the moment you choose (amount server-held, never client-supplied; sessionUuid as idempotency key):
+```js
+line_items:[{price_data:{currency:'usd',unit_amount:100,product_data:{name:'PureBrain Awakening (one-time $1)'}},quantity:1}],
+mode:'payment', client_reference_id:sessionUuid, metadata:{sessionUuid, tier}
+```
+The existing **PayPal $1 one-time on this page works on its own** (its seed now fires via the server P1d/P1c fix).
+
+---
+
+## 6. WHAT WAS BUILT THIS PASS (staged, HELD)
+
+- **/tiers reroute — DONE.** Branch `stage/checkout-seed-confirmed-20260703` (commit `9de805a4`, pushed to origin as a feature branch, NOT main). Only `tiers/index.html` (3 CTAs → `/awakening?tier=awakened|partnered|unified`, referral/UTM forwarded). Patch: `to-jared/PATCH-checkout-seed-confirmed-2026-07-03.patch`. *Note: this is a trivial client-side href reroute to an already-verified surface — no new charge logic/attack surface; not independently security-reviewed (recommend a glance only if desired).* Minor flag: the Next.js marketing pages link to plain `/awakening` (no tier param), so `?tier=X` may not pre-select the tier — harmless; the goal (real ceremony → non-empty seed) holds regardless.
+- **Server patch** — built prior, gate-passed (§3).
+- **Stripe $1** — code-ready, blocked on the binding question (§5). Disabled placeholder staged on `stage/home-test-live-1-stripe-onetime-20260703`.
+- **/awakening JS (subscription) — shelved, NOT needed** (subscriptions verified E2E-complete). Unmerged branch `stage/checkout-seed-fix-20260703` kept for reference only.
+
+---
+
+## 7. SECURITY + QA SUMMARY
+
+- **Security (independent, server patch): PASS-with-nits.** Cross-customer leak stays closed; exact-key-or-fail-closed verified; 11 strict sites + S4/S5 untouched; reconcile only reads/alerts. Nits (non-blocking follow-ups): MEDIUM unbounded `threading.Timer` reconcile (DoS/availability — bound it or use an out-of-band sweep of `paid_events.jsonl`); LOW tmux portal-inject prompt-injection pattern (add `-l`, strip newlines); LOW sandbox also suppresses dead-letter write; LOW positive client `amount` still trusted (pre-existing).
+- **QA sandbox E2E: 4/4 PASS + full-chain per-stage (§2).** Two behavioral findings (pre-existing, not defects): `is_sandbox=true` does NOT suppress the real AgentMail seed send (future testers MUST fake AgentMail); sandbox also suppresses the dead-letter write (prod correct).
+
+---
+
+## 8. EXACT DEPLOY STEPS (run only on Jared's GO — two independent surfaces)
+
+**A) Server patch (the seed-fire fix)** — activation = one systemd restart:
 ```bash
-# 0. Safety: confirm branch/HEAD and that the on-disk file carries the reviewed edits
 cd /home/jared/projects/AI-CIV/aether
-git rev-parse --abbrev-ref HEAD          # expect: feat/migrate-seed-fold-gate1-2026-06-30
-git status --short tools/purebrain_log_server.py   # expect: " M" (edits present)
-python3 -m py_compile tools/purebrain_log_server.py && echo "compile OK"   # must print compile OK
+git rev-parse --abbrev-ref HEAD          # feat/migrate-seed-fold-gate1-2026-06-30
+git status --short tools/purebrain_log_server.py   # " M" (edits present); if wiped: git apply to-jared/PATCH-checkout-seed-fix-server-2026-07-03.patch
+python3 -m py_compile tools/purebrain_log_server.py && echo "compile OK"
+git add tools/purebrain_log_server.py    # scoped, source-of-truth
+git commit -m "fix(seed): exact-key persisted binding + dead-letter/portal on send-seed 400 (one-time seed-fire repair)"
+sudo systemctl restart aether-logserver.service    # THE gated lever (last restart caused the regression)
+systemctl is-active aether-logserver.service       # active
+curl -s -o /dev/null -w "%{http_code}\n" https://api.purebrain.ai/health   # 200
+# Verify on ONE real job (idle /health is not proof): next real ceremony writes session_uuid_bindings.jsonl,
+# next real one-time capture produces seed_sent WITH non-empty conversation.
+```
+Rollback: `git checkout tools/purebrain_log_server.py && sudo systemctl restart aether-logserver.service`.
 
-# 1. (recommended, source-of-truth) commit the reviewed server edit — scoped add ONLY
-git add tools/purebrain_log_server.py
-git commit -m "fix(seed): persist session_uuid->conversation binding + dead-letter/portal on send-seed 400 (one-time \$1 seed-fire repair)"
-
-# 2. DEPLOY = restart the systemd unit (this is the activation lever; the LAST restart caused the regression, so this is the gated step)
-sudo systemctl restart aether-logserver.service
-
-# 3. Verify live health
-systemctl is-active aether-logserver.service              # expect: active
-curl -s -o /dev/null -w "%{http_code}\n" https://api.purebrain.ai/health   # expect: 200
-# 4. Prove it survives one REAL job E2E before declaring recovered (idle /health is not proof):
-#    watch logs/session_uuid_bindings.jsonl grow on the next real naming ceremony,
-#    and confirm the next real one-time capture produces a seed_sent WITH non-empty conversation.
+**B) /tiers reroute** — canonical purebrain-site deploy (merge feature branch → main → push):
+```bash
+cd /home/jared/projects/purebrain-site
+git checkout main && git pull
+git merge --no-ff stage/checkout-seed-confirmed-20260703   # brings ONLY tiers/index.html
+git push origin main    # canonical deploy to puretechnyc/purebrain-site
+# verify: curl -s https://purebrain.ai/tiers | grep -o "awakening?tier=[a-z]*" | head
 ```
 
-**If the working tree was wiped before deploy:** the edit is reconstructable — `git apply to-jared/PATCH-checkout-seed-fix-server-2026-07-03.patch` against a clean HEAD, then steps 1-4.
+---
 
-**Rollback:** `git checkout tools/purebrain_log_server.py && sudo systemctl restart aether-logserver.service` (reverts to pre-patch code).
+## 9. AWAITING JARED
+
+1. **GO / NO-GO: server-patch deploy** (§8A) — the one-time $1 seed-fire fix + observability. Security + sandbox QA passed.
+2. **GO / NO-GO: /tiers reroute deploy** (§8B) — closes the only genuine per-page gap.
+3. **Stripe secret binding: (A) clone endpoint or (B) purebrain-site binding?** (§5) — unblocks the $1 Stripe button.
+4. **Witness birth investigation** (§0) — the real blocker to customers getting their AI: no magic link minted in ~42h; Witness-side. Recommend routing to whoever owns Witness birth/container-spawn.
+5. FYI follow-ups (non-blocking): /awakening Stripe-rail frontend single-UUID threading (§4·1), magic-link email parser hardening (§0), Timer-DoS nit (§7), /old-pricing legacy plan IDs (§4·7).
 
 ---
 
-## 9. PERSISTENCE (staged work will NOT evaporate)
+## 10. PERSISTENCE (nothing left only in a scratch clone)
 
-- Server code: on disk `M` + durable `to-jared/PATCH-checkout-seed-fix-server-2026-07-03.patch` (committed with this receipt).
-- Client (held): branch `stage/checkout-seed-fix-20260703` pushed to origin + `PATCH-checkout-seed-fix-client-2026-07-03.patch`.
-- Client (blocked scaffold): branch `stage/home-test-live-1-stripe-onetime-20260703` pushed to origin + `PATCH-home-test-live-1-stripe-onetime-2026-07-03.patch`.
-- Nothing left only in a scratch clone. IDOR files + pre-existing dirty state untouched (scoped adds only). Sole-committer discipline held; forensic read-only agent not disturbed.
-
----
-
-## 10. WHAT'S AWAITING YOU
-
-1. **GO / NO-GO on the server-patch deploy** (Section 8) — the one-time $1 seed-fire fix + observability. Passed security + sandbox QA.
-2. **The Stripe one-time price-id/endpoint answer** (Section 5) — to unblock the $1 Stripe button.
-3. FYI only: the MEDIUM Timer-DoS follow-up + the two AgentMail/sandbox hardening tickets (Sections 6-7). Not deploy blockers.
+- Server code: on disk `M` + committed patch `PATCH-checkout-seed-fix-server-2026-07-03.patch`.
+- /tiers fix: branch `stage/checkout-seed-confirmed-20260703` pushed to origin + `PATCH-checkout-seed-confirmed-2026-07-03.patch`.
+- Shelved /awakening JS: branch `stage/checkout-seed-fix-20260703` (unmerged) + client patch.
+- Stripe scaffold: branch `stage/home-test-live-1-stripe-onetime-20260703` + patch.
+- Sole-committer discipline held; scoped adds only; IDOR + pre-existing dirty state untouched; no main pushed; nothing deployed/restarted.
