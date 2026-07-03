@@ -68,7 +68,8 @@ const FONTS_AND_STYLE = `
     color: var(--pb-text) !important;
     letter-spacing: 0.3px;
   }
-  .swagger-ui .info .title small { background: var(--pb-blue) !important; color: #fff !important; }
+  .swagger-ui .info .title { text-transform: uppercase !important; }
+  .swagger-ui .info .title small { background: var(--pb-blue) !important; color: #fff !important; text-transform: none !important; }
   .swagger-ui .info a, .swagger-ui a.nostyle, .swagger-ui a { color: var(--pb-cyan) !important; }
 
   /* ---- Topbar ---- */
@@ -251,9 +252,16 @@ const RELABEL_SCRIPT = `
 <script id="pb-skills-hub-relabel">
 (function () {
   var OLD_FULL = "AiCIV HUB";
-  var NEW_FULL = "PureBrain Skills Hub";
+  var NEW_FULL = "PUREBRAIN SKILLS HUB";
   var OLD_SHORT = "AiCIV";
-  var NEW_SHORT = "PureBrain";
+  var NEW_SHORT = "PUREBRAIN";
+
+  // Canonical PureBrain two-tone wordmark: PURE/BR/N blue, the AI in brAIn red.
+  var PB_MARK_HTML =
+    '<span style="color:#2a93c1 !important;">PURE</span>' +
+    '<span style="color:#2a93c1 !important;">BR</span>' +
+    '<span style="color:#f1420b !important;">AI</span>' +
+    '<span style="color:#2a93c1 !important;">N</span>';
 
   // Real PureBrain hexagon logo (<img> on our own HTTPS domain) + Oswald wordmark lockup.
   var LOGO_SVG =
@@ -263,7 +271,7 @@ const RELABEL_SCRIPT = `
     'style="display:block;height:40px;width:40px;" />' +
     '<span class="pb-wordmark" ' +
     'style="font-family:Oswald,sans-serif;font-weight:700;font-size:22px;' +
-    'letter-spacing:0.5px;color:#e6ecff;line-height:1;">PUREBRAIN</span>' +
+    'letter-spacing:0.5px;line-height:1;">' + PB_MARK_HTML + '</span>' +
     '</span>';
 
   function fix(str) {
@@ -292,6 +300,31 @@ const RELABEL_SCRIPT = `
     }
   }
 
+  // Wrap the "PUREBRAIN" word inside the info title with the two-tone brand mark,
+  // preserving the version <small> badges. Guarded so the MutationObserver won't loop.
+  function brandTitleMark(title) {
+    if (!title || title.querySelector(".pb-title-mark")) return;
+    var nodes = title.childNodes;
+    for (var i = 0; i < nodes.length; i++) {
+      var nd = nodes[i];
+      if (nd.nodeType === 3 && nd.nodeValue && nd.nodeValue.indexOf("PUREBRAIN") !== -1) {
+        var full = nd.nodeValue;
+        var idx = full.indexOf("PUREBRAIN");
+        var before = full.slice(0, idx);
+        var after = full.slice(idx + 9);
+        var frag = document.createDocumentFragment();
+        if (before) frag.appendChild(document.createTextNode(before));
+        var mark = document.createElement("span");
+        mark.className = "pb-title-mark";
+        mark.innerHTML = PB_MARK_HTML;
+        frag.appendChild(mark);
+        if (after) frag.appendChild(document.createTextNode(after));
+        title.replaceChild(frag, nd);
+        break;
+      }
+    }
+  }
+
   function injectLogo() {
     var wrap = document.querySelector(".swagger-ui .topbar-wrapper .link");
     if (wrap && !wrap.querySelector("#pb-logo")) {
@@ -315,7 +348,7 @@ const RELABEL_SCRIPT = `
   function relabel() {
     try {
       var title = document.querySelector(".swagger-ui .info .title");
-      if (title) relabelIn(title);
+      if (title) { relabelIn(title); brandTitleMark(title); }
       var link = document.querySelector(".swagger-ui .topbar-wrapper .link");
       if (link) relabelIn(link);
       if (typeof document.title === "string") {
@@ -363,11 +396,14 @@ export function reskinDocsHtml(html) {
   let out;
   try {
     // (a) Static relabel of the shipped HTML (catches <title>). Longest-match first.
-    out = html.split("AiCIV HUB").join("PureBrain Skills Hub");
-    out = out.split("AiCIV").join("PureBrain");
+    out = html.split("AiCIV HUB").join("PUREBRAIN SKILLS HUB");
+    out = out.split("AiCIV").join("PUREBRAIN");
 
-    // Splice fonts + theme <style> before the FIRST </head>.
-    out = out.replace("</head>", FONTS_AND_STYLE + "</head>");
+    // (a2) Strip Swagger UI + FastAPI default favicon <link> tags.
+    out = out.replace(/<link\b[^>]*\brel=["'][^"']*icon[^"']*["'][^>]*>/gi, "");
+
+    // Splice our hexagon favicon (reuse embedded base64) + fonts + theme before FIRST </head>.
+    out = out.replace("</head>", '<link rel="icon" type="image/png" href="' + PB_HEX_DATA_URI + '">' + FONTS_AND_STYLE + "</head>");
 
     // Splice the relabel/logo client script before the FIRST </body>.
     out = out.replace("</body>", RELABEL_SCRIPT + "</body>");
