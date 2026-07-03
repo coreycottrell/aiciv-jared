@@ -1,9 +1,31 @@
 # RECEIPT — Checkout Seed-Fire Repair + Full Per-Page E2E (BUILD) — 2026-07-03
 
-**Status: 🟡 HELD AT DEPLOY — awaiting Jared's explicit GO on any live deploy**
+**Status: 🟢 DEPLOYED (server seed-fix + /tiers) — post-deploy E2E PASS. 🟡 Stripe $1 code-approved, deploy gated on CF source confirmation.**
 **Owner:** dept-systems-technology (ST#)
-**Pipeline:** BUILD → SECURITY → QA → FULL SANDBOX E2E → PER-PAGE MATRIX → **HELD** (no deploy, no restart, no real-money tx, no client-record touched)
-**Written:** 2026-07-03
+**Pipeline:** BUILD → SECURITY → QA → SANDBOX E2E → PER-PAGE MATRIX → **DEPLOY (Jared GO)** → POST-DEPLOY LIVE E2E PASS
+**Written:** 2026-07-03 · **Deployed:** 2026-07-03 (Jared explicit GO via trusted conductor relay)
+
+---
+
+## ★ LIVE DEPLOY RESULT (executed on Jared's GO)
+
+| Surface | Action | Result | Evidence |
+|---------|--------|--------|----------|
+| **Server seed-fix** | scoped commit `974c2a0` + `systemctl restart aether-logserver.service` | ✅ **DEPLOYED, VERIFIED** | new pid 668681, `/api/health` 200, pipeline healthy, no startup traceback. Rollback anchor `3f6f0db`. |
+| **/tiers reroute** | merge → purebrain-site `main` `e5bceb48` + push | ✅ **DEPLOYED, LIVE** | `purebrain.ai/tiers/` serves all 3 `awakening?tier=…` reroutes |
+| **Stripe $1 one-time** | Option A endpoint built + security-passed | 🟡 **HELD — deploy-source gate** | code PASS-with-nits; needs CF deploy-source confirmation (see below) |
+
+**Post-deploy LIVE E2E (wtt-qa, against prod pid 668681): DEPLOY VERIFIED — PASS, no rollback.**
+- OUR one-time seed path fires POPULATED on live: `log-conversation` persisted binding → `send-seed` (conversation+ai_name omitted) **hydrated ai_name + non-empty conversation by EXACT key** → HTTP 200 + SES message_id; `seed_events.jsonl` 37→38 with populated content.
+- Subscription path NOT broken: the only 2 deletions in the deploy are the `verified:True`→`_p2b_verified` observability swap; verify-payment fire path is additive-only. Real prod sessions flowing normally post-restart.
+- Service healthy: `active`, pid 668681, `/api/health` 200, `/api/pipeline-health` healthy, no new tracebacks.
+- **Distinction held:** (a) OUR seed fires = PASS (the deploy gate). (b) Witness births = separately tracked — and **appear to have RESUMED** post-restart (last magic-link mint 18:54, `magic_links_last_hour: 2`), vs the prior ~42h stall. Not the gate, but good news.
+
+**Stripe $1 remaining gate (before `wrangler pages deploy`):** security PASS-with-nits on the code, but the reviewed change lives only in commit `5391374` and there are ~6 divergent `exports/` copies of the clone source; the true CF deploy source is dashboard state. **Operator MUST confirm (a) the deployed dir content == commit `5391374`, and (b) that dir is the real CF source for project `purebrain-awakening-clone` (which serves ALL live Stripe pages) — else the review doesn't cover what ships.** Non-blocking NITs: add route-scoped body-size cap + rate limiting. Webhook-owner flags: `sessionUuid` is client-controlled/unvalidated → downstream consumers must key exact-match fail-closed; `metadata[tier]` verbatim could carry a high tier on a $1 charge → referral commission must key off actual amount (phantom-commission tie-in). **Deploy = `npx wrangler pages deploy <confirmed-dir> --project-name=purebrain-awakening-clone` after (a)+(b).**
+
+---
+
+**(Historical build record below — superseded by the deploy result above where they differ.)**
 
 ---
 

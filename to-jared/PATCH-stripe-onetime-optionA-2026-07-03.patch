@@ -1,0 +1,215 @@
+# Stripe $1 one-time (Option A) — STAGED patch bundle  2026-07-03
+# Two repos. HELD: real charge path, awaits independent security pass before deploy.
+#
+# (A) ENDPOINT — aether repo branch feat/stripe-onetime-endpoint-optionA-20260703 (commit 5391374)
+#     path: exports/departments/systems-technology/stripe-seed-d1/awakening-clone/functions/api/create-checkout-session.js
+#     DEPLOY MECHANISM: wrangler pages deploy . --project-name=purebrain-awakening-clone  (NOT git)
+#
+# (B) BUTTON — purebrain-site branch feat/stripe-onetime-button-optionA-20260703 (commit a0216cde, pushed to origin)
+#     path: home-test-live-1/index.html
+# ============================================================================
+
+########## (A) ENDPOINT (aether) ##########
+diff --git a/exports/departments/systems-technology/stripe-seed-d1/awakening-clone/functions/api/create-checkout-session.js b/exports/departments/systems-technology/stripe-seed-d1/awakening-clone/functions/api/create-checkout-session.js
+index c168bbc..df1d8d6 100644
+--- a/exports/departments/systems-technology/stripe-seed-d1/awakening-clone/functions/api/create-checkout-session.js
++++ b/exports/departments/systems-technology/stripe-seed-d1/awakening-clone/functions/api/create-checkout-session.js
+@@ -130,6 +130,25 @@ export async function onRequestPost(context) {
+   // ref_code optional; pass through uppercased or empty.
+   const refCode   = String(body.refCode || "").trim().toUpperCase();
+ 
++  // ---- ONE-TIME ($1) payment branch (Option A, additive — 2026-07-03) ----
++  // Selected EXPLICITLY by `?mode=payment` (query) OR `{oneTime:true}` (body).
++  // When neither is present the existing SUBSCRIPTION rail below is byte-for-byte
++  // unchanged. The $1 amount is SERVER-HELD (hardcoded unit_amount:100 in the
++  // inline price_data below) — the client NEVER supplies an amount. tier is still
++  // validated against the server allowlist so the webhook's FATAL tier gate and
++  // referral attribution keep working. Same sessionUuid threads through as
++  // client_reference_id + metadata.session_uuid; the success return_url carries
++  // &uuid= so /thank-you can key off it.
++  const reqUrl  = new URL(request.url);
++  const oneTime = body.oneTime === true || reqUrl.searchParams.get("mode") === "payment";
++  // One-time needs a stable reference id; mint one if the caller omitted it.
++  let refId = sessionUuid;
++  if (oneTime && !refId) {
++    refId = (typeof crypto !== "undefined" && crypto.randomUUID)
++      ? crypto.randomUUID()
++      : ("otp_" + Date.now() + "_" + Math.random().toString(36).slice(2));
++  }
++
+   const PRICE_BY_TIER = priceByTier(env);
+   const price = PRICE_BY_TIER[tier];
+   if (!price) {
+@@ -149,6 +168,7 @@ export async function onRequestPost(context) {
+     "&name=" + encodeURIComponent(humanName) +
+     "&email=" + encodeURIComponent(humanEmail) +
+     "&tier=" + encodeURIComponent(tier) +
++    (oneTime ? "&uuid=" + encodeURIComponent(refId) : "") +
+     "&session_id={CHECKOUT_SESSION_ID}";
+ 
+   // ---- Build the Stripe Checkout Session (embedded ui_mode) ----
+@@ -158,11 +178,24 @@ export async function onRequestPost(context) {
+   // pairs with this value. Stripe returned an explicit error on "embedded".
+   const form = new URLSearchParams();
+   form.set("ui_mode", "embedded_page");
+-  form.set("mode", "subscription");
+-  form.set("line_items[0][price]", price);
+-  form.set("line_items[0][quantity]", "1");
+   form.set("return_url", returnUrl);
+   form.set("billing_address_collection", "auto");
++  if (oneTime) {
++    // ONE-TIME $1: mode=payment + INLINE price_data (NO pre-created price id).
++    // unit_amount is HARDCODED server-side (100 = $1.00 USD) — never client-fed.
++    form.set("mode", "payment");
++    form.set("line_items[0][price_data][currency]", "usd");
++    form.set("line_items[0][price_data][unit_amount]", "100");
++    form.set("line_items[0][price_data][product_data][name]", "PureBrain Awakening (one-time $1)");
++    form.set("line_items[0][quantity]", "1");
++    // Stable reference for reconciliation / webhook cross-rail dedup.
++    form.set("client_reference_id", refId);
++  } else {
++    // SUBSCRIPTION rail (UNCHANGED): server-held price id drives the amount.
++    form.set("mode", "subscription");
++    form.set("line_items[0][price]", price);
++    form.set("line_items[0][quantity]", "1");
++  }
+   // EMAIL COLLECTION: do NOT force customer_email here. With tier-only cold load
+   // there is no humanEmail to pre-set; pre-setting "" would suppress Stripe's own
+   // email field. Letting Stripe's hosted/embedded checkout collect the email is
+@@ -182,12 +215,21 @@ export async function onRequestPost(context) {
+   if (aiName)      md.ai_name = aiName;
+   if (humanName)   md.human_name = humanName;
+   if (isEmail(humanEmail)) md.human_email = humanEmail;
+-  if (sessionUuid) md.session_uuid = sessionUuid;
++  // One-time always carries a session_uuid (minted above if absent); subscription
++  // keeps the prior "only when supplied" behavior.
++  if (oneTime)          md.session_uuid = refId;
++  else if (sessionUuid) md.session_uuid = sessionUuid;
+   if (refCode)     md.ref_code = refCode;
+   for (const [k, v] of Object.entries(md)) {
+     form.set("metadata[" + k + "]", v);
+-    // ... and ALSO on the subscription so lifecycle events carry it (Phase B).
+-    form.set("subscription_data[metadata][" + k + "]", v);
++    if (oneTime) {
++      // payment mode has no subscription object; carry metadata on the
++      // PaymentIntent so the charge lifecycle events also see it.
++      form.set("payment_intent_data[metadata][" + k + "]", v);
++    } else {
++      // ... and ALSO on the subscription so lifecycle events carry it (Phase B).
++      form.set("subscription_data[metadata][" + k + "]", v);
++    }
+   }
+ 
+   let resp, data;
+
+########## (B) BUTTON (purebrain-site) ##########
+commit a0216cde1ca74b1bd3d6ce73041079a1b81b2788
+Author: Aether Collective <purebrain@puremarketing.ai>
+Date:   Fri Jul 3 19:03:06 2026 +0000
+
+    stage(home-test-live-1): wire $1 one-time card (Stripe) button → clone endpoint one-time mode
+    
+    Additive Stripe $1 one-time card button in the payment modal (Option A).
+    POSTs {tier, oneTime:true, sessionUuid} to purebrain-awakening-clone
+    /api/create-checkout-session (server-holds the $1 amount), then mounts
+    Stripe Embedded Checkout. PayPal buttons untouched. STAGED — real charge
+    path, HELD until independent security pass.
+    
+    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+diff --git a/home-test-live-1/index.html b/home-test-live-1/index.html
+index e001c428..d3e88e4f 100644
+--- a/home-test-live-1/index.html
++++ b/home-test-live-1/index.html
+@@ -12688,6 +12688,11 @@ body {
+     } else {
+       renderFallbackButton(tier, container);
+     }
++
++    // Additive: $1 one-time card via Stripe (clone endpoint, one-time mode).
++    // STAGED 2026-07-03 — real charge path, HELD until security pass. Does not
++    // touch the PayPal buttons above.
++    pbInjectStripeOneTime(tier, container);
+   }
+ 
+   function closeModal() {
+@@ -12698,6 +12703,79 @@ body {
+   }
+ 
+ 
++  // ============================================================
++  //  STRIPE $1 ONE-TIME CARD  (Option A — clone endpoint, one-time mode)
++  //  STAGED 2026-07-03. POSTs {tier, oneTime:true, sessionUuid} to the
++  //  purebrain-awakening-clone Pages project's /api/create-checkout-session,
++  //  which server-holds the $1 amount (inline price_data, mode=payment) and
++  //  returns a client_secret. We then mount Stripe Embedded Checkout in the
++  //  modal. The clone success return_url carries &uuid= (threaded sessionUuid).
++  //  HELD: real charge path — awaits independent security pass before deploy.
++  // ============================================================
++  var PB_CLONE_ORIGIN = 'https://purebrain-awakening-clone.pages.dev';
++  var __pbStripe = null, __pbStripeCheckout = null;
++
++  function pbInjectStripeOneTime(tier, container) {
++    if (!container || document.getElementById('pb-stripe-onetime-wrap')) return;
++    var wrap = document.createElement('div');
++    wrap.id = 'pb-stripe-onetime-wrap';
++    wrap.style.marginTop = '14px';
++    wrap.innerHTML =
++      '<div style="display:flex;align-items:center;gap:8px;margin:12px 0;color:rgba(255,255,255,0.4);font-size:12px;">'
++      + '<span style="flex:1;height:1px;background:rgba(255,255,255,0.15)"></span>or<span style="flex:1;height:1px;background:rgba(255,255,255,0.15)"></span></div>'
++      + '<button id="pb-stripe-onetime-btn" type="button" style="width:100%;padding:14px;border-radius:8px;border:0;background:#635bff;color:#fff;font-size:15px;font-weight:600;cursor:pointer;">'
++      + '$1 one-time card (Stripe)</button>'
++      + '<div id="pb-stripe-onetime-mount" style="margin-top:12px;"></div>'
++      + '<div id="pb-stripe-onetime-err" style="margin-top:8px;color:#ff6b6b;font-size:13px;text-align:center;"></div>';
++    container.appendChild(wrap);
++    document.getElementById('pb-stripe-onetime-btn')
++      .addEventListener('click', function () { pbStartStripeOneTime(tier); });
++  }
++
++  function pbLoadScript(src) {
++    return new Promise(function (resolve, reject) {
++      var s = document.createElement('script');
++      s.src = src; s.onload = resolve; s.onerror = reject;
++      document.head.appendChild(s);
++    });
++  }
++
++  async function pbStartStripeOneTime(tier) {
++    var btn = document.getElementById('pb-stripe-onetime-btn');
++    var err = document.getElementById('pb-stripe-onetime-err');
++    if (err) err.textContent = '';
++    if (btn) { btn.disabled = true; btn.textContent = 'Loading secure checkout…'; }
++    try {
++      var sessionUuid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('otp_' + Date.now());
++      // 1) Mint a one-time ($1) checkout session on the clone. The $1 amount is
++      //    SERVER-HELD — we send only the tier + oneTime flag, never an amount.
++      var r = await fetch(PB_CLONE_ORIGIN + '/api/create-checkout-session', {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({ tier: String(tier || '').toLowerCase(), oneTime: true, sessionUuid: sessionUuid })
++      });
++      var data = await r.json();
++      if (!r.ok || !data.client_secret) throw new Error((data && data.error) || 'Could not start checkout.');
++      // 2) Load Stripe.js + publishable key (served by the clone; pk is safe client-side).
++      if (!__pbStripe) {
++        await pbLoadScript('https://js.stripe.com/v3/');
++        var pkResp = await fetch(PB_CLONE_ORIGIN + '/api/stripe-pk');
++        var pkData = await pkResp.json();
++        if (!pkData || !pkData.pk) throw new Error('Missing publishable key.');
++        __pbStripe = window.Stripe(pkData.pk);
++      }
++      // 3) Mount Stripe Embedded Checkout (embedded_page rail pairs with initEmbeddedCheckout).
++      if (__pbStripeCheckout) { try { __pbStripeCheckout.destroy(); } catch (e) {} }
++      __pbStripeCheckout = await __pbStripe.initEmbeddedCheckout({ clientSecret: data.client_secret });
++      if (btn) btn.style.display = 'none';
++      __pbStripeCheckout.mount('#pb-stripe-onetime-mount');
++    } catch (e) {
++      if (err) err.textContent = (e && e.message) ? e.message : 'Checkout failed.';
++      if (btn) { btn.disabled = false; btn.textContent = '$1 one-time card (Stripe)'; }
++    }
++  }
++
++
+   // ============================================================
+   //  APPROACH A: PayPal JS SDK Smart Buttons  ← PRIMARY / DEFAULT
+   //
