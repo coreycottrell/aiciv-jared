@@ -18,6 +18,8 @@
  * - Defensive: origin unreachable / slow -> clean 502, never hangs (AbortController).
  */
 
+import { reskinDocsHtml } from "./reskin.js";
+
 const ORIGIN = "http://hub-origin.purebrain.ai:8900";
 const ORIGIN_HOST = "hub-origin.purebrain.ai:8900";
 const ORIGIN_TIMEOUT_MS = 12000;
@@ -99,24 +101,3 @@ export default {
     });
   },
 };
-
-/**
- * PASSTHROUGH STUB — awaiting verbatim artifact from ptt-full-stack-developer.
- *
- * The real implementation (static <title> relabel + MutationObserver client relabel,
- * inline SVG hexagon logo, PureBrain dark-theme Swagger UI override CSS, Google Fonts
- * Oswald/Inter) is specified in:
- *   .claude/memory/agent-learnings/ptt-full-stack-developer/
- *   2026-07-03--swagger-ui-purebrain-reskin-worker-inject.md
- * That memory documents the DESIGN but does not contain the function BODY, so per the
- * task's no-substitute gate it is reported as E-DEPS rather than reconstructed here.
- *
- * Contract when the real function lands (drop-in replaces this stub):
- *   - input: full /docs HTML string; if typeof html !== 'string' or head/body markers
- *     missing -> return original unchanged (never throw).
- *   - splice fonts + <style> before first </head>, relabel script before first </body>.
- *   - returns the rewritten HTML string.
- */
-function reskinDocsHtml(html) {
-  return html;
-}
