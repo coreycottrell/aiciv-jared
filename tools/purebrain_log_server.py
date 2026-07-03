@@ -5997,6 +5997,145 @@ def register_routes(app: Flask) -> None:
         return resp
     # ===== END LIVE CHAT BRIDGE routes =====
 
+    # -------------------------------------------------------------------------
+    # /api/migrate/send-confirmation  (ST# DEVOPS Bug-3, 2026-07-03)
+    # Receiving endpoint for the Pure Migrate CF Worker (pure-migrate-api,
+    # commit c785de5). The worker POSTs migration-confirmation emails here with
+    #   header  X-Mail-Key: <MG_MAIL_SEND_KEY>
+    #   body    {"to","subject","text","from"}
+    # We send via the SAME proven Google SMTP path as /api/send-investor-brief
+    # (smtp.gmail.com:587 + STARTTLS + GOOGLE_APP_PASSWORD, sender
+    # purebrain@puremarketing.ai). NB: port 465/SMTP_SSL is blocked outbound from
+    # this host, so 587+STARTTLS is used. The "from" field in the body is IGNORED —
+    # sender is server-controlled to prevent this route becoming an open relay.
+    #
+    # Abuse containment (NOT an open relay):
+    #   - Shared-secret auth (constant-time compare) is mandatory; no key -> 503.
+    #   - Sender is hard-pinned; body "from" cannot override it.
+    #   - subject/text length-capped; single recipient only; basic format check.
+    #   - Lightweight in-process rate limit (global sliding window).
+    # RATE-LIMIT RECOMMENDATION: the in-process limiter below caps burst abuse if
+    #   the key ever leaks, but it is per-process only. For defence-in-depth also
+    #   apply a Cloudflare WAF rate-limit rule on /api/migrate/send-confirmation
+    #   (e.g. 30 req/min per IP) once traffic patterns are known.
+    # -------------------------------------------------------------------------
+    @app.route('/api/migrate/send-confirmation', methods=['POST', 'OPTIONS'])
+    def migrate_send_confirmation():
+        if request.method == 'OPTIONS':
+            resp = make_response('', 204)
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+            resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Mail-Key'
+            return resp
+
+        # --- Auth: constant-time shared-secret compare ---
+        expected_key = os.environ.get('MG_MAIL_SEND_KEY', '')
+        provided_key = request.headers.get('X-Mail-Key', '')
+        if not expected_key:
+            # Fail-closed: never accept sends when no key is configured.
+            logger.error('[migrate-confirm] MG_MAIL_SEND_KEY not configured -- refusing (503)')
+            resp = jsonify({'error': 'mail sender not configured'})
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            return resp, 503
+        if not hmac.compare_digest(expected_key, provided_key):
+            logger.warning('[migrate-confirm] Unauthorized send attempt (bad/missing X-Mail-Key)')
+            resp = jsonify({'error': 'unauthorized'})
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            return resp, 401
+
+        # --- Parse + validate body ---
+        try:
+            data = request.get_json(force=True, silent=False) or {}
+        except Exception as e:
+            logger.warning(f'[migrate-confirm] Invalid JSON: {e}')
+            resp = jsonify({'error': 'invalid request body'})
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            return resp, 400
+
+        to_addr = str(data.get('to', '')).strip()
+        subject = str(data.get('subject', '')).strip()
+        text = str(data.get('text', ''))
+
+        import re as _re
+        _email_ok = bool(_re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', to_addr)) and len(to_addr) <= 254
+        if not _email_ok:
+            resp = jsonify({'error': 'invalid or missing recipient'})
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            return resp, 400
+        if not subject or not text:
+            resp = jsonify({'error': 'subject and text are required'})
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            return resp, 400
+        # Length caps: keep this a confirmation channel, not a spam cannon.
+        if len(subject) > 200 or len(text) > 20000:
+            resp = jsonify({'error': 'subject or text too long'})
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            return resp, 400
+        # Header-injection guard: no CR/LF in subject/recipient.
+        if '\n' in subject or '\r' in subject or '\n' in to_addr or '\r' in to_addr:
+            resp = jsonify({'error': 'illegal characters'})
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            return resp, 400
+
+        # --- Lightweight in-process rate limit (global sliding window) ---
+        _rl = migrate_send_confirmation._rl
+        _now = time.time()
+        _rl[:] = [t for t in _rl if _now - t < 60.0]
+        if len(_rl) >= 30:
+            logger.warning('[migrate-confirm] Rate limit hit (>30/min) -- rejecting')
+            resp = jsonify({'error': 'rate limited'})
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            return resp, 429
+        _rl.append(_now)
+
+        # --- Send via Google SMTP (same path as welcome/onboarding emails) ---
+        try:
+            import smtplib
+            from email.mime.text import MIMEText
+
+            _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+            _smtp_user = 'purebrain@puremarketing.ai'   # sender is server-pinned, body "from" ignored
+            _smtp_pass = os.environ.get('GOOGLE_APP_PASSWORD', '')
+            if not _smtp_pass and os.path.exists(_env_path):
+                with open(_env_path) as _ef:
+                    for _line in _ef:
+                        _line = _line.strip()
+                        if _line.startswith('GOOGLE_APP_PASSWORD='):
+                            _smtp_pass = _line.split('=', 1)[1].strip()
+                            break
+            if not _smtp_pass:
+                logger.error('[migrate-confirm] No GOOGLE_APP_PASSWORD -- cannot send (503)')
+                resp = jsonify({'error': 'mail transport unavailable'})
+                resp.headers['Access-Control-Allow-Origin'] = '*'
+                return resp, 503
+
+            _msg = MIMEText(text, 'plain')
+            _msg['Subject'] = subject
+            _msg['From'] = f'PureBrain <{_smtp_user}>'
+            _msg['To'] = to_addr
+            _msg['Reply-To'] = 'purebrain@puremarketing.ai'
+
+            # NOTE (2026-07-03): port 465 (SMTP_SSL) is blocked outbound from this
+            # host — connect times out. The proven-working path is 587+STARTTLS,
+            # matching /api/send-investor-brief. Use that.
+            with smtplib.SMTP('smtp.gmail.com', 587, timeout=30) as _server:
+                _server.ehlo()
+                _server.starttls()
+                _server.login(_smtp_user, _smtp_pass)
+                _server.sendmail(_smtp_user, [to_addr], _msg.as_string())
+
+            logger.info(f'[migrate-confirm] Confirmation email sent to {to_addr}')
+            resp = jsonify({'ok': True})
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            return resp
+        except Exception as exc:
+            logger.error(f'[migrate-confirm] SMTP send failed: {exc}')
+            resp = jsonify({'error': 'send failed'})
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            return resp, 503
+    # Global sliding-window rate-limit state for the route above.
+    migrate_send_confirmation._rl = []
+
     @app.errorhandler(400)
     def bad_request(e):
         """Handle 400 errors."""
