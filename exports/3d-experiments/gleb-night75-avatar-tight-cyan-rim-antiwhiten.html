@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night 75: INVERT THE SPREADS — cyan fresnel goes TIGHT (silhouette-only rim) so it VACATES the center, warm fresnel goes BROAD so orange refills the mid-body/center that N74's broad cyan lobe overwrote; sweep the CYAN FRESNEL POWER (V1=3.5 / V2=4.0 / V3=4.5, sharpness = the lever that vacates center, NOT gain which only whitens) under HARDER anti-whiten (exposure 0.82 + bloom threshold 1.05) targeting whiteClip<3, to test whether a tight cyan rim reaches cyanMass>=8 WHILE the vacated center lets orangeCenterDensity recover >=3 (3 variations)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{background:#080a12;overflow:hidden;font-family:'Inter',system-ui,sans-serif}
+canvas{display:block}
+#hud{position:fixed;top:14px;left:14px;color:#cfe8f2;font:12px/1.7 monospace;
+  background:rgba(8,10,18,0.55);border:1px solid rgba(42,147,193,0.35);border-radius:7px;padding:10px 13px;pointer-events:none;min-width:460px}
+#hud b{color:#2a93c1;font-weight:600}
+#hud .v{color:#f1420b}
+#hud .g{color:#7fe0a0}
+#name{position:fixed;bottom:30px;right:40px;text-align:right;pointer-events:none}
+#name .t{font:600 34px/1 'Oswald','Inter',sans-serif;letter-spacing:.06em;color:#f2f4f8}
+#name .s{font:11px/1.5 'Inter',monospace;color:#9aa6b2;margin-top:6px;letter-spacing:.18em;text-transform:uppercase}
+#err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;color:#cfe8f2;font:13px/1.6 monospace;padding:3em;text-align:center}
+</style>
+</head>
+<body>
+<div id="hud">
+<b>Night 75</b> &mdash; <span class="g">TIGHT cyan rim (vacate center) + BROAD warm + hard anti-whiten (exp 0.82)</span><br>
+<b>variation</b> <span class="v" id="vname">&ndash;</span> (press <span class="v">1</span>/<span class="v">2</span>/<span class="v">3</span>)<br>
+<b>held</b> exposure 0.82 &middot; bloom thr 1.05 &middot; glass attDist 1.5 &middot; cyan gain 2.4 &middot; warm broad uPow 1.6<br>
+<b>cyan fresnel POWER</b> <span class="g" id="strat">&ndash;</span><br>
+<b>fps</b> <span class="g" id="fps">&ndash;</span>
+</div>
+<div id="name"><div class="t">AETHER</div><div class="s">glass avatar &middot; night 75</div></div>
+<div id="err"></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.167.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.167.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const errEl = document.getElementById('err');
+function fail(msg){ errEl.style.display='flex'; errEl.textContent = 'WebGL/three init failed: '+msg; }
+
+// ----------------------------------------------------------------------------
+// NIGHT 75 — INVERT THE SPREADS + HARDER ANTI-WHITEN.
+//
+// N74 built a DEDICATED ADDITIVE CYAN FRESNEL SHELL with a BROAD lobe (uPow 1.6)
+// and swept its GAIN. Result (rendered, pixels): DOUBLE falsification —
+//   (F1) gain UP -> cyanMass DOWN (2.8->2.0): additive cyan whitens under
+//        ACES+bloom even at exposure 0.92; more gain just converts classified-cyan
+//        into whiteClip (rose 4.07->5.32 in lockstep).
+//   (F3/F4) the BROAD cyan lobe floods the CENTER and lifts the b-channel of the
+//        warm core's pixels above the orange classifier's b<90 gate -> orange
+//        CENTER density collapsed to a flat 0.00 (orangeAll 1.51->0.33). Cyan sat
+//        ON TOP of the exact pixels orange needed. A *spatial* hue-overwrite, not a
+//        transmission-budget trade. cyanCenterDensity 15% was the smoking gun.
+//
+// N74's verdict: cyan and orange collide in WHICHEVER domain you route them through
+// (attDist budget OR screen-space additive overlap). The only unfought regime left
+// is SPATIAL SEPARATION WITH NO OVERLAP: cyan tight-on-rim, orange owns center.
+//
+// N75 acts on that exactly — it INVERTS N74's spreads:
+//   - CYAN fresnel: now TIGHT (uPow swept 3.5/4.0/4.5) -> silhouette-only, VACATES
+//                   the center so it stops overwriting orange (Finding #4 fix).
+//                   We sweep POWER (sharpness = the lever that vacates center), NOT
+//                   gain (which N74 proved only whitens). Gain FROZEN at 2.4.
+//   - WARM fresnel: now BROAD (uPow 1.6, gain 2.0) -> refills the mid-body/center
+//                   that N74's broad cyan lobe stole, so orangeCenterDensity recovers.
+//   - WARM core:    center, emInt 1.5, transmitted through glass (attDist 1.5). FROZEN.
+//
+// HARDER ANTI-WHITEN (N74 Finding #1: exposure 0.92 was not low enough):
+//   - toneMappingExposure 0.82 (down from 0.92)
+//   - bloom threshold 1.05 (up from 0.92, now >1.0) so a tight cyan rim survives as
+//     saturated cyan instead of clipping. Target: whiteClipPct < 3.
+//
+// THE DECISIVE TENSION (N74 Next #3): a rim has far less pixel area than a mid-body
+// lobe, so mass>=8 demands high brightness -> which whitens. If tight-rim cyan
+// CANNOT reach cyanMass>=8 without whiteClip>3, that is the decisive result that the
+// covenant (void>=60 AND orange 3-8 AND cyanMass>=8) is GEOMETRICALLY OVER-CONSTRAINED
+// at this fixed framing (N74 Open-loop #1) and should be renegotiated.
+//
+// FALSIFY, don't confirm (N68->N74 covenant unbroken): pixels decide.
+// ----------------------------------------------------------------------------
+
+try {
+  const params = new URLSearchParams(location.search);
+  const V = Math.max(1, Math.min(3, parseInt(params.get('v')||'1',10)));
+
+  const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.82;   // FROZEN — HARDER anti-white-clip (N74 F1: 0.92 too high)
+  document.body.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x080a12);
+
+  const camera = new THREE.PerspectiveCamera(38, innerWidth/innerHeight, 0.1, 100);
+  camera.position.set(0, 0.15, 4.2);
+
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+  // Cyan KEY held at MODEST fixed 3.0 (N73 proved a bright key is inert + clips).
+  // Cyan mass now comes from the TIGHT additive fresnel rim, not this light.
+  const key = new THREE.DirectionalLight(0x2a93c1, 3.0); key.position.set(-2.4, 1.8, 2.0); scene.add(key);
+  scene.add(new THREE.AmbientLight(0x0b1422, 0.5));
+
+  // ============================ HERO GLASS (N64/N65 triad) ====================
+  // FROZEN. attDist 1.5 (moderate — protects the core's transmitted orange).
+  const heroGroup = new THREE.Group(); scene.add(heroGroup);
+  const geo = new THREE.IcosahedronGeometry(1.0, 1); geo.computeVertexNormals();
+  const ATT_DIST = 1.5;   // FROZEN — orange-protecting
+  const THICK    = 1.65;  // FROZEN
+  const mat = new THREE.MeshPhysicalMaterial({
+    transmission: 1.0, thickness: THICK, roughness: 0.06, metalness: 0.0,
+    ior: 1.52, attenuationColor: new THREE.Color(0x2a93c1), attenuationDistance: ATT_DIST,
+    dispersion: 0.06,
+    iridescence: 1.0, iridescenceIOR: 1.30, iridescenceThicknessRange:[120, 420],
+    anisotropy: 0.55, anisotropyRotation: Math.PI*0.25,
+    clearcoat: 0.9, clearcoatRoughness: 0.10,
+    envMapIntensity: 1.15, specularIntensity: 1.0,
+  });
+  const mesh = new THREE.Mesh(geo, mat); heroGroup.add(mesh);
+
+  // WARM CORE — FROZEN (orange carrier, owns the center per N74 Finding #4).
+  function makeCore(){
+    const c = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.42, 0),
+      new THREE.MeshStandardMaterial({ color:0xf1420b, emissive:0xf1420b, emissiveIntensity:1.5, roughness:0.4, metalness:0.2 })
+    );
+    heroGroup.add(c); return c;
+  }
+
+  // Reusable fresnel-shell factory. uPow controls SPREAD:
+  //   high uPow (3.5-4.5) = TIGHT rim on the extreme silhouette (vacates center);
+  //   low  uPow (1.6)     = BROAD wash across the mid-body grazing zone (=> center fill).
+  function makeFresnelShell(color, gain, pow, radius){
+    const shellMat = new THREE.ShaderMaterial({
+      transparent:true, blending:THREE.AdditiveBlending, side:THREE.BackSide, depthWrite:false,
+      uniforms:{ uColor:{value:new THREE.Color(color)}, uPow:{value:pow}, uGain:{value:gain} },
+      vertexShader:`varying vec3 vN; varying vec3 vV;
+        void main(){ vec4 wp=modelMatrix*vec4(position,1.0); vN=normalize(mat3(modelMatrix)*normal);
+          vV=normalize(cameraPosition-wp.xyz); gl_Position=projectionMatrix*viewMatrix*wp; }`,
+      fragmentShader:`uniform vec3 uColor; uniform float uPow; uniform float uGain; varying vec3 vN; varying vec3 vV;
+        void main(){ float f=pow(1.0-clamp(dot(normalize(vN),normalize(vV)),0.0,1.0),uPow);
+          gl_FragColor=vec4(uColor*f*uGain, f); }`
+    });
+    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(radius, 1), shellMat);
+    heroGroup.add(m); return m;
+  }
+
+  // CONSTANT WARM BOKEH (the "set" warmth) — N70-v2 keeper, frozen.
+  function addForegroundBokeh(){
+    const m = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.16, 0),
+      new THREE.MeshStandardMaterial({ color:0xf2a04b, emissive:0x5a2a06, emissiveIntensity:1.6,
+        roughness:1.0, metalness:0.0, transparent:true, opacity:0.6 })
+    );
+    m.position.set(1.15, -0.55, 2.4); m.userData.baseX = 1.15;
+    scene.add(m); return m;
+  }
+
+  // === THE THREE VARIATIONS (cyan FRESNEL POWER sweep; gain + everything else frozen) ===
+  const vname = document.getElementById('vname'), strat = document.getElementById('strat');
+  const CYAN_FRESNEL_POW = { 1:3.5, 2:4.0, 3:4.5 }[V];   // SWEPT — sharpness vacates center
+  const CYAN_FRESNEL_GAIN = 2.4;   // FROZEN — gain only whitens (N74 F1); sweep power instead
+  const WARM_BROAD_GAIN   = 2.0;   // warm mid-body fill — FROZEN
+  const WARM_BROAD_POW    = 1.6;   // warm now BROAD (inverted from N74) — refills orange center
+  const BLOOM_THRESH = 1.05;       // FROZEN — >1.0 hard anti-whiten (N74 F1)
+
+  const LABEL = { 1:'cyan rim uPow 3.5 (tightest-broad)', 2:'cyan rim uPow 4.0 (mid)', 3:'cyan rim uPow 4.5 (sharpest silhouette)' }[V];
+  const STRAT = {
+    1: 'tight cyan rim uPow 3.5 — vacates center least; most rim mass, watch orange-center recovery',
+    2: 'tight cyan rim uPow 4.0 — balance: does rim mass hold >=8 as center vacates for orange?',
+    3: 'sharpest cyan rim uPow 4.5 — max center-vacate; if mass<8 here, covenant is over-constrained',
+  }[V];
+  vname.textContent = LABEL;
+  strat.textContent = STRAT;
+
+  // Concentric brand zones INVERTED from N74 (true spatial hue separation, no overlap):
+  makeFresnelShell(0x2a93c1, CYAN_FRESNEL_GAIN, CYAN_FRESNEL_POW, 1.08); // TIGHT cyan extreme-silhouette rim (swept POWER)
+  makeFresnelShell(0xf1420b, WARM_BROAD_GAIN,   WARM_BROAD_POW,   1.05); // BROAD warm mid-body fill (refills orange center)
+  const core    = makeCore();              // FROZEN orange center carrier
+  const fgShard = addForegroundBokeh();    // CONSTANT control mass
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.dampingFactor = 0.06;
+  controls.enablePan = false; controls.minDistance = 3; controls.maxDistance = 7;
+  controls.update();
+
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.45, 0.7, BLOOM_THRESH);
+  composer.addPass(bloom);
+
+  addEventListener('keydown', e=>{ if(e.key>='1'&&e.key<='3'){ const u=new URL(location); u.searchParams.set('v',e.key); location.href=u; } });
+  addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth,innerHeight); composer.setSize(innerWidth,innerHeight); });
+
+  let last=performance.now(), frames=0, facc=0; const fpsEl=document.getElementById('fps');
+  function loop(t){
+    const dt=t-last; last=t; facc+=dt; if(++frames>=20){ fpsEl.textContent=(1000/(facc/frames)).toFixed(0); frames=0; facc=0; }
+    heroGroup.rotation.y += 0.004; heroGroup.rotation.x = Math.sin(t*0.0003)*0.15;
+    if (core) core.rotation.y -= 0.006;
+    if (fgShard){ fgShard.rotation.y += 0.01; fgShard.position.x = fgShard.userData.baseX + Math.sin(t*0.0004)*0.08; }
+    controls.update(); composer.render(); requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+} catch(e){ fail(e.message); console.error(e); }
+</script>
+</body>
+</html>
