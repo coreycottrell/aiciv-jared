@@ -1,0 +1,618 @@
+diff --git a/tools/purebrain_log_server.py b/tools/purebrain_log_server.py
+index 49cb6d8..164bb3b 100644
+--- a/tools/purebrain_log_server.py
++++ b/tools/purebrain_log_server.py
+@@ -895,6 +895,242 @@ def _seed_conversation_is_empty(conversation) -> bool:
+     return not any((m.get('content') or '').strip() for m in (conversation or []))
+ 
+ 
++# =====================================================================
++# Durable session_uuid -> conversation binding + money-path observability
++# (2026-07-03, ST# P1 Ashley-seed-regression fix). ALL helpers are module
++# scope so they are unit-testable without a Flask app context and reusable
++# across /api/log-conversation, /api/verify-payment, /api/send-seed.
++#
++# CONSTITUTIONAL: every lookup here is EXACT-KEY-OR-FAIL-CLOSED. There is NO
++# recency / proximity / fuzzy identity fallback anywhere in this block — that
++# is exactly the class of bug (S4 recency, S5 fuzzy-name, the SEV-1 magic-link
++# recency scan) that caused cross-customer transcript/magic-link leaks. The
++# persisted binding is keyed by the client-threaded sessionUuid ONLY; an absent
++# key returns empty (fail-closed), never another customer's data.
++# =====================================================================
++
++def _session_bindings_path():
++    return os.path.join(DEFAULT_LOG_DIR, 'session_uuid_bindings.jsonl')
++
++
++def _persist_session_binding(session_uuid, conversation, ai_name='', human_name='', human_email=''):
++    """Append a durable session_uuid -> conversation binding at naming-ceremony
++    time (called from /api/log-conversation). Idempotency-safe: an append-only
++    log; the reader (_lookup_session_binding) selects the richest EXACT-key
++    record, so repeated calls only ever improve recall (never corrupt). Only a
++    binding that actually carries naming-ceremony content is written. Returns
++    True on write, False on skip/error. Never raises."""
++    su = (session_uuid or '').strip()
++    conv = conversation or []
++    if not su:
++        return False
++    if _seed_conversation_is_empty(conv):
++        return False
++    try:
++        _rec = {
++            'session_uuid': su,
++            'ai_name': (ai_name or '').strip(),
++            'human_name': (human_name or '').strip(),
++            'human_email': (human_email or '').strip(),
++            'msg_count': len([m for m in conv if (m.get('content') or '').strip()]),
++            'conversation': conv,
++            'timestamp': datetime.now(timezone.utc).isoformat(),
++        }
++        _path = _session_bindings_path()
++        os.makedirs(os.path.dirname(_path), exist_ok=True)
++        with _file_lock:
++            with open(_path, 'a') as _f:
++                _f.write(json.dumps(_rec) + '\n')
++        return True
++    except Exception as _e:
++        logger.warning(f'[session-binding] persist failed for uuid={su}: {_e}')
++        return False
++
++
++def _lookup_session_binding(session_uuid):
++    """EXACT-KEY-ONLY hydration. Return (ai_name, conversation_list) for the
++    richest binding whose session_uuid == session_uuid EXACTLY. NO recency /
++    proximity / fuzzy match — an absent key returns ('', []) (fail-closed),
++    never another customer's binding. Never raises."""
++    su = (session_uuid or '').strip()
++    if not su:
++        return ('', [])
++    _best_ai = ''
++    _best_conv = []
++    _best_count = -1
++    try:
++        _path = _session_bindings_path()
++        if not os.path.exists(_path):
++            return ('', [])
++        with open(_path, 'r') as _f:
++            for _line in _f:
++                _line = _line.strip()
++                if not _line:
++                    continue
++                try:
++                    _rec = json.loads(_line)
++                except Exception:
++                    continue
++                # EXACT key match ONLY — the entire fail-closed contract.
++                if (_rec.get('session_uuid') or '').strip() != su:
++                    continue
++                _conv = _rec.get('conversation') or []
++                _cnt = len([m for m in _conv if (m.get('content') or '').strip()])
++                if _cnt > _best_count:
++                    _best_count = _cnt
++                    _best_conv = _conv
++                    _best_ai = (_rec.get('ai_name') or '').strip()
++    except Exception as _e:
++        logger.warning(f'[session-binding] lookup failed for uuid={su}: {_e}')
++        return ('', [])
++    return (_best_ai, _best_conv)
++
++
++def _seed_deadletter_and_portal_alert(reason, portal_summary, record=None, is_sandbox=False):
++    """Mirror the empty-conversation guard mechanism EXACTLY: dead-letter to
++    logs/blocked_seeds.jsonl + raise a PORTAL alert (tmux inject to Jared's live
++    session). PORTAL not Telegram — Jared is portal-primary; a Telegram-only
++    alert is invisible to him. Sandbox requests do NOT dead-letter/alert (keeps
++    QA sandbox runs clean). Never raises. Returns True if an alert was raised."""
++    if is_sandbox:
++        return False
++    try:
++        _rec = dict(record or {})
++        _rec.setdefault('timestamp', datetime.now(timezone.utc).isoformat())
++        _rec['reason'] = reason
++        _rec.setdefault('requires_action', 'manual review + manual seed dispatch')
++        _path = os.path.join(DEFAULT_LOG_DIR, 'blocked_seeds.jsonl')
++        os.makedirs(os.path.dirname(_path), exist_ok=True)
++        with open(_path, 'a') as _f:
++            _f.write(json.dumps(_rec) + '\n')
++    except Exception as _de:
++        logger.error(f'[seed-guard] dead-letter append failed ({reason}): {_de}')
++    try:
++        _sess_file = '/home/jared/projects/AI-CIV/aether/.current_session'
++        try:
++            with open(_sess_file) as _sf:
++                _sess_name = _sf.read().strip()
++        except Exception:
++            _sess_name = 'aether'
++        subprocess.Popen(
++            ['tmux', 'send-keys', '-t', _sess_name, f'\n{portal_summary}\n', 'Enter'],
++            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
++        )
++    except Exception as _pe:
++        logger.warning(f'[seed-guard] portal alert failed ({reason}): {_pe}')
++    return True
++
++
++def _record_paid_event(rail, order_id, session_uuid, human_email='', amount='', tier=''):
++    """Anchor money-path observability on the MONEY EVENT itself (PayPal
++    PAYMENT.CAPTURE.COMPLETED / Stripe checkout.session.completed), NOT a
++    downstream D1 row (which was absent in the Ashley failure). Append-only."""
++    try:
++        _rec = {
++            'rail': rail,
++            'order_id': (order_id or '').strip(),
++            'session_uuid': (session_uuid or '').strip(),
++            'human_email': (human_email or '').strip(),
++            'amount': str(amount),
++            'tier': (tier or '').strip(),
++            'timestamp': datetime.now(timezone.utc).isoformat(),
++        }
++        _path = os.path.join(DEFAULT_LOG_DIR, 'paid_events.jsonl')
++        os.makedirs(os.path.dirname(_path), exist_ok=True)
++        with _file_lock:
++            with open(_path, 'a') as _f:
++                _f.write(json.dumps(_rec) + '\n')
++        return True
++    except Exception as _e:
++        logger.warning(f'[paid-vs-seed] record paid event failed for order={order_id}: {_e}')
++        return False
++
++
++def _seed_fired_for(order_id, session_uuid):
++    """EXACT-KEY check: did a seed fire for this order_id OR session_uuid? Reads
++    the durable seed-audit stores (seed_sent_uuids.json + seed_events.jsonl).
++    Exact match only. Returns True if a seed is on record. Never raises."""
++    oid = (order_id or '').strip()
++    su = (session_uuid or '').strip()
++    try:
++        _uuids_path = os.path.join(DEFAULT_LOG_DIR, 'seed_sent_uuids.json')
++        if su and os.path.exists(_uuids_path):
++            try:
++                with open(_uuids_path) as _f:
++                    _claimed = json.load(_f)
++                _keys = _claimed.keys() if isinstance(_claimed, dict) else _claimed
++                if su in _keys:
++                    return True
++            except Exception:
++                pass
++        _events_path = os.path.join(DEFAULT_LOG_DIR, 'seed_events.jsonl')
++        if os.path.exists(_events_path):
++            with open(_events_path) as _f:
++                for _line in _f:
++                    _line = _line.strip()
++                    if not _line:
++                        continue
++                    try:
++                        _ev = json.loads(_line)
++                    except Exception:
++                        continue
++                    if (_ev.get('type') or '') not in ('seed_sent', 'seed_fired'):
++                        continue
++                    if su and (_ev.get('session_uuid') or '').strip() == su:
++                        return True
++                    if oid and (_ev.get('order_id') or '').strip() == oid:
++                        return True
++    except Exception as _e:
++        logger.warning(f'[paid-vs-seed] seed-fired check failed: {_e}')
++    return False
++
++
++def _schedule_paid_vs_seed_reconcile(rail, order_id, session_uuid, human_email='',
++                                     amount='', tier='', grace_seconds=900, is_sandbox=False):
++    """CROSS-CUTTING GUARD: record the paid event, then after a grace window
++    reconcile paid-vs-seeded anchored on the MONEY EVENT. Any paid-but-no-seed
++    -> dead-letter + PORTAL alert on this rail. Fail-safe: the timer is daemonic,
++    so a process exit (no restart) simply drops the pending check (the durable
++    paid_events.jsonl record survives for an out-of-band sweep). Never raises."""
++    if is_sandbox:
++        return
++    _record_paid_event(rail, order_id, session_uuid, human_email, amount, tier)
++
++    def _reconcile():
++        try:
++            if _seed_fired_for(order_id, session_uuid):
++                logger.info(f'[paid-vs-seed] OK: seed fired for {rail} order={order_id} uuid={session_uuid}')
++                return
++            logger.critical(
++                f'[paid-vs-seed] PAID-BUT-NO-SEED on {rail}: order={order_id} uuid={session_uuid} '
++                f'email={human_email} amount={amount}'
++            )
++            _seed_deadletter_and_portal_alert(
++                reason=f'paid_but_no_seed_reconcile_{rail}',
++                portal_summary=(
++                    f'[PAID BUT NO SEED — {rail}] order={order_id or "(none)"} '
++                    f'uuid={session_uuid or "(none)"} email={human_email or "(none)"} '
++                    f'amount={amount}. No seed fired within {grace_seconds}s of the money event. '
++                    f'Manual review + manual seed dispatch. See logs/blocked_seeds.jsonl'
++                ),
++                record={
++                    'rail': rail, 'order_id': order_id, 'session_uuid': session_uuid,
++                    'payer_email': human_email, 'amount': str(amount), 'tier': tier,
++                    'requires_action': 'manual review + manual seed dispatch (money-event reconcile)',
++                },
++                is_sandbox=False,
++            )
++        except Exception as _re:
++            logger.error(f'[paid-vs-seed] reconcile failed for order={order_id}: {_re}')
++
++    try:
++        _t = threading.Timer(grace_seconds, _reconcile)
++        _t.daemon = True
++        _t.start()
++    except Exception as _te:
++        logger.warning(f'[paid-vs-seed] could not schedule reconcile for order={order_id}: {_te}')
++
++
+ def generate_self_signed_cert():
+     """
+     Generate self-signed SSL certificate if it doesn't exist.
+@@ -1291,6 +1527,35 @@ def register_routes(app: Flask) -> None:
+             logger.error(f'Failed to write log: {e}')
+             return jsonify({'error': 'Failed to write log'}), 500
+ 
++        # === P1d (2026-07-03): persist the durable session_uuid -> conversation
++        # binding at naming-ceremony time. The client threads ONE sessionUuid
++        # (_pbState.sessionUuid) through log-conversation -> verify-payment ->
++        # send-seed. Persisting the transcript keyed by that EXACT sessionUuid
++        # lets a later one-time / weak-key buyer hydrate their seed by exact key
++        # WITHOUT the (correctly removed) S4 recency fallback that caused the
++        # cross-customer transcript leak. Purely additive: absent sessionUuid or
++        # empty transcript -> no binding written, byte-for-byte prior behavior.
++        try:
++            _bind_uuid = (data.get('sessionUuid') or data.get('session_uuid') or '').strip()
++            if _bind_uuid:
++                _bind_ai = (data.get('aiName') or data.get('ai_name') or '').strip()
++                _bind_hname = (data.get('userName') or data.get('human_name') or data.get('humanName') or '').strip()
++                _bind_email = (
++                    data.get('userEmail') or data.get('human_email')
++                    or data.get('humanEmail') or data.get('email') or ''
++                ).strip()
++                if _persist_session_binding(
++                    _bind_uuid, messages,
++                    ai_name=_bind_ai, human_name=_bind_hname, human_email=_bind_email,
++                ):
++                    logger.info(
++                        f'[session-binding] Persisted naming-ceremony binding for '
++                        f'uuid={_bind_uuid} (msgs={len(messages)}, ai_name={_bind_ai or "-"})'
++                    )
++        except Exception as _bind_err:
++            # A binding-persist failure must NEVER break conversation logging.
++            logger.warning(f'[session-binding] skipped persist in log-conversation: {_bind_err}')
++
+         # Forward to AICIV comms hub asynchronously (non-blocking)
+         if app.config.get('ENABLE_HUB_FORWARDING', True):
+             hub_room = app.config.get('HUB_ROOM', DEFAULT_HUB_ROOM)
+@@ -1547,6 +1812,118 @@ def register_routes(app: Flask) -> None:
+                         f'tier={_tier_key}, amount={data.get("amount")}'
+                     )
+ 
++        # === P2b (2026-07-03): non-`I-` (one-time capture) amount + verified fix ===
++        # LATENT BUG being pre-empted before the one-time $1 flow (P3) ships: for a
++        # non-subscription order the I-* re-fetch block above is SKIPPED entirely, so
++        # nothing ever confirms the captured amount. verify_payment then logged/returned
++        # amount='0.00' with verified:true — a one-time flow would ride that blind spot.
++        # FAIL-CLOSED FIX: for a non-`I-`, non-sandbox order whose amount is missing/0.00,
++        # attempt a PayPal Orders-API confirmation of the CAPTURED amount; if it still
++        # cannot be confirmed positive, mark verified=False + dead-letter + PORTAL alert
++        # (never $0.00/verified:true). Subscriptions (I-*) keep verified:true (first
++        # cycle may legitimately be pending). Sandbox keeps working (verified:true) so
++        # QA can prove the chain. A non-`I-` order that already carries a real positive
++        # amount is unchanged (verified:true).
++        _p2b_order = _order_id_early or data.get('orderId', '')
++        _p2b_is_sub = str(_p2b_order).startswith('I-')
++        # Local sandbox signal (is_sandbox_or_test is computed further below; recompute
++        # the same signals here so the verified decision is self-contained).
++        _p2b_pe = (payer_email or '').lower().strip()
++        _p2b_is_sandbox = (
++            bool(data.get('isSandbox', False))
++            or str(_p2b_order).startswith(('SANDBOX-TEST', 'E2E-', 'test-'))
++            or _p2b_pe.startswith('sb-')
++            or _p2b_pe.endswith('@personal.example.com')
++            or _p2b_pe.endswith('@business.example.com')
++            or 'pay-test-sandbox' in (data.get('pageUrl', data.get('page_url', '')) or '').lower()
++            or '/pay-test' in (data.get('pageUrl', data.get('page_url', '')) or '').lower()
++        )
++
++        def _p2b_parse_amount(_v):
++            try:
++                return float(str(_v).strip() or '0')
++            except (TypeError, ValueError):
++                return 0.0
++
++        _p2b_verified = True
++        if (not _p2b_is_sub) and (not _p2b_is_sandbox):
++            _p2b_amt = _p2b_parse_amount(data.get('amount'))
++            if _p2b_amt <= 0:
++                # Best-effort PayPal Orders-API confirmation of the captured amount.
++                def _fetch_paypal_order_amount(base_url, client_id, secret):
++                    _creds = f'{client_id}:{secret}'
++                    _b64 = base64.b64encode(_creds.encode()).decode()
++                    _tok_req = urllib.request.Request(
++                        f'{base_url}/v1/oauth2/token',
++                        data=b'grant_type=client_credentials',
++                        headers={'Authorization': f'Basic {_b64}',
++                                 'Content-Type': 'application/x-www-form-urlencoded'},
++                        method='POST')
++                    with urllib.request.urlopen(_tok_req, timeout=8) as _r:
++                        _at = json.loads(_r.read()).get('access_token', '')
++                    if not _at:
++                        raise ValueError('no access_token')
++                    _ord_req = urllib.request.Request(
++                        f'{base_url}/v2/checkout/orders/{_p2b_order}',
++                        headers={'Authorization': f'Bearer {_at}',
++                                 'Content-Type': 'application/json'},
++                        method='GET')
++                    with urllib.request.urlopen(_ord_req, timeout=8) as _r:
++                        _od = json.loads(_r.read())
++                    for _pu in (_od.get('purchase_units') or []):
++                        _caps = ((_pu.get('payments') or {}).get('captures') or [])
++                        for _c in _caps:
++                            if (_c.get('status') or '').upper() in ('COMPLETED', 'CAPTURED'):
++                                _av = (_c.get('amount') or {}).get('value')
++                                if _av:
++                                    return _av
++                        _puv = (_pu.get('amount') or {}).get('value')
++                        if _puv:
++                            return _puv
++                    return ''
++
++                import base64  # local import mirrors the I-* block style
++                _confirmed_amt = ''
++                for _base, _cid_env, _sec_env in (
++                    ('https://api-m.paypal.com', 'PAYPAL_CLIENT_ID', 'PAYPAL_SECRET'),
++                    ('https://api-m.sandbox.paypal.com', 'PAYPAL_SANDBOX_CLIENT_ID', 'PAYPAL_SANDBOX_SECRET'),
++                ):
++                    try:
++                        _confirmed_amt = _fetch_paypal_order_amount(
++                            _base, os.environ.get(_cid_env, ''), os.environ.get(_sec_env, ''))
++                        if _confirmed_amt and _p2b_parse_amount(_confirmed_amt) > 0:
++                            data['amount'] = _confirmed_amt
++                            logger.info(f'[verify-payment] P2b confirmed one-time captured amount '
++                                        f'{_confirmed_amt} for order={_p2b_order} via {_base}')
++                            break
++                    except Exception as _oe:
++                        logger.info(f'[verify-payment] P2b Orders-API confirm failed for '
++                                    f'order={_p2b_order} via {_base}: {type(_oe).__name__}')
++                        _confirmed_amt = ''
++
++                if _p2b_parse_amount(data.get('amount')) <= 0:
++                    # FAIL-CLOSED: a real one-time order we cannot confirm must NOT be
++                    # reported verified:true with $0.00.
++                    _p2b_verified = False
++                    logger.critical(
++                        f'[verify-payment] P2b FAIL-CLOSED: one-time order={_p2b_order} '
++                        f'amount unconfirmed/0.00 — verified=False (not a phantom $0.00 verify).'
++                    )
++                    _seed_deadletter_and_portal_alert(
++                        reason='verify_payment_one_time_amount_unconfirmed',
++                        portal_summary=(
++                            f'[PAYMENT UNVERIFIED — one-time] order={_p2b_order} '
++                            f'email={payer_email or "(none)"} tier={data.get("tier", "unknown")}. '
++                            f'Captured amount could not be confirmed (would have been $0.00 '
++                            f'verified:true). Marked verified=False. Manual review required. '
++                            f'See logs/blocked_seeds.jsonl'
++                        ),
++                        record={'order_id': _p2b_order, 'payer_email': payer_email,
++                                'tier': data.get('tier', 'unknown'),
++                                'amount': data.get('amount', '0.00'), 'rail': 'paypal_one_time'},
++                        is_sandbox=False,
++                    )
++
+         # Log the payment verification
+         payment_entry = {
+             'type': 'payment_verification',
+@@ -1558,7 +1935,7 @@ def register_routes(app: Flask) -> None:
+             'captureId': data.get('captureId', ''),
+             'server_timestamp': datetime.now(timezone.utc).isoformat(),
+             'client_ip': request.remote_addr,
+-            'verified': True
++            'verified': _p2b_verified
+         }
+ 
+         # Write to dedicated payment log
+@@ -1951,6 +2328,30 @@ def register_routes(app: Flask) -> None:
+                             f'Winner: {_match_strategy}'
+                         )
+ 
++                        # P1d (2026-07-03): EXACT-KEY persisted-binding recovery.
++                        # When S1-S4 all miss (the one-time / weak-key PayPal buyer
++                        # whose seed the fail-closed hardening correctly stopped from
++                        # riding the removed S4 recency fallback), recover the naming
++                        # ceremony from the durable session_uuid -> conversation
++                        # binding written at log-conversation time. EXACT sessionUuid
++                        # key ONLY — never recency/proximity/fuzzy. Absent key ->
++                        # ('', []) -> _best_match stays None -> the existing hard-block
++                        # (dead-letter + alert) path fires unchanged. This is the durable
++                        # fix that lets legitimate one-time seeds fire again.
++                        if (not _best_match) and _page_session_uuid:
++                            try:
++                                _bind_ai, _bind_conv = _lookup_session_binding(_page_session_uuid)
++                                if _bind_conv:
++                                    _best_match = {'messages': _bind_conv, 'aiName': _bind_ai}
++                                    _match_strategy = f'S2b-persistedBinding-exactUuid ({len(_bind_conv)} msgs)'
++                                    logger.info(
++                                        f'[payment-seed] Recovered conversation from persisted '
++                                        f'session binding (exact uuid={_page_session_uuid}, '
++                                        f'msgs={len(_bind_conv)}, ai_name={_bind_ai or "-"})'
++                                    )
++                            except Exception as _bind_err:
++                                logger.warning(f'[payment-seed] session binding lookup failed: {_bind_err}')
++
+                         if _best_match:
+                             _msgs = _best_match.get('messages') or []
+                             _ai_name = _best_match.get('aiName') or _ai_name
+@@ -2505,9 +2906,33 @@ def register_routes(app: Flask) -> None:
+ 
+             threading.Thread(target=_record_referral_commission, daemon=True).start()
+ 
++        # === CROSS-CUTTING GUARD (2026-07-03): money-event-anchored paid-vs-seed
++        # reconcile for the PayPal rail. verify_payment IS the PayPal money event
++        # (capture confirmed / PAYMENT.CAPTURE.COMPLETED proxy on this host). Record
++        # the paid event, then after a grace window reconcile paid-vs-seeded by EXACT
++        # order_id/sessionUuid; any paid-but-no-seed -> dead-letter + PORTAL alert.
++        # Anchored on the money event, NOT a downstream D1 row (absent in Ashley's
++        # failure). SKIPPED for sandbox/test and for paid-first partner orders (whose
++        # seed legitimately defers to /api/finish-wakeup, possibly beyond the grace
++        # window) so neither false-alarms.
++        try:
++            if (not is_sandbox_or_test) and (not _is_paid_first_order) and _p2b_verified:
++                _schedule_paid_vs_seed_reconcile(
++                    rail='paypal',
++                    order_id=data.get('orderId', ''),
++                    session_uuid=_page_session_uuid,
++                    human_email=payer_email,
++                    amount=data.get('amount', ''),
++                    tier=data.get('tier', 'unknown'),
++                    grace_seconds=900,
++                    is_sandbox=is_sandbox_or_test,
++                )
++        except Exception as _recerr:
++            logger.warning(f'[paid-vs-seed] paypal reconcile schedule skipped: {type(_recerr).__name__}')
++
+         return jsonify({
+             'success': True,
+-            'verified': True,
++            'verified': _p2b_verified,
+             'orderId': data.get('orderId'),
+             'server_timestamp': payment_entry['server_timestamp']
+         })
+@@ -3282,6 +3707,41 @@ def register_routes(app: Flask) -> None:
+             migration_bundle = None
+ 
+         if not session_uuid or not human_email:
++            # P1c (2026-07-03): this branch used to SILENTLY 400 — a paid but
++            # unseedable request (missing session_uuid / human_email) vanished
++            # with ZERO trace and NO alert, which is exactly how Ashley's live
++            # seed non-fire sat invisible. Mirror EXACTLY the adjacent empty-
++            # conversation guard: dead-letter to logs/blocked_seeds.jsonl +
++            # PORTAL alert (Jared is portal-primary). Sandbox and pure-noise
++            # probes (no order/name/ai_name/conversation signal at all) are NOT
++            # alerted, so QA sandbox runs and bot probes stay quiet.
++            _has_signal = bool(
++                order_id or ai_name or human_name or session_uuid or human_email
++                or (not _seed_conversation_is_empty(conversation))
++            )
++            if _has_signal:
++                logger.critical(
++                    f'[send-seed] BLOCKED: missing session_uuid/human_email — '
++                    f'session_uuid={session_uuid!r} human_email={human_email!r} '
++                    f'order_id={order_id!r} ai_name={ai_name!r}. Paid-but-unseedable '
++                    f'request dead-lettered + portal-alerted (no silent drop).'
++                )
++                _seed_deadletter_and_portal_alert(
++                    reason='missing_session_uuid_or_human_email',
++                    portal_summary=(
++                        f'[SEED BLOCKED — missing key field] order={order_id or "(none)"} '
++                        f'ai_name={ai_name or "(none)"} email={human_email or "(none)"} '
++                        f'uuid={session_uuid or "(none)"}. Paid-but-unseedable (missing '
++                        f'session_uuid/human_email). HELD, NOT sent. Manual review + manual '
++                        f'seed dispatch required. See logs/blocked_seeds.jsonl'
++                    ),
++                    record={
++                        'order_id': order_id, 'payer_email': human_email,
++                        'payer_name': human_name, 'ai_name': ai_name, 'tier': tier,
++                        'session_uuid': session_uuid,
++                    },
++                    is_sandbox=is_sandbox,
++                )
+             resp = jsonify({'ok': False, 'error': 'session_uuid and human_email are required'})
+             resp.headers['Access-Control-Allow-Origin'] = '*'
+             return resp, 400
+@@ -3894,11 +4354,98 @@ def register_routes(app: Flask) -> None:
+                 if (not _caller_ai_name) and _lk_name:
+                     data['ai_name'] = _lk_name
+                     logger.info('[send-seed] Hydrated ai_name from logs for empty-conversation caller')
++
++                # P1d/P2a (2026-07-03): the durable EXACT-KEY persisted binding is
++                # the PRIMARY recovery for a tier-only Stripe buyer whose fresh
++                # sessionUuid never matched an orderId/metadata row above (the
++                # Jason/id132 empty-seed failure mode). Consult it by EXACT
++                # sessionUuid ONLY — never recency/proximity/fuzzy. This is what
++                # lets legitimate one-time / weak-key seeds fire again WITHOUT
++                # reopening the S4 recency leak. Absent key -> ('', []) -> the
++                # locked core's own guards (422/held) still decide.
++                if (not data.get('conversation')) and _hydra_uuid:
++                    _bind_ai, _bind_conv = _lookup_session_binding(_hydra_uuid)
++                    if _bind_conv:
++                        data['conversation'] = _bind_conv
++                        logger.info(
++                            f'[send-seed] Hydrated conversation from persisted session '
++                            f'binding (exact uuid={_hydra_uuid}, msgs={len(_bind_conv)})'
++                        )
++                    _caller_ai_name2 = (data.get('ai_name') or data.get('aiName') or '').strip()
++                    if (not _caller_ai_name2) and _bind_ai:
++                        data['ai_name'] = _bind_ai
++                        logger.info('[send-seed] Hydrated ai_name from persisted session binding (exact uuid)')
+         except Exception as _hydra_err:
+             # Hydration is best-effort: a failure must NEVER change the legacy path.
+             # Fall through with whatever the caller sent; the locked core's guards apply.
+             logger.warning(f'[send-seed] conversation hydration skipped: {type(_hydra_err).__name__}')
+ 
++        # P2a (2026-07-03): Stripe tier-only empty-ai_name observability. A Stripe
++        # caller is identified by presenting the X-Seed-Secret header. If, after
++        # EXACT-KEY hydration above, a Stripe caller STILL has no usable ai_name,
++        # this is the Jason/id132 tier-only failure mode. The locked core's ai_name
++        # guard will correctly BLOCK (422/held) — but that guard only Telegram-alerts
++        # (invisible to Jared, portal-primary) and does NOT dead-letter. So raise a
++        # PORTAL alert + durable dead-letter HERE. NOT an empty seed sent; the core
++        # still fails closed. (The empty-conversation case is already dead-letter +
++        # portal-alerted by the core's empty-conv guard, so it is intentionally NOT
++        # re-alerted here to avoid duplicate alerts.)
++        try:
++            _is_stripe_caller = _provided_seed_secret is not None
++            _sandbox_flag = bool(data.get('is_sandbox', data.get('isSandbox', False))) if isinstance(data, dict) else False
++            _final_ai = (data.get('ai_name') or data.get('aiName') or '').strip() if isinstance(data, dict) else ''
++            if _is_stripe_caller and (not _sandbox_flag) and (not _final_ai):
++                _s_uuid = (data.get('session_uuid') or data.get('sessionUuid') or '').strip()
++                _s_order = (data.get('order_id') or data.get('orderId') or '').strip()
++                _s_email = (data.get('human_email') or data.get('humanEmail') or '').strip()
++                _s_tier = (data.get('tier') or '').strip()
++                logger.critical(
++                    f'[send-seed] Stripe tier-only unseedable (no ai_name after exact-key '
++                    f'hydration): uuid={_s_uuid} order={_s_order}. Dead-letter + portal alert.'
++                )
++                _seed_deadletter_and_portal_alert(
++                    reason='stripe_tier_only_no_ai_name',
++                    portal_summary=(
++                        f'[SEED BLOCKED — Stripe tier-only] order={_s_order or "(none)"} '
++                        f'uuid={_s_uuid or "(none)"} email={_s_email or "(none)"} '
++                        f'tier={_s_tier or "(none)"}. No AI name resolvable by exact '
++                        f'sessionUuid key. HELD, NOT sent (no empty seed). Manual review + '
++                        f'manual seed dispatch. See logs/blocked_seeds.jsonl'
++                    ),
++                    record={
++                        'order_id': _s_order, 'payer_email': _s_email, 'ai_name': _final_ai,
++                        'tier': _s_tier, 'session_uuid': _s_uuid, 'rail': 'stripe',
++                    },
++                    is_sandbox=False,
++                )
++        except Exception as _p2a_err:
++            logger.warning(f'[send-seed] P2a Stripe tier-only guard skipped: {type(_p2a_err).__name__}')
++
++        # === CROSS-CUTTING GUARD (2026-07-03): money-event-anchored paid-vs-seed
++        # reconcile for the STRIPE rail. The Stripe checkout.session.completed webhook
++        # is the caller here (it presents X-Seed-Secret). Record the paid event, then
++        # after a grace window reconcile paid-vs-seeded by EXACT order/sessionUuid; if
++        # the seed did NOT fire (e.g. the core blocked 422/held on empty ai_name/conv)
++        # -> dead-letter + PORTAL alert on the Stripe rail. Anchored on the money event,
++        # not a downstream row. Only fires for the authenticated Stripe caller and only
++        # for non-sandbox requests, so QA sandbox runs and legacy callers are untouched.
++        try:
++            _is_stripe_caller2 = _provided_seed_secret is not None
++            _sandbox_flag2 = bool(data.get('is_sandbox', data.get('isSandbox', False))) if isinstance(data, dict) else False
++            if _is_stripe_caller2 and not _sandbox_flag2:
++                _schedule_paid_vs_seed_reconcile(
++                    rail='stripe',
++                    order_id=(data.get('order_id') or data.get('orderId') or '') if isinstance(data, dict) else '',
++                    session_uuid=(data.get('session_uuid') or data.get('sessionUuid') or '') if isinstance(data, dict) else '',
++                    human_email=(data.get('human_email') or data.get('humanEmail') or '') if isinstance(data, dict) else '',
++                    amount=(data.get('amount') or '') if isinstance(data, dict) else '',
++                    tier=(data.get('tier') or 'unknown') if isinstance(data, dict) else 'unknown',
++                    grace_seconds=900,
++                    is_sandbox=_sandbox_flag2,
++                )
++        except Exception as _screrr:
++            logger.warning(f'[paid-vs-seed] stripe reconcile schedule skipped: {type(_screrr).__name__}')
++
+         return _send_seed_core(data)
+ 
+     # -------------------------------------------------------------------------
