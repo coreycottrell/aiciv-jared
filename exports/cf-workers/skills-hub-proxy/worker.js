@@ -1,6 +1,9 @@
 /**
  * Skills Hub Proxy Worker
- * skills.purebrain.ai/*  ->  http://87.99.131.49:8900/*   (AiCIV Skills Hub, FastAPI)
+ * skills.purebrain.ai/*  ->  http://hub-origin.purebrain.ai:8900/*   (AiCIV Skills Hub, FastAPI)
+ * (hub-origin.purebrain.ai is a DNS-only / grey-cloud A record -> 87.99.131.49.
+ *  Cloudflare Workers fetch() rejects raw IP literals with error 1003, so the origin
+ *  MUST be reached via a hostname.)
  *
  * - HTTPS termination in front of an HTTP-only origin.
  * - Transparent reverse proxy: preserves path, querystring, method, headers, body,
@@ -15,8 +18,8 @@
  * - Defensive: origin unreachable / slow -> clean 502, never hangs (AbortController).
  */
 
-const ORIGIN = "http://87.99.131.49:8900";
-const ORIGIN_HOST = "87.99.131.49:8900";
+const ORIGIN = "http://hub-origin.purebrain.ai:8900";
+const ORIGIN_HOST = "hub-origin.purebrain.ai:8900";
 const ORIGIN_TIMEOUT_MS = 12000;
 
 export default {
